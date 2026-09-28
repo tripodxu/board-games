@@ -35,25 +35,34 @@ for (const [id, eng] of Object.entries(globalThis.BG.games)) {
   }
 }
 
-/* 集成：mock AI 机机对弈完整一盘（gomoku / cc / go），验证 client→engine 全链路 */
+/* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
+async function playOut(gid) {
+  BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现
+  const e = globalThis.BG.games[gid];
+  let st = e.newGame();
+  let plies = 0;
+  while (!e.getStatus(st).over && plies < 600) {
+    const d = await globalThis.BG.jev.decide(e, st, st.turn, { channel: 'mock', topK: 3 });
+    if (!d.move || !e.getLegalMoves(st).some((m) => m.notation === d.move.notation)) {
+      throw new Error(gid + ' 第 ' + plies + ' 步返回非法着法 ' + d.notation);
+    }
+    st = e.applyMove(st, d.move);
+    plies++;
+  }
+  const g = e.getStatus(st);
+  if (!g.over) throw new Error(gid + ' ' + plies + ' 步未终局（疑似死循环）');
+  return e.name + '：' + plies + ' 步终局，胜者=' + (g.winner || '和') + '，' + g.reason;
+}
+
 async function integration() {
   eval(fs.readFileSync(path.join(ROOT, 'js/mock-ai.js'), 'utf8'));
   eval(fs.readFileSync(path.join(ROOT, 'js/jev-client.js'), 'utf8'));
   for (const gid of ['gomoku', 'cc', 'go']) {
-    const e = globalThis.BG.games[gid];
-    let st = e.newGame();
-    let plies = 0;
-    while (!e.getStatus(st).over && plies < 600) {
-      const d = await globalThis.BG.jev.decide(e, st, st.turn, { channel: 'mock', topK: 3 });
-      if (!d.move || !e.getLegalMoves(st).some((m) => m.notation === d.move.notation)) {
-        throw new Error(gid + ' 第 ' + plies + ' 步返回非法着法 ' + d.notation);
-      }
-      st = e.applyMove(st, d.move);
-      plies++;
-    }
-    const g = e.getStatus(st);
-    if (!g.over) throw new Error(gid + ' ' + plies + ' 步未终局（疑似死循环）');
-    results.push('✓ 集成 ' + e.name + '：' + plies + ' 步终局，胜者=' + (g.winner || '和') + '，' + g.reason);
+    const summary = await playOut(gid);
+    results.push('✓ 集成 ' + summary);
+    const again = await playOut(gid);
+    BG.util.assert(summary === again, gid + ' 同 seed 复现失败：' + summary + ' ≠ ' + again);
+    results.push('✓ 复现 ' + gid + '（seed=42 两次一致）');
   }
 }
 
