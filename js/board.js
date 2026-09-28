@@ -5,9 +5,26 @@
   BG.games = BG.games || {};
   BG.register = function (def) { BG.games[def.id] = def; };
 
+  /* 可种子随机（mulberry32，与 jev-piano/test/rng-shim.mjs 同实现）。
+     BG.setSeed(n) 后 BG.util.rand/rnd 变为确定性；未设置时仍走 Math.random。
+     注意 BG.util.weightedPick 不经过 rand——真实 Jev 渠道的 top-k 采样
+     保持真随机，不受 seed 影响（见 docs/jev-api.md §6）。 */
+  BG.rng = function (seed) {
+    let a = (seed ^ 0x9e3779b9) >>> 0; // 异或混淆：避免相邻 seed 产生相邻随机流
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  BG._rng = null;
+  BG.setSeed = function (seed) { BG._rng = BG.rng(seed); };
+
   BG.util = {
     clone: (o) => JSON.parse(JSON.stringify(o)),
-    rand: (n) => Math.floor(Math.random() * n),
+    rand: (n) => Math.floor((BG._rng || Math.random)() * n),
+    rnd: () => (BG._rng || Math.random)(),
     shuffle(a) {
       a = a.slice();
       for (let i = a.length - 1; i > 0; i--) {
@@ -119,6 +136,12 @@
       ctx.lineWidth = 2.5; ctx.stroke();
     },
   };
+
+  /* ?seed=42：复现演示。Node 侧由测试显式 BG.setSeed()，不依赖这里。 */
+  if (typeof location !== 'undefined' && location.search) {
+    const seedMatch = /[?&]seed=(\d+)/.exec(location.search);
+    if (seedMatch) BG.setSeed(parseInt(seedMatch[1], 10));
+  }
 
   /* 浏览器事件 → 逻辑坐标 */
   BG.eventXY = function (canvas, e) {
