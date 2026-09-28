@@ -19,7 +19,7 @@
     };
   };
   BG._rng = null;
-  BG.setSeed = function (seed) { BG._rng = BG.rng(seed); };
+  BG.setSeed = function (seed) { BG._rng = BG.rng(seed); }; // _rng 只应由 setSeed 写；并行对局勿共享全局 RNG
 
   BG.util = {
     clone: (o) => JSON.parse(JSON.stringify(o)),

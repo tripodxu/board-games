@@ -41,17 +41,19 @@ async function playOut(gid) {
   const e = globalThis.BG.games[gid];
   let st = e.newGame();
   let plies = 0;
+  const notations = [];
   while (!e.getStatus(st).over && plies < 600) {
     const d = await globalThis.BG.jev.decide(e, st, st.turn, { channel: 'mock', topK: 3 });
     if (!d.move || !e.getLegalMoves(st).some((m) => m.notation === d.move.notation)) {
       throw new Error(gid + ' 第 ' + plies + ' 步返回非法着法 ' + d.notation);
     }
     st = e.applyMove(st, d.move);
+    notations.push(d.move.notation);
     plies++;
   }
   const g = e.getStatus(st);
   if (!g.over) throw new Error(gid + ' ' + plies + ' 步未终局（疑似死循环）');
-  return e.name + '：' + plies + ' 步终局，胜者=' + (g.winner || '和') + '，' + g.reason;
+  return e.name + '：' + plies + ' 步终局，胜者=' + (g.winner || '和') + '，' + g.reason + '|' + notations.join(',');
 }
 
 async function integration() {
