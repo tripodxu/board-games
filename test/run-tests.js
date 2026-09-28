@@ -117,8 +117,8 @@ async function jevClientTests() {
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */
 async function pagesFunctionTests() {
-  /* 无 package.json 时不能 import()；剥掉 export 后用 new Function 加载。
-     hits Map 是模块状态：load() 只调用一次，跨用例共享计数。 */
+  /* package.json 无 type:module，.js 按 CJS 解析，export 语法无法 import()；
+     剥掉 export 后用 new Function 加载。hits Map 是模块状态：只加载一次，跨用例共享计数。 */
   const src = fs.readFileSync(path.join(ROOT, 'functions/api/jev.js'), 'utf8')
     .replace(/export\s+async\s+function\s+onRequestPost/, 'async function onRequestPost');
   const onRequestPost = new Function(src + '\nreturn onRequestPost;')();
@@ -141,7 +141,9 @@ async function pagesFunctionTests() {
   /* ③+④ 限流与转发：limit=2，同一 IP 第 3 次 429（IP 9.9.9.3 计数全新） */
   const realFetch = globalThis.fetch;
   let captured = null;
+  let fetchCalls = 0;
   globalThis.fetch = async (url, init) => {
+    fetchCalls++;
     captured = { url: String(url), init };
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
@@ -151,6 +153,7 @@ async function pagesFunctionTests() {
     r = await onRequestPost(req()); BG.util.assert(r.status === 200, '第 1 次应 200，实际 ' + r.status);
     r = await onRequestPost(req()); BG.util.assert(r.status === 200, '第 2 次应 200，实际 ' + r.status);
     r = await onRequestPost(req()); BG.util.assert(r.status === 429, '第 3 次应 429，实际 ' + r.status);
+    BG.util.assert(fetchCalls === 2, '429 不应触达上游，实际 fetch ' + fetchCalls + ' 次');
     BG.util.assert(captured && captured.url === 'https://api.typesafe.ai/v1/systemone', '上游 URL 不对：' + (captured && captured.url));
     BG.util.assert(captured.init.headers.Authorization === 'Bearer k', 'Authorization 头不对');
     const sent = JSON.parse(captured.init.body);

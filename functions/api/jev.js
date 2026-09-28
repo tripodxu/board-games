@@ -18,7 +18,7 @@ function rateLimited(ip, limit) {
 
 export async function onRequestPost(context) {
   const ip = context.request.headers.get('CF-Connecting-IP') ?? 'unknown';
-  const limit = Number(context.env.RATE_LIMIT_PER_MIN ?? 30);
+  const limit = Math.max(1, Number(context.env.RATE_LIMIT_PER_MIN ?? 30) || 30);
   if (rateLimited(ip, limit)) {
     return json({ error: '请求过于频繁，请稍后再试（每 IP 每分钟 ' + limit + ' 次）' }, 429);
   }
