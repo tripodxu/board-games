@@ -49,3 +49,4 @@
 - `js/app.js` 是最大的单文件（~800 行），承担全部 UI 编排；继续膨胀时应先拆
   「记录/统计」与「对局循环」两个模块，拆时保持 `index.html` 加载顺序同步。
 - `test/run-tests.js` 与 `index.html` 的加载清单是两份硬编码，新增 JS 文件别忘了两处。
+- mock 与引擎启发式已全部经 `BG.util.rnd()`（可种子）；`Math.random` 仅剩 `board.js` 兜底与 `weightedPick`（真实渠道采样）两处，属预期。

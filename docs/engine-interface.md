@@ -83,8 +83,8 @@
 硬约束：
 
 1. **`state` 与 `instructions` 一律英文**（中文精度较低，ADR-0002）。
-2. **Choice 选项 ≤ 255**（Jev 上限）。超出必须预筛：邻近已有棋子 + 星位/关键点 + 随机补齐
-   （参照 `gomoku.js` 的 `candidates(st, 64)`）。
+2. **Choice 选项 ≤ 255**（Jev 上限）。超出必须预筛：邻近已有棋子 + 星位/关键点 + 按价值排序截断
+   （参照 `gomoku.js` 的 `candidates(st, 64)`；当前实现为确定性截断，无随机补齐）。
 3. 三问（choice/noul/score）必须**同一次请求全部发出**——并行评估是 Jev 的核心用法，
    不要拆多次调用（ADR-0001 之外的成本/延迟考量见 docs/jev-api.md）。
 4. `criteria` 写得越具体概率越可信；`move` 的 instructions 里写清"只回答 Choice 问题 move"。

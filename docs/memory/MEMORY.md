@@ -4,9 +4,15 @@
 > 不写客套；带日期的条目格式 `## YYYY-MM-DD · 标题`。
 > 本文件是项目级持久记忆（入库、工具无关）。各 agent 工具自己的记忆/指针
 > （如 `.workbuddy/MEMORY.md`）只允许指向本文件，不得成为事实源。
-> 沉淀规则见 [README.md](README.md)「维护规则」。
+> 沉淀规则见 [README.md](../README.md)「维护规则」。
 
 ---
+
+## 2026-09-28 · mock 种子化落地
+
+- `BG.setSeed/rng`（mulberry32，逐字抄 jev-piano rng-shim）+ `BG.util.rnd()`；`?seed=42` 复现演示。
+- 替换点共 10 处（mock-ai 3 + 六引擎 7）；`weightedPick` 不经 `rand`，真实渠道自动不受影响——这是无需拆代码路径的天然隔离点。
+- 集成测试改为同 seed 两次 playOut 断言一致（全棋谱比对，防摘要相撞漏报）；`BG_FAST` 现由 run-tests.js 默认设置（`BG_SLOW=1` 可覆盖）。
 
 ## 2026-09-28 · 仓库硬化：限流/CI/种子化（见 docs/superpowers/plans/2026-09-28-board-games-hardening.md）
 

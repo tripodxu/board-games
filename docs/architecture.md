@@ -25,7 +25,7 @@ index.html ──加载──▶ css/style.css
 |---|---|---|---|
 | `index.html` | ~300 | 单页结构：tab 栏、棋盘容器、对局面板、Jev 设置、记录/动态区 | ❌ DOM |
 | `css/style.css` | ~800 | 全部样式（亮色拟物风） | ❌ |
-| `js/board.js` | 131 | `BG` 命名空间、`BG.util`（clone/shuffle/weightedPick/assert）、`BG.gfx`（HiDPI canvas、网格/星位/棋子/圆片/文字/高亮）、`BG.eventXY` | ✅ 无 DOM 依赖 |
+| `js/board.js` | ~150 | `BG` 命名空间、`BG.util`（clone/rnd/rand/shuffle/weightedPick/assert，rand/rnd 可种子化）、`BG.gfx`（HiDPI canvas、网格/星位/棋子/圆片/文字/高亮）、`BG.eventXY` | ✅ 无 DOM 依赖 |
 | `js/games/gomoku.js` | 234 | 五子棋 15×15：五连判定、禁点不考虑、候选点预筛(≤64) | ✅ |
 | `js/games/go.js` | ~330 | 围棋 9×9：提子/禁自杀/劫/双停数子(贴5.5) | ✅ |
 | `js/games/xiangqi.js` | ~370 | 象棋 9×10：全部走子规则、照面、将军/绝杀/困毙 | ✅ |

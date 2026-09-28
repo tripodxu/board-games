@@ -57,6 +57,7 @@ python dev-proxy.py             # 本地静态+代理服务器 → http://localh
 - state 一律 JSON 可克隆（`BG.util.clone` 用 JSON 深拷贝），不放函数/DOM 引用。
 - Jev 的 `state` 与 `instructions` **一律英文**（官方口径：中文精度较低），坐标记法，见 ADR-0002。
 - 注释、文档、commit message 用中文；代码标识符用英文。
+- 可种子随机：`BG.setSeed(n)` / URL `?seed=42` 使 mock 与测试确定可复现；真实 Jev 渠道不受影响（`weightedPick` 不经 `rand`）。
 
 ## 6. 提交规范
 
