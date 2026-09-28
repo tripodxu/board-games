@@ -49,6 +49,8 @@ python dev-proxy.py             # 本地静态+代理服务器 → http://localh
 # 浏览器打开 index.html?test=1   # 页面内运行全部引擎自检
 ```
 
+环境要求：Node ≥ 18（跑自检与文档检查）、Python ≥ 3.8（可选，仅 dev-proxy.py 需要）。**无需 npm install**（零依赖）。
+
 ## 5. 代码约定速查
 
 - 全局命名空间 `BG`（`globalThis.BG`）：`BG.games`（引擎注册表）、`BG.util`、`BG.gfx`、
