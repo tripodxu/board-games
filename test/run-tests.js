@@ -115,10 +115,57 @@ async function jevClientTests() {
   BG.util.assert(argmax.notation === 'H8', 'topK=1 应恒选最高概率项 H8，实际：' + argmax.notation);
 }
 
+/* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */
+async function pagesFunctionTests() {
+  /* 无 package.json 时不能 import()；剥掉 export 后用 new Function 加载。
+     hits Map 是模块状态：load() 只调用一次，跨用例共享计数。 */
+  const src = fs.readFileSync(path.join(ROOT, 'functions/api/jev.js'), 'utf8')
+    .replace(/export\s+async\s+function\s+onRequestPost/, 'async function onRequestPost');
+  const onRequestPost = new Function(src + '\nreturn onRequestPost;')();
+
+  const mkReq = (body, headers) => new Request('http://local/api/jev', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+    body,
+  });
+  const validBody = JSON.stringify({ state: { game: 'test' }, questions: { move: { type: 'choice' } } });
+
+  /* ① 无 key → 401（IP 9.9.9.1，独立计数） */
+  let r = await onRequestPost({ request: mkReq(validBody, { 'CF-Connecting-IP': '9.9.9.1' }), env: {} });
+  BG.util.assert(r.status === 401, '无 key 应 401，实际 ' + r.status);
+
+  /* ② 坏 JSON → 422（IP 9.9.9.2） */
+  r = await onRequestPost({ request: mkReq('not-json', { 'CF-Connecting-IP': '9.9.9.2', 'X-Api-Key': 'k' }), env: {} });
+  BG.util.assert(r.status === 422, '坏 JSON 应 422，实际 ' + r.status);
+
+  /* ③+④ 限流与转发：limit=2，同一 IP 第 3 次 429（IP 9.9.9.3 计数全新） */
+  const realFetch = globalThis.fetch;
+  let captured = null;
+  globalThis.fetch = async (url, init) => {
+    captured = { url: String(url), init };
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  try {
+    const env = { RATE_LIMIT_PER_MIN: '2' };
+    const req = () => ({ request: mkReq(validBody, { 'CF-Connecting-IP': '9.9.9.3', 'X-Api-Key': 'k' }), env });
+    r = await onRequestPost(req()); BG.util.assert(r.status === 200, '第 1 次应 200，实际 ' + r.status);
+    r = await onRequestPost(req()); BG.util.assert(r.status === 200, '第 2 次应 200，实际 ' + r.status);
+    r = await onRequestPost(req()); BG.util.assert(r.status === 429, '第 3 次应 429，实际 ' + r.status);
+    BG.util.assert(captured && captured.url === 'https://api.typesafe.ai/v1/systemone', '上游 URL 不对：' + (captured && captured.url));
+    BG.util.assert(captured.init.headers.Authorization === 'Bearer k', 'Authorization 头不对');
+    const sent = JSON.parse(captured.init.body);
+    BG.util.assert(sent.model === 'jev-latest' && sent.state && sent.questions, '转发体缺字段');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 integration()
   .catch((e) => { failed++; results.push('✗ 集成测试: ' + e.message); })
   .then(() => jevClientTests())
   .catch((e) => { failed++; results.push('✗ jev-client 单元测试: ' + e.message); })
+  .then(() => pagesFunctionTests())
+  .catch((e) => { failed++; results.push('✗ Pages Function 单元测试: ' + e.message); })
   .finally(() => {
     console.log(results.join('\n'));
     if (failed) {
