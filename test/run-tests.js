@@ -3,6 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 
+/* mock AI 的模拟延迟对自检无意义：默认跳过（BG_SLOW=1 可覆盖为真实延迟） */
+if (!process.env.BG_SLOW) process.env.BG_FAST = '1';
+
 globalThis.window = globalThis;
 globalThis.location = { search: '', origin: 'http://localhost' };
 
