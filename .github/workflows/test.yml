@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 语法检查
+        run: |
+          node --check js/board.js
+          node --check js/app.js
+          node --check js/jev-client.js
+          node --check js/mock-ai.js
+          node --check js/charts.js
+          for f in js/games/*.js; do node --check "$f"; done
+          node --check test/run-tests.js
+      - name: 引擎自检与集成对局
+        run: npm test
+      - name: 文档校验
+        run: npm run check:docs
