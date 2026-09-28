@@ -147,7 +147,53 @@
       return svg;
     },
 
-    /* 置信度环形仪表：animate=false 时直接呈现（历史卡片不重复播动画） */
+    /* 可靠性图：横轴「Jev 说」纵轴「实际兑现」，点落在对角线上＝校准良好。
+     * 每箱画一条从对角线到落点的竖线，线长即该箱的校准偏差；竖线底色按样本量深浅，
+     * 于是「预测分布（锐度）」与「校准偏差」可以一眼同时读到。 */
+    reliability(container, bins, opts) {
+      opts = opts || {};
+      const W = 300, H = 168, L = 30, R = 10, T = 10, B = 26;
+      const iw = W - L - R, ih = H - T - B;
+      const nBins = bins.length;
+      const maxN = Math.max(1, ...bins.map((b) => b.n));
+      container.innerHTML = '';
+      container.classList.add('rel-root');
+      const svg = el('svg', {
+        viewBox: '0 0 ' + W + ' ' + H, class: 'rel-svg', role: 'img',
+        'aria-label': '可靠性图：横轴为 Jev 预测胜率，纵轴为实际兑现率，' +
+          bins.filter((b) => b.n).length + ' 个有样本的分箱',
+      }, container);
+      const xOf = (v) => L + v * iw;
+      const yOf = (v) => T + ih - v * ih;
+
+      /* 网格 + 刻度 */
+      for (const t of [0, 0.5, 1]) {
+        el('line', { x1: L, y1: yOf(t), x2: W - R, y2: yOf(t), class: t === 0.5 ? 'grid grid-mid' : 'grid' }, svg);
+        el('text', { x: L - 5, y: yOf(t) + 3, class: 'tick-label', 'text-anchor': 'end' }, svg)
+          .textContent = Math.round(t * 100) + '%';
+        el('text', { x: xOf(t), y: H - 8, class: 'tick-label', 'text-anchor': 'middle' }, svg)
+          .textContent = Math.round(t * 100) + '%';
+      }
+      /* 完美校准参考线 */
+      el('line', { x1: xOf(0), y1: yOf(0), x2: xOf(1), y2: yOf(1), class: 'rel-diag' }, svg);
+      el('text', { x: W - R, y: yOf(1) - 4, class: 'tick-label rel-diag-label', 'text-anchor': 'end' }, svg)
+        .textContent = '完美校准';
+
+      /* 每箱：竖线（对角线 → 落点），长度＝校准偏差；底色随样本量加深 */
+      bins.forEach((b) => {
+        if (!b.n) return;
+        const cx = xOf(b.conf), cy = yOf(b.acc), d = yOf(b.conf);
+        const alpha = 0.14 + 0.5 * (b.n / maxN);
+        el('line', { x1: cx, y1: d, x2: cx, y2: cy, class: 'rel-gap', 'stroke-opacity': alpha.toFixed(2) }, svg);
+        el('circle', { cx: cx, cy: cy, r: 3.2, class: 'rel-dot' }, svg)
+          .appendChild(el('title', {})).textContent =
+            '预测 ' + Math.round(b.conf * 100) + '% → 实测 ' + Math.round(b.acc * 100) + '%（' + b.n + ' 个样本）';
+      });
+      el('text', { x: L, y: H - 8, class: 'tick-label rel-axis' }, svg).textContent = 'Jev 说的胜率';
+      return svg;
+    },
+
+    /* 置信度仪表：animate=false 时直接呈现（历史卡片不重复播动画） */
     gauge(p, size, animate) {
       size = size || 46;
       const r = size / 2 - 4, c = 2 * Math.PI * r;

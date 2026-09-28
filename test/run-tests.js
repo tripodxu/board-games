@@ -12,6 +12,7 @@ globalThis.location = { search: '', origin: 'http://localhost' };
 const ROOT = path.join(__dirname, '..');
 [
   'js/board.js',
+  'js/calibration.js',
   'js/games/gomoku.js',
   'js/games/chess.js',
   'js/games/xiangqi.js',
@@ -33,6 +34,15 @@ for (const [id, eng] of Object.entries(globalThis.BG.games)) {
     failed++;
     results.push('✗ ' + eng.name + ' (' + id + '): ' + e.message);
   }
+}
+
+/* 单元：校准实验室的数学（解析夹具，见 js/calibration.js selfTest 注释） */
+try {
+  globalThis.BG.calibration.selfTest();
+  results.push('✓ 校准实验室（brier/skill/ece/过度自信）');
+} catch (e) {
+  failed++;
+  results.push('✗ 校准实验室: ' + e.message);
 }
 
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */

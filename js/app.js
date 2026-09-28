@@ -510,10 +510,22 @@
     S.sessionRecorded = true; // 终局后悔棋再终局只保留一条战绩
     const items = aiItems();
     const lats = items.map((h) => h.meta.latencyMs).filter(Boolean);
+    /* 校准样本：逐手「先手方视角」的胜率预测。
+     * 离线演示的概率是 mock 合成的（mock-ai.js 随机生成），拿它算校准等于自欺，
+     * 因此只收真实渠道；和棋局没有二元真值，firstWin 记 null，由 calibration 侧剔除。 */
+    const firstId = S.engine.sides[0].id;
+    const cal = items
+      .filter((h) => !h.meta.mock && typeof h.meta.noul === 'number')
+      .map((h) => {
+        const v = h.meta.side === firstId ? h.meta.noul : 1 - h.meta.noul;
+        return Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
+      });
     const rec = {
       id: S.sessionId,
       t: Date.now(),
       game: S.engine.name,
+      gid: S.gameId,
+      mock: effectiveChannel() === 'mock',
       mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
       winner: g.winner ? sideName(g.winner) : '和棋',
       firstWin: g.winner ? g.winner === S.engine.sides[0].id : null,
@@ -522,6 +534,7 @@
       aiMoves: items.length,
       avgLat: lats.length ? Math.round(lats.reduce((s, x) => s + x, 0) / lats.length) : 0,
       cost: items.reduce((s, h) => s + (h.meta.costUsd || 0), 0),
+      cal,
     };
     const all = loadRecords();
     const idx = all.findIndex((r) => r.id === rec.id);
@@ -531,6 +544,7 @@
   }
   function renderRecords() {
     const all = loadRecords();
+    renderCalibration(); // 与战绩簿同源：校准样本就是这些对局里的预测
     const stats = $('recordStats');
     if (!all.length) {
       stats.innerHTML = '<div class="feed-empty">还没有历史对局，打完一局自动记账。</div>';
@@ -564,6 +578,67 @@
     $('records').innerHTML =
       '<div class="rec-row rec-head"><span>时间</span><span>棋种</span><span>模式</span><span>胜方</span><span>手数</span><span>延迟</span><span>花费</span></div>' + rows;
     $('recordSummary').textContent = '本机最近 ' + all.length + ' 局';
+  }
+
+  /* ---------- 校准实验室 ----------
+   * 把 Jev 逐手给出的胜率预测，与这些对局的真实胜负放在一起量。
+   * 面板刻意同时给「技巧分」与「校准误差」两个数：它们不可互相替代——
+   * 恒定猜 0.5 的预测器 ece 也是 0（从不说谎），但技巧分是 0（毫无信息量）。
+   * 只看 ece 会得出「这个模型很诚实」的错误结论。两个数的对照见
+   * js/calibration.js selfTest 的夹具 A / B。 */
+  const PCT = (v, d) => (typeof v === 'number' ? (v * 100).toFixed(d === undefined ? 0 : d) + '%' : '–');
+  const SIGNED = (v, d) => (typeof v === 'number' ? (v > 0 ? '+' : '') + (v * 100).toFixed(d === undefined ? 0 : d) : '–');
+
+  function renderCalibration() {
+    const box = $('calBody');
+    if (!box) return;
+    const agg = BG.calibration.fromRecords(loadRecords());
+    const m = agg.metrics;
+    $('calCount').textContent = agg.games ? agg.games + ' 局 / ' + agg.samples.length + ' 手' : '';
+
+    if (!m) {
+      const why = agg.skippedDemo
+        ? '已有 ' + agg.skippedDemo + ' 局离线演示。演示的胜率是本地合成的，拿它量校准没有意义——请接入真实 Jev 渠道后再看。'
+        : '还没有真实渠道的对局记录。接入 Jev（官方 / OpenRouter / 同源代理）下几局，这里会把「Jev 说的胜率」和「实际胜负」摆在一起量。';
+      box.innerHTML = '<div class="cal-empty"><span class="glyph">衡</span>' + why + '</div>';
+      return;
+    }
+
+    const skillTxt = m.skill === null ? '–' : (m.skill > 0 ? '+' : '') + (m.skill * 100).toFixed(0);
+    const skillNote = m.skill === null ? '基准率退化，无法比较'
+      : m.skill > 0.5 ? '明显有信息量'
+      : m.skill > 0 ? '略强于「恒猜平均胜率」'
+      : m.skill > -0.5 ? '基本没有信息量'
+      : '比「恒猜平均胜率」还差';
+    const hero =
+      '<div class="cal-hero' + (m.skill !== null && m.skill < 0 ? ' bad' : '') + '">' +
+      '<div class="cal-hero-v mono">' + skillTxt + '</div>' +
+      '<div class="cal-hero-k">技巧分</div>' +
+      '<div class="cal-hero-note">' + skillNote + '</div></div>';
+
+    const tiles =
+      '<div class="cal-tiles">' +
+      '<div class="ct"><b class="mono">' + PCT(m.ece, 1) + '</b><span>校准误差</span></div>' +
+      '<div class="ct"><b class="mono">' + m.brier.toFixed(3) + '</b><span>Brier 分</span></div>' +
+      '<div class="ct"><b class="mono">' + PCT(m.sharpness) + '</b><span>平均预测</span></div>' +
+      '<div class="ct"><b class="mono">' + PCT(m.baseRate) + '</b><span>实际胜率</span></div>' +
+      '</div>';
+
+    const over = m.overconfidence;
+    const verdict = Math.abs(over) < 0.05
+      ? '平均预测与实际胜率基本吻合，Jev 既不狂妄也不怯懦。'
+      : over > 0
+        ? 'Jev 平均比现实乐观 ' + Math.round(over * 100) + ' 个百分点——说七成的时候常兑现不到七成。'
+        : 'Jev 平均比现实保守 ' + Math.round(-over * 100) + ' 个百分点——它比实际更不敢下注。';
+
+    box.innerHTML = hero + tiles +
+      '<div id="calChart" class="cal-chart"></div>' +
+      '<div class="cal-verdict' + (over > 0.05 ? ' warn' : '') + '">' + verdict + '</div>' +
+      '<div class="cal-caveat">样本按「局」强相关：同一局内各手共享同一真实胜负，' +
+      '有效样本量更接近 ' + agg.games + ' 局而非 ' + agg.samples.length + ' 手。' +
+      (agg.draws ? '另有 ' + agg.draws + ' 局和棋无二元真值，未计入。' : '') + '</div>';
+
+    BG.charts.reliability($('calChart'), BG.calibration.reliability(agg.samples, 10), {});
   }
 
   function renderFeed() {
@@ -809,6 +884,12 @@
       }
     });
     panel.innerHTML = html;
+    /* 校准实验室的数学也进浏览器自检：纯函数，Node 与浏览器两端都能跑 */
+    try {
+      if (BG.calibration) { BG.calibration.selfTest(); panel.innerHTML += '<span class="ok">✓ 校准实验室</span><br>'; }
+    } catch (err) {
+      panel.innerHTML += '<span class="fail">✗ 校准实验室：' + err.message + '</span><br>';
+    }
   }
 
   /* ---------- 启动 ---------- */

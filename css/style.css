@@ -600,7 +600,56 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 .rec-row:not(.rec-head):hover { background: var(--bg2); }
 .rec-row.draw .rec-winner { color: var(--ink-mute); }
 
-/* 决策流（原） */
+/* ---------- 校准实验室 ---------- */
+
+.cal-empty {
+  padding: 22px 10px;
+  text-align: center;
+  color: var(--ink-mute);
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+.cal-empty .glyph {
+  font-family: var(--font-display);
+  font-size: 28px; color: var(--line-strong);
+  display: block; margin-bottom: 8px; letter-spacing: 4px;
+}
+
+.cal-hero {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px 9px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--mo);
+  border-radius: var(--r-ctl);
+}
+.cal-hero.bad { border-left-color: var(--zhu); }
+.cal-hero-v { font-size: 30px; font-weight: 600; line-height: 1; color: var(--mo); }
+.cal-hero.bad .cal-hero-v { color: var(--zhu); }
+.cal-hero-k { font-size: 12px; color: var(--ink-dim); letter-spacing: .08em; }
+.cal-hero-note { font-size: 11px; color: var(--ink-mute); margin-left: auto; }
+
+.cal-tiles {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px; margin: 9px 0 4px;
+}
+.ct { background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 6px 4px 5px; text-align: center; }
+.ct b { display: block; font-size: 13.5px; font-weight: 600; color: var(--mo); line-height: 1.35; }
+.ct span { font-size: 9.5px; color: var(--ink-mute); }
+
+.cal-chart { margin: 2px 0 4px; }
+.rel-svg { display: block; width: 100%; height: auto; }
+.rel-diag { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.rel-diag-label { fill: var(--line-strong); }
+.rel-gap { stroke: var(--zhu); stroke-width: 3; stroke-linecap: round; }
+.rel-dot { fill: var(--zhu); stroke: var(--bg1); stroke-width: 1; }
+.rel-axis { fill: var(--ink-mute); }
+
+.cal-verdict { font-size: 12px; color: var(--ink-dim); line-height: 1.7; margin-top: 2px; }
+.cal-verdict.warn { color: var(--zhu); }
+.cal-caveat { font-size: 10.5px; color: var(--ink-mute); line-height: 1.65; margin-top: 6px; }
+
+/* ---------- 决策流（原） ---------- */
 
 .decision {
   display: grid;
