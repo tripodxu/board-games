@@ -117,7 +117,7 @@
         return {
           notation: fallback.notation, move: fallback,
           meta: { channel, model: data.model, latencyMs, usage, costUsd, confidence: 0, top: [],
-                  candidates: 0, warning: '响应中无合法选项，已随机回退', noul: answers.edge, score: answers.position },
+                  candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position },
         };
       }
       pairs.sort((a, b) => b[1] - a[1]);
