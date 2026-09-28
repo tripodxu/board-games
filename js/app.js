@@ -212,9 +212,7 @@
       $('stepBtn').classList.remove('hidden');
     }
     syncChannelUI();
-    setStatus(S.mode === 'ai-ai' ? '对局进行中 · Jev vs Jev'
-      : S.mode === 'human-ai' ? '对局进行中 · 你执' + sideName(S.humanSide)
-      : '对局进行中 · 双人对弈', false);
+    setStatus(inGameStatus(), false);
     if (isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
   }
 
@@ -243,14 +241,16 @@
     if (!move) return false;
     const g0 = S.engine.getStatus(S.st);
     if (g0.over) return false;
-    const h = { prev: S.st, move, meta: meta || null, ply: S.history.length + 1 };
+    /* history 只留记法与展示用元数据，不再留 prev 的全量 state 快照（见 rebuildState 注释） */
+    const h = { move, meta: meta || null, ply: S.history.length + 1 };
     S.history.push(h);
     S.st = S.engine.applyMove(S.st, move);
     appendLedgerLine(h);
     redraw();
     renderAnalytics();
     renderCockpit();
-    renderFeed();
+    /* 决策流只增不改，这里增量插入；人类走子不产生 AI 决策，无需重画 */
+    if (meta && meta.byAI) prependFeed(h);
     const g = S.engine.getStatus(S.st);
     if (g.over) { finishGame(g); return true; }
     if (isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
@@ -575,39 +575,48 @@
     }
     feed.innerHTML = '';
     const frag = document.createDocumentFragment();
-    aiMoves.slice(-FEED_MAX).reverse().forEach((h, i) => {
-      const m = h.meta;
-      const card = document.createElement('div');
-      card.className = 'decision';
-      const who =
-        '<span class="who">第' + h.ply + '手 · <b>' + (m.sideName || '') + '</b>' +
-        (m.mock ? ' · 演示' : ' · Jev') + '</span>';
-      const mv = '<span class="mv">' + h.move.notation + '</span>';
-      frag.appendChild(card);
-      card.innerHTML = who + mv;
-      /* 概率条 */
-      const barsWrap = document.createElement('div');
-      barsWrap.style.gridColumn = '1 / 3';
-      barsWrap.appendChild(BG.charts.bars(m.top, h.move.notation, i === 0));
-      card.appendChild(barsWrap);
-      /* 置信度仪表（仅最新一张播扫入动画） */
-      if (typeof m.confidence === 'number') {
-        card.appendChild(BG.charts.gauge(m.confidence, 46, i === 0));
-      }
-      /* 元信息 */
-      const extra = [];
-      if (typeof m.noul === 'number') extra.push('优势 ' + (m.noul * 100).toFixed(0) + '%');
-      if (typeof m.score === 'number') extra.push('局势 ' + m.score.toFixed(1));
-      if (m.latencyMs) extra.push(m.latencyMs + 'ms');
-      if (m.usage && m.usage.input_tokens) extra.push(m.usage.input_tokens + ' tok');
-      if (m.costUsd) extra.push('$' + m.costUsd.toFixed(5));
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.innerHTML = extra.map((x) => '<b>' + x + '</b>').join(' · ') +
-        (m.warning ? ' <span class="warn">⚠ ' + m.warning + '</span>' : '');
-      card.appendChild(meta);
-    });
+    /* i===0 是最新一张：只有它播入场动画，历史卡片直接呈现终值 */
+    aiMoves.slice(-FEED_MAX).reverse().forEach((h, i) => frag.appendChild(feedCard(h, i === 0)));
     feed.appendChild(frag);
+  }
+
+  /* 决策流单卡。animate=false 时概率条/仪表直接呈现终值，不重播动画。 */
+  function feedCard(h, animate) {
+    const m = h.meta;
+    const card = document.createElement('div');
+    card.className = 'decision';
+    card.innerHTML =
+      '<span class="who">第' + h.ply + '手 · <b>' + (m.sideName || '') + '</b>' +
+      (m.mock ? ' · 演示' : ' · Jev') + '</span>' +
+      '<span class="mv">' + h.move.notation + '</span>';
+    const barsWrap = document.createElement('div');
+    barsWrap.style.gridColumn = '1 / 3';
+    barsWrap.appendChild(BG.charts.bars(m.top, h.move.notation, animate));
+    card.appendChild(barsWrap);
+    if (typeof m.confidence === 'number') card.appendChild(BG.charts.gauge(m.confidence, 46, animate));
+    const extra = [];
+    if (typeof m.noul === 'number') extra.push('优势 ' + (m.noul * 100).toFixed(0) + '%');
+    if (typeof m.score === 'number') extra.push('局势 ' + m.score.toFixed(1));
+    if (m.latencyMs) extra.push(m.latencyMs + 'ms');
+    if (m.usage && m.usage.input_tokens) extra.push(m.usage.input_tokens + ' tok');
+    if (m.costUsd) extra.push('$' + m.costUsd.toFixed(5));
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = extra.map((x) => '<b>' + x + '</b>').join(' · ') +
+      (m.warning ? ' <span class="warn">⚠ ' + m.warning + '</span>' : '');
+    card.appendChild(meta);
+    return card;
+  }
+
+  /* 增量：只把最新一手的卡片插到最前面。
+   * 此前每手都 innerHTML='' 后重建最多 40 张卡（每张含概率条 + SVG 仪表），
+   * 是 O(n²) 的纯重复劳动：cc 一局 138 手 ≈ 5.5k 张卡 / 5 万+ DOM 节点。
+   * 只在历史被回退（resetSession / undo）时才需要整块重画，走 renderFeed。 */
+  function prependFeed(h) {
+    const feed = $('feed');
+    if (feed.querySelector('.feed-empty')) feed.innerHTML = '';
+    feed.insertBefore(feedCard(h, true), feed.firstChild);
+    while (feed.childElementCount > FEED_MAX) feed.removeChild(feed.lastElementChild);
   }
 
   function appendLedgerLine(h) {
@@ -627,6 +636,34 @@
   }
 
   /* ---------- 悔棋 ---------- */
+
+  /* 从 newGame() 重放前 n 手记法还原局面。
+   * 为什么不用 prev 全量快照（见 docs/plans/2026-09-29-iteration-02-play-loop.md）：
+   * applyMove 是纯函数（architecture.md §3 不变量），快照从不被修改，而 prev 字段
+   * 全仓库只有悔棋一处读它——留着它等于为 O(n·|state|) 的常驻内存付租金。
+   * 还原路径的合法性由「记法往返」保证（engine-interface.md §2 硬契约），
+   * test/run-tests.js 的 playOut 会对整盘对局做重放等价断言作为护栏。 */
+  function rebuildState(n) {
+    let st = S.engine.newGame();
+    for (let i = 0; i < n; i++) {
+      const m = S.engine.moveFromNotation(st, S.history[i].move.notation);
+      if (!m) {
+        /* 记法失效＝引擎违反契约：兜底回空盘，绝不把半截局面渲染出去 */
+        console.warn('悔棋重放失败于第 ' + (i + 1) + ' 手：' + S.history[i].move.notation);
+        return S.engine.newGame();
+      }
+      st = S.engine.applyMove(st, m);
+    }
+    return st;
+  }
+
+  /* 对局进行中的状态条文案：开始对局、悔棋复位、重试三处共用一份，避免文案漂移 */
+  function inGameStatus() {
+    if (S.mode === 'ai-ai') return '对局进行中 · Jev vs Jev';
+    if (S.mode === 'human-ai') return '对局进行中 · 你执' + sideName(S.humanSide);
+    return '对局进行中 · 双人对弈';
+  }
+
   function undo() {
     if (!S.history.length) return;
     S.epoch++;
@@ -638,14 +675,24 @@
       if (last.meta && last.meta.byAI) steps = Math.min(2, S.history.length);
     }
     for (let i = 0; i < steps; i++) S.history.pop();
-    S.st = S.history.length ? BG.util.clone(S.history[S.history.length - 1].prev) : S.engine.newGame();
+    S.st = rebuildState(S.history.length);
     S.paused = false;
+    /* 悔棋会把终局态打破：finishGame 改过状态条、隐藏过暂停/单步/重试，
+     * 这里逐项复位——否则棋盘回到残局而状态条仍写着「终局 · … 获胜」。 */
+    const aiAi = S.mode === 'ai-ai';
     $('pauseBtn').textContent = '暂停';
+    $('pauseBtn').classList.toggle('hidden', !aiAi);
+    $('stepBtn').classList.toggle('hidden', !aiAi);
+    $('retryBtn')?.classList.add('hidden');
+    setStatus(S.history.length ? inGameStatus() : '已就绪：选择模式后点「开始对局」。', false);
     rebuildLedger();
     renderAnalytics();
     renderCockpit();
     renderFeed();
     redraw();
+    /* 悔棋常把控制权交回 Jev（机机模式恒定如此）。此前这里不调度，AI 回合永不到来，
+     * 界面却显示「等待 Jev」——对局就此卡死。 */
+    if (S.history.length && isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
   }
 
   /* ---------- 事件绑定 ---------- */
@@ -670,7 +717,7 @@
         retryBtn.classList.add('hidden');
         S.paused = false; // 出错路径会置暂停，重试前先解除
         $('pauseBtn').textContent = '暂停';
-        setStatus('对局进行中 · ' + (S.mode === 'ai-ai' ? 'Jev vs Jev' : '你执' + sideName(S.humanSide)), false);
+        setStatus(inGameStatus(), false);
         aiStep();
       };
     }

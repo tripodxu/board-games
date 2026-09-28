@@ -1,6 +1,6 @@
 {
   "name": "board-games",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Jev 棋馆：六种棋类对弈，TypeSafe 系统一模型 Jev 走子。零框架零构建纯静态，双击即玩。",
   "scripts": {

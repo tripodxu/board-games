@@ -53,6 +53,24 @@ async function playOut(gid) {
   }
   const g = e.getStatus(st);
   if (!g.over) throw new Error(gid + ' ' + plies + ' 步未终局（疑似死循环）');
+
+  /* 记法重放护栏：app.js 的悔棋已改为「history 只存记法 + 从 newGame 重放」，
+   * 因此「整盘只用 notation 走一遍」必须得到与逐步 applyMove 完全一致的终局状态。
+   * 这是该改动唯一但关键的正确性前提（依据：docs/engine-interface.md §2 记法往返硬契约）。
+   * 任何引擎的 notation 不可逆，这里会立刻红——那说明引擎违约，应改引擎而非回退方案。 */
+  let replay = e.newGame();
+  for (const n of notations) {
+    const m = e.moveFromNotation(replay, n);
+    if (!m) throw new Error(gid + ' 记法重放失败于 ' + n + '（moveFromNotation 返回 null）');
+    replay = e.applyMove(replay, m);
+  }
+  BG.util.assert(
+    JSON.stringify(replay) === JSON.stringify(st),
+    gid + ' 记法重放后的终局状态与逐步下棋不一致（悔棋还原会出错）');
+  BG.util.assert(
+    JSON.stringify(e.getStatus(replay)) === JSON.stringify(g),
+    gid + ' 记法重放后的终局判定与原对局不一致');
+
   return e.name + '：' + plies + ' 步终局，胜者=' + (g.winner || '和') + '，' + g.reason + '|' + notations.join(',');
 }
 
