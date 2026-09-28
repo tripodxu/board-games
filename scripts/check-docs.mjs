@@ -12,7 +12,7 @@ const fail = (msg) => { bad++; console.log('✗ ' + msg); };
 const ok = (msg) => console.log('✓ ' + msg);
 
 /* 1) memory 置顶 */
-const mem = readFileSync(join(ROOT, 'docs/memory/MEMORY.md'), 'utf8');
+const mem = readFileSync(join(ROOT, 'docs/memory/MEMORY.md'), 'utf8').replace(/```[\s\S]*?```/g, '');
 const dates = [...mem.matchAll(/^## (\d{4}-\d{2}-\d{2})/gm)].map((m) => m[1]);
 if (dates.length < 2) fail('MEMORY.md 至少需要 2 条带日期条目');
 else if (dates[0] < dates[1]) fail(`MEMORY.md 首条 ${dates[0]} 早于第二条 ${dates[1]}（新条目必须置顶）`);
@@ -35,7 +35,9 @@ for (const f of mdFiles) {
     const target = m[1].trim();
     if (/^(https?:|mailto:)/.test(target)) continue;
     links++;
-    if (!existsSync(resolve(dirname(f), decodeURIComponent(target)))) {
+    let decoded;
+    try { decoded = decodeURIComponent(target); } catch (_) { decoded = target; }
+    if (!existsSync(resolve(dirname(f), decoded))) {
       fail(`${f.slice(ROOT.length + 1)} 死链: ${target}`);
     }
   }
