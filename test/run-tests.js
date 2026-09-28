@@ -81,6 +81,8 @@ async function jevClientTests() {
   );
   BG.util.assert(calls === 2, '429 后应重试一次，实际调用 ' + calls + ' 次');
   BG.util.assert(d1.notation === legal[0].notation, '无合法选项应回退到 legal[0]');
+  /* 回退分支应原样返回 legal[0] 这个着法；decide() 内部自取 legal，跨边界无法比引用，用深比较 */
+  BG.util.assert(JSON.stringify(d1.move) === JSON.stringify(legal[0]), '回退返回的 move 应为 legal[0] 对象本身');
   BG.util.assert(d1.meta.warning === '响应中无合法选项，已回退到首个合法着法', 'warning 文案应为更新后的版本，实际：' + d1.meta.warning);
 
   /* ② 401：立即抛错，绝不重试 */
@@ -95,11 +97,22 @@ async function jevClientTests() {
   BG.util.assert(err && /401/.test(err.message), '401 应抛出含 401 的错误，实际：' + (err && err.message));
   BG.util.assert(calls === 1, '401 不应重试，实际调用 ' + calls + ' 次');
 
-  /* ③ topK 解析回归：偶数必须保持偶数，防止被误"修"成 topK|1 */
-  const parseTopK = (v) => Math.max(1, v | 0 || 1);
-  BG.util.assert(parseTopK(2) === 2, 'topK=2 应解析为 2');
-  BG.util.assert(parseTopK(4) === 4, 'topK=4 应解析为 4');
-  BG.util.assert(parseTopK(undefined) === 1, 'topK 缺失应兜底为 1');
+  /* ③ topK 端到端回归：topK=2 时第 3、4 名永不被选；topK=1 时恒为最高概率项。
+     注意：不能用"临摹表达式的断言"——那测的是测试文件自己，测不到生产代码。 */
+  const fourLegal = { H8: 0.5, H9: 0.45, J8: 0.049, J9: 0.001 };
+  const pickBody = { model: 'jev-latest', usage: { input_tokens: 100, output_tokens: 0 },
+    answers: { move: { probabilities: fourLegal } } };
+  const seen2 = {};
+  for (let i = 0; i < 200; i++) {
+    const d = await withFetch(async () => mk(200, pickBody),
+      () => BG.jev.decide(e, st, st.turn, { channel: 'proxy', topK: 2 }));
+    seen2[d.notation] = (seen2[d.notation] || 0) + 1;
+  }
+  BG.util.assert(!seen2.J8 && !seen2.J9, 'topK=2 时第 3、4 名不应被选，实际：' + JSON.stringify(seen2));
+  BG.util.assert(seen2.H8 && seen2.H9, 'topK=2 应只在前 2 名中抽样，实际：' + JSON.stringify(seen2));
+  const argmax = await withFetch(async () => mk(200, pickBody),
+    () => BG.jev.decide(e, st, st.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(argmax.notation === 'H8', 'topK=1 应恒选最高概率项 H8，实际：' + argmax.notation);
 }
 
 integration()
