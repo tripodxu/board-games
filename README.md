@@ -45,7 +45,8 @@ python dev-proxy.py              # http://localhost:8788
 1. 把本目录推到 GitHub 仓库，CF Pages 连接仓库构建（无构建命令，输出目录 = 根目录）。
 2. 仓库已含 `functions/api/jev.js`（Pages Functions），线上自动获得 `/api/jev` 代理。**无需配置任何环境变量。**
 3. **BYOK（自带 key）设计**：代理只做 CORS 转发——访客在页面设置里填自己的 TypeSafe key，随 `X-Api-Key` 请求头透传，服务端不存任何 key，花费走访客自己的账户。未填 key 的访客会收到明确的 401 提示。
-4. 本地调试 Functions：`npx wrangler pages dev .`。
+4. **限流**：代理带每 IP 每分钟 30 次的滑动窗口限流（isolate 内存，多实例为尽力而为），超限返回 429；可用 CF 环境变量 `RATE_LIMIT_PER_MIN` 调整。
+5. 本地调试 Functions：`npx wrangler pages dev .`。
 
 > 也可以删掉 `functions/` 目录：那时「同源代理」不可用，访客走 OpenRouter 渠道（同样 BYOK、浏览器直连）。
 

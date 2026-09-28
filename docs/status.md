@@ -17,7 +17,7 @@
 | 对弈模式 | ✅ | 人机（选执子）/ 机机（速度滑杆、暂停、单步）/ 人人 |
 | Jev 接入 | ✅ | 四渠道（official/openrouter/proxy/mock）+ 429/529 退避 + top-k 采样 |
 | 决策面板 | ✅ | top-3 概率条、置信度、局势判断、延迟、token/成本累计 |
-| 部署 | ✅ | CF Pages Functions（BYOK）+ dev-proxy.py；原样静态托管即可 |
+| 部署 | ✅ | CF Pages Functions（BYOK + 每 IP 限流）+ dev-proxy.py；原样静态托管即可 |
 | 自检 | ✅ | `node test/run-tests.js`：六引擎 selfTest + gomoku/cc/go mock 集成对局 |
 
 ## 已验证（验收证据）

@@ -42,7 +42,7 @@ resp: {
 |---|---|---|---|---|
 | `official` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 浏览器 localStorage | 官方 API 浏览器直连可能被 CORS 拦，实测优先用代理 |
 | `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，**最稳的直连渠道** |
-| `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | CF Pages Function 或 `dev-proxy.py` |
+| `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | CF Pages Function 或 `dev-proxy.py`；**Pages 侧有每 IP 每分钟滑动窗口限流（默认 30，`RATE_LIMIT_PER_MIN` 可配），超限 429** |
 | `mock` | 本地 | — | 无 | `js/mock-ai.js` 离线演示，概率为合成值 |
 
 默认渠道（`app.js` settings）：`proxy`。`effectiveChannel()` 在未填 key 时自动回落 `mock`，
