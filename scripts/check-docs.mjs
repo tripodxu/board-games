@@ -30,7 +30,7 @@ const mdFiles = [];
 })(ROOT);
 let links = 0;
 for (const f of mdFiles) {
-  const text = readFileSync(f, 'utf8');
+  const text = readFileSync(f, 'utf8').replace(/```[\s\S]*?```/g, ''); // 代码栅栏内的链接不是真链接
   for (const m of text.matchAll(/\]\(([^)#]+?)(#[^)]*)?\)/g)) {
     const target = m[1].trim();
     if (/^(https?:|mailto:)/.test(target)) continue;
