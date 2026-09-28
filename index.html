@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jev 棋馆 · 六种棋类对弈</title>
+<meta name="description" content="TypeSafe Jev「系统一模型」驱动的六种棋类对弈：人机、机机，实时胜率与决策可视化。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">弈</div>
+    <div>
+      <h1>JEV 棋馆</h1>
+      <div class="sub">系统一模型对弈室 · System One Game Salon</div>
+    </div>
+  </div>
+  <div class="head-spacer"></div>
+  <span class="chip">渠道 <b id="channelChip">离线演示</b></span>
+  <span class="chip">累计成本 <b id="costChip">$0.00000</b></span>
+</header>
+
+<nav id="tabs" aria-label="棋种"></nav>
+
+<main>
+  <!-- 棋盘 -->
+  <section class="board-card" aria-label="棋盘">
+    <div class="board-head">
+      <span id="gameName">五子棋</span>
+      <span id="turnBadge">就绪</span>
+    </div>
+    <div class="board-row">
+      <div class="eval-bar" id="evalBar" title="实时局势：琥珀=先手方，青玉=后手方"
+           role="img" aria-label="实时局势条">
+        <div class="eval-fill" id="evalFill"></div>
+        <div class="eval-mid"></div>
+      </div>
+      <div id="boardWrap">
+        <canvas id="board"></canvas>
+        <div id="promoBox" class="hidden"></div>
+      </div>
+    </div>
+    <div class="status-strip" id="status">选择模式后点「开始对局」。</div>
+    <div class="controls">
+      <button id="startBtn" class="primary">开始对局</button>
+      <button id="undoBtn">悔棋</button>
+      <button id="retryBtn" class="hidden">重试</button>
+      <button id="passBtn" class="hidden">停一手</button>
+      <button id="resignBtn" class="hidden">认输</button>
+      <button id="pauseBtn" class="hidden">暂停</button>
+      <button id="stepBtn" class="hidden">单步</button>
+    </div>
+  </section>
+
+  <!-- 数据侧栏：Jev 驾驶舱 -->
+  <aside class="side">
+    <!-- Jev 引擎：身份与实时状态 -->
+    <section class="panel engine-panel" aria-label="Jev 引擎状态">
+      <div class="engine-head">
+        <div class="engine-id">
+          <span class="seal" id="engineSeal" aria-hidden="true">弈</span>
+          <div>
+            <div class="engine-name">JEV <span class="model" id="engineModel">jev-1.13.0</span></div>
+            <div class="engine-sub">System One Model · 结构化决策</div>
+          </div>
+        </div>
+        <span class="status-light" id="engineStatus"><i></i>待命</span>
+      </div>
+      <div class="engine-metrics">
+        <div class="em"><span class="v" id="emCost">$0</span><span class="k">本次成本</span></div>
+        <div class="em"><span class="v" id="emTokens">0</span><span class="k">输入 token</span></div>
+        <div class="em"><span class="v" id="emMoves">0</span><span class="k">决策数</span></div>
+        <div class="em"><span class="v" id="emFastest">–</span><span class="k">最快 / 最慢</span></div>
+      </div>
+      <div class="spark-wrap">
+        <div class="spark-label"><span>每手延迟</span><span id="sparkNow" class="mono">–</span></div>
+        <div class="spark" id="latSpark" role="img" aria-label="最近二十手延迟柱状图"></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Jev 判断趋势">
+      <div class="panel-title">
+        <h2>Jev 判断</h2>
+        <span class="note" id="trendNote">悬停或用 ←/→ 巡检</span>
+        <span class="spacer"></span>
+        <div class="series-chips" role="tablist" aria-label="切换曲线">
+          <button id="chipWin" class="active">胜率</button>
+          <button id="chipScore">局势分</button>
+          <button id="chipConf">置信度</button>
+        </div>
+      </div>
+      <div id="trend"></div>
+      <div class="legend">
+        <span><span class="sw first"></span>先手方（<span id="legendFirst">黑方</span>）优势 ↑</span>
+        <span><span class="sw second"></span>后手方（<span id="legendSecond">白方</span>）优势 ↓</span>
+      </div>
+    </section>
+
+    <!-- 双方对决：两个 Jev 的实时对比 -->
+    <section class="panel" aria-label="双方 Jev 对决">
+      <div class="panel-title">
+        <h2>对决</h2>
+        <span class="note">两个 Jev 的实时手感</span>
+      </div>
+      <div class="duel" id="duel">
+        <div class="duel-col" id="duelFirst">
+          <div class="duel-name"><i class="dot mo"></i><span id="duelFirstName">黑方 Jev</span></div>
+          <div class="duel-row"><span>均置信</span><b class="mono">–</b></div>
+          <div class="duel-row"><span>均优势</span><b class="mono">–</b></div>
+          <div class="duel-row"><span>决策</span><b class="mono">0</b></div>
+          <div class="duel-row"><span>花费</span><b class="mono">$0</b></div>
+        </div>
+        <div class="duel-vs">VS</div>
+        <div class="duel-col" id="duelSecond">
+          <div class="duel-name"><span id="duelSecondName">白方 Jev</span><i class="dot zhu"></i></div>
+          <div class="duel-row"><span>均置信</span><b class="mono">–</b></div>
+          <div class="duel-row"><span>均优势</span><b class="mono">–</b></div>
+          <div class="duel-row"><span>决策</span><b class="mono">0</b></div>
+          <div class="duel-row"><span>花费</span><b class="mono">$0</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 最新决策：完整候选概率榜 -->
+    <section class="panel" aria-label="最新决策候选榜">
+      <div class="panel-title">
+        <h2>最新决策</h2>
+        <span class="note" id="latestNote">尚无决策</span>
+        <span class="spacer"></span>
+        <span class="rank-count" id="rankCount"></span>
+      </div>
+      <div id="latest"></div>
+    </section>
+
+    <section class="panel" aria-label="决策流">
+      <div class="panel-title">
+        <h2>决策流</h2>
+        <span class="note">每步的候选概率与置信度</span>
+      </div>
+      <div id="feed"><div class="feed-empty">开始对局后，Jev 的每一步判断会流淌在这里。</div></div>
+    </section>
+
+    <section class="panel" aria-label="战绩簿">
+      <div class="panel-title">
+        <h2>战绩簿</h2>
+        <span class="note" id="recordSummary">本机历史对局</span>
+        <span class="spacer"></span>
+        <button id="clearRecords" class="mini-btn">清空</button>
+      </div>
+      <div class="record-stats" id="recordStats"></div>
+      <div id="records" class="records"></div>
+    </section>
+
+    <section class="panel" aria-label="棋谱">
+      <div class="panel-title">
+        <h2>棋谱</h2>
+      </div>
+      <div id="ledger" class="ledger"></div>
+    </section>
+
+    <details class="settings">
+      <summary>对局与 Jev 设置</summary>
+      <div class="settings-body">
+        <label>模式
+          <select id="mode">
+            <option value="human-ai">人 vs Jev</option>
+            <option value="ai-ai">Jev vs Jev</option>
+            <option value="pvp">人 vs 人</option>
+          </select>
+        </label>
+        <label>我方执子
+          <select id="side"></select>
+        </label>
+        <div class="speed-row hidden" id="speedRow">
+          <span>机机间隔</span>
+          <input type="range" id="speed" min="0" max="20" value="6">
+          <span class="mono" id="speedVal">1.05s</span>
+        </div>
+        <label>接入渠道
+          <select id="channel">
+            <option value="proxy">同源代理 /api/jev（推荐 · 转发你自己的 key）</option>
+            <option value="openrouter">OpenRouter（浏览器直连）</option>
+            <option value="official">官方 API 直连（可能被 CORS 拦截）</option>
+            <option value="mock">离线演示（无需 key）</option>
+          </select>
+        </label>
+        <label id="apiKeyLabel" class="hidden">TypeSafe API Key（仅存本机）
+          <input type="password" id="apiKey" placeholder="apikey_..." autocomplete="off">
+        </label>
+        <label id="orKeyLabel" class="hidden">OpenRouter Key（仅存本机）
+          <input type="password" id="orKey" placeholder="sk-or-..." autocomplete="off">
+        </label>
+        <label>走棋随机度
+          <select id="topK">
+            <option value="1">最强手（不随机）</option>
+            <option value="3" selected>温和（top-3 加权）</option>
+            <option value="5">狂野（top-5 加权）</option>
+          </select>
+        </label>
+        <div class="hint" id="modeHint"></div>
+      </div>
+    </details>
+  </aside>
+</main>
+
+<div id="toast" class="hidden" role="status"></div>
+<div id="testPanel" class="hidden"></div>
+
+<script src="js/board.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/games/gomoku.js"></script>
+<script src="js/games/chess.js"></script>
+<script src="js/games/xiangqi.js"></script>
+<script src="js/games/checkers.js"></script>
+<script src="js/games/chinese-checkers.js"></script>
+<script src="js/games/go.js"></script>
+<script src="js/mock-ai.js"></script>
+<script src="js/jev-client.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
