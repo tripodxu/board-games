@@ -265,7 +265,7 @@
       const fwd = (m.from.r - m.to.r) * fwdSign;
       /* 已入营的棋子别再倒腾，把路让给营外的落后棋子 */
       const sc = fwd * 10 + (m.to.jump ? 3 : 0) + (inTarget(m.to) ? 6 : 0) +
-        rearBonus(m) - Math.abs(m.to.x - 12) * 0.05 + Math.random() -
+        rearBonus(m) - Math.abs(m.to.x - 12) * 0.05 + BG.util.rnd() -
         (inTarget(m.from) ? 25 : 0);
       if (sc > bestScore) { bestScore = sc; best = m; }
     }

@@ -351,7 +351,7 @@
     let best = null, bestScore = -1e9;
     for (const m of moves) {
       const ns = applyMove(st, m);
-      let sc = Math.random();
+      let sc = BG.util.rnd();
       if (st.board[m.tr][m.tc]) sc += val[st.board[m.tr][m.tc][1]] * 10;
       if (m.promo === 'Q') sc += 80;
       if (inCheck(ns, st.turn === 'w' ? 'b' : 'w')) sc += 5;

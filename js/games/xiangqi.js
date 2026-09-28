@@ -311,7 +311,7 @@
     let best = null, bestScore = -1e9;
     for (const m of moves) {
       const ns = applyMove(st, m);
-      let sc = Math.random();
+      let sc = BG.util.rnd();
       const cap = st.board[m.tr][m.tc];
       if (cap) sc += VAL[cap[1]] * 10;
       if (isKingAttacked(ns.board, st.turn === 'r' ? 'b' : 'r')) sc += 4;

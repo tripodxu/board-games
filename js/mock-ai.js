@@ -18,7 +18,7 @@
       if (!pick) pick = legal[BG.util.rand(legal.length)];
 
       /* 合成概率：chosen 0.45~0.85，其余平分 */
-      const chosenP = 0.45 + Math.random() * 0.4;
+      const chosenP = 0.45 + BG.util.rnd() * 0.4;
       const rest = Math.max(legal.length - 1, 1);
       const probs = {};
       legal.forEach((m) => { probs[m.notation] = 0; });
@@ -41,8 +41,8 @@
           costUsd: 0,
           confidence: Math.min(0.97, chosenP + 0.05),
           top,
-          noul: +(0.3 + Math.random() * 0.5).toFixed(2),
-          score: +(Math.random() * 10).toFixed(1),
+          noul: +(0.3 + BG.util.rnd() * 0.5).toFixed(2),
+          score: +(BG.util.rnd() * 10).toFixed(1),
           mock: true,
         },
       };

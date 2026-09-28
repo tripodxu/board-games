@@ -268,7 +268,7 @@
     let best = null, bestScore = -1e9;
     for (const m of moves) {
       const ns = applyMove(st, m);
-      let sc = Math.random() + m.captured.length * 10;
+      let sc = BG.util.rnd() + m.captured.length * 10;
       const to = m.path[m.path.length - 1];
       if (st.board[m.path[0].r][m.path[0].c] === 'wP' && to.r === 0) sc += 8;
       if (st.board[m.path[0].r][m.path[0].c] === 'bP' && to.r === 7) sc += 8;

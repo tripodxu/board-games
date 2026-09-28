@@ -200,7 +200,7 @@
     if (m) return m;
     const scored = moves.map((mv) => ({
       mv,
-      s: -(Math.abs(mv.r - 7) + Math.abs(mv.c - 7)) + Math.random() * 3,
+      s: -(Math.abs(mv.r - 7) + Math.abs(mv.c - 7)) + BG.util.rnd() * 3,
     })).sort((a, b) => b.s - a.s);
     return scored[0].mv;
   }

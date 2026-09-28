@@ -269,7 +269,7 @@
    * 提子与安全度（落子后己群气数）为主，中腹加成；
    * 终盘（80 手后）递增倾向 pass，避免演示模式双方无限提子循环。 */
   function mockPick(st, moves) {
-    if (st.moveNum > 80 && Math.random() < Math.min(0.85, (st.moveNum - 80) * 0.05)) {
+    if (st.moveNum > 80 && BG.util.rnd() < Math.min(0.85, (st.moveNum - 80) * 0.05)) {
       return passMove(st);
     }
     let best = null, bestScore = -1e9;
@@ -277,7 +277,7 @@
       if (m.pass) continue;
       const ns = applyMove(st, m);
       const g = groupOf(ns.board, m.r, m.c);
-      let sc = (m.desc.indexOf('captures') >= 0 ? 10 : 0) + Math.random() * 2;
+      let sc = (m.desc.indexOf('captures') >= 0 ? 10 : 0) + BG.util.rnd() * 2;
       sc += g.libs.size >= 2 ? 3 : g.libs.size === 1 ? -8 : -30;
       sc -= (Math.abs(m.r - 4) + Math.abs(m.c - 4)) * 0.15;
       if (sc > bestScore) { bestScore = sc; best = m; }
