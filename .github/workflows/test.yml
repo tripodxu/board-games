@@ -22,6 +22,7 @@ jobs:
           node --check js/charts.js
           for f in js/games/*.js; do node --check "$f"; done
           node --check test/run-tests.js
+          node --check scripts/check-docs.mjs
       - name: 引擎自检与集成对局
         run: npm test
       - name: 文档校验
