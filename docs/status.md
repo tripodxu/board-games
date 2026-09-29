@@ -16,7 +16,7 @@
 | 中国跳棋 cc | ✅ | 六角星 121 格，连跳递归、先抵对营 |
 | 对弈模式 | ✅ | 人机（选执子）/ 机机（速度滑杆、暂停、单步）/ 人人 |
 | Jev 接入 | ✅ | 四渠道（official/openrouter/proxy/mock）+ 各渠道可自定义 Base URL（留空用预设）+ 「测试连接」连通性探测（网络/CORS/key/端点形状六种判定）+ 429/529 退避 + top-k 采样 |
-| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点）+ 战术保险（meta.tactics = win/block/open4/threat/parry 透出，优先级 win > block > open4 > threat > parry）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
+| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点）+ 战术保险（meta.tactics = win/block/open4/threat/parry/parry3 透出，优先级 win > block > open4 > threat > parry > parry3，parry3 = 抢占对手活三/活四制造点）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
 | 决策面板 | ✅ | top-3 概率条、置信度、局势判断、延迟、token/成本累计 |
 | 校准实验室 | ✅ | Jev 胜率预测 vs 真实胜负：Brier/技巧分/ECE/过度自信 + 可靠性图（真实渠道才有数据） |
 | 可访问性 | ✅ | 见下方「设计例外」；对比度按 WCAG AA 核算，焦点环/滚动条已主题化 |

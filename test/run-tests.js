@@ -335,6 +335,23 @@ async function jevClientTests() {
   for (const n of ['E8','F6','F10','I12'])
     BG.util.assert(tac9c.danger_points_opponent.indexOf(n) >= 0,
       '实战残局拆杀点应含 ' + n + '，实际：' + JSON.stringify(tac9c.danger_points_opponent));
+
+  /* ⑨d 用户实战败局（jev-gomoku-202609290843.json）第 20 手回归：danger 为空的自由手，
+   * 此前走闲着 E6，被黑 E7 活三点 → 强制拆 → J8 双杀 → 输。parry3 层应抢先占
+   * deny:open4/live3 点（E7/H10），不给黑造活三的先手。 */
+  let st9d = e.newGame();
+  for (const n of ['H8','H7','G8','I8','G6','G7','I7','I6','H6','G5','F7','H5','G9','J6','H9','I10','I9','F9','F8'])
+    st9d = e.applyMove(st9d, e.moveFromNotation(st9d, n));
+  BG.util.assert(st9d.turn === 'white', '应轮白走，实际：' + st9d.turn);
+  const tac9d = BG.jev.computeTactics(e, st9d, e.getLegalMoves(st9d),
+    Object.keys(e.serializeForJev(st9d, 'white').questions.move.criteria));
+  BG.util.assert(tac9d.danger_points_opponent.length === 0,
+    'p20 的 2-ply danger 应为空（败因是 3-ply 深度），实际：' + JSON.stringify(tac9d.danger_points_opponent));
+  const d9d = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { E6: 0.9 } } } }),
+    () => BG.jev.decide(e, st9d, st9d.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert((d9d.notation === 'E7' || d9d.notation === 'H10') && d9d.meta.tactics === 'parry3',
+    'p20 自由手应被 parry3 预挡，实际：' + d9d.notation + '/' + d9d.meta.tactics);
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

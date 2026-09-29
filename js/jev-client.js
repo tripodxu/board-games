@@ -356,7 +356,7 @@
       let tacticUsed = null;
       let tacticBypassed = false;
       /* 战术点中文名（接管提示用） */
-      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', parry: '拆杀点' }[tacticUsed] || '战术点');
+      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', parry: '拆杀点', parry3: '活三/活四预挡点' }[tacticUsed] || '战术点');
       const pickAmong = (list) => {
         const inPairs = pairs.filter(([n]) => list.indexOf(n) >= 0);
         const k2 = Math.max(1, opts.topK | 0 || 1);
@@ -373,6 +373,12 @@
       const open4Points = Object.entries(ser.questions.move.criteria || {})
         .filter(([n, v]) => typeof v === 'string' && /(^|\+)you:open4(\+|$)/.test(v) && byNotation.has(n))
         .map(([n]) => n);
+      /* 第四级（3-ply 预挡）：对手的 deny:open4/deny:live3 标签点 = 对方下回合可造活四/活三的
+       * 制造点。放任不管会被迫逐手拆杀（实战败局：p20 白走闲着 E6，黑 E7 活三点 → 强制拆 →
+       * J8 双杀 → 输）。win/block/open4/threat/parry 都无时抢先占掉，让对手造不成活三。 */
+      const parry3Points = Object.entries(ser.questions.move.criteria || {})
+        .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:(open4|live3)(\+|$)/.test(v) && byNotation.has(n))
+        .map(([n]) => n);
       if (tactics.winning_points_you.length) {
         notation = pickAmong(tactics.winning_points_you);
         if (notation) tacticUsed = 'win';
@@ -388,6 +394,9 @@
       } else if (tactics.danger_points_opponent.length) {
         notation = pickAmong(tactics.danger_points_opponent);
         if (notation) tacticUsed = 'parry';
+      } else if (parry3Points.length) {
+        notation = pickAmong(parry3Points);
+        if (notation) tacticUsed = 'parry3';
       }
 
       /* top-k 概率加权随机（随机度） */
