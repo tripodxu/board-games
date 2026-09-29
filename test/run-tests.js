@@ -102,6 +102,11 @@ async function playOut(gid) {
 async function integration() {
   eval(fs.readFileSync(path.join(ROOT, 'js/mock-ai.js'), 'utf8'));
   eval(fs.readFileSync(path.join(ROOT, 'js/jev-client.js'), 'utf8'));
+  eval(fs.readFileSync(path.join(ROOT, 'js/api.js'), 'utf8'));
+  /* api.js 契约：挂载 BG.api 且七个方法齐全。
+   * 降级路径（file:// 下 fetch 失败返回 null）只在浏览器端发生，Node 侧验形状。 */
+  ['health', 'saveGame', 'listGames', 'getGame', 'saveExperiment', 'listExperiments', 'stats']
+    .forEach((m) => BG.util.assert(typeof BG.api[m] === 'function', 'BG.api.' + m + ' 缺失'));
   for (const gid of ['gomoku', 'cc', 'go']) {
     const summary = await playOut(gid);
     results.push('✓ 集成 ' + summary);
@@ -445,12 +450,242 @@ async function pagesFunctionTests() {
   }
 }
 
+/* 单元：新增 Pages Functions（health / experiments / stats）——方案 1 的 CF 侧后端。
+ * 加载方式同 jev.js：剥掉 import/export 后用 new Function 跑；
+ * _github.js 的定义内联进同一作用域，模拟 Wrangler 线上的打包结果。 */
+function loadPagesModule(file, names) {
+  const gh = fs.readFileSync(path.join(ROOT, 'functions/api/_github.js'), 'utf8')
+    .replace(/export\s*\{[^}]*\};?/g, '');
+  const src = fs.readFileSync(path.join(ROOT, file), 'utf8')
+    .replace(/^import .*$/gm, '')
+    .replace(/export\s+async\s+function/g, 'async function');
+  return new Function(gh + '\n' + src + '\nreturn { ' + names.join(',') + ' };')();
+}
+
+async function pagesApiTests() {
+  const A = BG.util.assert;
+  const realFetch = globalThis.fetch;
+  const mkReq = (body, headers) => new Request('http://local/api/x', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json', 'CF-Connecting-IP': '9.8.7.6' }, headers),
+    body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)),
+  });
+  const ctx = (req, env) => ({ request: req, env: env || { GAMES_GITHUB_TOKEN: 'tok' } });
+  const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64');
+
+  /* GitHub API stub：按 URL 片段路由；调用计数供子请求预算断言 */
+  let ghCalls = 0;
+  let rawCalls = 0;
+  const withStub = async (routes, fn) => {
+    ghCalls = 0; rawCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const u = String(url);
+      if (u.indexOf('https://api.github.com') === 0) ghCalls++;
+      if (u.indexOf('https://raw.githubusercontent.com') === 0) rawCalls++;
+      for (const [pat, handler] of routes) {
+        if (u.indexOf(pat) >= 0) return handler(u, init);
+      }
+      throw new Error('未打桩的 fetch: ' + u);
+    };
+    try { return await fn(); } finally { globalThis.fetch = realFetch; }
+  };
+
+  /* ---------- health ---------- */
+  {
+    const { onRequestGet } = loadPagesModule('functions/api/health.js', ['onRequestGet']);
+    const r1 = await onRequestGet(ctx(mkReq(), { GAMES_GITHUB_TOKEN: 'tok' }));
+    const j1 = await r1.json();
+    A(r1.status === 200, 'health 应 200，实际 ' + r1.status);
+    A(j1.ok === true && j1.service === 'jev-qiguan-pages' && j1.version, 'health 字段不齐：' + JSON.stringify(j1));
+    A(j1.github === true, '配了 token 时 github 应为 true');
+    const r2 = await onRequestGet(ctx(mkReq(), {}));
+    const j2 = await r2.json();
+    A(j2.github === false, '无 token 时 github 应为 false（前端据此提示未配置）');
+  }
+
+  /* ---------- experiments ---------- */
+  {
+    const { onRequestGet, onRequestPost } = loadPagesModule('functions/api/experiments.js', ['onRequestGet', 'onRequestPost']);
+
+    /* GET：归档文件不存在 → 空数组不报错 */
+    await withStub([['/contents/data/experiments.json', async () => new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 })]],
+      async () => {
+        const r = await onRequestGet(ctx(mkReq()));
+        const j = await r.json();
+        A(r.status === 200 && Array.isArray(j.experiments) && j.experiments.length === 0, '无归档应返回空数组');
+      });
+
+    /* GET：有文件 → 解析出列表（base64 带换行也要能解） */
+    await withStub([['/contents/data/experiments.json', async () => new Response(JSON.stringify({
+      content: b64([{ tag: 'exp-a', games: [] }]).replace(/(.{10})/g, '$1\n'), sha: 'sha1',
+    }), { status: 200 })]],
+      async () => {
+        const r = await onRequestGet(ctx(mkReq()));
+        const j = await r.json();
+        A(j.experiments.length === 1 && j.experiments[0].tag === 'exp-a', '归档解析不对：' + JSON.stringify(j));
+      });
+
+    /* GET：GitHub 抽风 → 静默降级（本地归档仍可用） */
+    await withStub([['/contents/data/experiments.json', async () => new Response('{}', { status: 500 })]],
+      async () => {
+        const r = await onRequestGet(ctx(mkReq()));
+        const j = await r.json();
+        A(r.status === 200 && j.experiments.length === 0 && j.reason, '读失败应降级为空 + reason');
+      });
+
+    /* POST：坏 body → 422 */
+    const bad = await onRequestPost(ctx(mkReq({ tag: '', games: [] })));
+    A(bad.status === 422, '空 tag 应 422，实际 ' + bad.status);
+    const bad2 = await onRequestPost(ctx(mkReq({ tag: 'x' })));
+    A(bad2.status === 422, '缺 games 应 422，实际 ' + bad2.status);
+
+    /* POST：新建（无既有文件）→ PUT 不带 sha，提交信息带 [skip ci] */
+    let putBody = null;
+    await withStub([
+      ['/contents/data/experiments.json?ref=', async () => new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 })],
+      ['/contents/data/experiments.json', async (u, init) => {
+        putBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({ commit: { sha: 'c1' } }), { status: 200 });
+      },
+    ]], async () => {
+      const entry = { tag: 'exp-20260929120000', date: '2026-09-29T12:00:00.000Z', chanA: 'proxy', chanB: 'random', total: 2, games: [{ no: 1 }] };
+      const r = await onRequestPost(ctx(mkReq(entry)));
+      const j = await r.json();
+      A(r.status === 200 && j.ok === true, '新建应 200 ok');
+      A(j.experiments.length === 1 && j.experiments[0].tag === entry.tag, '响应应含新归档');
+      A(putBody && putBody.sha === undefined, '新建文件不能带 sha');
+      A(putBody && putBody.message.indexOf('[skip ci]') >= 0 && putBody.message.indexOf('exp: exp-20260929120000') === 0,
+        '提交信息应带 [skip ci] 与 tag，实际：' + (putBody && putBody.message));
+      A(putBody && putBody.branch === 'main', 'branch 应为 main');
+      A(putBody && typeof putBody.content === 'string' && putBody.content.length > 0, 'content 不能空');
+    });
+
+    /* POST：upsert（同 tag 已存在且带 sha）→ 内容替换不新增，date 倒序 */
+    let putBody2 = null;
+    await withStub([
+      ['/contents/data/experiments.json?ref=', async () => new Response(JSON.stringify({
+        content: b64([
+          { tag: 'exp-old', date: '2026-09-28T00:00:00.000Z', games: [{ no: 1 }, { no: 2 }] },
+          { tag: 'exp-20260929120000', date: '2026-09-29T12:00:00.000Z', games: [{ no: 1 }] },
+        ]), sha: 'shaX',
+      }), { status: 200 })],
+      ['/contents/data/experiments.json', async (u, init) => {
+        putBody2 = JSON.parse(init.body);
+        return new Response(JSON.stringify({ commit: { sha: 'c2' } }), { status: 200 });
+      },
+    ]], async () => {
+      const r = await onRequestPost(ctx(mkReq({ tag: 'exp-20260929120000', date: '2026-09-29T12:00:00.000Z', chanA: 'proxy', chanB: 'random', total: 3, games: [{ no: 1 }, { no: 2 }, { no: 3 }] })));
+      const j = await r.json();
+      A(j.experiments.length === 2, '同 tag 应 upsert 不新增，实际 ' + j.experiments.length);
+      const upserted = j.experiments.find((e) => e.tag === 'exp-20260929120000');
+      A(upserted.games.length === 3, 'upsert 应替换 games，实际 ' + upserted.games.length);
+      A(j.experiments[0].date >= j.experiments[1].date, '应按 date 倒序');
+      A(putBody2 && putBody2.sha === 'shaX', '更新必须带原文件 sha，实际 ' + (putBody2 && putBody2.sha));
+    });
+
+    /* POST：无 token → 500（与 games.js 一致，前端「最近同步」显示失败原因） */
+    const noTok = await onRequestPost(ctx(mkReq({ tag: 't', games: [] }), {}));
+    A(noTok.status === 500, '无 token 应 500，实际 ' + noTok.status);
+
+    /* 限流：第 61 次 → 429（IP 独立计数） */
+    const { onRequestGet: get2 } = loadPagesModule('functions/api/experiments.js', ['onRequestGet']);
+    let last = 0;
+    for (let i = 0; i < 61; i++) {
+      const r = await withStub([['/contents/data/experiments.json', async () => new Response('{"message":"Not Found"}', { status: 404 })]],
+        () => get2({ request: mkReq(undefined, { 'CF-Connecting-IP': '6.6.6.6' }), env: { GAMES_GITHUB_TOKEN: 'tok' } }));
+      last = r.status;
+    }
+    A(last === 429, '第 61 次应 429，实际 ' + last);
+  }
+
+  /* ---------- stats ---------- */
+  {
+    const { onRequestGet } = loadPagesModule('functions/api/stats.js', ['onRequestGet']);
+    const gameFile = (gid, notation, extra) => Object.assign({
+      format: 'jev-qiguan-game/v1', game: '五子棋', gid, notation,
+      result: '黑方 获胜（五连）', moves: [], mock: false, firstWin: true, cal: [0.7, 0.8],
+    }, extra);
+
+    /* 三份棋谱（一份 mock、一份和棋）+ 干扰路径；raw 拉取聚合 */
+    const tree = { tree: [
+      { type: 'blob', path: 'js/app.js' },
+      { type: 'blob', path: 'games/not-a-day/x.json' },
+      { type: 'blob', path: 'games/2026-09-29/gomoku-20260929110000.json' },
+      { type: 'blob', path: 'games/2026-09-29/gomoku-20260929120000.json' },
+      { type: 'blob', path: 'games/2026-09-29/gomoku-20260929130000.json' },
+    ] };
+    const rawFiles = {
+      'games/2026-09-29/gomoku-20260929110000.json': gameFile('gomoku', 'H8,H7'),
+      'games/2026-09-29/gomoku-20260929120000.json': gameFile('gomoku', 'A1,A2', { mock: true }),
+      'games/2026-09-29/gomoku-20260929130000.json': gameFile('gomoku', 'B1,B2', { firstWin: null, result: '和棋（棋盘已满）' }),
+    };
+    let subrequests = 0;
+    const r = await withStub([
+      ['/git/trees/', async () => new Response(JSON.stringify(tree), { status: 200 })],
+      ['/contents/data/experiments.json', async () => new Response(JSON.stringify({ content: b64([{ tag: 'e1' }, { tag: 'e2' }]) }), { status: 200 })],
+      ['raw.githubusercontent.com', async (u) => {
+        const p = u.replace('https://raw.githubusercontent.com/tripodxu/board-games/main/', '');
+        const f = rawFiles[p];
+        return f ? new Response(JSON.stringify(f), { status: 200 }) : new Response('{}', { status: 404 });
+      },
+    ]], () => onRequestGet(ctx(mkReq())));
+    const j = await r.json();
+    A(r.status === 200 && j.ok === true, 'stats 应 200 ok，实际 ' + r.status);
+    A(j.totalGames === 3, '应聚合 3 份（干扰路径排除），实际 ' + j.totalGames);
+    A(j.byGame['五子棋'] === 3, 'byGame 应对：' + JSON.stringify(j.byGame));
+    A(j.results.black === 2 && j.results.draw === 1 && j.results.white === 0, 'results 应对：' + JSON.stringify(j.results));
+    A(j.experiments === 2, 'experiments 应为 2 轮，实际 ' + j.experiments);
+    A(j.cal.games === 1, 'mock 与和棋应剔除，只留 1 局，实际 ' + j.cal.games);
+    A(j.cal.records[0].key === 'gomoku|H8,H7' && j.cal.records[0].cal.length === 2, 'cal.records 形状不对：' + JSON.stringify(j.cal.records[0]));
+    A(j.truncated === false, '3 份不应截断');
+    subrequests = ghCalls + rawCalls;
+    A(subrequests <= 42, '子请求应 ≤42（免费版 50 上限留余量），实际 ' + subrequests);
+
+    /* 单份 raw 拉取失败 → 跳过不拖垮聚合 */
+    const r2 = await withStub([
+      ['/git/trees/', async () => new Response(JSON.stringify({ tree: [{ type: 'blob', path: 'games/2026-09-29/gomoku-20260929110000.json' }] }), { status: 200 })],
+      ['/contents/data/experiments.json', async () => new Response('{"message":"Not Found"}', { status: 404 })],
+      ['raw.githubusercontent.com', async () => new Response('{}', { status: 500 })],
+    ], () => onRequestGet(ctx(mkReq())));
+    const j2 = await r2.json();
+    A(r2.status === 200 && j2.totalGames === 0 && j2.experiments === 0, 'raw 全败应降级为 0 而非报错');
+
+    /* 超过 40 份 → 截断且只拉 40 份（守免费版 50 子请求） */
+    const many = [];
+    for (let i = 0; i < 45; i++) many.push({ type: 'blob', path: 'games/2026-09-29/gomoku-2026092910' + String(1000 + i) + '.json' });
+    const r3 = await withStub([
+      ['/git/trees/', async () => new Response(JSON.stringify({ tree: many }), { status: 200 })],
+      ['/contents/data/experiments.json', async () => new Response('{"message":"Not Found"}', { status: 404 })],
+      ['raw.githubusercontent.com', async () => new Response(JSON.stringify(gameFile('gomoku', 'H8')), { status: 200 })],
+    ], () => onRequestGet(ctx(mkReq())));
+    const j3 = await r3.json();
+    A(j3.truncated === true && j3.totalGames === 40, '超 40 份应截断为 40，实际 ' + j3.totalGames + '/' + j3.truncated);
+    A(ghCalls + rawCalls <= 42, '截断场景子请求仍应 ≤42，实际 ' + (ghCalls + rawCalls));
+
+    /* 无 token → 500；trees 失败 → 502 */
+    const noTok = await onRequestGet(ctx(mkReq(), {}));
+    A(noTok.status === 500, '无 token 应 500，实际 ' + noTok.status);
+    const treeFail = await withStub([['/git/trees/', async () => new Response(JSON.stringify({ message: 'Bad credentials' }), { status: 401 })]],
+      () => onRequestGet(ctx(mkReq())));
+    A(treeFail.status === 502, 'trees 失败应 502，实际 ' + treeFail.status);
+  }
+}
+
 integration()
   .catch((e) => { failed++; results.push('✗ 集成测试: ' + e.message); })
   .then(() => jevClientTests())
   .catch((e) => { failed++; results.push('✗ jev-client 单元测试: ' + e.message); })
   .then(() => pagesFunctionTests())
   .catch((e) => { failed++; results.push('✗ Pages Function 单元测试: ' + e.message); })
+  .then(() => pagesApiTests())
+  .catch((e) => { failed++; results.push('✗ Pages API Functions 单元测试: ' + e.message); })
+  .then(() => {
+    /* 后端（server.js）HTTP 契约测试：临时目录 + ephemeral port，不碰仓库真实数据。
+     * 传入收集器：后端用例与引擎用例按同一节奏进 results，输出顺序不变。 */
+    const { serverTests } = require('./server-tests.js');
+    return serverTests((line) => results.push(line));
+  })
+  .catch((e) => { failed++; results.push('✗ 后端单元测试: ' + e.message); })
   .finally(() => {
     console.log(results.join('\n'));
     if (failed) {

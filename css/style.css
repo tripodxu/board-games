@@ -49,6 +49,14 @@
 
 html { color-scheme: light; }
 
+/* .mono 是数据字工具类（app.js / charts.js 大量挂载），此前只有散落的上下文规则、
+ * 没有基类——类挂上了、字体没换，「等宽数据字」这个体系组成实际是死的。
+ * 等宽数字（tabular-nums）让表格与概率条在刷新时不跳动。 */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* 浏览器表面也是设计的一部分：光标颜色随主色，不与默认黑块抢戏 */
+input, textarea { caret-color: var(--mo); }
+
 body {
   font-family: var(--font-body);
   font-size: 14px;
@@ -118,6 +126,11 @@ header {
   white-space: nowrap;
 }
 .chip b { color: var(--mo); font-weight: 600; }
+/* 后端 chip 三态：检测中（弱化）/ 已连接（常态）/ 静态模式（提示性） */
+#backendChip { cursor: default; }
+#backendChip.pending b { color: var(--ink-mute); font-weight: 400; }
+#backendChip.static b { color: var(--ink-mute); }
+#backendChip.live b { color: #2F7D53; }
 
 /* ---------- 棋种页签 ---------- */
 
@@ -787,6 +800,7 @@ button.fold svg { transition: transform .18s var(--ease); }
   line-height: 2;
 }
 .ledger .no { color: var(--ink-mute); display: inline-block; min-width: 26px; }
+.ledger-empty { padding: 20px 8px; text-align: center; color: var(--ink-mute); font-size: 12px; }
 .ledger .tag {
   font-size: 11px; color: var(--ink-mute);
   border: 1px solid var(--line); border-radius: 999px;
@@ -805,9 +819,10 @@ details.settings summary {
   display: flex; align-items: center; gap: 8px;
 }
 details.settings summary::-webkit-details-marker { display: none; }
-details.settings summary::after { content: "＋"; margin-left: auto; color: var(--ink-mute); font-family: var(--font-mono); }
+/* 展开指示用自绘 SVG chevron（与面板折叠钮同一笔法），不再拿 ＋/－ 字符顶替图标 */
+.disc-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transition: transform .18s var(--ease); }
+details.settings[open] .disc-chev { transform: rotate(-90deg); }
 details.settings[open] summary { color: var(--ink); border-bottom: 1px solid var(--line); }
-details.settings[open] summary::after { content: "－"; }
 details.settings .settings-body { padding: 4px 16px 14px; }
 .settings-body label { margin: 9px 0 0; }
 .settings-body label.check-row {
@@ -816,13 +831,30 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .settings-body label.check-row input[type="checkbox"] {
   width: auto; margin: 0; accent-color: var(--mo, #1f242c);
 }
+/* 数据存储（后端）状态块：与实验面板同样的「块中块」节奏，但用实线边——
+ * 一个是可操作的实验台，一个是只读的状态读数 */
+.backend-block {
+  margin-top: 10px; padding: 9px 12px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--bg2);
+}
+.backend-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  font-size: 11.5px; color: var(--ink-mute);
+  line-height: 1.9;
+}
+.backend-row b { font-weight: 600; color: var(--ink-dim); text-align: right; }
+.backend-row b.ok { color: #2F7D53; }
+.backend-row b.warn { color: var(--zhu); }
+.backend-block .hint { margin-top: 4px; }
 /* 对比实验面板 */
 .exp-panel {
   margin-top: 12px; padding: 10px 12px;
   border: 1px dashed var(--line-ctl); border-radius: var(--r-ctl);
   background: rgba(31, 36, 44, .03);
 }
-.exp-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.exp-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.exp-glyph { flex: 0 0 auto; color: var(--zhu); }
 .exp-controls { display: flex; gap: 10px; }
 .exp-controls label { flex: 1; margin: 0 !important; }
 .exp-controls .exp-games { flex: 0 0 64px; }
@@ -849,6 +881,7 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 
 #probeRow { margin-top: 12px; }
 #probeOut { font-size: 11.5px; line-height: 1.6; margin-top: 6px; min-height: 1.2em; overflow-wrap: anywhere; }
+#probeOut.pending { color: var(--ink-mute); }
 #probeOut.ok { color: #2F7D53; }
 #probeOut.fail { color: var(--zhu); }
 
@@ -905,7 +938,7 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 /* ---------- 滚动条：浏览器原生件也是设计的一部分 ----------
  * 滚动条和焦点环一样，默认样式不属于任何设计系统。
  * 这里只做一处主题化，所有可滚动容器共享；WebKit 用伪元素，Firefox 用标准属性。 */
-.feed, .records, .ledger, #promoBox, #testPanel, .settings-body, #toast {
+.feed, .records, .ledger, #promoBox, #testPanel, .settings-body, #toast, #tabs {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
@@ -914,13 +947,15 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .ledger::-webkit-scrollbar,
 #promoBox::-webkit-scrollbar,
 #testPanel::-webkit-scrollbar,
-.settings-body::-webkit-scrollbar { width: 8px; height: 8px; }
+.settings-body::-webkit-scrollbar,
+#tabs::-webkit-scrollbar { width: 8px; height: 8px; }
 .feed::-webkit-scrollbar-thumb,
 .records::-webkit-scrollbar-thumb,
 .ledger::-webkit-scrollbar-thumb,
 #promoBox::-webkit-scrollbar-thumb,
 #testPanel::-webkit-scrollbar-thumb,
-.settings-body::-webkit-scrollbar-thumb {
+.settings-body::-webkit-scrollbar-thumb,
+#tabs::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border-radius: 999px;
   border: 2px solid var(--bg1);   /* 与轨道同底，视觉上让滑块变细 */
@@ -930,13 +965,15 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .ledger::-webkit-scrollbar-thumb:hover,
 #promoBox::-webkit-scrollbar-thumb:hover,
 #testPanel::-webkit-scrollbar-thumb:hover,
-.settings-body::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+.settings-body::-webkit-scrollbar-thumb:hover,
+#tabs::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
 .feed::-webkit-scrollbar-track,
 .records::-webkit-scrollbar-track,
 .ledger::-webkit-scrollbar-track,
 #promoBox::-webkit-scrollbar-track,
 #testPanel::-webkit-scrollbar-track,
-.settings-body::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-track,
+#tabs::-webkit-scrollbar-track { background: transparent; }
 
 /* ---------- 动效与响应式 ---------- */
 
@@ -953,4 +990,13 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   #tabs { padding: 0 14px; overflow-x: auto; }
   .board-card { padding: 12px; }
   .brand h1 { font-size: 19px; }
+  /* 窄屏头部：品牌独占一行、状态芯片自成一行。chip 是 nowrap 的，
+   * 和品牌挤同一行必然有一个被裁切（实测 420px 下品牌副标题就有 255px 宽）。
+   * 收起弹性占位符，让换行点变得确定，不依赖字体加载后的宽度浮动。 */
+  header { align-items: flex-start; row-gap: 10px; }
+  .head-spacer { display: none; }
+  .chip { font-size: 11px; padding: 3px 10px; }
+  /* 驾驶舱四指标在 345px 内每格不足 80px，「最快 / 最慢」会被迫折行；
+   * 改两列，读数优先于排布密度。 */
+  .engine-metrics { grid-template-columns: repeat(2, 1fr); }
 }

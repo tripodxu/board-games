@@ -21,6 +21,7 @@
     </div>
   </div>
   <div class="head-spacer"></div>
+  <span class="chip" id="backendChip" title="同源后端状态：node server.js 在线时棋谱落盘、实验归档、跨对局统计；未检测到时为静态托管或 CF Pages（棋谱同步仍会尝试）">后端 <b id="backendState">检测中</b></span>
   <span class="chip">渠道 <b id="channelChip">离线演示</b></span>
   <span class="chip">累计成本 <b id="costChip">$0.00000</b></span>
 </header>
@@ -45,7 +46,7 @@
         <div id="promoBox" class="hidden"></div>
       </div>
     </div>
-    <div class="status-strip" id="status">选择模式后点「开始对局」。</div>
+    <div class="status-strip" id="status" aria-live="polite">选择模式后点「开始对局」。</div>
     <div class="controls">
       <button id="startBtn" class="primary">开始对局</button>
       <button id="undoBtn">悔棋</button>
@@ -225,7 +226,10 @@
     </section>
 
     <details class="settings">
-      <summary>对局与 Jev 设置</summary>
+      <summary>
+        <svg class="disc-chev" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        对局与 Jev 设置
+      </summary>
       <div class="settings-body">
         <label>模式
           <select id="mode">
@@ -271,8 +275,18 @@
           </select>
         </label>
         <label class="check-row"><input type="checkbox" id="gameSync" checked> 终局自动同步棋谱（供复盘分析）</label>
+        <div class="backend-block" id="backendBlock">
+          <div class="backend-row"><span>数据存储</span><b id="backendMode">检测中…</b></div>
+          <div class="backend-row"><span>棋谱归档</span><b id="backendGames">–</b></div>
+          <div class="backend-row"><span>实验归档</span><b id="backendExps">–</b></div>
+          <div class="backend-row"><span>最近同步</span><b id="backendSync">–</b></div>
+          <div class="hint" id="backendHint">正在检测同源后端…</div>
+        </div>
         <div class="exp-panel">
-          <div class="exp-title">⚗ 对比实验（机机自动跑）</div>
+          <div class="exp-title">
+            <svg class="exp-glyph" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 1.5h2"/><path d="M5.2 1.5v2.7L2.7 8.3Q2.2 9.2 2.9 9.9h6.2q.7-.7.2-1.6L6.8 4.2V1.5"/><path d="M3.7 7.6h4.6"/></svg>
+            对比实验（机机自动跑）
+          </div>
           <div class="exp-controls">
             <label>A 方
               <select id="expChanA">
@@ -325,6 +339,7 @@
 <script src="js/games/go.js"></script>
 <script src="js/mock-ai.js"></script>
 <script src="js/jev-client.js"></script>
+<script src="js/api.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

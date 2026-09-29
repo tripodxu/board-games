@@ -10,6 +10,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# 后端运行时状态：server.js 的实验归档（data/experiments.json）本机生成、可重建。
+# 与 games/ 区分——那是终局同步的棋谱归档，属于项目数据，要入库。
+data/
+
 # Python（dev-proxy.py 的本地副产物）
 __pycache__/
 *.py[cod]

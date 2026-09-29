@@ -111,7 +111,7 @@
     const btn = $('probeBtn');
     const out = $('probeOut');
     btn.disabled = true;
-    out.className = '';
+    out.className = 'pending';
     out.textContent = '探测中…（最长 10 秒）';
     const apiKey = ch === 'openrouter' ? $('orKey').value.trim() : $('apiKey').value.trim();
     let r;
@@ -479,6 +479,28 @@
 
   /* ---------- 棋谱导出 ---------- */
   /* 纯函数便于将来复用/测试；exportGame 只负责下载动作 */
+
+  /* 校准样本（先手方视角的逐手胜率预测）：战绩簿与同步 payload 共用一份口径。
+   * 离线演示的合成概率与 random 基线（noul 为 null）都不进样本——拿合成数据算校准
+   * 等于自欺。firstWin 为 null（和棋）时由消费方（calibration / 后端 stats）剔除。
+   * mock 标记按「本局是否没有任何真实渠道着法」判定：对比实验里一方 mock 一方 Jev 时，
+   * Jev 那半局的样本仍然有效。 */
+  function calSamples(g) {
+    const items = aiItems();
+    const firstId = S.engine.sides[0].id;
+    const cal = items
+      .filter((h) => !h.meta.mock && typeof h.meta.noul === 'number')
+      .map((h) => {
+        const v = h.meta.side === firstId ? h.meta.noul : 1 - h.meta.noul;
+        return Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
+      });
+    return {
+      cal,
+      firstWin: g.winner ? g.winner === firstId : null,
+      mock: items.length > 0 && items.every((h) => h.meta.mock),
+    };
+  }
+
   function buildGameExport() {
     const g = S.engine.getStatus(S.st);
     const moves = S.history.map((h) => {
@@ -487,6 +509,7 @@
       return m;
     });
     const exp = S.expInfo || null;
+    const cs = calSamples(g);
     return {
       format: 'jev-qiguan-game/v1',
       exported: new Date().toISOString(),
@@ -503,6 +526,9 @@
         : '进行中（已 ' + S.history.length + ' 手）',
       notation: moves.map((m) => m.notation).join(','),
       moves,
+      cal: cs.cal,
+      firstWin: cs.firstWin,
+      mock: cs.mock,
     };
   }
   function exportGame() {
@@ -521,8 +547,11 @@
   }
 
   /* ---------- 棋谱自动同步 ---------- */
-  /* 终局后把棋谱 POST 到 /api/games，Function 会 commit 进仓库 games/ 目录。
-     静默失败：不同步不影响对局，只在控制台留条记录。 */
+  /* 终局后把棋谱 POST 到 /api/games：
+   *   - server.js 自托管后端 → 落盘 games/<日期>/（幂等，重传不覆盖）
+   *   - CF Pages Functions   → GitHub API commit 进仓库（提交信息 [skip ci]）
+   *   - 纯静态 / file://      → 请求自然失败，静默降级（不影响对局）
+   * 结果写进「最近同步」一行：同步是增强功能，但用户有权知道它到底通不通。 */
   async function uploadGameRecord() {
     if (S.settings.gameSync === false) return;
     if (!S.engine || !S.history.length) return;
@@ -533,9 +562,114 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!r.ok) console.warn('[gameSync] 上传失败:', r.status, await r.text().catch(() => ''));
-      else console.info('[gameSync] 棋谱已同步');
-    } catch (e) { console.warn('[gameSync] 上传异常:', e); }
+      if (!r.ok) {
+        console.warn('[gameSync] 上传失败:', r.status, await r.text().catch(() => ''));
+        BACKEND.lastSync = { ok: false, text: '失败（HTTP ' + r.status + '）' };
+      } else {
+        const j = await r.json().catch(() => null);
+        console.info('[gameSync] 棋谱已同步');
+        BACKEND.lastSync = {
+          ok: true,
+          text: j && j.path ? '成功 · ' + String(j.path).split('/').pop() : '成功',
+        };
+      }
+    } catch (e) {
+      console.warn('[gameSync] 上传异常:', e);
+      BACKEND.lastSync = { ok: false, text: '失败（无后端或网络异常）' };
+    }
+    renderBackend();
+  }
+
+  /* ---------- 后端探活与数据存储状态 ----------
+   * live   = 同源后端在线（server.js：health/games/experiments/stats 全套）；
+   * deploy = 没有 /api/health（CF Pages Functions 只有 /api/jev 与 /api/games，
+   *          或纯静态托管）——棋谱同步仍会尝试，以「最近同步」一行为准。
+   * 两种形态对访客的差异只在「数据存在哪」，对局功能完全一致。 */
+  const BACKEND = { mode: 'pending', health: null, stats: null, lastSync: null };
+
+  function setBackendChip(state, text) {
+    const chip = $('backendChip'), b = $('backendState');
+    if (!chip || !b) return;
+    chip.classList.remove('pending', 'live', 'static');
+    chip.classList.add(state);
+    b.textContent = text;
+  }
+
+  function renderBackend() {
+    const modeEl = $('backendMode'), gamesEl = $('backendGames'),
+      expsEl = $('backendExps'), syncEl = $('backendSync'), hintEl = $('backendHint');
+    if (!modeEl) return;
+    if (BACKEND.mode === 'pending') {
+      setBackendChip('pending', '检测中');
+      modeEl.textContent = '检测中…';
+      modeEl.className = '';
+      if (hintEl) hintEl.textContent = '正在检测同源后端…';
+      return;
+    }
+    if (BACKEND.mode === 'live') {
+      const h = BACKEND.health || {};
+      const st = BACKEND.stats;
+      setBackendChip('live', '已连接');
+      modeEl.textContent = (h.service || 'server') + (h.version ? ' v' + h.version : '');
+      modeEl.className = 'ok';
+      gamesEl.textContent = st ? st.totalGames + (st.truncated ? '+' : '') + ' 份' : (h.games != null ? h.games + ' 份' : '–');
+      expsEl.textContent = st ? st.experiments + ' 轮' : '–';
+      if (hintEl) {
+        hintEl.textContent = h.github === false
+          ? '后端在线，但服务端未配置 GAMES_GITHUB_TOKEN：棋谱同步与归档实际不可用（Pages 项目环境变量里配上即恢复）。'
+          : '棋谱终局落盘到后端存储，实验战报归档到服务端，校准实验室可聚合全部已同步对局。';
+      }
+    } else {
+      setBackendChip('static', '无本地后端');
+      modeEl.textContent = '未检测到同源后端';
+      modeEl.className = 'warn';
+      gamesEl.textContent = '仅本机';
+      expsEl.textContent = '仅本机';
+      if (hintEl) hintEl.textContent = '未检测到同源后端（node server.js）。当前是静态托管或 CF Pages：棋谱同步仍会尝试 POST /api/games（Pages 上会提交进仓库），结果以「最近同步」为准；实验归档与跨对局统计只在本地。在仓库根目录运行 node server.js 即获得完整后端。';
+    }
+    if (syncEl) {
+      syncEl.textContent = BACKEND.lastSync ? BACKEND.lastSync.text : '–';
+      syncEl.className = BACKEND.lastSync ? (BACKEND.lastSync.ok ? 'ok' : 'warn') : '';
+    }
+  }
+
+  async function initBackend() {
+    const h = await BG.api.health();
+    BACKEND.mode = h && h.ok ? 'live' : 'deploy';
+    BACKEND.health = h && h.ok ? h : null;
+    renderBackend();
+    if (BACKEND.mode === 'live') {
+      refreshServerExperiments();
+      refreshServerStats();
+    }
+  }
+
+  /* 服务端实验战报并入本地缓存（按 tag 合并：缺失或局数变多则更新），再重绘报告面板 */
+  async function refreshServerExperiments() {
+    const r = await BG.api.listExperiments();
+    if (!r || !Array.isArray(r.experiments)) return;
+    const list = loadExpHistory();
+    let changed = false;
+    r.experiments.forEach((e) => {
+      if (!e || !e.tag) return;
+      const i = list.findIndex((x) => x.tag === e.tag);
+      if (i === -1) { list.push(e); changed = true; }
+      else if ((list[i].games || []).length < (e.games || []).length) { list[i] = e; changed = true; }
+    });
+    if (changed) {
+      list.sort((x, y) => String(y.date).localeCompare(String(x.date)));
+      saveExpHistory(list);
+    }
+    renderExpHistory();
+  }
+
+  /* 服务端跨对局统计：校准实验室的第二数据源 + 设置面板的归档计数 */
+  async function refreshServerStats() {
+    const r = await BG.api.stats();
+    if (!r || !r.ok) return;
+    BACKEND.stats = r;
+    renderBackend();
+    renderCalibration();
   }
 
   /* ---------- 对比实验：A渠道 vs B渠道，自动交替执黑白 ---------- */
@@ -686,6 +820,8 @@
     if (!list.some((e) => e.tag === entry.tag)) list.unshift(entry);
     saveExpHistory(list);
     renderExpHistory();
+    /* 同步到服务端（无后端时 BG.api 自动降级返回 null，不影响本地归档） */
+    BG.api.saveExperiment(entry).then((r) => { if (r && r.ok) refreshServerExperiments(); });
   }
   function renderExpHistory() {
     const el = $('expHistory');
@@ -922,32 +1058,25 @@
     S.sessionRecorded = true; // 终局后悔棋再终局只保留一条战绩
     const items = aiItems();
     const lats = items.map((h) => h.meta.latencyMs).filter(Boolean);
-    /* 校准样本：逐手「先手方视角」的胜率预测。
-     * 离线演示的概率是 mock 合成的（mock-ai.js 随机生成），拿它算校准等于自欺，
-     * 因此只收真实渠道；和棋局没有二元真值，firstWin 记 null，由 calibration 侧剔除。 */
-    const firstId = S.engine.sides[0].id;
-    const cal = items
-      .filter((h) => !h.meta.mock && typeof h.meta.noul === 'number')
-      .map((h) => {
-        const v = h.meta.side === firstId ? h.meta.noul : 1 - h.meta.noul;
-        return Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
-      });
+    /* 校准样本口径与同步 payload 完全一致（calSamples），
+     * 这样后端聚合出来的统计和本机战绩簿永远对得上。 */
+    const cs = calSamples(g);
     const rec = {
       id: S.sessionId,
       t: Date.now(),
       game: S.engine.name,
       gid: S.gameId,
-      mock: effectiveChannel() === 'mock',
+      mock: cs.mock,
       mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
       winner: g.winner ? sideName(g.winner) : '和棋',
-      firstWin: g.winner ? g.winner === S.engine.sides[0].id : null,
+      firstWin: cs.firstWin,
       reason: g.reason || '',
       notas: S.history.map((h) => h.move.notation), // 棋谱写法：经验注入（开局胜率统计）的数据源
       moves: S.history.length,
       aiMoves: items.length,
       avgLat: lats.length ? Math.round(lats.reduce((s, x) => s + x, 0) / lats.length) : 0,
       cost: items.reduce((s, h) => s + (h.meta.costUsd || 0), 0),
-      cal,
+      cal: cs.cal,
     };
     const all = loadRecords();
     const idx = all.findIndex((r) => r.id === rec.id);
@@ -1002,12 +1131,47 @@
   const PCT = (v, d) => (typeof v === 'number' ? (v * 100).toFixed(d === undefined ? 0 : d) + '%' : '–');
   const SIGNED = (v, d) => (typeof v === 'number' ? (v > 0 ? '+' : '') + (v * 100).toFixed(d === undefined ? 0 : d) : '–');
 
+  /* 校准样本双源合并：本机战绩簿 + 后端 /api/stats 的按局记录。
+   * 同一局可能两边都有（本机跑过、终局又同步到了后端），按 gid+着法串去重，
+   * 保留本机记录。服务端样本让「换一台机器 / 清一次缓存」不再把校准数据清零——
+   * 这是后端化对产品最实质的一处增强。 */
+  function mergeCalibration(local, stats) {
+    if (!stats || !stats.cal || !Array.isArray(stats.cal.records) || !stats.cal.records.length) return local;
+    const seen = new Set();
+    loadRecords().forEach((r) => {
+      if (r && r.gid && r.notas) seen.add(r.gid + '|' + r.notas.join(','));
+    });
+    const extra = [];
+    let serverGames = 0;
+    stats.cal.records.forEach((rec) => {
+      if (!rec || seen.has(rec.key)) return;
+      seen.add(rec.key);
+      if (rec.firstWin !== true && rec.firstWin !== false) return;
+      if (!Array.isArray(rec.cal) || !rec.cal.length) return;
+      serverGames++;
+      const y = rec.firstWin ? 1 : 0;
+      rec.cal.forEach((p) => extra.push({ p, y }));
+    });
+    if (!extra.length) return local;
+    const samples = local.samples.concat(extra);
+    return {
+      samples,
+      games: local.games + serverGames,
+      draws: local.draws,
+      skippedDemo: local.skippedDemo,
+      serverGames,
+      metrics: BG.calibration.metrics(samples),
+    };
+  }
+
   function renderCalibration() {
     const box = $('calBody');
     if (!box) return;
-    const agg = BG.calibration.fromRecords(loadRecords());
+    const agg = mergeCalibration(BG.calibration.fromRecords(loadRecords()), BACKEND.stats);
     const m = agg.metrics;
-    $('calCount').textContent = agg.games ? agg.games + ' 局 / ' + agg.samples.length + ' 手' : '';
+    $('calCount').textContent = agg.games
+      ? agg.games + ' 局 / ' + agg.samples.length + ' 手' + (agg.serverGames ? '（含服务端 ' + agg.serverGames + ' 局）' : '')
+      : '';
 
     if (!m) {
       const why = agg.skippedDemo
@@ -1057,6 +1221,7 @@
       '<div class="cal-verdict' + (over > 0.05 ? ' warn' : '') + '">' + verdict + '</div>' +
       '<div class="cal-caveat">样本按「局」强相关：同一局内各手共享同一真实胜负，' +
       '有效样本量更接近 ' + agg.games + ' 局而非 ' + agg.samples.length + ' 手。' +
+      (agg.serverGames ? '其中 ' + agg.serverGames + ' 局来自服务端归档，换设备、清缓存都不丢。' : '') +
       (agg.draws ? '另有 ' + agg.draws + ' 局和棋无二元真值，未计入。' : '') + '</div>';
 
     BG.charts.reliability($('calChart'), BG.calibration.reliability(agg.samples, 10), {});
@@ -1128,6 +1293,11 @@
 
   function rebuildLedger() {
     const el = $('ledger');
+    if (!S.history.length) {
+      /* 空局也要有话说：空白面板读起来像「坏了」，不像「还没开始」 */
+      el.innerHTML = '<div class="ledger-empty">对局开始后，每一手的记法会记在这里。</div>';
+      return;
+    }
     el.innerHTML = '';
     S.history.forEach(appendLedgerLine);
   }
@@ -1329,6 +1499,7 @@
     switchGame('gomoku');
     renderRecords();
     $('speedVal').textContent = (150 + S.settings.speed * 150) / 1000 + 's';
+    initBackend(); // 异步探活：不阻塞首屏，结果写进头部 chip 与设置面板
     if (location.search.indexOf('test=1') >= 0) runTests();
   });
 })();
