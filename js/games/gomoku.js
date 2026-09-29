@@ -233,8 +233,15 @@
           instructions:
             'You are an expert gomoku player playing ' + side + '. Points are named like H8 (column letter + row number). ' +
             'Read `board_ascii` as the actual board (X = black, O = white, lowercase = last move). ' +
-            /* 板斧二+四：刚性扫描清单 + 防幻觉核对，替代"多制造威胁"式空话；板斧三 fallback：analysis 文本问不被 API 支持（实测 400），扫描流程只能内化到指令 */
-            'Before answering, run this scan in order and verify every claim cell by cell against `board_ascii` and the stone lists: ' +
+            /* 板斧二+四：刚性扫描清单 + 防幻觉核对，替代"多制造威胁"式空话；板斧三 fallback：analysis 文本问不被 API 支持（实测 400），扫描流程只能内化到指令。
+             * 2026-09-29 实测补强：Jev 对角线误读率高（对角四连找胜点曾错选 J9 而非 E5）。
+             * 真实 API A/B 验证（3 次重复）：仅点名四个方向无改善（P(E5)≈0.02），
+             * 加具体斜线示例后 P(E5)→0.76~0.81 且三次全选对——few-shot 具象示例是修复关键。 */
+            'Before answering, run this scan in order and verify every claim cell by cell against `board_ascii` and the stone lists. ' +
+            'Check all four directions separately every time — horizontal, vertical, diagonal top-left to bottom-right, diagonal top-right to bottom-left — ' +
+            'including gapped patterns such as X X . X X; diagonals are the easiest to misread, so write out every cell of any claimed line. ' +
+            'Concrete example: X stones on F6, G7, H8, I9 form a diagonal of four; the winning fifth point is E5, the empty cell continuing that exact diagonal — ' +
+            'not a nearby cell such as J9 or E6. Always extend a diagonal or anti-diagonal along its exact line, for your stones and the opponent\'s alike: ' +
             '(1) points completing five in a row for you — if any exists, you MUST play one; ' +
             '(2) points completing five in a row for the opponent — if any exists and you cannot win immediately, you MUST play one; ' +
             '(3) your open threes and fours, and their strongest extension points; ' +
