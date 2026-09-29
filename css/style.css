@@ -138,7 +138,7 @@ header {
   font-size: 15.5px;
   letter-spacing: 2px;
   color: var(--ink-mute);
-  padding: 10px 16px 12px;
+  padding: 8px 16px 10px;
   white-space: nowrap;
   flex: 0 0 auto;
   transition: color .2s var(--ease);
@@ -168,7 +168,7 @@ main {
   align-items: start;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 22px 26px 46px;
+  padding: 18px 26px 40px;
 }
 
 @media (max-width: 1080px) {
@@ -303,19 +303,19 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 
 /* ---------- 右栏 ---------- */
 
-.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
 .panel {
   background: var(--bg1);
   border: 1px solid var(--line);
   border-radius: var(--r-panel);
-  padding: 16px 18px;
+  padding: 12px 15px;
   box-shadow: 0 10px 30px rgba(23, 27, 33, .06), 0 1px 2px rgba(23, 27, 33, .04);
 }
 
 .panel-title {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .panel-title h2 {
   font-family: var(--font-display);
@@ -324,6 +324,37 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 }
 .panel-title .note { font-size: 11px; color: var(--ink-mute); }
 .panel-title .spacer { flex: 1; }
+
+/* ---------- 可折叠面板 ---------- */
+
+.panel.collapsible > .panel-title { cursor: pointer; }
+.panel.collapsible.folded > .panel-title { margin-bottom: 0; }
+.panel.folded > .panel-body { display: none; }
+/* 折叠时隐藏指向面板内部的实体控件，标题行的说明/计数保留作「瞥视」 */
+.panel.folded .series-chips,
+.panel.folded .mini-btn { display: none; }
+
+button.fold {
+  align-self: center;
+  flex: 0 0 auto;
+  width: 20px; height: 20px; padding: 0; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 6px;
+  color: var(--ink-mute);
+  transition: color .15s, background .15s;
+}
+button.fold:hover { color: var(--ink); background: var(--bg2); }
+button.fold svg { transition: transform .18s var(--ease); }
+.panel.folded button.fold svg { transform: rotate(-90deg); }
+
+.panel:not(.folded) > .panel-body { animation: panel-open .18s var(--ease); }
+@keyframes panel-open {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel:not(.folded) > .panel-body { animation: none; }
+}
 
 /* 趋势图 */
 
@@ -382,13 +413,13 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 .trend-tip b { color: var(--ink); font-family: var(--font-mono); font-weight: 600; }
 .trend-tip .mono { color: var(--zhu); }
 
-.legend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-mute); margin-top: 6px; }
+.legend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-mute); margin-top: 4px; }
 .legend .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
 .legend .sw.first { background: var(--mo); }
 .legend .sw.second { background: var(--zhu); }
 
 .chart-empty {
-  padding: 34px 10px;
+  padding: 14px 10px;
   text-align: center;
   color: var(--ink-mute);
   font-size: 12.5px;
@@ -780,6 +811,11 @@ details.settings[open] summary::after { content: "－"; }
 details.settings .settings-body { padding: 4px 16px 14px; }
 .settings-body label { margin: 9px 0 0; }
 .hint { font-size: 11px; color: var(--ink-mute); line-height: 1.7; margin-top: 6px; }
+
+#probeRow { margin-top: 12px; }
+#probeOut { font-size: 11.5px; line-height: 1.6; margin-top: 6px; min-height: 1.2em; overflow-wrap: anywhere; }
+#probeOut.ok { color: #2F7D53; }
+#probeOut.fail { color: var(--zhu); }
 
 .speed-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--ink-mute); }
 .speed-row input { flex: 1; margin: 0; }

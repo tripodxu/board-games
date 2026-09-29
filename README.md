@@ -17,17 +17,24 @@
 
 ## 快速开始
 
-### 方式一：直接打开（离线演示 / 浏览器直连）
+### 方式一：直接打开（离线演示）
 
-双击 `index.html` 即可。默认未填 key 时自动进入**离线演示模式**（内置简单启发式 AI + 合成概率），完整体验三种模式与决策面板。
+双击 `index.html` 即可，未填 key / 无代理时自动进入**离线演示模式**（内置简单启发式 AI + 合成概率），完整体验三种模式与决策面板。
+
+> 想接真实 Jev 不能只靠双击：官方 API 有 CORS 来源白名单（实测仅 typesafe.ai 自有域名可用），
+> 浏览器直连必被拦。浏览器侧走官方 key 的唯一路径是「同源代理」——见方式二/三。
 
 要接真实 Jev：右侧「Jev 设置」→ 选渠道并填 key（只存浏览器 localStorage）：
 
 | 渠道 | key | 说明 |
 |---|---|---|
-| 官方 API | [console.typesafe.ai](https://console.typesafe.ai) 的 key | 浏览器直连 `api.typesafe.ai`；若跨域(CORS)受限请改用其他渠道 |
-| OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) 的 key | 与官方接口同构（`/api/v1/systemone`），浏览器直连最稳 |
+| 官方 API | [console.typesafe.ai](https://console.typesafe.ai) 的 key | **浏览器直连不可行**（官方 CORS 来源白名单实测仅放行 typesafe.ai 自有域）；请在「同源代理」渠道下使用官方 key |
+| OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) 的 key | 与官方接口同构（`/api/v1/systemone`），允许跨域，唯一可浏览器直连的渠道（注意需要的是 OpenRouter key） |
 | 同源代理 | 无需填 | key 放服务端（见下） |
+
+**自定义 Base URL**：选渠道后，「接口地址」输入框会预填该渠道的预设值——留空用预设，
+改成自己的地址即可接自建网关或任何兼容端点（自定义端点不强制 key；各渠道的地址分别记忆，互不影响）。
+填好后点「**测试连接**」：会区分网络不通 / 跨域拦截 / key 无效 / 端点不兼容，不用开局撞错。
 
 ### 方式二：本地代理（绕过 CORS）
 
@@ -40,13 +47,12 @@ python dev-proxy.py              # http://localhost:8788
 
 打开后渠道选「同源代理」。仅标准库，无依赖。
 
-### 方式三：部署到 Cloudflare Pages（静态博客可直接挂）
+### 方式三：部署到 Cloudflare Pages（推荐 · 部署一次，「填 key 即玩」甚至「打开即玩」）
 
-1. 把本目录推到 GitHub 仓库，CF Pages 连接仓库构建（无构建命令，输出目录 = 根目录）。
-2. 仓库已含 `functions/api/jev.js`（Pages Functions），线上自动获得 `/api/jev` 代理。**无需配置任何环境变量。**
-3. **BYOK（自带 key）设计**：代理只做 CORS 转发——访客在页面设置里填自己的 TypeSafe key，随 `X-Api-Key` 请求头透传，服务端不存任何 key，花费走访客自己的账户。未填 key 的访客会收到明确的 401 提示。
-4. **限流**：代理带每 IP 每分钟 30 次的滑动窗口限流（isolate 内存，多实例为尽力而为），超限返回 429；可用 CF 环境变量 `RATE_LIMIT_PER_MIN` 调整。
-5. 本地调试 Functions：`npx wrangler pages dev .`。
+1. 最省事：本目录下执行 `npx wrangler pages deploy .`（或推到 GitHub 后让 CF Pages 连仓库，无构建命令，输出目录 = 根目录）。
+2. 仓库已含 `functions/api/jev.js`（Pages Functions），线上自动获得 `/api/jev` 同源代理，**部署本身零配置**。
+3. **让访客「只填 key」**：访客打开网址 → 默认同源代理 → 在设置里填自己的 TypeSafe key（存访客本机，随 `X-Api-Key` 头透传，服务端不存）。**让访客「连 key 都不用填」**：在 CF Pages 控制台给项目设环境变量 `TYPESAFE_API_KEY=<你的key>`，之后任何人打开网址直接开局（花费走你的账户，已有每 IP 每分钟 30 次限流兜底）。
+4. 本地调试 Functions：`npx wrangler pages dev .`。
 
 > 也可以删掉 `functions/` 目录：那时「同源代理」不可用，访客走 OpenRouter 渠道（同样 BYOK、浏览器直连）。
 

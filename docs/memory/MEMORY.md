@@ -8,6 +8,86 @@
 
 ---
 
+## 2026-09-29 · 部署改为 git 自动集成（推送即部署）
+
+- **jev-qiguan 项目已连 GitHub（tripodxu/board-games）：push 到 main 即自动部署**，
+  构建命令留空、构建输出目录 = 仓库根目录 `/`，`functions/` 由 Pages 自动识别，无需任何配置。
+  即「改完 → node test/run-tests.js 全绿 → commit → push」就是完整发布流程。
+- wrangler 直传流程（更新 `.work/deploy-staging` + `wrangler pages deploy`）降级为备用手段，
+  仅在 git 集成失效时救急（见下方「部署上线」条目）。
+- 验证部署是否生效：`curl -s https://jev-qiguan.pages.dev/ | grep <新特性标记>`
+  （本次用「测试连接」），或 `npx wrangler pages deployment list --project-name=jev-qiguan`。
+
+## 2026-09-29 · 侧栏折叠一屏化（UI 打磨轮）
+
+- 用户痛点：右侧分析栏 9 个面板全展开约 2 屏。方案：**驾驶舱常开 + 7 个面板可折叠 + 状态持久化**
+  （`jev_qiguan_panels_v1`），密度同步收紧（side gap 16→10、panel padding 16/18→12/15、
+  趋势图 viewBox H 196→158、空态块 34→14px）。1920×1000（≈真实浏览器 chrome 后的 1080p）
+  下全部分析面板一屏可见；棋谱/设置两个低频抽屉贴边是有意取舍——再挤破坏间距节奏。
+- **默认态要有内容**：首访全折叠（第一版截图验证时抓到）会让首屏没有任何分析内容，改为默认展开
+  「Jev 判断」，localStorage 有存储则完全尊重用户。存储区分「从未存过」与「显式清空」靠 raw===null。
+- **折叠期间 display:none 的面板，图表量宽为 0**：展开时必须补渲染（FOLD_HOOKS → 各 render* 全量
+  重建函数，恰好都是无状态重建，直接调用即可）。iframe wrapper 真实点击折叠钮验证了这条路径。
+- 折叠时标题行里指向面板内部的实体控件（曲线切换、清空）一并隐藏；note/计数保留作「瞥视」。
+  折叠钮是自绘 SVG chevron（craft-floor 禁 Unicode 字形当图标），展开动效 0.18s transform/opacity
+  且尊重 prefers-reduced-motion（不违反「动效收敛为落子」的既定取舍——一次性状态过渡非装饰循环）。
+- 验收：截图三视口（1920×1080 / 全展开 3450 / 1366×768）+ impeccable detect **零新增违规**
+  （仅存量 4 项：渐变误报、11px 例外×2、promoBox 例外）+ 全量测试/DOM 台/文档检查全绿。
+
+## 2026-09-29 · 部署上线（Jev 接入轮之四）
+
+- **https://jev-qiguan.pages.dev** 已上线（CF Pages 项目 `jev-qiguan`，账户 xd04040212@163.com，
+  production branch=main，直传部署非 git 集成）。线上验证三连：静态页 200；`/api/jev` 无 key → 401 中文提示；
+  带 key → 真实响应 `jev-1.13.0`（noul 0.73，279 token）。
+- **重部署流程**（直传模式下文档即部署脚本）：更新 `.work/deploy-staging/`（只含 index.html、
+  package.json、README.md、LICENSE、css/、js/、functions/，排除 .git/.work/docs/test 等）→
+  `npx wrangler pages deploy .work/deploy-staging --project-name=jev-qiguan --branch=main --commit-dirty=true`。
+  staging 目录在 .work（不入库），改动站点文件后必须重拷再部署。
+- 访客「只填 key」已可用（BYOK）；要「打开即玩」需在 CF 控制台给项目设环境变量
+  `TYPESAFE_API_KEY`（Pages 项目环境变量仅 dash 可设，wrangler 无对应命令），花费走站长账户。
+
+## 2026-09-29 · CORS 白名单实测定论 + file:// 自动落演示（Jev 接入轮之三）
+
+- 用户诉求「只提交 apikey 就能用，不要自行跑代理」。实测给出硬结论：官方 API 带 **CORS 来源
+  白名单**——`OPTIONS` 预检带 `Origin: https://console.typesafe.ai` 放行（回显 ACAO），
+  `example.com` 与 `null`（file://）一律 400 "Disallowed CORS origin"；官方文档无配置入口。
+  **结论：浏览器只填 key 直连官方在任何第三方站点都不可行，同源转发无法省略**——这不是实现选择，
+  是服务端白名单 + 浏览器同源策略的双重约束。
+- 体验修顺（代码侧能做的都做了）：`effectiveChannel()` 在 `file://` 下 proxy 渠道自动落演示
+  （此前双击打开默认 proxy 渠道，第一手棋必报 Failed to fetch——用户实际撞到的就是这个，不是
+  官方 API 的 CORS）；proxy 渠道网络错误提示改为「本地 dev-proxy / 线上部署」双向指引；
+  渠道 hint 更新为白名单实测结论；「填 key 即玩」的正解收敛为：**部署一次 CF Pages
+  （`npx wrangler pages deploy .`），访客填 key 即玩；设 `TYPESAFE_API_KEY` 环境变量则打开即玩**。
+- probe 的 cors 判定文案同步改准确（「官方有来源白名单」而非泛泛的「加 CORS 头」——后者用户做不了）。
+
+## 2026-09-29 · 连通性探测「测试连接」（Jev 接入轮之二）
+
+- 用户实测撞上「Failed to fetch（若为浏览器跨域受限…）」后才开局失败，要求开局前能先探测。
+  新增 `BG.jev.probe()`（两段式）：A 段 `no-cors` GET 只判「网络层可达」；B 段按真实契约发最小
+  `noul` 请求。fetch 层 CORS 拦截与断网同为 TypeError，靠 A 段结果区分——这是浏览器端唯一能做的分诊。
+- **mock 单测抓不到请求体形状，真实端点会**：首版 probe 漏发 `model` 字段，单测全绿，真实端点
+  422 拒绝（`body.model required`）。教训：凡「按契约构造请求」的代码，单测必须断言请求体本身
+  （已补：state/model/questions 三字段齐全）。probe 体必须与正式请求同构。
+- 实测矩阵（用户提供的真 key，env 传入未入库）：官方直连 probe ok（`jev-1.13.0`，~1.9s）——
+  **官方端点真实可达**，浏览器直连的 Failed to fetch 就是 CORS；假 key → 401 判 auth；
+  dev-proxy 代理渠道 probe ok + 真实 `decide()` 走子 H8（447ms，$0.000024）全链路通；
+  不存在域名 → network（~11s，两段各 10s 超时叠加，感知偏慢可接受）。
+- probe 的 kind：ok/network/cors/auth/http/shape/mock/config，判定表在 jev-api.md §2.1。
+
+## 2026-09-29 · 自定义 Base URL（Jev 接入开放化）
+
+- 用户痛点：三个真实渠道的 endpoint 全部硬编码在 `jev-client.js`，自建/兼容网关接不进来。
+  改为「渠道 = 预设 + 可覆盖」：设置面板每个真实渠道都有「接口地址」输入框，placeholder 即预设，
+  留空用预设；自定义值按渠道分别存 localStorage（`settings.endpoints`）。客户端新增
+  `BG.jev.presetEndpoint(ch)` 与 `decide` 的 `opts.endpoint`。
+- 语义决策：**端点自定义 ⇒ 渠道明确可用**——`effectiveChannel()` 不再因未填 key 回落 mock，
+  客户端也不强制 key（自建网关可匿名）；有 key 照发 Bearer / X-Api-Key。预设端点行为一概不变
+  （official/openrouter 无 key 仍拒绝），旧用例零改动全过。
+- 陷阱：渠道切换时输入框里还是旧渠道的地址。`saveSettings` 若按「select 当前值」归档，会把旧端点
+  复制到新渠道名下——归档（`stashEndpoint(prev)`）必须发生在改写 `S.settings.channel` **之前**。
+- model 名不随端点走：仍取渠道预设。要换模型是另一个需求，别顺手混进来。
+- 新增回归（run-tests.js 用例④）：自定义端点覆盖预设 + 匿名放行 + 预设端点不受影响 + presetEndpoint 出口。
+
 ## 2026-09-29 · 前端打磨（迭代 04·前端轮）
 
 - 方向由 `impeccable` 技能流程定：用户选**「精修 + 更有张力」**——保留月白/玄墨/朱砂体系与全部

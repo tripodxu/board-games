@@ -40,13 +40,49 @@ resp: {
 
 | channel | endpoint | model | key 放哪 | 说明 |
 |---|---|---|---|---|
-| `official` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 浏览器 localStorage | 官方 API 浏览器直连可能被 CORS 拦，实测优先用代理 |
-| `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，**最稳的直连渠道** |
+| `official` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 浏览器 localStorage | **官方 API 有 CORS 来源白名单（2026-09-29 实测：仅 typesafe.ai 自有域名放行，任意第三方 Origin 一律 400 "Disallowed CORS origin"，文档未开放配置）。浏览器直连不可行，浏览器侧走官方 key 的唯一路径是同源代理** |
+| `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，唯一可浏览器直连的渠道（需 OpenRouter key，非 TypeSafe key） |
 | `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | CF Pages Function 或 `dev-proxy.py`；**Pages 侧有每 IP 每分钟滑动窗口限流（默认 30，`RATE_LIMIT_PER_MIN` 可配），超限 429** |
 | `mock` | 本地 | — | 无 | `js/mock-ai.js` 离线演示，概率为合成值 |
 
 默认渠道（`app.js` settings）：`proxy`。`effectiveChannel()` 在未填 key 时自动回落 `mock`，
 保证无 key 完整体验。
+
+**自定义 Base URL**（2026-09-29 起）：设置面板对每个真实渠道提供「接口地址」输入框，
+留空 = 上表预设，填了即覆盖（`decide` 的 `opts.endpoint`，预设值经 `BG.jev.presetEndpoint(ch)` 取）。
+语义约定：
+
+- 自定义值按渠道各自存 localStorage（`settings.endpoints`），互不串渠道；`mock` 无此输入框。
+- 端点自定义后该渠道视为**明确可用**：`effectiveChannel()` 不再因未填 key 回落 `mock`。
+- 自定义端点**不强制 key**（自建网关可匿名）；填了 key 仍照发 `Authorization: Bearer` / `X-Api-Key`。
+  预设端点行为不变（official/openrouter 无 key 直接拒绝）。
+- model 名仍取渠道预设（`jev-latest` / `typesafe/jev-1.13`），不随端点变化。
+
+### 2.1 连通性探测（probe）
+
+设置面板「测试连接」→ `BG.jev.probe({ channel, apiKey, endpoint })`，开局前定位故障，
+**两段式**区分浏览器端无法分辨的错误：
+
+| 段 | 做法 | 区分什么 |
+|---|---|---|
+| A | `no-cors` GET（响应不可读，只看 resolve/reject） | 网络层可达 vs DNS/服务器不可达 |
+| B | 按真实契约发最小 `noul` 请求（10s 超时） | 鉴权 / 端点形状 / HTTP 错误 / CORS |
+
+返回 `{ ok, kind, message, latencyMs, model?, status? }`，`kind` 判定：
+
+| kind | 含义 |
+|---|---|
+| `ok` | 联通且 key 有效（附 model 名与延迟） |
+| `network` | A 段即失败：网络不可达（代理渠道先启动 dev-proxy.py） |
+| `cors` | A 可达 + B 被 TypeError：跨域拦截，改用同源代理或服务端加 CORS 头 |
+| `auth` | 401/403：key 无效 |
+| `http` | 其他 HTTP 错误（422/404…，附前 200 字符）：端点路径可能不对 |
+| `shape` | 200 但响应缺 `answers`：地址不是 System One 同构端点 |
+| `mock` / `config` | 离线演示无需连接 / 未知渠道 |
+
+实现注意：探测体必须与正式请求同构（`state`+`model`+`questions` 三字段齐全）——
+漏 `model` 会被真实端点 422 拒绝（已踩过，单测有用例④钉住）。UI 直读输入框当前值，
+不依赖是否已保存；探测期间按钮禁用。
 
 ## 3. 两个代理实现（BYOK，服务端不存 key）
 

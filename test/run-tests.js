@@ -152,6 +152,56 @@ async function jevClientTests() {
   const argmax = await withFetch(async () => mk(200, pickBody),
     () => BG.jev.decide(e, st, st.turn, { channel: 'proxy', topK: 1 }));
   BG.util.assert(argmax.notation === 'H8', 'topK=1 应恒选最高概率项 H8，实际：' + argmax.notation);
+
+  /* ④ 自定义端点回归：opts.endpoint 覆盖渠道预设；未填 key 时自定义端点放行（自建网关可匿名），
+     预设端点不受影响（无 key 仍拒绝、有 key 照发预设地址） */
+  let hitUrl = null;
+  const spyFetch = async (url) => { hitUrl = String(url); return mk(200, okBody); };
+  const d4 = await withFetch(spyFetch, () => BG.jev.decide(e, st, st.turn, {
+    channel: 'official', endpoint: 'http://127.0.0.1:9000/custom/systemone', topK: 1,
+  }));
+  BG.util.assert(hitUrl === 'http://127.0.0.1:9000/custom/systemone', '自定义端点应覆盖预设，实际：' + hitUrl);
+  BG.util.assert(d4.notation === legal[0].notation, '自定义端点下非法响应同样应回退 legal[0]');
+  err = null;
+  try {
+    await withFetch(spyFetch, () => BG.jev.decide(e, st, st.turn, { channel: 'official', topK: 1 }));
+  } catch (e3) { err = e3; }
+  BG.util.assert(err && /API Key/.test(err.message), '预设官方端点无 key 仍应拒绝，实际：' + (err && err.message));
+  await withFetch(spyFetch, () => BG.jev.decide(e, st, st.turn, { channel: 'official', apiKey: 'k', topK: 1 }));
+  BG.util.assert(hitUrl === 'https://api.typesafe.ai/v1/systemone', '预设端点不受 opts.endpoint 缺省影响，实际：' + hitUrl);
+  BG.util.assert(typeof BG.jev.presetEndpoint('openrouter') === 'string' && /openrouter\.ai/.test(BG.jev.presetEndpoint('openrouter')),
+    'presetEndpoint 应返回渠道预设地址');
+
+  /* ⑤ probe 连通性探测：ok / auth / http / cors / network / shape 六种判定。
+     no-cors GET 段与 cors POST 段都打到同一 mock fetch，按 init.mode 区分。 */
+  const probeBody = { model: 'jev-latest', answers: { probe: { noul: 0.5 } } };
+  const doProbe = (impl) => withFetch(impl,
+    () => BG.jev.probe({ channel: 'official', apiKey: 'k', endpoint: 'https://x.example/v1/systemone' }));
+  const reachOK = async () => new Response('ok');
+  let probeSent = null;
+  let pr = await doProbe(async (url, init) => {
+    if (init && init.mode === 'no-cors') return reachOK();
+    probeSent = JSON.parse(init.body);
+    return mk(200, probeBody);
+  });
+  BG.util.assert(pr.ok === true && pr.kind === 'ok' && typeof pr.latencyMs === 'number', 'probe 200+answers 应判 ok，实际：' + JSON.stringify(pr));
+  BG.util.assert(probeSent.model === 'jev-latest' && probeSent.questions.probe.type === 'noul' && probeSent.state,
+    'probe 请求体必须含 state/model/questions（真实端点 422 教训），实际：' + JSON.stringify(probeSent));
+  pr = await doProbe(async (url, init) => (init && init.mode === 'no-cors' ? reachOK() : mk(401, { error: 'bad key' })));
+  BG.util.assert(!pr.ok && pr.kind === 'auth', 'probe 401 应判 auth，实际：' + pr.kind);
+  pr = await doProbe(async (url, init) => (init && init.mode === 'no-cors' ? reachOK() : mk(500, 'boom')));
+  BG.util.assert(!pr.ok && pr.kind === 'http' && pr.status === 500, 'probe 500 应判 http，实际：' + pr.kind);
+  pr = await doProbe(async (url, init) => {
+    if (init && init.mode === 'no-cors') return reachOK();
+    throw new TypeError('Failed to fetch');
+  });
+  BG.util.assert(!pr.ok && pr.kind === 'cors', 'probe「可达但 POST 被 TypeError」应判 cors，实际：' + pr.kind);
+  pr = await doProbe(async () => { throw new TypeError('getaddrinfo ENOTFOUND'); });
+  BG.util.assert(!pr.ok && pr.kind === 'network', 'probe「no-cors 也失败」应判 network，实际：' + pr.kind);
+  pr = await doProbe(async (url, init) => (init && init.mode === 'no-cors' ? reachOK() : mk(200, { openai: true })));
+  BG.util.assert(!pr.ok && pr.kind === 'shape', 'probe 200 但缺 answers 应判 shape，实际：' + pr.kind);
+  pr = await BG.jev.probe({ channel: 'mock' });
+  BG.util.assert(pr.ok === true && pr.kind === 'mock', 'probe mock 应直接返回 mock 判定');
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

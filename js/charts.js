@@ -38,7 +38,7 @@
      * opts: {mode, firstName, secondName, unit} */
     renderTrend(container, points, opts) {
       const mode = MODES[opts.mode] || MODES.win;
-      const W = 470, H = 196, L = 38, R = 14, T = 12, B = 24;
+      const W = 470, H = 158, L = 38, R = 14, T = 12, B = 24;
       const iw = W - L - R, ih = H - T - B;
       container.innerHTML = '';
       container.classList.add('trend-root');

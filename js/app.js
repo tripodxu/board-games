@@ -14,7 +14,7 @@
     mode: 'human-ai', humanSide: null,
     epoch: 0, inflight: null, paused: false,
     trendMode: 'win', aborter: null, sessionRecorded: false, sessionId: null,
-    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6 },
+    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {} },
   };
 
   /* ---------- 设置 ---------- */
@@ -22,6 +22,7 @@
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) Object.assign(S.settings, JSON.parse(raw));
+      if (!S.settings.endpoints) S.settings.endpoints = {};
     } catch (_) { /* ignore */ }
     $('channel').value = S.settings.channel;
     $('apiKey').value = S.settings.apiKey || '';
@@ -30,7 +31,14 @@
     $('speed').value = String(S.settings.speed);
     syncChannelUI();
   }
+  /* 接口地址按渠道归档。必须在改写 S.settings.channel 之前调用：
+     渠道切换时输入框里还是旧渠道的值，归到新渠道名下会串渠道。 */
+  function stashEndpoint(ch) {
+    if (ch === 'mock' || !ch) return;
+    S.settings.endpoints[ch] = $('endpoint').value.trim();
+  }
   function saveSettings() {
+    stashEndpoint(S.settings.channel);
     S.settings.channel = $('channel').value;
     S.settings.apiKey = $('apiKey').value.trim();
     S.settings.orKey = $('orKey').value.trim();
@@ -48,12 +56,17 @@
     $('apiKeyLabel').childNodes[0].textContent =
       ch === 'proxy' ? 'TypeSafe API Key（经代理透传，仅存本机）' : '官方 API Key（仅存本机）';
     $('orKeyLabel').classList.toggle('hidden', ch !== 'openrouter');
+    $('endpointLabel').classList.toggle('hidden', ch === 'mock');
+    $('endpoint').placeholder = BG.jev.presetEndpoint(ch) || '';
+    $('endpoint').value = S.settings.endpoints[ch] || '';
+    $('probeRow').classList.toggle('hidden', ch === 'mock');
+    $('probeOut').textContent = '';
     $('speedRow').classList.toggle('hidden', $('mode').value !== 'ai-ai');
     const hint = {
-      proxy: '代理只做 CORS 转发：你的 key 从浏览器经请求头直达 TypeSafe，服务端不存任何 key。本地用 dev-proxy.py，CF Pages 用 functions/api/jev.js。',
-      official: '浏览器直连官方接口，大概率被 CORS 拦截；推荐改用「同源代理」或 OpenRouter。',
-      openrouter: 'OpenRouter 与官方接口同构（/api/v1/systemone），浏览器可直连，填 OpenRouter key 即可。',
-      mock: '离线演示：内置简单启发式 AI 与合成概率，无需 key。',
+      proxy: '推荐。代理只做同源转发（绕开浏览器跨域）：本地运行 python dev-proxy.py，或部署到 Cloudflare Pages（functions/ 已内置，一条命令）。你的 key 经请求头透传，服务端不存。',
+      official: '实测官方 API 有来源白名单（仅 typesafe.ai 自有域可用），浏览器直连必被拦。官方 key 请改走「同源代理」：本地跑 dev-proxy.py 或部署站点后填 key，效果等同直连。',
+      openrouter: '唯一可浏览器直连的渠道（OpenRouter 允许跨域），但需要的是 OpenRouter key（openrouter.ai 申请），不是 TypeSafe key。',
+      mock: '离线演示：内置简单启发式 AI 与合成概率，无需 key。双击 index.html 打开时也走这里。',
     };
     $('modeHint').textContent = hint[ch] || '';
     updateChannelChip();
@@ -68,10 +81,95 @@
   function effectiveChannel() {
     const ch = S.settings.channel;
     if (ch === 'mock') return 'mock';
+    /* 双击 file:// 打开时同源代理必然不存在，直接落演示，不再让第一手棋报 Failed to fetch */
+    if (ch === 'proxy' && location.protocol === 'file:') return 'mock';
+    /* 自定义端点视作用户明确要求走该渠道：不再因未填 key 回落演示模式 */
+    if (S.settings.endpoints && S.settings.endpoints[ch]) return ch;
     if (ch === 'proxy') return 'proxy';
     const key = ch === 'openrouter' ? S.settings.orKey : S.settings.apiKey;
     if (!key) return 'mock';
     return ch;
+  }
+
+  /* 连通性探测：直接读输入框当前值（测的就是眼前这套配置，不依赖是否已保存） */
+  let probing = false;
+  async function runProbe() {
+    if (probing) return;
+    const ch = $('channel').value;
+    if (ch === 'mock') return;
+    probing = true;
+    const btn = $('probeBtn');
+    const out = $('probeOut');
+    btn.disabled = true;
+    out.className = '';
+    out.textContent = '探测中…（最长 10 秒）';
+    const apiKey = ch === 'openrouter' ? $('orKey').value.trim() : $('apiKey').value.trim();
+    let r;
+    try {
+      r = await BG.jev.probe({ channel: ch, apiKey, endpoint: $('endpoint').value.trim() });
+    } finally {
+      btn.disabled = false;
+      probing = false;
+    }
+    out.textContent = (r.ok ? '✓ ' : '✗ ') + r.message;
+    out.className = r.ok ? 'ok' : 'fail';
+  }
+
+  /* ---------- 侧栏折叠（一屏放下：驾驶舱常开，其余面板可收起） ---------- */
+  const FOLD_KEY = 'jev_qiguan_panels_v1';
+  /* 折叠期间容器 display:none，图表量宽为 0：展开后补一次全量渲染 */
+  const FOLD_HOOKS = {
+    trend: () => renderAnalytics(),
+    duel: () => renderCockpit(),
+    latest: () => renderLatest(S.history.length ? S.history[S.history.length - 1] : null),
+    feed: () => renderFeed(),
+    records: () => renderRecords(),
+    cal: () => renderCalibration(),
+  };
+  function loadFoldOpen() {
+    try {
+      const raw = localStorage.getItem(FOLD_KEY);
+      if (raw === null) return ['trend']; /* 首访默认：驾驶舱 + Jev 判断展开 */
+      return JSON.parse(raw) || [];
+    } catch (_) { return ['trend']; }
+  }
+  function saveFoldOpen(open) {
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(open)); } catch (_) { /* ignore */ }
+  }
+  function applyFolded(pid, folded) {
+    const sec = document.querySelector('.panel.collapsible[data-panel="' + pid + '"]');
+    if (!sec) return;
+    sec.classList.toggle('folded', folded);
+    const btn = sec.querySelector('button.fold');
+    if (btn) btn.setAttribute('aria-expanded', String(!folded));
+  }
+  function toggleFold(pid) {
+    const sec = document.querySelector('.panel.collapsible[data-panel="' + pid + '"]');
+    if (!sec) return;
+    const willFold = !sec.classList.contains('folded');
+    applyFolded(pid, willFold);
+    /* 以 DOM 当前状态为准收集展开清单，避免与存储漂移 */
+    const open = [...document.querySelectorAll('.panel.collapsible:not(.folded)')]
+      .map((s) => s.dataset.panel);
+    if (!willFold) {
+      const hook = FOLD_HOOKS[pid];
+      if (hook) hook();
+    }
+    saveFoldOpen(open);
+  }
+  function initFolds() {
+    const open = loadFoldOpen();
+    document.querySelectorAll('.panel.collapsible').forEach((sec) => {
+      const pid = sec.dataset.panel;
+      applyFolded(pid, !open.includes(pid));
+      sec.querySelector('.panel-title').addEventListener('click', (e) => {
+        /* 标题行内的实体控件（清空/曲线切换等）不触发折叠 */
+        if (e.target.closest('button, select, input, a, label')) return;
+        toggleFold(pid);
+      });
+      const btn = sec.querySelector('button.fold');
+      if (btn) btn.addEventListener('click', () => toggleFold(pid));
+    });
   }
 
   /* ---------- 通用 ---------- */
@@ -205,7 +303,7 @@
     resetSession();
     const eff = effectiveChannel();
     if (eff === 'mock' && S.settings.channel !== 'mock') {
-      toast('未填 API Key，自动进入离线演示模式', false);
+      toast('自动进入离线演示（未填 key，或本地双击打开时代理不可用）。接真实 Jev：部署站点或运行本地代理后填 key', false);
     }
     if (S.mode === 'ai-ai') {
       $('pauseBtn').classList.remove('hidden');
@@ -298,6 +396,7 @@
       const decision = await BG.jev.decide(S.engine, S.st, side, {
         channel,
         apiKey: channel === 'openrouter' ? S.settings.orKey : S.settings.apiKey,
+        endpoint: (S.settings.endpoints && S.settings.endpoints[channel]) || '',
         topK: S.settings.topK,
         signal: S.aborter.signal,
         onRetry: (code) => toast('限流(' + code + ')，退避重试中…'),
@@ -822,6 +921,8 @@
       finishGame(S.engine.getStatus(S.st));
     };
     $('channel').onchange = saveSettings;
+    $('endpoint').onchange = saveSettings;
+    $('probeBtn').onclick = runProbe;
     $('apiKey').onchange = saveSettings;
     $('orKey').onchange = saveSettings;
     $('topK').onchange = saveSettings;
@@ -907,6 +1008,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     buildTabs();
     loadSettings();
+    initFolds();
     bind();
     switchGame('gomoku');
     renderRecords();

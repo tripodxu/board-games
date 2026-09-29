@@ -83,8 +83,11 @@
       </div>
     </section>
 
-    <section class="panel" aria-label="Jev 判断趋势">
+    <section class="panel collapsible" data-panel="trend" aria-label="Jev 判断趋势">
       <div class="panel-title">
+        <button class="fold" aria-expanded="true" aria-controls="body-trend" title="收起 / 展开" aria-label="收起或展开「Jev 判断」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>Jev 判断</h2>
         <span class="note" id="trendNote">悬停或用 ←/→ 巡检</span>
         <span class="spacer"></span>
@@ -94,19 +97,25 @@
           <button id="chipConf">置信度</button>
         </div>
       </div>
-      <div id="trend"></div>
-      <div class="legend">
-        <span><span class="sw first"></span>先手方（<span id="legendFirst">黑方</span>）优势 ↑</span>
-        <span><span class="sw second"></span>后手方（<span id="legendSecond">白方</span>）优势 ↓</span>
+      <div class="panel-body" id="body-trend">
+        <div id="trend"></div>
+        <div class="legend">
+          <span><span class="sw first"></span>先手方（<span id="legendFirst">黑方</span>）优势 ↑</span>
+          <span><span class="sw second"></span>后手方（<span id="legendSecond">白方</span>）优势 ↓</span>
+        </div>
       </div>
     </section>
 
     <!-- 双方对决：两个 Jev 的实时对比 -->
-    <section class="panel" aria-label="双方 Jev 对决">
+    <section class="panel collapsible" data-panel="duel" aria-label="双方 Jev 对决">
       <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-duel" title="收起 / 展开" aria-label="收起或展开「对决」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>对决</h2>
         <span class="note">两个 Jev 的实时手感</span>
       </div>
+      <div class="panel-body" id="body-duel">
       <div class="duel" id="duel">
         <div class="duel-col" id="duelFirst">
           <div class="duel-name"><i class="dot mo"></i><span id="duelFirstName">黑方 Jev</span></div>
@@ -124,53 +133,79 @@
           <div class="duel-row"><span>花费</span><b class="mono">$0</b></div>
         </div>
       </div>
+      </div>
     </section>
 
     <!-- 最新决策：完整候选概率榜 -->
-    <section class="panel" aria-label="最新决策候选榜">
+    <section class="panel collapsible" data-panel="latest" aria-label="最新决策候选榜">
       <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-latest" title="收起 / 展开" aria-label="收起或展开「最新决策」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>最新决策</h2>
         <span class="note" id="latestNote">尚无决策</span>
         <span class="spacer"></span>
         <span class="rank-count" id="rankCount"></span>
       </div>
-      <div id="latest"></div>
+      <div class="panel-body" id="body-latest">
+        <div id="latest"></div>
+      </div>
     </section>
 
-    <section class="panel" aria-label="决策流">
+    <section class="panel collapsible" data-panel="feed" aria-label="决策流">
       <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-feed" title="收起 / 展开" aria-label="收起或展开「决策流」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>决策流</h2>
         <span class="note">每步的候选概率与置信度</span>
       </div>
-      <div id="feed" class="feed"><div class="feed-empty">开始对局后，Jev 的每一步判断会流淌在这里。</div></div>
+      <div class="panel-body" id="body-feed">
+        <div id="feed" class="feed"><div class="feed-empty">开始对局后，Jev 的每一步判断会流淌在这里。</div></div>
+      </div>
     </section>
 
-    <section class="panel" aria-label="战绩簿">
+    <section class="panel collapsible" data-panel="records" aria-label="战绩簿">
       <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-records" title="收起 / 展开" aria-label="收起或展开「战绩簿」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>战绩簿</h2>
         <span class="note" id="recordSummary">本机历史对局</span>
         <span class="spacer"></span>
         <button id="clearRecords" class="mini-btn">清空</button>
       </div>
-      <div class="record-stats" id="recordStats"></div>
-      <div id="records" class="records"></div>
+      <div class="panel-body" id="body-records">
+        <div class="record-stats" id="recordStats"></div>
+        <div id="records" class="records"></div>
+      </div>
     </section>
 
-    <section class="panel" aria-label="Jev 校准实验室">
+    <section class="panel collapsible" data-panel="cal" aria-label="Jev 校准实验室">
       <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-cal" title="收起 / 展开" aria-label="收起或展开「校准实验室」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>校准实验室</h2>
         <span class="note">Jev 说的胜率，真兑现了吗</span>
         <span class="spacer"></span>
         <span class="rank-count" id="calCount"></span>
       </div>
-      <div id="calBody"></div>
+      <div class="panel-body" id="body-cal">
+        <div id="calBody"></div>
+      </div>
     </section>
 
-    <section class="panel" aria-label="棋谱">
+    <section class="panel collapsible" data-panel="ledger" aria-label="棋谱">
       <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-ledger" title="收起 / 展开" aria-label="收起或展开「棋谱」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <h2>棋谱</h2>
       </div>
-      <div id="ledger" class="ledger"></div>
+      <div class="panel-body" id="body-ledger">
+        <div id="ledger" class="ledger"></div>
+      </div>
     </section>
 
     <details class="settings">
@@ -199,12 +234,19 @@
             <option value="mock">离线演示（无需 key）</option>
           </select>
         </label>
+        <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
+          <input type="text" id="endpoint" spellcheck="false" autocomplete="off">
+        </label>
         <label id="apiKeyLabel" class="hidden">TypeSafe API Key（仅存本机）
           <input type="password" id="apiKey" placeholder="apikey_..." autocomplete="off">
         </label>
         <label id="orKeyLabel" class="hidden">OpenRouter Key（仅存本机）
           <input type="password" id="orKey" placeholder="sk-or-..." autocomplete="off">
         </label>
+        <div id="probeRow">
+          <button id="probeBtn">测试连接</button>
+          <div id="probeOut" aria-live="polite"></div>
+        </div>
         <label>走棋随机度
           <select id="topK">
             <option value="1">最强手（不随机）</option>

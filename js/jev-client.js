@@ -12,6 +12,14 @@
  *   openrouter → https://openrouter.ai/api/v1/systemone   model: typesafe/jev-1.13（体格式与官方一致）
  *   proxy      → 同源 api/jev（CF Pages Function / dev-proxy.py），体格式同官方，key 在服务端
  *   mock       → 离线演示（见 mock-ai.js）
+ *
+ * 自定义 Base URL：decide 的 opts.endpoint 非空时覆盖该渠道预设端点（设置面板可改，
+ * 留空 = 预设）。自定义端点不强制 key（自建网关可匿名），有 key 照发鉴权头；
+ * 预设端点保持原有 key 校验。BG.jev.presetEndpoint(ch) 供 UI 取预设值。
+ *
+ * probe(opts)：开局前连通性探测，两段式定位故障——A 段 no-cors GET 只验证「网络可达」；
+ * B 段按真实契约发最小 noul 请求。返回 { ok, kind, message, latencyMs, model?, status? }，
+ * kind ∈ ok | auth | cors | network | http | shape | config | mock。
  */
 (function () {
   const CHANNELS = {
@@ -24,16 +32,24 @@
 
   const REQUEST_TIMEOUT_MS = 30000;
 
-  async function callRaw(channel, body, apiKey, signal) {
+  /* 渠道预设端点：UI 占位符与「留空 = 预设」语义的数据源 */
+  function presetEndpoint(channel) {
+    const cfg = CHANNELS[channel];
+    return cfg ? cfg.endpoint : '';
+  }
+
+  async function callRaw(channel, body, opts) {
     const cfg = CHANNELS[channel];
     if (!cfg) throw new Error('未知渠道: ' + channel);
+    const endpoint = opts.endpoint || cfg.endpoint;
+    const custom = !!opts.endpoint; /* 自定义端点：兼容自建网关，不强制 key */
     const headers = { 'Content-Type': 'application/json' };
     if (channel === 'proxy') {
       /* BYOK：代理只做 CORS 转发，key 由用户自己的 localStorage 随头透传 */
-      if (apiKey) headers['X-Api-Key'] = apiKey;
+      if (opts.apiKey) headers['X-Api-Key'] = opts.apiKey;
     } else if (cfg.keyName) {
-      if (!apiKey) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
-      headers['Authorization'] = 'Bearer ' + apiKey;
+      if (!opts.apiKey && !custom) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
+      if (opts.apiKey) headers['Authorization'] = 'Bearer ' + opts.apiKey;
       if (channel === 'openrouter') headers['HTTP-Referer'] = location.origin || 'http://localhost';
     }
     const payload = { state: body.state, model: cfg.model, questions: body.questions };
@@ -41,38 +57,41 @@
     const timeoutCtrl = new AbortController();
     const timer = setTimeout(() => timeoutCtrl.abort(), REQUEST_TIMEOUT_MS);
     const onOuterAbort = () => timeoutCtrl.abort();
-    if (signal) {
-      if (signal.aborted) timeoutCtrl.abort();
-      else signal.addEventListener('abort', onOuterAbort, { once: true });
+    if (opts.signal) {
+      if (opts.signal.aborted) timeoutCtrl.abort();
+      else opts.signal.addEventListener('abort', onOuterAbort, { once: true });
     }
     try {
-      return await fetch(cfg.endpoint, {
+      return await fetch(endpoint, {
         method: 'POST', headers, signal: timeoutCtrl.signal,
         body: JSON.stringify(payload),
       });
     } finally {
       clearTimeout(timer);
-      if (signal) signal.removeEventListener('abort', onOuterAbort);
+      if (opts.signal) opts.signal.removeEventListener('abort', onOuterAbort);
     }
   }
 
   /* 带重试的请求：429/529 与网络/超时错误退避重试；外部中止立即终止 */
-  async function callWithRetry(channel, body, apiKey, signal, onRetry) {
+  async function callWithRetry(channel, body, opts) {
     let lastErr = null;
     for (let attempt = 0; attempt < 4; attempt++) {
-      if (signal && signal.aborted) throw new Error('aborted');
+      if (opts.signal && opts.signal.aborted) throw new Error('aborted');
       let resp;
       try {
-        resp = await callRaw(channel, body, apiKey, signal);
+        resp = await callRaw(channel, body, opts);
       } catch (e) {
-        if (signal && signal.aborted) throw new Error('aborted');
-        lastErr = new Error('网络错误：' + e.message + '（若为浏览器跨域受限，请改用「同源代理」渠道）');
+        if (opts.signal && opts.signal.aborted) throw new Error('aborted');
+        lastErr = new Error('网络错误：' + e.message +
+          (channel === 'proxy'
+            ? '（同源 /api/jev 不可达：本地需运行 python dev-proxy.py，线上需部署到 Cloudflare Pages；双击 file:// 打开时自动走离线演示）'
+            : '（浏览器直连受 CORS 限制：官方 API 有来源白名单，仅 typesafe.ai 自有域可用；请改用「同源代理」渠道）'));
         await sleep(800 * (attempt + 1));
         continue;
       }
       if (resp.ok) return resp.json();
       if (resp.status === 429 || resp.status === 529) {
-        onRetry && onRetry(resp.status, attempt);
+        if (opts.onRetry) opts.onRetry(resp.status, attempt);
         await sleep(1000 * Math.pow(2, attempt));
         continue;
       }
@@ -84,9 +103,84 @@
     throw lastErr || new Error('重试次数用尽');
   }
 
+  const PROBE_TIMEOUT_MS = 10000;
+
+  /* 连通性探测：诊断「要不要开局」之前的事。
+   * A 段 no-cors GET：响应不可读但能区分「网络/DNS 不通」（reject）与「服务器可达」（resolve）。
+   * B 段最小 noul 请求：CORS 拦截与网络错误在 fetch 层同为 TypeError，用 A 段结果区分两者。
+   * 只读诊断，不发走子请求；渠道头逻辑与 callRaw 保持一致。 */
+  async function probe(opts) {
+    const channel = opts.channel || 'official';
+    if (channel === 'mock') return { ok: true, kind: 'mock', message: '离线演示：无需连接。' };
+    const cfg = CHANNELS[channel];
+    if (!cfg) return { ok: false, kind: 'config', message: '未知渠道：' + channel };
+    const endpoint = opts.endpoint || cfg.endpoint;
+    const t0 = Date.now();
+    let reachable = false;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+      try { await fetch(endpoint, { mode: 'no-cors', signal: ctrl.signal }); }
+      finally { clearTimeout(timer); }
+      reachable = true;
+    } catch (_) { /* 网络层就不通 */ }
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (channel === 'proxy') {
+      if (opts.apiKey) headers['X-Api-Key'] = opts.apiKey;
+    } else if (cfg.keyName) {
+      if (opts.apiKey) headers['Authorization'] = 'Bearer ' + opts.apiKey;
+      if (channel === 'openrouter') headers['HTTP-Referer'] = location.origin || 'http://localhost';
+    }
+    const body = JSON.stringify({
+      state: { probe: true },
+      model: cfg.model,
+      questions: { probe: { type: 'noul', instructions: 'Connectivity probe. Answer immediately.' } },
+    });
+    let resp;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+    try {
+      resp = await fetch(endpoint, { method: 'POST', headers, body, signal: ctrl.signal });
+    } catch (e) {
+      const latencyMs = Date.now() - t0;
+      if (!reachable) {
+        return { ok: false, kind: 'network', latencyMs,
+          message: '网络不可达：' + e.message + '。检查地址拼写与本机网络（代理渠道需先启动 dev-proxy.py）。' };
+      }
+      return { ok: false, kind: 'cors', latencyMs,
+        message: '服务器可达，但浏览器跨域(CORS)被拦截：端点未返回 CORS 头。改用「同源代理」渠道，或让服务端加 Access-Control-Allow-Origin。' };
+    } finally {
+      clearTimeout(timer);
+    }
+    const latencyMs = Date.now() - t0;
+    if (resp.ok) {
+      let data = null;
+      try { data = await resp.json(); } catch (_) { /* 响应不是 JSON，按形状不符处理 */ }
+      if (data && data.answers) {
+        return { ok: true, kind: 'ok', latencyMs, model: data.model,
+          message: '联通正常' + (data.model ? ' · ' + data.model : '') + ' · ' + latencyMs + 'ms，key 有效。' };
+      }
+      return { ok: false, kind: 'shape', latencyMs,
+        message: '端点可达且鉴权通过，但响应不是 System One 结构（缺 answers）。确认地址是 /v1/systemone 同构端点。' };
+    }
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, kind: 'auth', latencyMs,
+        message: '服务器联通，但鉴权失败（' + resp.status + '）：key 无效或未授权，请核对后重填。' };
+    }
+    let detail = '';
+    try { detail = (await resp.text()).slice(0, 200); } catch (_) { /* ignore */ }
+    return { ok: false, kind: 'http', status: resp.status, latencyMs,
+      message: '服务器联通，但返回 HTTP ' + resp.status + (detail ? '：' + detail : '') + '。确认端点路径是否正确（通常到 /v1/systemone 为止）。' };
+  }
+
   const JevClient = {
+    /* 渠道预设端点（设置面板占位符用） */
+    presetEndpoint,
+    /* 开局前连通性探测（设置面板「测试连接」） */
+    probe,
     /* 走一步棋：engine.serializeForJev 的产出交给 Jev，返回决策对象
-     * opts: { channel, apiKey, topK, signal, onRetry }
+     * opts: { channel, apiKey, endpoint?, topK, signal, onRetry }
      * 返回 { notation, move, meta }
      */
     async decide(engine, st, side, opts) {
@@ -100,7 +194,7 @@
         return BG.mock.decide(engine, st, side, legal, ser);
       }
 
-      const data = await callWithRetry(channel, ser, opts.apiKey, opts.signal, opts.onRetry);
+      const data = await callWithRetry(channel, ser, opts);
       const latencyMs = Date.now() - t0;
       const answers = data.answers || {};
       const usage = data.usage || {};
