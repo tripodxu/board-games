@@ -115,6 +115,7 @@
     return {
       state: {
         game: 'gomoku (five-in-a-row) on 15x15 board, columns A-O left to right, rows 1-15 top to bottom',
+        rules: 'Free-style gomoku, no forbidden moves: first to align five or more of their own stones horizontally, vertically or diagonally wins; a full board is a draw.',
         you_play: side,
         move_number: st.moveNum + 1,
         black_stones: stonesOf(st, 1),

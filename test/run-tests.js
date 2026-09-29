@@ -36,6 +36,21 @@ for (const [id, eng] of Object.entries(globalThis.BG.games)) {
   }
 }
 
+/* 契约：serializeForJev 的 state 必须带非空 rules 摘要（Jev 对齐本项目规则细节的唯一来源） */
+try {
+  const missing = Object.entries(globalThis.BG.games)
+    .filter(([id, eng]) => {
+      const ser = eng.serializeForJev(eng.newGame(), eng.sides[0].id);
+      return !ser.state || typeof ser.state.rules !== 'string' || ser.state.rules.length < 40;
+    })
+    .map(([id]) => id);
+  BG.util.assert(missing.length === 0, '以下引擎的 state.rules 缺失或过短: ' + missing.join(','));
+  results.push('✓ 六引擎 state.rules 摘要契约');
+} catch (e) {
+  failed++;
+  results.push('✗ rules 摘要契约: ' + e.message);
+}
+
 /* 单元：校准实验室的数学（解析夹具，见 js/calibration.js selfTest 注释） */
 try {
   globalThis.BG.calibration.selfTest();

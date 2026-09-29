@@ -217,6 +217,7 @@
     return {
       state: {
         game: 'xiangqi (Chinese chess), 9 columns a-i x 10 rows 1-10, row 1 is the black (top) side, pieces stand on intersections',
+        rules: 'Standard xiangqi: pieces move and capture as their identity dictates, the two generals may never face each other on an open file, and check must be answered; checkmate or having no legal move loses the game, and perpetual check is not judged.',
         you_play: cn,
         move_number: st.moveNum + 1,
         red_pieces: pieceMap(st.board, 'r'),

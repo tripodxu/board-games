@@ -255,6 +255,7 @@
     return {
       state: {
         game: 'chess, standard algebraic from-to notation (e2e4), board columns a-h, ranks 1-8',
+        rules: 'Standard chess: castling, en passant and pawn promotion apply when legal; check must be answered; checkmate loses, and stalemate, the fifty-move rule and insufficient material are draws.',
         you_play: colorName,
         move_number: st.fullmove,
         turn: st.turn === 'w' ? 'white' : 'black',

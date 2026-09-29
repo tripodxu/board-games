@@ -163,6 +163,7 @@
     return {
       state: {
         game: 'Chinese checkers, 2 players, hex star board with rows 0-16, cell named r{row}x{x}',
+        rules: 'A piece steps to one adjacent empty cell or chain-jumps over adjacent pieces of either color (nothing is ever captured); first to move all their pieces into the opposite camp wins; draws are impossible.',
         you_play: cn,
         move_number: st.moveNum + 1,
         your_marbles: marbles(side),

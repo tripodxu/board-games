@@ -66,6 +66,7 @@
 {
   state: {
     game: 'gomoku (five-in-a-row) on 15x15 board, columns A-O left to right, rows 1-15 top to bottom',
+    rules: 'Free-style gomoku, no forbidden moves: first to align five or more of their own stones ... wins; ...',
     you_play: side,
     move_number: st.moveNum + 1,
     /* 局面本体：坐标记法数组 / 字符串 */
@@ -89,6 +90,9 @@
    不要拆多次调用（ADR-0001 之外的成本/延迟考量见 docs/jev-api.md）。
 4. `criteria` 写得越具体概率越可信；`move` 的 instructions 里写清"只回答 Choice 问题 move"。
 5. `state` 要能让一个不懂本项目的人/模型复盘：包含盘面说明、轮次、上一手。
+6. **`state.rules` 必填**（2026-09-29 起，契约测试有断言）：2 句左右的英文规则摘要，写
+   「胜负条件 + 本项目采用的特殊规则/参数」（如贴目、强制跳吃、无禁手），与引擎实现严格一致。
+   模型的预训练规则知识可能与本项目口径不一致，规则细节必须随局面每手重发。
 
 ## 5. selfTest 约定
 

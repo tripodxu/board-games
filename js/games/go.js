@@ -188,6 +188,7 @@
     return {
       state: {
         game: 'go 9x9, columns A-I left to right, rows 1-9 top to bottom, Chinese area scoring, komi 5.5 for white',
+        rules: 'Chinese rules: a group with no empty liberty is captured, suicide is illegal, recreating the immediately previous board position (ko) is illegal. Two consecutive passes end the game; area scoring counts stones plus enclosed territory, and white adds 5.5 komi.',
         you_play: side,
         move_number: st.moveNum + 1,
         black_stones: stonesOf(st, 1),

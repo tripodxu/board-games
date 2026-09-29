@@ -147,6 +147,7 @@
     return {
       state: {
         game: 'English checkers (draughts), 8x8, squares named like d4 (file letter + rank), only dark squares are used',
+        rules: 'English draughts: men move and jump diagonally forward only; jumps are mandatory and a jump chain must be completed; reaching the far rank promotes to king and ends the move; kings move and jump in all directions; a side with no legal move loses.',
         you_play: cn,
         move_number: st.moveNum + 1,
         white_pieces: pieceMap(st.board, 'w'),
