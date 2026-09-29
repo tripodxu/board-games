@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**v0.3**：六个棋种引擎 + 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化。
+**v0.5**：六个棋种引擎 + 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
@@ -16,14 +16,17 @@
 | 中国跳棋 cc | ✅ | 六角星 121 格，连跳递归、先抵对营 |
 | 对弈模式 | ✅ | 人机（选执子）/ 机机（速度滑杆、暂停、单步）/ 人人 |
 | Jev 接入 | ✅ | 四渠道（official/openrouter/proxy/mock）+ 各渠道可自定义 Base URL（留空用预设）+ 「测试连接」连通性探测（网络/CORS/key/端点形状六种判定）+ 429/529 退避 + top-k 采样 |
-| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点）+ 战术保险（meta.tactics = win/block/open4/threat/parry/parry3 透出，优先级 win > block > open4 > threat > parry > parry3，parry3 = 抢占对手活三/活四制造点）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
+| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点）+ 战术保险（meta.tactics = win/block/open4/threat/parry/parry3 透出，优先级 win > block > open4 > threat > parry > parry3；parry = 拆对手双杀制造点且多个并存时按 3-ply 安全性排序（排除给对方持续攻击节奏的点），parry3 = 抢占对手活三/活四制造点）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
 | 决策面板 | ✅ | top-3 概率条、置信度、局势判断、延迟、token/成本累计 |
 | 校准实验室 | ✅ | Jev 胜率预测 vs 真实胜负：Brier/技巧分/ECE/过度自信 + 可靠性图（真实渠道才有数据） |
 | 可访问性 | ✅ | 见下方「设计例外」；对比度按 WCAG AA 核算，焦点环/滚动条已主题化 |
 | 侧栏一屏化 | ✅ | 7 个分析面板可折叠（驾驶舱常开，首访默认展开「Jev 判断」），状态持久化；1080p 含浏览器 chrome 一屏放下，展开时补渲染防零宽图表 |
 | 棋谱导出 | ✅ | 棋谱面板「导出」一键下载当前对局 JSON（`jev-qiguan-game/v1`：记法序列 + 双方每手含保险标记 + 对局信息）；悔棋自动跟随，空局拦截 |
-| 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ dev-proxy.py 本地 |
-| 自检 | ✅ | `node test/run-tests.js`：六引擎 selfTest + 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点）+ gomoku/cc/go mock 集成对局 |
+| 棋谱自动同步 | ✅ | 终局自动 POST `/api/games` → CF Pages Function 用 GitHub API 把棋谱 commit 进仓库 `games/<日期>/`（提交信息带 `[skip ci]`，不触发 Pages 构建）；设置面板「终局自动同步棋谱」开关可关；需 Pages 环境变量 `GAMES_GITHUB_TOKEN`（PAT，仓库 Contents 读写），未配置则静默失败不影响对局 |
+| 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–20 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端） |
+| 后端 | ✅ | **`server.js` 零依赖 Node 后端**（`node server.js`，默认 8788）：静态托管 + `/api/jev` 代理（BYOK，key 不落盘）+ `/api/games` 棋谱落盘（幂等原子写，文件名与 CF 端一致）+ `/api/experiments` 实验归档（`data/`，gitignore）+ `/api/stats` 跨对局聚合 + `/api/health`；18 项 HTTP 契约测试随全量自检跑。**CF Pages 侧契约对齐**（health/experiments/stats 三端点，持久化走 GitHub，≤42 子请求守免费版限额）。前端 `js/api.js` 探活：有后端则服务端样本并入校准实验室、实验双端归档；无后端（file:///纯静态）自动降级，功能不变（ADR-0005） |
+| 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ **`node server.js` 自托管**（本地/内网完整后端，棋谱落盘不依赖 GitHub token）+ dev-proxy.py 最小备用 |
+| 自检 | ✅ | `node test/run-tests.js`：六引擎 selfTest + 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + 新增 health/experiments/stats）+ **server.js 后端 18 项 HTTP 契约测试** |
 
 ## 已验证（验收证据）
 
@@ -32,6 +35,14 @@
 前端打磨轮另跑了对比度扫描（WCAG 相对亮度公式逐色核算）与 `impeccable detect` 机械体检。
 2026-09-29 接入轮：probe 六种判定单测过；真实 key 实测——官方端点直连可达（probe ok），
 经 dev-proxy 代理 probe 与真实 `decide()` 全链路通（jev-1.13.0，单步 ~0.5–2s，成本符合成本模型）。
+2026-09-29 同步/实验轮：棋谱自动同步全链路通（22 份真实对局入库 `games/2026-09-29/`）；
+两轮对比实验（Jev 代理+战术 vs 纯随机+战术）已归档实验报告面板——有效 9 局 Jev 8 胜 1 和 0 负，
+且基线 9 局进攻性战术（threat/open4/win）触发 0 次（纯被动防守）；次轮第 4 局 225 手和棋
+（双方 65 次战术触发全是防守）。
+2026-09-29 后端化轮（v0.5）：`node server.js` 实测全链路——CDP 驱动真实点击打完一局
+（mock 渠道，19 手终局），终局 0.5s 内棋谱落盘、设置面板「数据存储」显示
+`jev-qiguan-server v1.0.0 · 22 份`、「最近同步」显示落盘文件名；头部 chip「后端 已连接」。
+file:// 静态打开实测回落「无本地后端」，对局/导出/记录不受影响（降级路径即原路径）。
 
 ## 设计例外（有意保留，不是遗漏）
 
@@ -58,22 +69,35 @@
 5. 中国跳棋未禁止"永堵对方营地门"的变体规则；机机僵持时用悔棋/重开兜底。
 6. Jev 概率判断可能出错（「零幻觉」仅指输出结构体），胜负以棋盘为准；官方性能数字为厂商口径。
 7. 移动端触控未做专门优化（canvas 点击可用，但面板布局为桌面优先）。
+8. 棋谱同步 / 实验归档 / 跨对局统计在 CF Pages 上都依赖环境变量 `GAMES_GITHUB_TOKEN`：未配置
+   （或本地 `file://`/无 `functions/` 的静态托管）时同步静默失败（前端「数据存储」块会显示
+   token 未配置的提示），实验历史只存浏览器 localStorage，换设备看不到。**自托管
+   `node server.js` 不受此限**（棋谱落盘、实验归档均在本地，校准样本跨设备可聚合）。
+   Pages 侧 `/api/stats` 另受免费版 50 子请求/次限制，只聚合最近 40 份（`truncated` 明示）。
+9. `server.js` 与 `dev-proxy.py` 默认同为 8788 端口：同时跑会 EADDRINUSE（server.js
+   会给出换端口提示），两者是替代关系不是互补关系；持久化是 JSON 文件不是数据库，
+   规模到「每天几十份」无感，再上层需换存储（届时是新 ADR）。
+10. 本机历史遗留：曾有多個 dev-proxy.py 实例残留占用 8788（Windows SO_REUSEADDR 允许多个
+    监听共存，新连接落点不确定）。遇到端口行为异常先 `netstat -ano | findstr 8788`。
 
 ## 路线图（候选，未承诺）
 
 - [ ] 象棋长将/长捉判负（规则补全）
 - [ ] 围棋 13 路（含候选预筛策略）
 - [ ] 国际象棋三次重复判和
-- [ ] 棋谱导入（导出已上线：`jev-qiguan-game/v1` JSON；剩余：导入回放 + PGN/中文记法转换）
-- [ ] 对局记录导出为 JSON / 分享链接
+- [ ] 棋谱导入（导出与自动同步已上线：`jev-qiguan-game/v1` JSON 进 `games/<日期>/`；剩余：导入回放 + PGN/中文记法转换）
+- [ ] 实验报告云端化（当前：localStorage + 服务端 `data/experiments.json` 双归档 + 内置种子；剩余：多设备统一视图）
+- [ ] 棋谱回放器（后端已能按局读取 `games/<日期>/<文件>`，前端差一个逐手重放面板）
 - [ ] 移动端响应式布局
 - [ ] Jev vs Jev 批量赛程（ overnight 挂机跑 N 盘统计胜率）
 
 ## 技术债 / 注意点
 
-- `js/app.js` 是最大的单文件（~800 行），承担全部 UI 编排；继续膨胀时应先拆
-  「记录/统计」与「对局循环」两个模块，拆时保持 `index.html` 加载顺序同步。
-- `test/run-tests.js` 与 `index.html` 的加载清单是两份硬编码，新增 JS 文件别忘了两处。
+- `js/app.js` 是最大的单文件（~1450 行），承担全部 UI 编排（对局循环 + 实验连跑 + 棋谱同步/导出 + 后端探活 + 实验报告归档 + 校准双源合并）；继续膨胀时应先拆
+  「记录/统计/实验/后端」与「对局循环」两个模块，拆时保持 `index.html` 加载顺序同步。
+- `test/run-tests.js` 与 `index.html` 的加载清单是两份硬编码，新增 JS 文件别忘了两处
+  （本轮 `js/api.js` 已两处同步；`server.js`/`test/server-tests.js` 是 Node 侧，由
+  run-tests.js `require`，不进浏览器加载清单）。
 - mock 与引擎启发式已全部经 `BG.util.rnd()`（可种子）；`Math.random` 仅剩 `board.js` 兜底与 `weightedPick`（真实渠道采样）两处，属预期。
 - ~~对局循环的 O(n²) 渲染与 history 全量快照~~ **已于 2026-09-29 清除**：决策流改为增量插入，
   history 只存记法、悔棋按记法重放。悔棋回路的两处缺陷（AI 回合不续弈、终局状态残留）同批修复。

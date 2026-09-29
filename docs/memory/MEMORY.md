@@ -8,6 +8,110 @@
 
 ---
 
+## 2026-09-29 · CF Pages 补齐三端点：线上也获得完整后端（方案 1 落地）
+
+- 用户问「可以部署到 cf 上吗」「是不是可以改成 worker」。结论：Pages Functions **就是**
+  Worker（同运行时同 API），server.js 的 node:http/fs 在 Workers 里不存在（nodejs_compat
+  也不放行），不可能小改迁移；但把三个独有端点移植成 Pages Functions 即可让线上获得
+  与本地一致的完整体验。选定方案 1（保留 git 自动部署，不引入 wrangler/npm）。
+- 新增 `functions/api/health.js`（零上游请求的探活，`github` 字段报 token 配置态）、
+  `experiments.js`（读写仓库 `data/experiments.json`，按 tag upsert，`exp: <tag> [skip ci]`）、
+  `stats.js`（聚合）。持久化全部走 GitHub（复用 games.js 的写路径），**零新增绑定**：
+  不引 KV/D1/R2，数据天然版本化。三文件共用 `functions/api/_github.js`（下划线前缀
+  不对应路由的共享模块，Pages/Wrangler 的 ESM import 是标准行为）。
+- **免费版 50 子请求/次 是 stats 的硬约束**（已查证）：设计成 1 次 trees + ≤40 份 raw
+  （raw.githubusercontent.com 走 CDN 不计 API 配额）+ 1 次 contents = 42，测试里直接断言
+  ≤42。截断时 `truncated: true`，前端显示「40+ 份」不冒充全量（本地 server.js 仍是 400 份）。
+- **Pages 的 SPA 兜底坑**：未匹配的 `/api/*` 返回 index.html + 200（线上实测）。前端
+  `BG.api` 靠 JSON 解析抛错被 catch 成 null 来降级——行为正确但是隐式的，已在 jev-api.md 写明。
+- 测试：`pagesApiTests` 用「剥 import/export + 源码拼接」加载模块（_github.js 定义内联进
+  同一作用域，模拟 Wrangler 打包），stub fetch 按 URL 路由模拟 GitHub。踩了两个自己的坑：
+  withStub 多行 route 少写一个 `]`（第二个参数被吃进路由数组，SyntaxError 定位到几十行外）；
+  以及断言本身写错（3 份里只有 1 份既非 mock 又有二元真值，cal.games 应为 1）。
+- 聚合口径与 server.js handleStats 逐字一致（byGame/results/cal.records），前端按
+  gid|着法串去重合并，本地与线上样本可互换。
+
+## 2026-09-29 · 后端化（ADR-0005）：server.js 零依赖 Node 后端 + 前端全量打磨
+
+- 用户要求「重构成具有后端的项目」，但不能违背 ADR-0001（零框架/零构建/零依赖）。
+  解法：`server.js` 只用 node:http/fs/path，`node server.js`（默认 8788）一个命令得到
+  静态托管 + `/api/jev` 代理 + `/api/games` 落盘 + `/api/experiments` 归档 +
+  `/api/stats` 聚合 + `/api/health`。棋谱文件名规则与 CF 端逐字对齐（gid 清洗截断 24、
+  `games/<exported 日期>/<gid>-<stamp>.json`），`flag:'wx'` 原子写实现幂等。
+- **降级路径即原路径**：`js/api.js`（BG.api）全部方法失败返回 null 不抛；`app.js` 启动
+  `initBackend()` 探活，live（server.js）才做服务端合并，deploy（file:///纯静态/Pages）
+  行为与后端化之前逐字节一致。头部「后端」chip + 设置面板「数据存储」块显示三态读数
+  （jev-qiguan-server v1.0.0 / 棋谱份数 / 最近同步结果）。
+- 后端对产品最实质的增强：**校准实验室双源合并**。`buildGameExport()` 补 `cal/firstWin/mock`
+  字段（与 saveGameRecord 同口径，抽出 `calSamples()` 单一事实源），`/api/stats` 按局返回
+  `cal.records`（key = gid|着法串），前端与本机战绩簿按 key 去重合并——换设备、清缓存
+  不再把校准数据清零。mock 标记口径改为「本局无任何真实渠道着法」：对比实验一方 mock
+  一方 Jev 时，Jev 半局的样本仍然有效。
+- 测试：`test/server-tests.js` 18 项 HTTP 契约（临时目录 + listen(0)，不碰仓库数据），
+  由 run-tests.js require 进唯一验收命令；`serverTests(log)` 的 log 注入让输出顺序与
+  引擎用例一致（否则后端用例会插到最前面）。
+- 前端打磨（impeccable polish 模式，保留月白/玄墨/朱砂体系）：修了一个真 bug——
+  **`.mono` 数据字工具类没有基类规则**（app.js 挂 21 处，字体从未换成等宽），「等宽数据字」
+  这个体系组成实际是死的；补基类 + `font-variant-numeric: tabular-nums`。
+  另：caret-color 主题化、`#tabs` 纳入主题滚动条、`＋/－` 与 `⚗`  Unicode 字形换成自绘 SVG
+  （craft-floor 拒绝项）、棋谱面板空态、probe 加载态、窄屏头部 chip 裁切修复
+  （420px 实测品牌副标题 255px 宽，芯片行改确定性换行）、engine-metrics 窄屏两列。
+  impeccable detect 复跑：零新增违规（仅存量 4 项文档化例外）。
+- 实测（CDP 驱动真实点击，非仅静态截图）：mock 渠道自动打完 19 手终局 → 0.5s 内棋谱
+  落盘 → 设置块显示 `jev-qiguan-server v1.0.0 · 22 份`、「最近同步 · 成功」；
+  file:// 回落「无本地后端」，对局/导出/记录不受影响。
+- 坑：本机有多个历史遗留 dev-proxy.py 实例占着 8788（Windows SO_REUSEADDR 允许多监听
+  共存，新连接落点不确定），验证时换 PORT=8790；server.js 的 EADDRINUSE 文案已指向换端口。
+
+## 2026-09-29 · 对比实验面板 + random 纯随机基线渠道（Jev vs 随机，8:0:1）
+
+- 动机：要回答「Jev+战术到底比纯随机强多少」，需要可重复的机机 A/B 连跑。实现（`app.js`）：
+  实验面板选 A/B 渠道 + 局数（1–20），`startExperiment()` 起跑，**自动交替执黑白**（偶数局 A 执黑），
+  终局 2.5s 自动开下一局；`effectiveChannelFor(side)` 让同局黑白走不同渠道（平时回落 `effectiveChannel()`）；
+  手动开局不清 `expChannels`（`startGame` 里 `EXP.running` 守卫）。
+- **random 基线渠道**（`jev-client.js`）：均匀概率、零启发式、`model='random-baseline'`、成本 0，
+  但**刻意走完整战术管线**——这样「随机+战术 vs Jev+战术」的唯一变量就是概率分布质量。
+  两个坑：① 自由手原先被 topK=1 坍缩成「取第一顺位」，退化成顺序走子（A1→B1→C1…，实测两盘
+  棋谱完全相同）——改为 `legal[BG.util.rand(len)]` 真随机均匀采样，与 topK 无关；战术接管不受影响。
+  ② mock 渠道不走战术层，random 走，两者语义不同别再混。
+- **实验报告面板**：`localStorage`（`jev-exp-history-v1`）归档每轮战报 + 内置两轮真实实验种子
+  （`EXP_SEED`），`loadExpHistory` 按 tag 合并：缺失或局数偏少（某局棋谱是部署后才同步到的）自动补齐，
+  再按日期倒序。重复局标 `dup` 不计入有效统计。
+- 结论（有效 9 局）：Jev(代理)+战术 **8 胜 0 负 1 和**；基线 9 局进攻性战术（threat/open4/win）
+  **触发 0 次**，65+ 次战术触发全是防守——纯随机只会被堵，造不出双杀。次轮 #4 下满 225 手和棋：
+  双方都是纯防守节奏。样本仍小（同棋种同配置），结论方向可用、数值别当统计显著性。
+- 趋势图兜底（同批）：random 着法不再进 Jev 判断序列（`meta.channel !== 'random'`）；
+  三芯片永不为空——局势分缺失用胜率×10、置信度缺失用首选概率。
+
+## 2026-09-29 · 棋谱自动同步进仓库 games/（对比实验的数据底座）
+
+- 动机：复盘分析需要真实对局数据，手动导出上传太慢。链路：终局 `uploadGameRecord()` POST
+  `/api/games` → CF Pages Function（`functions/api/games.js`）用 GitHub API commit 进仓库
+  `games/<YYYY-MM-DD>/<gid>-<stamp>.json`。GET `/api/games` 列出最近 7 天棋谱。
+- 关键决策：**提交信息带 `[skip ci]`**——Pages 的 git 集成会把任何 push 当部署触发，
+  棋谱数据提交不触发构建，否则对局一多就把构建队列淹了（加之前 Pages 白构建了 20+ 次）。
+- 密钥：CF Pages 环境变量 `GAMES_GITHUB_TOKEN`（fine-grained PAT，只给本仓库 Contents 读写）。
+  **未配置时 500 + 客户端静默失败**（只 console 记录）——同步是增强不是对局依赖，这条降级路径必须有。
+  限流同 jev.js 做法（POST 20 次/分/IP）；payload 校验 `format === 'jev-qiguan-game/v1'`。
+- 开关：设置面板「终局自动同步棋谱」（`settings.gameSync`，默认开），存 localStorage。
+- 教训：`exportGame` 的 payload 构造抽成了 `buildGameExport()` 复用；实验局额外带
+  `blackChannel/whiteChannel/experiment/expGameNo` 字段，否则归档后分不清哪局是谁走的。
+
+## 2026-09-29 · 拆杀点安全性排序：3-ply 排除持续攻击（parry 第二判）
+
+- 用户实战败局复盘（白 Jev 负，`jev-gomoku-202609290924.json`）第 18 手：danger=[I9,E9] 两个双杀
+  制造点并存，实战走 I9（Jev 偏好）→ 黑 E9 单杀逼杀 → 白被迫 D9 → 黑 H12 对角成四 → 白只堵一端
+  → 黑 D8 获胜。根因：**I9 只是 E9 的其中一个致胜点，堵它不解决问题**。
+- 修复（`jev-client.js`，`deepTactics` 引擎生效）：多个 danger 并存时 `pickSafestParry` 两轮排序——
+  ① `allowsSustainedAttack`：白走 p 后黑有逼杀 q（走出后恰 1 个致胜点）→ 白被迫堵 → 黑**仍有
+  danger 点** ⇒ p 给了黑持续攻击节奏，排除；② 剩余点按 `countForcingReplies`（p 走后黑的逼杀
+  着法数）取最少。单点或非 deepTactics 引擎回退 `pickAmong`。外层 64 候选、逼杀 q 只看前 8 个、
+  逼杀数数到 10 即停——深度换时间的边界写死在代码里。
+- 回归用例 ⑨e：钉住本局 p18（mock 概率偏向 I9 0.9 仍被接管到 E9，`meta.tactics='parry'`）；
+  用例 ⑩/⑪ 同批钉住 random 渠道（一步杀必堵、自由手真随机）。
+- 认知沉淀：**「堵哪个点」和「挡不挡」是两个问题**——2-ply 只回答后者；多个独立制造点并存时，
+  点的选择要看 3-ply（堵完对手还有没有杀）。保险层到此为止，更深仍靠模型。
+
 ## 2026-09-29 · 实战败局复盘（jev-gomoku-202609290843.json）：parry3 预挡层
 
 - 用户导出的真实败局（白 Jev 负，黑 H6-I7-J8-K9-L10 对角五连）。逐点复盘确认：保险层全程正常

@@ -8,8 +8,10 @@
 
 ## 1. 项目一句话
 
-纯静态 HTML/JS 的六棋种对弈站（五子棋 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
-由 TypeSafe「系统一模型」Jev 走子。**零框架、零构建、零第三方依赖**，双击 `index.html` 即玩。
+原生 HTML/JS 的六棋种对弈站（五子棋 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
+由 TypeSafe「系统一模型」Jev 走子。**零框架、零构建、零第三方依赖**：双击 `index.html`
+即玩（离线演示），`node server.js` 起本地后端（棋谱落盘 / 实验归档 / 跨对局统计），
+部署形态见 [ADR-0005](docs/adr/0005-zero-dep-node-backend.md)。
 
 ## 2. 硬性规则（不可协商）
 
@@ -36,7 +38,8 @@
 | 新增一个棋种 | engine-interface.md + agents/playbooks.md §1 | 参照 `js/games/gomoku.js` 模板 |
 | 改 Jev 调用 / prompt / 渠道 | jev-api.md | `js/jev-client.js` + `functions/api/jev.js` |
 | 改 UI / 交互 / 决策面板 | architecture.md | `index.html` + `css/style.css` + `js/app.js` |
-| 改部署 / 代理 | jev-api.md §渠道 | `functions/api/jev.js` + `dev-proxy.py` |
+| 改后端 / API / 持久化 | ADR-0005 + jev-api.md §3 | `server.js` + `js/api.js` + `test/server-tests.js`（动契约必须三处同步 + 双端测试） |
+| 改部署 / 代理 | jev-api.md §渠道 | `server.js` / `functions/api/*.js` + `dev-proxy.py` |
 | 接手别人没做完的任务 | agents/handoff.md + memory 最新 3 条 | handoff 里指名的文件 |
 
 完整任务→阅读矩阵见 [docs/agents/reading-paths.md](docs/agents/reading-paths.md)。
@@ -44,12 +47,13 @@
 ## 4. 常用命令
 
 ```bash
-node test/run-tests.js          # 引擎自检 + mock 机机集成测试（唯一验收命令）
-python dev-proxy.py             # 本地静态+代理服务器 → http://localhost:8788
+node test/run-tests.js          # 唯一验收命令：引擎自检 + mock 集成 + 后端/Pages 契约测试
+node server.js                  # 本地完整后端（静态托管 + API + 持久化）→ http://localhost:8788
+python dev-proxy.py             # 本地最小备用：静态 + /api/jev → http://localhost:8788
 # 浏览器打开 index.html?test=1   # 页面内运行全部引擎自检
 ```
 
-环境要求：Node ≥ 18（跑自检与文档检查）、Python ≥ 3.8（可选，仅 dev-proxy.py 需要）。**无需 npm install**（零依赖）。
+环境要求：Node ≥ 18（自检 / 文档检查 / server.js）、Python ≥ 3.8（可选，仅 dev-proxy.py 需要）。**无需 npm install**（零依赖）。
 
 ## 5. 代码约定速查
 

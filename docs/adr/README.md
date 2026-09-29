@@ -12,3 +12,4 @@
 | [0002](0002-coordinate-notation-state.md) | Jev state 用英文坐标记法 + 三问并行 | accepted |
 | [0003](0003-byok-proxy.md) | 代理只做 CORS 转发的 BYOK 设计 | accepted |
 | [0004](0004-unified-engine-interface.md) | 棋种引擎统一接口 + selfTest 自检 | accepted |
+| [0005](0005-zero-dep-node-backend.md) | 零依赖 Node 后端（server.js）：项目变为「静态前端 + 后端」 | accepted |

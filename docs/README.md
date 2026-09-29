@@ -19,12 +19,14 @@ docs/
 │   ├── 0001-pure-static-no-build.md
 │   ├── 0002-coordinate-notation-state.md
 │   ├── 0003-byok-proxy.md
-│   └── 0004-unified-engine-interface.md
+│   ├── 0004-unified-engine-interface.md
+│   └── 0005-zero-dep-node-backend.md
 ├── plans/                  ← 实施计划（完成后保留为历史记录，标注状态）
 │   ├── 2026-09-28-board-games-mvp.md            ✅ 已完成
 │   ├── 2026-09-29-iteration-02-play-loop.md     ✅ 已完成（优化轮）
 │   ├── 2026-09-29-iteration-03-calibration-lab.md ✅ 已完成（创意轮）
-│   └── 2026-09-29-iteration-04-frontend-polish.md ✅ 已完成（前端轮）
+│   ├── 2026-09-29-iteration-04-frontend-polish.md ✅ 已完成（前端轮）
+│   └── 2026-09-29-iteration-05-backend-polish.md  ✅ 已完成（后端化 + 全量打磨）
 ├── superpowers/
 │   └── plans/
 │       └── 2026-09-28-board-games-hardening.md   ✅ 已完成（仓库硬化）

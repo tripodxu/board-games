@@ -14,6 +14,7 @@
 | 2 | 新增一个棋种 | engine-interface.md 全文 + playbooks §1 | 样板：`js/games/gomoku.js`；注册点：`app.js` 的 `GAME_ORDER`、`test/run-tests.js` 清单 | ~300 行 |
 | 3 | 改 Jev 请求/prompt/序列化 | jev-api.md §1、§4 | `js/jev-client.js` + 目标引擎的 `serializeForJev`（grep 定位） | ~200 行 |
 | 4 | 加/改渠道、代理、部署 | jev-api.md §2–3 + ADR-0003 | `functions/api/jev.js` 或 `dev-proxy.py`（二选一） | ~100 行 |
+| 4b | 改后端 API / 持久化 | ADR-0005 + jev-api.md §3 | `server.js` + `js/api.js`；契约测试 `test/server-tests.js`（动契约三处同步：server.js、functions/api/*.js、双端测试） | ~600 行 |
 | 5 | 改 UI/交互/决策面板 | architecture.md §2–3 | `index.html` + `js/app.js`（grep 函数名定位，勿通读） | 按需 |
 | 6 | 改成本/token 统计口径 | jev-api.md §4 | `js/jev-client.js` 的 `costUsd` 一行 | ~10 行 |
 | 7 | 接手进行中任务 | handoff.md + memory 最新 3 条 | handoff 中指名的文件 | 按 handoff |

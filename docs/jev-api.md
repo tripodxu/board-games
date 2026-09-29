@@ -36,7 +36,7 @@ resp: {
 - 429/529 → 指数退避重试（`jev-client.js` 最多 4 次：1s/2s/4s/8s）；401 → key 无效直接报错；
   30s 无响应判超时；外部 `AbortSignal`（切棋种/重开）立即终止。
 
-## 2. 四个渠道
+## 2. 渠道（四可选 + random 基线）
 
 | channel | endpoint | model | key 放哪 | 说明 |
 |---|---|---|---|---|
@@ -44,6 +44,7 @@ resp: {
 | `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，唯一可浏览器直连的渠道（需 OpenRouter key，非 TypeSafe key） |
 | `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | CF Pages Function 或 `dev-proxy.py`；**Pages 侧有每 IP 每分钟滑动窗口限流（默认 30，`RATE_LIMIT_PER_MIN` 可配），超限 429** |
 | `mock` | 本地 | — | 无 | `js/mock-ai.js` 离线演示，概率为合成值 |
+| `random` | 本地 | `random-baseline` | 无 | **纯随机基线，仅对比实验面板可选**（设置面板渠道下拉不含它）：均匀概率、零启发式、成本 0，但照样走完整战术管线——「随机+战术 vs Jev+战术」的唯一变量是概率分布质量。自由手真随机均匀采样（不经 topK，否则 topK=1 会坍缩成顺序走子） |
 
 默认渠道（`app.js` settings）：`proxy`。`effectiveChannel()` 在未填 key 时自动回落 `mock`，
 保证无 key 完整体验。
@@ -89,19 +90,27 @@ resp: {
 Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态质量」。`decide()` 在发请求前
 统一做两层增强（对 `serializeForJev` 的产出做后处理，六棋种通用，mock 渠道不受影响）：
 
-1. **`state.tactics`**：用引擎自身的 `applyMove`/`getStatus` 模拟推算双方「一步致胜点」——
-   `{ winning_points_you: [...], winning_points_opponent: [...] }`。己方致胜 = 必走，
-   对方致胜 = 必挡；go 等无中途终局的棋种自然为空数组。指令里同步声明这两个字段的语义
+1. **`state.tactics`**：用引擎自身的 `applyMove`/`getStatus` 模拟推算双方战术点——1-ply
+   `{ winning_points_you: [...], winning_points_opponent: [...] }`（一步致胜点：己方 = 必走，
+   对方 = 必挡；go 等无中途终局的棋种自然为空数组）+ 2-ply
+   `{ chance_points_you: [...], danger_points_opponent: [...] }`（造杀点：走出后己方有 ≥2 个
+   一步致胜点 = 两步必胜；对手的造杀点 = 必须现在拆）。指令里同步声明这些字段的语义
    （英文，追加在 `questions.move.instructions` 尾部）。
 2. **`state.experience`**（可选，由 `opts.experience` 传入）：同一棋种、真实渠道的历史局中
    与当前开局前 4 手相同的那部分，统计 `{ opening_plies, games, first_player_win_rate }`。
    样本 <2 局不注入（噪声）；离线演示局从不参与（合成数据不自证）。
 
-**战术保险（客户端三级接管）**：解析概率后按序执行——① 有致胜点必走其一；② 否则有对方致胜点
-必挡其一；③ 否则引擎以 `criteria` 保留标签 `you:open4` 声明的活四点必走（活四 + 对方无先手五
-= 理论必胜：两处成五点防不胜防）。战术点在概率榜内按概率加权抽（尊重 topK），榜外（候选预筛
+**战术保险（客户端六级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
+threat | parry | parry3 | null`——① `win` 有致胜点必走其一；② `block` 否则有对方致胜点必挡其一；
+③ `open4` 否则引擎以 `criteria` 保留标签 `you:open4` 声明的活四点必走（活四 + 对方无先手五
+= 理论必胜：两处成五点防不胜防）；④ `threat` 否则抢占 2-ply 造杀点（`chance_points_you`：
+走出后己方有 ≥2 个一步致胜点，带护栏）；⑤ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），
+**多个并存时按 3-ply 安全性排序**——先排除「堵完对手仍有双杀制造点」的坏点（给了对手持续攻击
+节奏），剩余按对手逼杀着法数取最少；⑥ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3`
+标签的点（对手的活三/活四制造点）。战术点在概率榜内按概率加权抽（尊重 topK），榜外（候选预筛
 遗漏）直接执行该点并在 `meta.warning` 标注「战术保险接管」。概率只是偏好，事实优先——Jev
-不再漏算单步胜负与活四胜机。`meta.tactics = win | block | open4 | null`。
+不再漏算单步胜负、活四胜机与对手的杀招制造点。深度换时间的边界写死在实现里（外层 64 候选、
+逼杀着法只查前 8 个、逼杀数数到 10 即停）。
 
 **五子棋 criteria 战术标签**（引擎代读棋盘，`labelPoint` 真实推演非模式匹配）：
 `you:open4 / you:four / you:live3`（我落这造什么）、`deny:open4 / deny:four / deny:live3`
@@ -135,13 +144,39 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
 另观察：上游会**阵发性误报 401**（key 有效却 authentication_error，成阵持续数十秒到几分钟），
 已把 401 文案改为提示「key 无误时可能是瞬时故障，稍后重试」。401 仍不自动重试（避免坏 key 空转）。
 
-## 3. 两个代理实现（BYOK，服务端不存 key）
+## 3. 服务端实现（BYOK，服务端不存访客 key）
 
+三套实现共用同一套 URL 契约，前端无感切换（详见 ADR-0005）：
+
+- **`server.js`**（零依赖 Node，`node server.js`，默认 8788）：本地/自托管的完整后端。
+  静态托管 + `POST /api/jev`（TypeSafe 代理，30s 超时）+ `POST/GET /api/games`
+  （棋谱落盘 `games/<日期>/`，`flag:'wx'` 原子写幂等，文件名规则与 Pages 端一致）+
+  `POST/GET /api/experiments`（归档 `data/experiments.json`，按 tag upsert）+
+  `GET /api/stats`（跨对局聚合，`cal.records` 按局给 key=gid|着法串）+
+  `GET /api/health`。限流：jev 60 次/分、其余 120 次/分（每 IP 滑动窗口）。
+  契约测试见 `test/server-tests.js`（18 项，随 `node test/run-tests.js` 全量跑）。
 - **`functions/api/jev.js`**（Cloudflare Pages Functions）：仅做 CORS 转发，
   key 来自访客请求头；未提供 → 401 中文提示。部署到 CF Pages 后自动获得 `/api/jev`。
-- **`dev-proxy.py`**（本地）：静态托管 + `/api/jev` 转发，持久 TLS 连接
+- **`functions/api/health.js` / `experiments.js` / `stats.js`**（2026-09-29 补齐，
+  与 server.js 契约对齐的三端点）：`/api/health` 探活（不发上游请求，`github`
+  字段表示 token 配没配）；`/api/experiments` 实验战报归档（读写仓库
+  `data/experiments.json`，按 tag upsert，提交信息 `exp: <tag> [skip ci]`）；
+  `/api/stats` 跨对局聚合（1 次 git trees + ≤40 份 raw 拉取 + 1 次 contents，
+  合计 ≤42 个子请求，守免费版 50 上限；截断时 `truncated: true`）。
+  三者共用 `functions/api/_github.js`（下划线前缀不对应路由的共享模块）。
+- **`functions/api/games.js`**（Cloudflare Pages Functions）：终局棋谱同步。
+  POST 收 `jev-qiguan-game/v1` payload → 用 `GAMES_GITHUB_TOKEN`（fine-grained PAT，
+  仓库 Contents 读写）经 GitHub API commit 进 `games/<日期>/`，提交信息带 `[skip ci]`
+  （不触发 Pages 构建）；GET 列最近 7 天棋谱。未配置 token → 500，客户端静默失败。
+- **`dev-proxy.py`**（本地，最小备用）：静态托管 + `/api/jev` 转发，持久 TLS 连接
   （实测每手省 ~0.45s 握手），标准库零依赖。
   `set TYPESAFE_API_KEY=ts-xxxx`（可选，本机兜底）。
+
+**降级语义**：`/api/health` 不存在时（file:// 双击打开、纯静态托管），
+前端 `BG.api` 全部方法返回 null，`app.js` 回落到 localStorage 与本机记录——
+对局、悔棋、导出功能不受任何影响，只是数据不跨设备。
+注意 CF Pages 的 SPA 兜底：未匹配的 `/api/*` 会返回 index.html + 200，
+`BG.api` 的 JSON 解析因此抛错并被 catch 成 null，降级行为不变（已实测）。
 
 ## 4. 成本模型
 
@@ -161,7 +196,7 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
 | `top[]` | 概率前 8 名 `{notation, p}`（概率条渲染） |
 | `candidates` | 合法候选总数；`restProb` 第 9 名以后概率合计 |
 | `noul` / `score` | 局势优劣概率 / 0–10 局势分 |
-| `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `open4`（走己方活四点）/ `null` |
+| `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `open4`（走己方活四点）/ `threat`（抢占造杀点）/ `parry`（拆对手造杀点，含 3-ply 安全排序）/ `parry3`（预挡对手活三/活四制造点）/ `null` |
 | `warning` | 非法响应回退等异常提示 |
 | `mock: true` | 离线演示标记（面板需显示"演示"角标） |
 
@@ -169,6 +204,9 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
 
 `opts.topK`：1 = argmax 最强手；k>1 = 前 k 名概率加权随机（`BG.util.weightedPick`）。
 机机对弈必须 k>1，否则同一 seed 每盘完全一样。滑杆在 UI「Jev 设置」里。
+
+**例外——`random` 基线渠道**：自由手均匀采样，与 topK 无关（topK=1 会把均匀概率坍缩成
+「取第一顺位」，退化成顺序走子，已踩过）；战术接管不受影响，该堵的杀照堵。
 
 **可复现性**：`BG.util.rand/rnd` 支持种子（`?seed=42` 或 Node 侧 `BG.setSeed(42)`），
 仅影响 mock/演示与测试链路；真实渠道的 top-k 采样走 `weightedPick`（不经 rand），保持真随机。
