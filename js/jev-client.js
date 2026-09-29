@@ -97,7 +97,7 @@
       }
       let detail = '';
       try { detail = (await resp.text()).slice(0, 300); } catch (_) { /* ignore */ }
-      if (resp.status === 401) throw new Error('API Key 无效或缺失（401）');
+      if (resp.status === 401) throw new Error('API Key 无效或缺失（401）——若 key 确认无误（「测试连接」通过），可能是服务端瞬时故障，稍后点「重试」即可');
       throw new Error('API 错误 ' + resp.status + '：' + detail);
     }
     throw lastErr || new Error('重试次数用尽');

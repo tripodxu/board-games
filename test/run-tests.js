@@ -231,6 +231,22 @@ async function jevClientTests() {
   BG.util.assert(tacOpp.winning_points_you.length === 0 && tacOpp.winning_points_opponent.indexOf('G8') >= 0,
     '白方视角下黑四连点应为必挡点，实际：' + JSON.stringify(tacOpp));
 
+  /* ⑥b 提示词板斧：board_ascii 裁剪/图例/末手小写 + 指令含刚性扫描清单与防幻觉核对。 */
+  const ser9 = e.serializeForJev(stx, stx.turn);
+  const asc = ser9.state.board_ascii;
+  BG.util.assert(typeof asc === 'string' && asc.split('\n').length >= 5, 'board_ascii 应为多行棋盘');
+  BG.util.assert(asc.indexOf('X') >= 0 && asc.indexOf('O') >= 0, '棋盘应含黑白子字符 X/O');
+  const row8 = asc.split('\n').find((l) => l.startsWith(' 8'));
+  BG.util.assert(row8 && row8.indexOf('X') >= 0 && row8.indexOf('x') < 0, '非末手黑子应为大写 X，实际该行：' + row8);
+  const row5 = asc.split('\n').find((l) => l.startsWith(' 5'));
+  BG.util.assert(row5 && row5.indexOf('o') >= 0, '末手 G5（白）应以小写 o 标记，实际该行：' + row5);
+  BG.util.assert(asc.split('\n').some((l) => l.startsWith(' 1')), '白子 A1 在边缘时应裁剪到行 1（外扩 2 格收敛）');
+  const ins = ser9.questions.move.instructions;
+  BG.util.assert(/scan in order/.test(ins) && /cell by cell/.test(ins) && /board_ascii/.test(ins),
+    'move 指令应含刚性扫描清单与防幻觉核对要求');
+  const ascEmpty = e.serializeForJev(e.newGame(), 'black').state.board_ascii;
+  BG.util.assert(ascEmpty.split('\n').length === 6 && /H/.test(ascEmpty), '空盘应裁剪为天元附近 5×5');
+
   /* ⑦ 战术保险接管：概率偏向 G7 仍必须走致胜点；state/指令应含 tactics 语义。 */
   const guardBody = { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
     answers: { move: { probabilities: { G7: 0.9, G8: 0.05 } } } };

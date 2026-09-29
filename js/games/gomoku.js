@@ -107,6 +107,34 @@
     return out;
   }
 
+  /* 板斧一：ASCII 棋盘，裁剪到有子区域外扩 2 格（盘面贴边时收敛到边界）。
+   * 大写 X/O 为常规棋子，小写标记 last_move；空盘时裁剪到天元附近 5×5。 */
+  function boardAscii(st) {
+    let r0 = N, r1 = -1, c0 = N, c1 = -1, any = false;
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      if (st.board[r][c]) {
+        any = true;
+        if (r < r0) r0 = r; if (r > r1) r1 = r;
+        if (c < c0) c0 = c; if (c > c1) c1 = c;
+      }
+    }
+    if (!any) { r0 = r1 = 7; c0 = c1 = 7; }
+    r0 = Math.max(0, r0 - 2); r1 = Math.min(N - 1, r1 + 2);
+    c0 = Math.max(0, c0 - 2); c1 = Math.min(N - 1, c1 + 2);
+    const lines = ['    ' + Array.from({ length: c1 - c0 + 1 }, (_, i) => String.fromCharCode(65 + c0 + i)).join(' ')];
+    for (let r = r0; r <= r1; r++) {
+      let line = String(r + 1).padStart(2) + '  ';
+      for (let c = c0; c <= c1; c++) {
+        const p = st.board[r][c];
+        let ch = p === 1 ? 'X' : p === 2 ? 'O' : '.';
+        if (st.last && st.last.r === r && st.last.c === c) ch = ch.toLowerCase();
+        line += ch + (c < c1 ? ' ' : '');
+      }
+      lines.push(line);
+    }
+    return lines.join('\n');
+  }
+
   function serializeForJev(st, side) {
     const cand = candidates(st, 64);
     const notations = cand.map((m) => m.notation);
@@ -116,6 +144,9 @@
       state: {
         game: 'gomoku (five-in-a-row) on 15x15 board, columns A-O left to right, rows 1-15 top to bottom',
         rules: 'Free-style gomoku, no forbidden moves: first to align five or more of their own stones horizontally, vertically or diagonally wins; a full board is a draw.',
+        /* 板斧一：模型读二维字符画远比读坐标列表准；裁剪到有子区域外扩 2 格省 token */
+        board_ascii: boardAscii(st),
+        board_note: 'X = black stones, O = white stones, a lowercase letter marks the last move, "." is empty; the grid is cropped to the active area with a 2-cell margin. Column letters on top, row numbers on the left.',
         you_play: side,
         move_number: st.moveNum + 1,
         black_stones: stonesOf(st, 1),
@@ -128,8 +159,16 @@
           type: 'choice',
           instructions:
             'You are an expert gomoku player playing ' + side + '. Points are named like H8 (column letter + row number). ' +
-            'Pick the best point from `legal_moves`: win immediately by making five in a row; ' +
-            'block the opponent if they threaten five; build open threes and fours; prefer central control and moves that create multiple threats. ' +
+            'Read `board_ascii` as the actual board (X = black, O = white, lowercase = last move). ' +
+            /* 板斧二+四：刚性扫描清单 + 防幻觉核对，替代"多制造威胁"式空话；板斧三 fallback：analysis 文本问不被 API 支持（实测 400），扫描流程只能内化到指令 */
+            'Before answering, run this scan in order and verify every claim cell by cell against `board_ascii` and the stone lists: ' +
+            '(1) points completing five in a row for you — if any exists, you MUST play one; ' +
+            '(2) points completing five in a row for the opponent — if any exists and you cannot win immediately, you MUST play one; ' +
+            '(3) your open threes and fours, and their strongest extension points; ' +
+            '(4) the opponent\'s open threes, and the blocking points; ' +
+            '(5) prefer points that create multiple threats at once or combine attack with defense. ' +
+            'Never claim a line you cannot name every cell of; discard any candidate that does not survive verification. ' +
+            'Pick the best point from `legal_moves`. ' +
             'Answer ONLY with the Choice question "move".',
           criteria,
         },
