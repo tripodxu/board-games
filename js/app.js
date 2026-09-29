@@ -382,7 +382,9 @@
     for (let i = series.length - 1; i >= 0; i--) {
       if (typeof series[i].win === 'number') { pFirst = series[i].win; break; }
     }
-    $('evalFill').style.height = (Math.min(96, Math.max(4, pFirst * 100))).toFixed(1) + '%';
+    /* 写 transform 而非 height：避免 0.7s 过渡期间逐帧重排（见 .eval-fill 注释） */
+    const fill = Math.min(96, Math.max(4, pFirst * 100)) / 100;
+    $('evalFill').style.transform = 'scaleY(' + fill.toFixed(3) + ')';
     $('evalBar').setAttribute('aria-label',
       '实时局势：先手方胜率约 ' + Math.round(pFirst * 100) + '%');
     const cost = aiItems().reduce((s, h) => s + (h.meta.costUsd || 0), 0);
@@ -430,7 +432,8 @@
     const frag = document.createDocumentFragment();
     lats.forEach((ms) => {
       const bar = document.createElement('i');
-      bar.style.height = Math.max(6, Math.round(ms / max * 100)) + '%';
+      /* scaleY 而非 height：缩放走合成层 */
+      bar.style.transform = 'scaleY(' + (Math.max(6, Math.round(ms / max * 100)) / 100).toFixed(3) + ')';
       bar.title = ms + 'ms';
       bar.className = ms > 5000 ? 'slow' : '';
       frag.appendChild(bar);
@@ -477,7 +480,7 @@
 
     const head =
       '<div class="latest-head"><span class="mv mono">' + h.move.notation + '</span>' +
-      '<span class="conf"><i style="width:' + (typeof m.confidence === 'number' ? Math.round(m.confidence * 100) : 0) + '%"></i></span>' +
+      '<span class="conf"><i style="transform:scaleX(' + (typeof m.confidence === 'number' ? Math.max(0, Math.min(1, m.confidence)) : 0).toFixed(3) + ')"></i></span>' +
       '<span class="conf-num mono">' + (typeof m.confidence === 'number' ? (m.confidence * 100).toFixed(0) + '%' : '–') + '</span></div>';
     const extras = [];
     if (typeof m.noul === 'number') extras.push('<div class="big"><span class="k">' + (m.sideName || '') + '优势</span><b class="mono">' + (m.noul * 100).toFixed(0) + '%</b></div>');
@@ -488,7 +491,7 @@
       rank += '<div class="rank-row' + (t.notation === h.move.notation ? ' is-chosen' : '') + '">' +
         '<span class="no mono">' + (i + 1) + '</span>' +
         '<span class="k mono">' + t.notation + '</span>' +
-        '<span class="bar"><i style="width:' + Math.max(2, Math.round(t.p * 100)) + '%"></i></span>' +
+        '<span class="bar"><i style="transform:scaleX(' + (Math.max(2, Math.round(t.p * 100)) / 100).toFixed(3) + ')"></i></span>' +
         '<span class="p mono">' + (t.p * 100).toFixed(1) + '%</span></div>';
     });
     if (m.candidates && m.candidates > 8) {
@@ -600,7 +603,15 @@
       const why = agg.skippedDemo
         ? '已有 ' + agg.skippedDemo + ' 局离线演示。演示的胜率是本地合成的，拿它量校准没有意义——请接入真实 Jev 渠道后再看。'
         : '还没有真实渠道的对局记录。接入 Jev（官方 / OpenRouter / 同源代理）下几局，这里会把「Jev 说的胜率」和「实际胜负」摆在一起量。';
-      box.innerHTML = '<div class="cal-empty"><span class="glyph">衡</span>' + why + '</div>';
+      /* 自绘 SVG：一条「完美校准」的对角参考线 + 一个偏离它的落点，画的就是「失准」本身 */
+      box.innerHTML =
+        '<div class="cal-empty">' +
+        '<svg class="glyph" width="88" height="52" viewBox="0 0 88 52" aria-hidden="true" fill="none">' +
+        '<path class="g-ref" d="M8 44 L80 8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>' +
+        '<circle cx="58" cy="12" r="3.2" fill="currentColor"/>' +
+        '<line x1="8" y1="6" x2="8" y2="44" stroke="currentColor" stroke-width="1" opacity=".45"/>' +
+        '<line x1="8" y1="44" x2="82" y2="44" stroke="currentColor" stroke-width="1" opacity=".45"/>' +
+        '</svg>' + why + '</div>';
       return;
     }
 

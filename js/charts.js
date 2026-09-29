@@ -68,7 +68,15 @@
       if (!points.length) {
         const empty = document.createElement('div');
         empty.className = 'chart-empty';
-        empty.innerHTML = '<span class="glyph">弈</span>尚无 Jev 决策数据，开始对局后这里将实时绘制判断曲线。';
+        /* 自绘 SVG，不用 Unicode 字形顶替图标系统（craft-floor 拒绝项）：
+         * 直接画出「本该出现的走势」——坐标轴 + 一条虚线。 */
+        empty.innerHTML =
+          '<svg class="glyph" width="76" height="42" viewBox="0 0 76 42" aria-hidden="true" fill="none">' +
+          '<line x1="7" y1="6" x2="7" y2="35" stroke="currentColor" stroke-width="1"/>' +
+          '<line x1="7" y1="35" x2="69" y2="35" stroke="currentColor" stroke-width="1"/>' +
+          '<path class="g-dash" d="M12 30 L26 21 L38 25 L52 13 L64 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+          '</svg>' +
+          '尚无 Jev 决策数据，开始对局后这里将实时绘制判断曲线。';
         container.appendChild(empty);
         return svg;
       }
@@ -86,16 +94,16 @@
       el('rect', { x: 0, y: Math.max(0, midY), width: W, height: H - Math.max(0, midY) }, clipDn);
       el('path', { d: area, fill: 'var(--mo)', opacity: .13, 'clip-path': 'url(#clipUp)' }, svg);
       el('path', { d: area, fill: 'var(--zhu)', opacity: .12, 'clip-path': 'url(#clipDn)' }, svg);
-      el('path', { d: line, fill: 'none', class: 'trend-line' }, svg);
+      el('path', { d: line, fill: 'none', class: 'trend-line', pathLength: '1' }, svg);
 
       /* 悬停十字线（初始隐藏） */
       const cross = el('g', { class: 'crosshair', visibility: 'hidden' }, svg);
       const crossLine = el('line', { y1: T, y2: T + ih, class: 'cross-line' }, cross);
       const crossDot = el('circle', { r: 3.5, class: 'cross-dot' }, cross);
 
-      /* 最新点：脉圈 + 实点 + 当前值 */
+      /* 最新点：单发外扩的「落子」环 + 实点（不是无限循环的装饰） */
       const last = pts[pts.length - 1];
-      el('circle', { cx: last[0], cy: last[1], r: 7, class: 'pulse' }, svg);
+      el('circle', { cx: last[0], cy: last[1], r: 7, class: 'land-ring' }, svg);
       el('circle', { cx: last[0], cy: last[1], r: 3, class: 'dot-last' }, svg);
 
       /* 交互：鼠标 + 键盘巡检 */
@@ -152,7 +160,7 @@
      * 于是「预测分布（锐度）」与「校准偏差」可以一眼同时读到。 */
     reliability(container, bins, opts) {
       opts = opts || {};
-      const W = 300, H = 168, L = 30, R = 10, T = 10, B = 26;
+      const W = 300, H = 168, L = 36, R = 10, T = 10, B = 26;
       const iw = W - L - R, ih = H - T - B;
       const nBins = bins.length;
       const maxN = Math.max(1, ...bins.map((b) => b.n));
@@ -175,7 +183,7 @@
           .textContent = Math.round(t * 100) + '%';
       }
       /* 完美校准参考线 */
-      el('line', { x1: xOf(0), y1: yOf(0), x2: xOf(1), y2: yOf(1), class: 'rel-diag' }, svg);
+      el('line', { x1: xOf(0), y1: yOf(0), x2: xOf(1), y2: yOf(1), class: 'rel-diag', pathLength: '1' }, svg);
       el('text', { x: W - R, y: yOf(1) - 4, class: 'tick-label rel-diag-label', 'text-anchor': 'end' }, svg)
         .textContent = '完美校准';
 
@@ -219,16 +227,16 @@
     bars(top, chosen, animate) {
       const frag = document.createDocumentFragment();
       (top || []).forEach((t) => {
-        const w = Math.max(2, Math.round(t.p * 100)) + '%';
+        const s = (Math.max(2, Math.round(t.p * 100)) / 100).toFixed(3);
         const row = document.createElement('div');
         row.className = 'bar-row' + (t.notation === chosen ? ' is-chosen' : '');
         row.innerHTML =
           '<span class="k mono">' + t.notation + '</span>' +
-          '<span class="bar"><i style="width:' + (animate === false ? w : '0%') + '"></i></span>' +
+          '<span class="bar"><i style="transform:scaleX(' + (animate === false ? s : 0) + ')"></i></span>' +
           '<span class="p mono">' + (t.p * 100).toFixed(1) + '%</span></div>';
         if (animate !== false) {
           requestAnimationFrame(() => {
-            row.querySelector('i').style.width = w;
+            row.querySelector('i').style.transform = 'scaleX(' + s + ')';
           });
         }
         frag.appendChild(row);
