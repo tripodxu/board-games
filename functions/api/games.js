@@ -65,7 +65,8 @@ export async function onRequestPost(context) {
 
   try {
     await gh(token, `/repos/${REPO}/contents/${path}`, 'PUT', {
-      message: `game: ${body.game || '?'} ${gid} ${body.result || ''}`.slice(0, 120),
+      // [skip ci]：棋谱数据提交不触发 Pages 重新构建，避免构建队列被对局淹没
+      message: (`game: ${body.game || '?'} ${gid} ${body.result || ''} [skip ci]`).slice(0, 140),
       content,
       branch: BRANCH,
     });
