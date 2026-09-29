@@ -135,11 +135,84 @@
     return lines.join('\n');
   }
 
+  /* ---------- 战术标注：引擎代读棋盘，把每个候选点的战术含义写成 criteria 标签 ----------
+   * 活三/四的识别是模型最弱的一环（实测反馈），但这恰是机械计算。标签体系：
+   *   win（成五，保险层会接管） / you:open4 / you:four / you:live3（我落这造什么）
+   *   block:five / deny:open4 / deny:four / deny:live3（挡掉对方想占的点）
+   * 组合如 "you:open4+deny:open4"（双料点）。判定全部走真实推演，非模式匹配。 */
+  const DIRS4 = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  const inB = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
+  function isFiveAt(board, r, c, p) {
+    for (const [dr, dc] of DIRS4) {
+      let len = 1;
+      for (let k = 1; k < 5 && inB(r + dr * k, c + dc * k) && board[r + dr * k][c + dc * k] === p; k++) len++;
+      for (let k = 1; k < 5 && inB(r - dr * k, c - dc * k) && board[r - dr * k][c - dc * k] === p; k++) len++;
+      if (len >= 5) return true;
+    }
+    return false;
+  }
+  /* 经过 (cr,cc) 的四条线 ±4 内的空格：p 的成五点必在其中（五连同时含 p 与成五格） */
+  function lineEmpties(board, cr, cc) {
+    const out = [];
+    for (const [dr, dc] of DIRS4) {
+      for (let k = 1; k <= 4; k++) {
+        for (const s of [1, -1]) {
+          const r = cr + dr * k * s, c = cc + dc * k * s;
+          if (inB(r, c) && !board[r][c]) out.push([r, c]);
+        }
+      }
+    }
+    return out;
+  }
+  /* p 色再落一子即成五的空格数（只需判 ≥2，命中即早退） */
+  function fiveCompletions(board, p, cr, cc) {
+    let n = 0;
+    for (const [r, c] of lineEmpties(board, cr, cc)) {
+      board[r][c] = p;
+      const five = isFiveAt(board, r, c, p);
+      board[r][c] = 0;
+      if (five) { n++; if (n >= 2) break; }
+    }
+    return n;
+  }
+  /* 活三判定（沿方向精确）：含 (r,c) 沿 d 的连续三子、两边界空、且某一端延伸后
+   * 成活四（另一端空 + 该端外侧也空）。不用窗口扫描——窗口里无关方向的黑活四会误标。 */
+  function liveThreeDir(board, r, c, p, dr, dc) {
+    let f = 0; while (inB(r + dr * (f + 1), c + dc * (f + 1)) && board[r + dr * (f + 1)][c + dc * (f + 1)] === p) f++;
+    let b = 0; while (inB(r - dr * (b + 1), c - dc * (b + 1)) && board[r - dr * (b + 1)][c - dc * (b + 1)] === p) b++;
+    if (f + b + 1 !== 3) return false;
+    const empty = (q) => inB(q[0], q[1]) && board[q[0]][q[1]] === 0;
+    const a1 = [r + dr * (f + 1), c + dc * (f + 1)], a2 = [r + dr * (f + 2), c + dc * (f + 2)];
+    const s1 = [r - dr * (b + 1), c - dc * (b + 1)], s2 = [r - dr * (b + 2), c - dc * (b + 2)];
+    if (!empty(a1) || !empty(s1)) return false;
+    return empty(a2) || empty(s2);
+  }
+  function labelPoint(st, r, c, me) {
+    const opp = me === 1 ? 2 : 1;
+    const mine = BG.util.clone(st.board); mine[r][c] = me;
+    const parts = [];
+    if (isFiveAt(mine, r, c, me)) return 'win';
+    const myComps = fiveCompletions(mine, me, r, c);
+    if (myComps >= 2) parts.push('you:open4');
+    else if (myComps === 1) parts.push('you:four');
+    else if (DIRS4.some(([dr, dc]) => liveThreeDir(mine, r, c, me, dr, dc))) parts.push('you:live3');
+    const theirs = BG.util.clone(st.board); theirs[r][c] = opp;
+    if (isFiveAt(theirs, r, c, opp)) parts.push('block:five');
+    else {
+      const opComps = fiveCompletions(theirs, opp, r, c);
+      if (opComps >= 2) parts.push('deny:open4');
+      else if (opComps === 1) parts.push('deny:four');
+      else if (DIRS4.some(([dr, dc]) => liveThreeDir(theirs, r, c, opp, dr, dc))) parts.push('deny:live3');
+    }
+    return parts.join('+');
+  }
+
   function serializeForJev(st, side) {
     const cand = candidates(st, 64);
     const notations = cand.map((m) => m.notation);
+    const me = num(side);
     const criteria = {};
-    notations.forEach((n) => { criteria[n] = null; });
+    cand.forEach((m) => { criteria[m.notation] = labelPoint(st, m.r, m.c, me) || null; });
     return {
       state: {
         game: 'gomoku (five-in-a-row) on 15x15 board, columns A-O left to right, rows 1-15 top to bottom',
@@ -167,7 +240,12 @@
             '(3) your open threes and fours, and their strongest extension points; ' +
             '(4) the opponent\'s open threes, and the blocking points; ' +
             '(5) prefer points that create multiple threats at once or combine attack with defense. ' +
-            'Never claim a line you cannot name every cell of; discard any candidate that does not survive verification. ' +
+            /* 板斧五：引擎已把每个候选点的战术含义算成标签，模型从"发现模式"降为"读懂标签做比较" */
+            'The `criteria` of every option carries an engine-verified tactical label: ' +
+            '"you:four"/"you:open4"/"you:live3" = what your move would create, ' +
+            '"deny:four"/"deny:live3"/"deny:open4" = a point the opponent wants for the same purpose, ' +
+            '"block:five" = stops an immediate five, "+" joins combined effects (a point that attacks AND denies is strongest). ' +
+            'Trust these labels over your own reading; between equal labels prefer the more central point. ' +
             'Pick the best point from `legal_moves`. ' +
             'Answer ONLY with the Choice question "move".',
           criteria,

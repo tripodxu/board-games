@@ -287,8 +287,9 @@
       }
       pairs.sort((a, b) => b[1] - a[1]);
 
-      /* 战术保险：一步致胜必走，对方一步致胜必挡——概率只是偏好，事实优先。
-       * 战术点不在概率榜（候选预筛遗漏）时直接执行该点并如实标注接管。 */
+      /* 战术保险：三级接管——致胜点必走、对方致胜必挡、己方活四点必走（活四+对方无先手五
+       * = 理论必胜：两处成五点防不胜防）。概率只是偏好，事实优先。
+       * 活四点由引擎以 criteria 保留标签 "you:open4" 声明（engine-interface 契约）。 */
       let notation = null;
       let tacticUsed = null;
       let tacticBypassed = false;
@@ -305,12 +306,18 @@
         const mv = engine.moveFromNotation(st, list[0]);
         return mv ? mv.notation : null;
       };
+      const open4Points = Object.entries(ser.questions.move.criteria || {})
+        .filter(([n, v]) => typeof v === 'string' && /(^|\+)you:open4(\+|$)/.test(v) && byNotation.has(n))
+        .map(([n]) => n);
       if (tactics.winning_points_you.length) {
         notation = pickAmong(tactics.winning_points_you);
         if (notation) tacticUsed = 'win';
       } else if (tactics.winning_points_opponent.length) {
         notation = pickAmong(tactics.winning_points_opponent);
         if (notation) tacticUsed = 'block';
+      } else if (open4Points.length) {
+        notation = pickAmong(open4Points);
+        if (notation) tacticUsed = 'open4';
       }
 
       /* top-k 概率加权随机（随机度） */
@@ -336,7 +343,7 @@
           score: answers.position ? answers.position.score : undefined,
           tactics: tacticUsed,
           warning: tacticBypassed
-            ? '战术保险接管：Jev 概率未覆盖' + (tacticUsed === 'win' ? '致胜点' : '必挡点') + '，已直接执行'
+            ? '战术保险接管：Jev 概率未覆盖' + (tacticUsed === 'win' ? '致胜点' : tacticUsed === 'block' ? '必挡点' : '活四点') + '，已直接执行'
             : undefined,
         },
       };

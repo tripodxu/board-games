@@ -247,6 +247,27 @@ async function jevClientTests() {
   const ascEmpty = e.serializeForJev(e.newGame(), 'black').state.board_ascii;
   BG.util.assert(ascEmpty.split('\n').length === 6 && /H/.test(ascEmpty), '空盘应裁剪为天元附近 5×5');
 
+  /* ⑥c 战术标签：黑活三 F8G8H8 vs 白活三 G7H7I7，黑行棋。
+     I8 = 黑成活四（you:open4）；F7/J7 = 白活三的成活四点（deny:open4）；静点无标签。 */
+  let stl = e.newGame();
+  for (const n of ['F8', 'G7', 'G8', 'H7', 'H8', 'I7']) stl = e.applyMove(stl, e.moveFromNotation(stl, n));
+  const crit = e.serializeForJev(stl, stl.turn).questions.move.criteria;
+  BG.util.assert(/you:open4/.test(crit['I8']), '黑 I8 应标 you:open4（F8-I8 四、E8/J8 两成五点），实际：' + crit['I8']);
+  BG.util.assert(/deny:open4/.test(crit['F7']), 'F7 应标 deny:open4（白占即活四），实际：' + crit['F7']);
+  BG.util.assert(/deny:open4/.test(crit['J7']), 'J7 应标 deny:open4，实际：' + crit['J7']);
+  const quiet = Object.entries(crit).filter(([k, v]) => v === null);
+  BG.util.assert(quiet.length >= 1, '应存在无标签的静点候选');
+
+  /* ⑥d 活四接管：黑有活四点（E8/I8）、双方无一步成五 → 概率偏向 G6 仍必走活四点。 */
+  let sentL = null;
+  const dL = await withFetch(async (url, init) => {
+    sentL = JSON.parse(init.body);
+    return mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+      answers: { move: { probabilities: { G6: 0.9 } } } });
+  }, () => BG.jev.decide(e, stl, stl.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert((dL.notation === 'E8' || dL.notation === 'I8') && dL.meta.tactics === 'open4',
+    '活四点应被第三级接管，实际：' + dL.notation + '/' + dL.meta.tactics);
+
   /* ⑦ 战术保险接管：概率偏向 G7 仍必须走致胜点；state/指令应含 tactics 语义。 */
   const guardBody = { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
     answers: { move: { probabilities: { G7: 0.9, G8: 0.05 } } } };
