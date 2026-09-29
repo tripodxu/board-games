@@ -352,6 +352,24 @@ async function jevClientTests() {
     () => BG.jev.decide(e, st9d, st9d.turn, { channel: 'proxy', topK: 1 }));
   BG.util.assert((d9d.notation === 'E7' || d9d.notation === 'H10') && d9d.meta.tactics === 'parry3',
     'p20 自由手应被 parry3 预挡，实际：' + d9d.notation + '/' + d9d.meta.tactics);
+
+  /* ⑨e 用户实战败局（jev-gomoku-202609290924.json）第 18 手回归：danger=[I9,E9]
+   * 两个双杀制造点并存，实战走 I9（Jev 偏好）→ 黑 E9 单杀逼杀 → 白被迫 D9 →
+   * 黑 H12 对角成四 → 白 I13 只堵一端 → 黑 D8 获胜。安全排序应选 E9：
+   * 白走 I9 后黑 E9 逼杀、白堵 D9 后黑仍有 H12 danger（持续攻击）；白走 E9 则无。 */
+  let st9e = e.newGame();
+  for (const n of ['H8','H7','G8','I8','H9','F7','G9','G7','I7','J6','F10','E11','G10','H10','G11','G12','F9'])
+    st9e = e.applyMove(st9e, e.moveFromNotation(st9e, n));
+  BG.util.assert(st9e.turn === 'white', '应轮白走，实际：' + st9e.turn);
+  const tac9e = BG.jev.computeTactics(e, st9e, e.getLegalMoves(st9e),
+    Object.keys(e.serializeForJev(st9e, 'white').questions.move.criteria));
+  BG.util.assert(tac9e.danger_points_opponent.indexOf('I9') >= 0 && tac9e.danger_points_opponent.indexOf('E9') >= 0,
+    'p18 danger 应含 I9,E9，实际：' + JSON.stringify(tac9e.danger_points_opponent));
+  const d9e = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { I9: 0.9, E9: 0.1 } } } }),
+    () => BG.jev.decide(e, st9e, st9e.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(d9e.notation === 'E9' && d9e.meta.tactics === 'parry',
+    'p18 双 danger 并存应安全排序选 E9（Jev 偏向 I9 也应纠正），实际：' + d9e.notation + '/' + d9e.meta.tactics);
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

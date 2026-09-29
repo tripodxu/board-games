@@ -159,6 +159,82 @@
     return out;
   }
 
+  /* 3-ply 安全性：sideId 走 p 后，oppId 的逼杀着法数（oppId 走出 q 后有 ≥1 致胜点，
+   * 即造四类 forcing move）。多个 danger 点并存时用它选最安全的一个
+   * （实战败局：p18 danger=[I9,E9] 走 I9，I9 只是 E9 的其中一个致胜点，走完黑
+   * 仍有 E9 单杀逼杀 → 白被迫 D9 → 黑 H12 对角成四 → 输）。数到 10 即停。 */
+  function countForcingReplies(engine, st, p, oppId, candNotations) {
+    let mv;
+    try { mv = engine.moveFromNotation(st, p); } catch (_) { return 999; }
+    if (!mv) return 999;
+    let s2;
+    try { s2 = engine.applyMove(st, mv); } catch (_) { return 999; }
+    let cnt = 0;
+    for (const n of candNotations) {
+      if (n === p) continue;
+      let q;
+      try { q = engine.moveFromNotation(s2, n); } catch (_) { continue; }
+      if (!q) continue;
+      let s3;
+      try { s3 = engine.applyMove(flipTurn(s2, oppId), q); } catch (_) { continue; }
+      if (countWinningPoints(engine, s3, oppId, 1) >= 1) {
+        cnt++;
+        if (cnt >= 10) break;
+      }
+    }
+    return cnt;
+  }
+
+  /* 3-ply 持续攻击检查：白走 p 后，黑若有逼杀 q（走出后恰 1 个致胜点），白被迫堵 w，
+   * 再看黑是否还有 danger 点（双杀制造点）。若有，说明 p 给了黑持续攻击的节奏，
+   * 返回 true（p 为坏点）。用于多个 danger 点并存时的安全性排序。
+   * 限制：只查前 8 个逼杀 q，每个只看白堵后黑的 danger（2-ply），超时风险可控。 */
+  function allowsSustainedAttack(engine, st, p, oppId, myId, candNotations) {
+    let s2;
+    try {
+      const mv = engine.moveFromNotation(st, p);
+      if (!mv) return false;
+      s2 = engine.applyMove(st, mv);
+    } catch (_) { return false; }
+    let checked = 0;
+    for (const q of candNotations) {
+      if (q === p || checked >= 8) continue;
+      let mq;
+      try { mq = engine.moveFromNotation(s2, q); } catch (_) { continue; }
+      if (!mq) continue;
+      let s3;
+      try { s3 = engine.applyMove(flipTurn(s2, oppId), mq); } catch (_) { continue; }
+      // 黑走 q 后的致胜点（只关心恰 1 个的情况；≥2 则白已死，p 必坏）
+      const wins = [];
+      const s3o = flipTurn(s3, oppId);
+      let ms;
+      try { ms = engine.getLegalMoves(s3o); } catch (_) { continue; }
+      for (const m of ms) {
+        try {
+          const g = engine.getStatus(engine.applyMove(s3o, m));
+          if (g.over && g.winner === oppId) {
+            wins.push(m.notation);
+            if (wins.length >= 2) break;
+          }
+        } catch (_) {}
+      }
+      if (wins.length === 0) continue;
+      if (wins.length >= 2) return true; // 黑 q 后双杀，白堵不住
+      checked++;
+      // 白被迫堵唯一的致胜点 w
+      let s4;
+      try {
+        const mw = engine.moveFromNotation(s3, wins[0]);
+        if (!mw) continue;
+        s4 = engine.applyMove(s3, mw);
+      } catch (_) { continue; }
+      // 此时黑是否还有 danger 点（双杀制造点）
+      const danger = threatMakers(engine, s4, oppId, myId, candNotations, false);
+      if (danger.length > 0) return true; // 持续攻击：堵完还有杀
+    }
+    return false;
+  }
+
   function computeTactics(engine, st, legal, cands) {
     if (tacCache) {
       const hit = tacCache.get(st);
@@ -370,6 +446,29 @@
         const mv = engine.moveFromNotation(st, list[0]);
         return mv ? mv.notation : null;
       };
+      /* 拆杀点安全性排序：多个 danger 并存时逐个试走，优先排除给对方持续攻击节奏的
+       * 坏点（3-ply：白 p → 黑逼杀 q → 白被迫堵 → 黑仍有 danger），剩余再按逼杀数
+       * 排序。单个点或非 deepTactics 引擎时回退到 pickAmong。 */
+      const pickSafestParry = (list) => {
+        if (list.length <= 1) return pickAmong(list);
+        const oppSide = engine.sides && engine.sides.find((s) => s.id !== st.turn);
+        if (!oppSide || !engine.deepTactics) return pickAmong(list);
+        const candNs = (cands && cands.length) ? cands : legal.map((m) => m.notation);
+        try {
+          // 第一轮：排除允许持续攻击的坏点
+          const good = list.filter((p) => !allowsSustainedAttack(engine, st, p, oppSide.id, st.turn, candNs));
+          const pool = good.length ? good : list;
+          if (pool.length === 1) return pool[0];
+          // 第二轮：按逼杀着法数排序，取最少
+          let best = null, bestScore = Infinity;
+          for (const p of pool) {
+            const score = countForcingReplies(engine, st, p, oppSide.id, candNs);
+            if (score < bestScore) { bestScore = score; best = p; }
+          }
+          if (best) return best;
+        } catch (_) { /* 降级 */ }
+        return pickAmong(list);
+      };
       const open4Points = Object.entries(ser.questions.move.criteria || {})
         .filter(([n, v]) => typeof v === 'string' && /(^|\+)you:open4(\+|$)/.test(v) && byNotation.has(n))
         .map(([n]) => n);
@@ -392,7 +491,7 @@
         notation = pickAmong(tactics.chance_points_you);
         if (notation) tacticUsed = 'threat';
       } else if (tactics.danger_points_opponent.length) {
-        notation = pickAmong(tactics.danger_points_opponent);
+        notation = pickSafestParry(tactics.danger_points_opponent);
         if (notation) tacticUsed = 'parry';
       } else if (parry3Points.length) {
         notation = pickAmong(parry3Points);
