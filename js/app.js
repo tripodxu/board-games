@@ -182,6 +182,52 @@
     });
   }
 
+  /* ---------- 侧栏页签（对局 / 数据 / 设置） ---------- */
+  const SIDETAB_KEY = 'jev_qiguan_sidetab_v1';
+  const SIDETAB_NAMES = ['play', 'data', 'settings'];
+  function activateSidePane(name, persist) {
+    document.querySelectorAll('.side-tabs button[data-pane]').forEach((b) => {
+      const on = b.dataset.pane === name;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.side-pane').forEach((p) => {
+      p.hidden = p.id !== 'pane-' + name;
+    });
+    if (persist) {
+      try { localStorage.setItem(SIDETAB_KEY, name); } catch (_) { /* ignore */ }
+    }
+    /* 隐藏期间容器量宽为 0：切回时对已展开面板补一次全量渲染（与展开折叠同理） */
+    const pane = document.getElementById('pane-' + name);
+    if (!pane) return;
+    pane.querySelectorAll('.panel.collapsible:not(.folded)').forEach((sec) => {
+      const hook = FOLD_HOOKS[sec.dataset.panel];
+      if (hook) hook();
+    });
+  }
+  function initSideTabs() {
+    const bar = document.querySelector('.side-tabs');
+    if (!bar) return;
+    let saved = null;
+    try { saved = localStorage.getItem(SIDETAB_KEY); } catch (_) { /* ignore */ }
+    activateSidePane(SIDETAB_NAMES.includes(saved) ? saved : 'play', false);
+    bar.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-pane]');
+      if (b) activateSidePane(b.dataset.pane, true);
+    });
+    /* ←/→ 在页签间循环移动（WAI-ARIA tabs 惯例） */
+    bar.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const btns = [...bar.querySelectorAll('button[data-pane]')];
+      const i = btns.indexOf(document.activeElement);
+      if (i < 0) return;
+      e.preventDefault();
+      const n = btns[(i + (e.key === 'ArrowRight' ? 1 : btns.length - 1)) % btns.length];
+      n.focus();
+      activateSidePane(n.dataset.pane, true);
+    });
+  }
+
   /* ---------- 通用 ---------- */
   let toastTimer = null;
   function toast(msg, isErr) {
@@ -1495,6 +1541,7 @@
     buildTabs();
     loadSettings();
     initFolds();
+    initSideTabs();
     bind();
     switchGame('gomoku');
     renderRecords();

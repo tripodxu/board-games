@@ -84,6 +84,14 @@
       </div>
     </section>
 
+    <!-- 侧栏页签：面板总量大，按「对局 / 数据 / 设置」分组，每屏只看一类 -->
+    <div class="side-tabs" role="tablist" aria-label="侧栏分区">
+      <button type="button" data-pane="play" class="active" role="tab" aria-selected="true" aria-controls="pane-play">对局</button>
+      <button type="button" data-pane="data" role="tab" aria-selected="false" aria-controls="pane-data">数据</button>
+      <button type="button" data-pane="settings" role="tab" aria-selected="false" aria-controls="pane-settings">设置</button>
+    </div>
+
+    <div class="side-pane" id="pane-play" role="tabpanel" aria-label="对局">
     <section class="panel collapsible" data-panel="trend" aria-label="Jev 判断趋势">
       <div class="panel-title">
         <button class="fold" aria-expanded="true" aria-controls="body-trend" title="收起 / 展开" aria-label="收起或展开「Jev 判断」">
@@ -104,20 +112,6 @@
           <span><span class="sw first"></span>先手方（<span id="legendFirst">黑方</span>）优势 ↑</span>
           <span><span class="sw second"></span>后手方（<span id="legendSecond">白方</span>）优势 ↓</span>
         </div>
-      </div>
-    </section>
-
-    <!-- 实验报告：历史对比实验归档 -->
-    <section class="panel collapsible" data-panel="expreport" aria-label="实验报告">
-      <div class="panel-title">
-        <button class="fold" aria-expanded="true" aria-controls="body-expreport" title="收起 / 展开" aria-label="收起或展开「实验报告」">
-          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <h2>实验报告</h2>
-        <span class="note" id="expReportNote"></span>
-      </div>
-      <div class="panel-body" id="body-expreport">
-        <div id="expHistory"></div>
       </div>
     </section>
 
@@ -179,6 +173,22 @@
         <div id="feed" class="feed"><div class="feed-empty">开始对局后，Jev 的每一步判断会流淌在这里。</div></div>
       </div>
     </section>
+    </div><!-- /pane-play -->
+
+    <div class="side-pane" id="pane-data" role="tabpanel" aria-label="数据" hidden>
+    <!-- 实验报告：历史对比实验归档 -->
+    <section class="panel collapsible" data-panel="expreport" aria-label="实验报告">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="true" aria-controls="body-expreport" title="收起 / 展开" aria-label="收起或展开「实验报告」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>实验报告</h2>
+        <span class="note" id="expReportNote"></span>
+      </div>
+      <div class="panel-body" id="body-expreport">
+        <div id="expHistory"></div>
+      </div>
+    </section>
 
     <section class="panel collapsible" data-panel="records" aria-label="战绩簿">
       <div class="panel-title">
@@ -224,7 +234,9 @@
         <div id="ledger" class="ledger"></div>
       </div>
     </section>
+    </div><!-- /pane-data -->
 
+    <div class="side-pane" id="pane-settings" role="tabpanel" aria-label="设置" hidden>
     <details class="settings">
       <summary>
         <svg class="disc-chev" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -322,6 +334,7 @@
         <div class="hint" id="modeHint"></div>
       </div>
     </details>
+    </div><!-- /pane-settings -->
   </aside>
 </main>
 

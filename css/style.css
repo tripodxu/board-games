@@ -316,7 +316,63 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 
 /* ---------- 右栏 ---------- */
 
-.side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* 侧栏吸附在视口内并独立滚动：面板再多也不把页面撑长，页面总高由棋盘列决定。
+ * 窄屏（单列布局）回归文档流，吸附反而碍事。 */
+.side {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  position: sticky; top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  padding-bottom: 2px; /* 给末尾面板的投影留一点余地 */
+}
+
+@media (max-width: 1080px) {
+  .side { position: static; max-height: none; overflow: visible; }
+}
+
+/* ---------- 侧栏页签 ----------
+ * 与棋种页签同一笔法（展示字 + 朱砂下划线），但小一号——它是栏内导航，
+ * 不与顶部主导航争层级。栏内滚动时吸附在栏顶，随时可切换。 */
+.side-tabs {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; gap: 2px;
+  padding: 2px 2px 0;
+  background: var(--bg0);
+  border-bottom: 1px solid var(--line);
+}
+.side-tabs button {
+  appearance: none;
+  position: relative;
+  border: none; background: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--ink-mute);
+  padding: 6px 14px 9px;
+  transition: color .2s var(--ease);
+}
+.side-tabs button::after {
+  content: "";
+  position: absolute; left: 12px; right: 12px; bottom: -1px;
+  height: 2px; border-radius: 2px;
+  background: var(--zhu);
+  transform: scaleX(0);
+  transition: transform .28s var(--ease);
+}
+.side-tabs button:hover { color: var(--ink-dim); }
+.side-tabs button.active { color: var(--ink); }
+.side-tabs button.active::after { transform: scaleX(1); }
+
+.side-pane { display: flex; flex-direction: column; gap: 10px; }
+.side-pane[hidden] { display: none; }
+
+/* 侧栏自身的滚动条：与文末共享主题同一口径，但底色是栏后的 --bg0 */
+.side { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.side::-webkit-scrollbar { width: 8px; }
+.side::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid var(--bg0); }
+.side::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+.side::-webkit-scrollbar-track { background: transparent; }
 
 .panel {
   background: var(--bg1);
