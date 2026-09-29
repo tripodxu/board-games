@@ -43,6 +43,10 @@
 （mock 渠道，19 手终局），终局 0.5s 内棋谱落盘、设置面板「数据存储」显示
 `jev-qiguan-server v1.0.0 · 22 份`、「最近同步」显示落盘文件名；头部 chip「后端 已连接」。
 file:// 静态打开实测回落「无本地后端」，对局/导出/记录不受影响（降级路径即原路径）。
+CF Pages 三端点上线后实测（push main 自动部署，约 1 分钟生效）：`/api/health` 返回
+`jev-qiguan-pages v1.0.0` 且 `github:true`；`/api/stats` 聚合 21 份与本地 server.js
+逐字一致（`cal.games:0`——现存棋谱早于 cal 字段，新对局开始累积）；`/api/experiments`
+空归档正常返回。三端点的单测（pagesApiTests）随全量自检跑。
 
 ## 设计例外（有意保留，不是遗漏）
 
