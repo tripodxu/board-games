@@ -512,12 +512,18 @@
 
       /* top-k 概率加权随机（随机度） */
       if (!notation) {
-        const k = Math.max(1, opts.topK | 0 || 1);
-        if (k === 1) {
-          notation = pairs[0][0];
+        if (channel === 'random') {
+          /* 真随机基线：自由手均匀采样，与 topK 无关——否则 topK=1 会把均匀概率
+           * 坍缩成"取第一顺位"，退化成顺序走子（已验证过的坑）。战术接管不受影响。 */
+          notation = legal[BG.util.rand(legal.length)].notation;
         } else {
-          const top = pairs.slice(0, k);
-          notation = BG.util.weightedPick(top.map((p) => p[0]), top.map((p) => p[1]));
+          const k = Math.max(1, opts.topK | 0 || 1);
+          if (k === 1) {
+            notation = pairs[0][0];
+          } else {
+            const top = pairs.slice(0, k);
+            notation = BG.util.weightedPick(top.map((p) => p[0]), top.map((p) => p[1]));
+          }
         }
       }
 

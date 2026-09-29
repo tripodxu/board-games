@@ -384,6 +384,17 @@ async function jevClientTests() {
   const dR = await BG.jev.decide(e, stR, stR.turn, { channel: 'random', topK: 1 });
   BG.util.assert((dR.notation === 'D5' || dR.notation === 'I5') && dR.meta.tactics === 'block' && dR.meta.channel === 'random',
     'random 渠道面对一步杀必须战术接管堵杀，实际：' + dR.notation + '/' + dR.meta.tactics);
+
+  /* ⑪ random 渠道真随机回归：空棋盘自由手，topK=1 也必须均匀采样——
+   * 连续 20 次里至少出现 3 种不同着法（顺序走子只会永远走第一顺位） */
+  const stEmpty = e.newGame();
+  const seen = new Set();
+  for (let i = 0; i < 20; i++) {
+    const d = await BG.jev.decide(e, stEmpty, stEmpty.turn, { channel: 'random', topK: 1 });
+    BG.util.assert(!d.meta.tactics, '空棋盘不应有战术接管，实际：' + d.meta.tactics);
+    seen.add(d.notation);
+  }
+  BG.util.assert(seen.size >= 3, 'random 渠道自由手应真随机（20 次≥3 种），实际只见：' + [...seen].join(','));
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */
