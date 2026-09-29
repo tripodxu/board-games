@@ -21,6 +21,10 @@
     serializeForJev, draw, humanClick, selfTest,
     /* 可选方法 ↓ */
     // passMove, mockPick
+    /* 可选标记 ↓ */
+    // deepTactics: true —— 候选点是无色差空点集（如 gomoku 落子点）时声明，
+    //   jev-client 会在 1-ply 无战术时跑 2-ply 造杀扫描（己方双杀点/对方双杀点），
+    //   并由战术保险按 win > block > open4 > threat > parry 接管。
   });
 })();
 ```

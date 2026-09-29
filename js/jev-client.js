@@ -110,18 +110,63 @@
    * 指令同步声明语义（一次并行多问结构不变）。
    * tactics：模拟推算双方「一步致胜点」——走子即胜的点，己方 = 必走，对方 = 必挡。
    * 用引擎自己的 applyMove/getStatus 推演，六棋种通用；go 等无中途终局的棋种自然为空。
+   * 2-ply（deepTactics 引擎，如 gomoku）：「造杀点」——走出后己方有 ≥2 个一步致胜点
+   * （对方至多堵其一）的着法。己方造杀 = 两步内必胜；对方造杀 = 必须现在就拆，
+   * 否则对方下回合双杀无解。只在 1-ply 无战术时跑（一步杀/堵严格更优先），
+   * 外层只扫候选点，内层数到 2 即停。
    * 结果按 state 身份缓存（WeakMap），同一局面重复决策不重算。 */
 
   const tacCache = typeof WeakMap === 'function' ? new WeakMap() : null;
 
-  function computeTactics(engine, st, legal) {
+  const emptyTactics = () => ({
+    winning_points_you: [], winning_points_opponent: [],
+    chance_points_you: [], danger_points_opponent: [],
+  });
+
+  const flipTurn = (st, sideId) => Object.assign({}, st, { turn: sideId });
+
+  /* 数 st2 中 sideId 的一步致胜点，到 limit 即停（2-ply 内层省时间用） */
+  function countWinningPoints(engine, st2, sideId, limit) {
+    const s = flipTurn(st2, sideId);
+    let ms;
+    try { ms = engine.getLegalMoves(s); } catch (_) { return 0; }
+    let cnt = 0;
+    for (const m of ms) {
+      let g;
+      try { g = engine.getStatus(engine.applyMove(s, m)); } catch (_) { continue; }
+      if (g.over && g.winner === sideId) {
+        cnt++;
+        if (cnt >= limit) break;
+      }
+    }
+    return cnt;
+  }
+
+  /* 2-ply 造杀点：sideId 的候选着法 p，走出后 sideId 有 ≥2 个致胜点即入选。
+   * forSelf 时加护栏：走出后对方不能反手有致胜点（防自杀式造杀）。 */
+  function threatMakers(engine, st, sideId, oppId, candNotations, forSelf) {
+    const out = [];
+    for (const n of candNotations) {
+      let mv;
+      try { mv = engine.moveFromNotation(st, n); } catch (_) { continue; }
+      if (!mv) continue;
+      let s2;
+      try { s2 = engine.applyMove(flipTurn(st, sideId), mv); } catch (_) { continue; }
+      if (countWinningPoints(engine, s2, sideId, 2) < 2) continue;
+      if (forSelf && oppId && countWinningPoints(engine, s2, oppId, 1) > 0) continue;
+      out.push(n);
+    }
+    return out;
+  }
+
+  function computeTactics(engine, st, legal, cands) {
     if (tacCache) {
       const hit = tacCache.get(st);
       if (hit) return hit;
     }
     /* 开局无战术：moveNum 可用时跳过早期局面，省去无谓模拟 */
     if (typeof st.moveNum === 'number' && st.moveNum < 4) {
-      return { winning_points_you: [], winning_points_opponent: [] };
+      return emptyTactics();
     }
     const side = st.turn;
     const win = [];
@@ -134,7 +179,7 @@
     const block = [];
     const oppSide = engine.sides && engine.sides.find((s) => s.id !== side);
     if (oppSide) {
-      const stOpp = Object.assign({}, st, { turn: oppSide.id });
+      const stOpp = flipTurn(st, oppSide.id);
       let oppMoves = [];
       try { oppMoves = engine.getLegalMoves(stOpp); } catch (_) { oppMoves = []; }
       for (const m of oppMoves) {
@@ -144,7 +189,16 @@
         } catch (_) { /* 跳过 */ }
       }
     }
-    const res = { winning_points_you: win, winning_points_opponent: block };
+    const res = {
+      winning_points_you: win, winning_points_opponent: block,
+      chance_points_you: [], danger_points_opponent: [],
+    };
+    /* 2-ply 造杀：仅 1-ply 无战术时跑；引擎需声明 deepTactics（候选点须是无色差的空点集，如 gomoku） */
+    if (engine.deepTactics && win.length === 0 && block.length === 0 && oppSide) {
+      const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
+      res.chance_points_you = threatMakers(engine, st, side, oppSide.id, candNotations, true);
+      res.danger_points_opponent = threatMakers(engine, st, oppSide.id, side, candNotations, false);
+    }
     if (tacCache && st && typeof st === 'object') tacCache.set(st, res);
     return res;
   }
@@ -164,6 +218,8 @@
       ser.questions.move.instructions +=
         ' The state includes a `tactics` object: if `winning_points_you` is non-empty, playing one of those points wins immediately this turn. ' +
         'If `winning_points_opponent` is non-empty, the opponent would win there next turn unless stopped, so play one of those points unless you can win immediately. ' +
+        'If `chance_points_you` is non-empty, playing one creates two winning threats at once (the opponent can block at most one of them), winning within two moves — take it when there is no immediate win or block. ' +
+        'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ' +
         (experience ? 'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ' : '');
     }
   }
@@ -260,8 +316,14 @@
       }
 
       /* 战术事实 + 对局经验注入 state，并同步指令语义 */
-      let tactics = { winning_points_you: [], winning_points_opponent: [] };
-      try { tactics = computeTactics(engine, st, legal); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
+      let tactics = emptyTactics();
+      /* 候选点记法：2-ply 外层只扫候选（省时间），取自序列化 questions.move.criteria 的键 */
+      let cands = null;
+      try {
+        const crit = ser.questions && ser.questions.move && ser.questions.move.criteria;
+        if (crit && typeof crit === 'object') cands = Object.keys(crit);
+      } catch (_) { /* 降级为全量 */ }
+      try { tactics = computeTactics(engine, st, legal, cands); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
       attachFacts(ser, tactics, opts.experience);
 
       const data = await callWithRetry(channel, ser, opts);
@@ -293,6 +355,8 @@
       let notation = null;
       let tacticUsed = null;
       let tacticBypassed = false;
+      /* 战术点中文名（接管提示用） */
+      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', parry: '拆杀点' }[tacticUsed] || '战术点');
       const pickAmong = (list) => {
         const inPairs = pairs.filter(([n]) => list.indexOf(n) >= 0);
         const k2 = Math.max(1, opts.topK | 0 || 1);
@@ -318,6 +382,12 @@
       } else if (open4Points.length) {
         notation = pickAmong(open4Points);
         if (notation) tacticUsed = 'open4';
+      } else if (tactics.chance_points_you.length) {
+        notation = pickAmong(tactics.chance_points_you);
+        if (notation) tacticUsed = 'threat';
+      } else if (tactics.danger_points_opponent.length) {
+        notation = pickAmong(tactics.danger_points_opponent);
+        if (notation) tacticUsed = 'parry';
       }
 
       /* top-k 概率加权随机（随机度） */
@@ -343,7 +413,7 @@
           score: answers.position ? answers.position.score : undefined,
           tactics: tacticUsed,
           warning: tacticBypassed
-            ? '战术保险接管：Jev 概率未覆盖' + (tacticUsed === 'win' ? '致胜点' : tacticUsed === 'block' ? '必挡点' : '活四点') + '，已直接执行'
+            ? '战术保险接管：Jev 概率未覆盖' + tacticName() + '，已直接执行'
             : undefined,
         },
       };

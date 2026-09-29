@@ -353,6 +353,8 @@
     id: 'gomoku', name: '五子棋',
     sides: [{ id: 'black', name: '黑方', first: true }, { id: 'white', name: '白方' }],
     meta: { w: W, h: H }, supportsPass: false, supportsResign: true,
+    /* 2-ply 造杀扫描：候选点是无色差的空点集，适合通用双杀检测（见 jev-client computeTactics） */
+    deepTactics: true,
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, mockPick, selfTest,
   });

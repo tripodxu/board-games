@@ -831,7 +831,7 @@
     card.innerHTML =
       '<span class="who">第' + h.ply + '手 · <b>' + (m.sideName || '') + '</b>' +
       (m.mock ? ' · 演示' : ' · Jev') +
-      (m.tactics === 'win' ? ' · 保险·致胜' : m.tactics === 'block' ? ' · 保险·拦截' : m.tactics === 'open4' ? ' · 保险·活四' : '') + '</span>' +
+      (m.tactics === 'win' ? ' · 保险·致胜' : m.tactics === 'block' ? ' · 保险·拦截' : m.tactics === 'open4' ? ' · 保险·活四' : m.tactics === 'threat' ? ' · 保险·造杀' : m.tactics === 'parry' ? ' · 保险·拆杀' : '') + '</span>' +
       '<span class="mv">' + h.move.notation + '</span>';
     const barsWrap = document.createElement('div');
     barsWrap.style.gridColumn = '1 / 3';

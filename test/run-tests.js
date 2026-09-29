@@ -290,6 +290,51 @@ async function jevClientTests() {
   BG.util.assert(sent8.state.experience && sent8.state.experience.games === 3,
     'state 应注入 experience，实际：' + JSON.stringify(sent8.state.experience));
   BG.util.assert(/experience/.test(sent8.questions.move.instructions), '有经验时指令应声明其语义');
+
+  /* ⑨ 2-ply 拆杀：黑 F7,F8,F9 单一开放三连、轮白走。
+   * 1-ply 双方无致胜点（旧保险不触发）；danger_points_opponent 应为 F6/F10；
+   * 概率偏向它着时仍须保险接管走拆杀点。 */
+  let st9 = e.newGame();
+  for (const n of ['F7','A1','F8','A2','F9']) st9 = e.applyMove(st9, e.moveFromNotation(st9, n));
+  BG.util.assert(st9.turn === 'white', '应轮白走，实际：' + st9.turn);
+  const cands9 = Object.keys(e.serializeForJev(st9, 'white').questions.move.criteria);
+  const tac9 = BG.jev.computeTactics(e, st9, e.getLegalMoves(st9), cands9);
+  BG.util.assert(tac9.winning_points_you.length === 0 && tac9.winning_points_opponent.length === 0,
+    '该局面 1-ply 应无战术，实际：' + JSON.stringify(tac9));
+  BG.util.assert(tac9.danger_points_opponent.indexOf('F6') >= 0 && tac9.danger_points_opponent.indexOf('F10') >= 0,
+    '黑开放三连的拆杀点应含 F6/F10，实际：' + JSON.stringify(tac9.danger_points_opponent));
+  const parryBody = { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { H8: 0.85, F6: 0.05 } } } };
+  let sent9 = null;
+  const d9 = await withFetch(async (url, init) => { sent9 = JSON.parse(init.body); return mk(200, parryBody); },
+    () => BG.jev.decide(e, st9, st9.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert((d9.notation === 'F6' || d9.notation === 'F10') && d9.meta.tactics === 'parry',
+    '开放三连必须被保险拆杀，实际：' + d9.notation + '/' + d9.meta.tactics);
+  BG.util.assert(sent9.state.tactics.danger_points_opponent.length >= 2,
+    'state.tactics 应含拆杀点，实际：' + JSON.stringify(sent9.state.tactics));
+  BG.util.assert(/danger_points_opponent/.test(sent9.questions.move.instructions), '指令应声明拆杀语义');
+
+  /* ⑨b 己方造杀：黑 F7,F8,F9 开放三连、轮黑走，F6/F10 任走其一即成开放四连双杀。 */
+  let st9b = e.newGame();
+  for (const n of ['F7','A1','F8','B2','F9','C3']) st9b = e.applyMove(st9b, e.moveFromNotation(st9b, n));
+  BG.util.assert(st9b.turn === 'black', '应轮黑走，实际：' + st9b.turn);
+  const cands9b = Object.keys(e.serializeForJev(st9b, 'black').questions.move.criteria);
+  const tac9b = BG.jev.computeTactics(e, st9b, e.getLegalMoves(st9b), cands9b);
+  BG.util.assert(tac9b.chance_points_you.indexOf('F6') >= 0 && tac9b.chance_points_you.indexOf('F10') >= 0,
+    '己方开放三连的造杀点应含 F6/F10，实际：' + JSON.stringify(tac9b.chance_points_you));
+
+  /* ⑨c 用户实战残局（第 24 手前）：黑除 F 三连外，E8 还藏着双杀
+   * （E8,F9,G10,H11 对角四连 → D7/D8/I12 三个致胜点），故 danger 应含 E8/F6/F10/I12。
+   * 注：该局面白已输定（两个独立杀招只能堵其一），保险能看清全部威胁但救不回已输的棋；
+   * 2-ply 的价值在于更早的单一威胁局面。 */
+  let st9c = e.newGame();
+  for (const n of ['H8','H7','G8','I8','G9','G7','I7','J6','H9','I9','I10','H10','F7','E6','G10','J11','G11','G12','H11','E11','F9','E9','F8'])
+    st9c = e.applyMove(st9c, e.moveFromNotation(st9c, n));
+  const cands9c = Object.keys(e.serializeForJev(st9c, 'white').questions.move.criteria);
+  const tac9c = BG.jev.computeTactics(e, st9c, e.getLegalMoves(st9c), cands9c);
+  for (const n of ['E8','F6','F10','I12'])
+    BG.util.assert(tac9c.danger_points_opponent.indexOf(n) >= 0,
+      '实战残局拆杀点应含 ' + n + '，实际：' + JSON.stringify(tac9c.danger_points_opponent));
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */
