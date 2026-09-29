@@ -358,7 +358,7 @@
     const g0 = S.engine.getStatus(S.st);
     if (g0.over) return false;
     /* history 只留记法与展示用元数据，不再留 prev 的全量 state 快照（见 rebuildState 注释） */
-    const h = { move, meta: meta || null, ply: S.history.length + 1 };
+    const h = { move, meta: meta || null, ply: S.history.length + 1, side: S.st.turn };
     S.history.push(h);
     S.st = S.engine.applyMove(S.st, move);
     appendLedgerLine(h);
@@ -450,6 +450,44 @@
     if (!p && S.mode === 'ai-ai' && isAISide(S.st.turn) && S.inflight == null) {
       setTimeout(aiStep, 250);
     }
+  }
+
+  /* ---------- 棋谱导出 ---------- */
+  /* 纯函数便于将来复用/测试；exportGame 只负责下载动作 */
+  function buildGameExport() {
+    const g = S.engine.getStatus(S.st);
+    const moves = S.history.map((h) => {
+      const m = { ply: h.ply, side: sideName(h.side), notation: h.move.notation };
+      if (h.meta && h.meta.tactics) m.tactics = h.meta.tactics;
+      return m;
+    });
+    return {
+      format: 'jev-qiguan-game/v1',
+      exported: new Date().toISOString(),
+      game: S.engine.name,
+      gid: S.gameId,
+      mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
+      channel: effectiveChannel(),
+      result: g.over
+        ? (g.winner ? sideName(g.winner) + ' 获胜' : '和棋') + '（' + (g.reason || '') + '）'
+        : '进行中（已 ' + S.history.length + ' 手）',
+      notation: moves.map((m) => m.notation).join(','),
+      moves,
+    };
+  }
+  function exportGame() {
+    if (!S.engine || !S.history.length) { toast('还没有棋步可导出', true); return; }
+    const data = buildGameExport();
+    const name = 'jev-' + S.gameId + '-' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '') + '.json';
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+    toast('棋谱已导出 ' + name);
   }
 
   /* ---------- 数据可视化 ---------- */
@@ -944,6 +982,7 @@
     $('channel').onchange = saveSettings;
     $('endpoint').onchange = saveSettings;
     $('probeBtn').onclick = runProbe;
+    $('exportGame').onclick = exportGame;
     $('apiKey').onchange = saveSettings;
     $('orKey').onchange = saveSettings;
     $('topK').onchange = saveSettings;
