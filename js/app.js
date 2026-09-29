@@ -616,12 +616,13 @@
   const EXP_SEED = [
     {
       tag: 'exp-20260929111222', date: '2026-09-29T11:12:22.000Z',
-      chanA: 'proxy', chanB: 'random', total: 3,
-      note: '次轮：random 渠道已修复为真随机采样（均匀抽取合法着法）。基线 3 局进攻性战术触发 0 次。',
+      chanA: 'proxy', chanB: 'random', total: 4,
+      note: '次轮：random 渠道已修复为真随机采样。#4 下满 225 手和棋——双方 65 次战术触发全是防守，谁也没造出双杀；真随机散子起到了"搅局"作用。基线 4 局进攻性战术触发仍为 0。',
       games: [
         { no: 1, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A' },
         { no: 2, blackChan: 'random', whiteChan: 'proxy', winnerChan: 'A' },
         { no: 3, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A' },
+        { no: 4, blackChan: 'random', whiteChan: 'proxy', winnerChan: null },
       ],
     },
     {
@@ -639,12 +640,28 @@
     },
   ];
   function loadExpHistory() {
+    /* 用内置种子补齐缺失或过时的条目（例如某局棋谱是部署后才同步到的），
+     * 再按日期倒序排，保证新实验在前。 */
+    const mergeSeed = (list) => {
+      let changed = false;
+      EXP_SEED.forEach((seed) => {
+        const i = list.findIndex((e) => e.tag === seed.tag);
+        if (i === -1) { list.push(seed); changed = true; }
+        else if ((list[i].games || []).length < seed.games.length) { list[i] = seed; changed = true; }
+      });
+      if (changed) {
+        list.sort((x, y) => String(y.date).localeCompare(String(x.date)));
+        saveExpHistory(list);
+      }
+      return list;
+    };
     try {
       const raw = localStorage.getItem(EXP_HISTORY_KEY);
-      if (raw) { const list = JSON.parse(raw); if (Array.isArray(list)) return list; }
+      if (raw) { const list = JSON.parse(raw); if (Array.isArray(list)) return mergeSeed(list); }
     } catch (_) { /* ignore */ }
-    try { localStorage.setItem(EXP_HISTORY_KEY, JSON.stringify(EXP_SEED)); } catch (_) { /* ignore */ }
-    return EXP_SEED.slice();
+    const fresh = EXP_SEED.slice();
+    saveExpHistory(fresh);
+    return fresh;
   }
   function saveExpHistory(list) {
     try { localStorage.setItem(EXP_HISTORY_KEY, JSON.stringify(list)); } catch (_) { /* ignore */ }
