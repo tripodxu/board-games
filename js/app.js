@@ -14,7 +14,7 @@
     mode: 'human-ai', humanSide: null,
     epoch: 0, inflight: null, paused: false,
     trendMode: 'win', aborter: null, sessionRecorded: false, sessionId: null,
-    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {} },
+    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true },
   };
 
   /* ---------- 设置 ---------- */
@@ -29,6 +29,7 @@
     $('orKey').value = S.settings.orKey || '';
     $('topK').value = String(S.settings.topK);
     $('speed').value = String(S.settings.speed);
+    $('gameSync').checked = S.settings.gameSync !== false;
     syncChannelUI();
   }
   /* 接口地址按渠道归档。必须在改写 S.settings.channel 之前调用：
@@ -44,6 +45,7 @@
     S.settings.orKey = $('orKey').value.trim();
     S.settings.topK = parseInt($('topK').value, 10);
     S.settings.speed = parseInt($('speed').value, 10);
+    S.settings.gameSync = $('gameSync').checked;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(S.settings)); } catch (_) { /* ignore */ }
     syncChannelUI();
   }
@@ -342,6 +344,7 @@
     $('stepBtn').classList.add('hidden');
     setEngineStatus('idle', '已终局');
     saveGameRecord(g);
+    uploadGameRecord(); // 终局自动同步棋谱（可关）
   }
 
   /* 引擎状态灯：thinking / running / idle */
@@ -488,6 +491,24 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 500);
     toast('棋谱已导出 ' + name);
+  }
+
+  /* ---------- 棋谱自动同步 ---------- */
+  /* 终局后把棋谱 POST 到 /api/games，Function 会 commit 进仓库 games/ 目录。
+     静默失败：不同步不影响对局，只在控制台留条记录。 */
+  async function uploadGameRecord() {
+    if (S.settings.gameSync === false) return;
+    if (!S.engine || !S.history.length) return;
+    try {
+      const data = buildGameExport();
+      const r = await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) console.warn('[gameSync] 上传失败:', r.status, await r.text().catch(() => ''));
+      else console.info('[gameSync] 棋谱已同步');
+    } catch (e) { console.warn('[gameSync] 上传异常:', e); }
   }
 
   /* ---------- 数据可视化 ---------- */
