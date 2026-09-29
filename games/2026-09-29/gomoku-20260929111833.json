@@ -1,0 +1,289 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-29T11:18:33.599Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "机机",
+  "channel": "proxy",
+  "blackChannel": "proxy",
+  "whiteChannel": "random",
+  "experiment": "exp-20260929111222",
+  "expGameNo": 3,
+  "result": "黑方 获胜（五连）",
+  "notation": "H8,A10,H7,H6,H9,L12,H10,H11,H5,F2,H4,I3,I6,G4,G8,F9,G10,F7,F8,I8,E8,D8,J5,K4,G7,G9,I9,J10,E5,F6,E7,E6,F5,G5,I7,J8,J9,F10,E9,E1,G3,F4,G6,A13,J7,K7,L9,K8,K9",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "A10"
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "H7"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "H6",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H9"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "L12"
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "H10"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "H11",
+      "tactics": "block"
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "H5"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "F2"
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "H4"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "I3"
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "I6"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "G4",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "G8"
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "F9",
+      "tactics": "parry"
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "G10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "F7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "F8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "I8",
+      "tactics": "parry"
+    },
+    {
+      "ply": 21,
+      "side": "黑方",
+      "notation": "E8"
+    },
+    {
+      "ply": 22,
+      "side": "白方",
+      "notation": "D8",
+      "tactics": "block"
+    },
+    {
+      "ply": 23,
+      "side": "黑方",
+      "notation": "J5"
+    },
+    {
+      "ply": 24,
+      "side": "白方",
+      "notation": "K4",
+      "tactics": "block"
+    },
+    {
+      "ply": 25,
+      "side": "黑方",
+      "notation": "G7"
+    },
+    {
+      "ply": 26,
+      "side": "白方",
+      "notation": "G9",
+      "tactics": "parry"
+    },
+    {
+      "ply": 27,
+      "side": "黑方",
+      "notation": "I9"
+    },
+    {
+      "ply": 28,
+      "side": "白方",
+      "notation": "J10",
+      "tactics": "parry"
+    },
+    {
+      "ply": 29,
+      "side": "黑方",
+      "notation": "E5"
+    },
+    {
+      "ply": 30,
+      "side": "白方",
+      "notation": "F6",
+      "tactics": "block"
+    },
+    {
+      "ply": 31,
+      "side": "黑方",
+      "notation": "E7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 32,
+      "side": "白方",
+      "notation": "E6",
+      "tactics": "parry"
+    },
+    {
+      "ply": 33,
+      "side": "黑方",
+      "notation": "F5",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 34,
+      "side": "白方",
+      "notation": "G5",
+      "tactics": "parry"
+    },
+    {
+      "ply": 35,
+      "side": "黑方",
+      "notation": "I7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 36,
+      "side": "白方",
+      "notation": "J8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 37,
+      "side": "黑方",
+      "notation": "J9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 38,
+      "side": "白方",
+      "notation": "F10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 39,
+      "side": "黑方",
+      "notation": "E9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 40,
+      "side": "白方",
+      "notation": "E1"
+    },
+    {
+      "ply": 41,
+      "side": "黑方",
+      "notation": "G3",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 42,
+      "side": "白方",
+      "notation": "F4",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 43,
+      "side": "黑方",
+      "notation": "G6"
+    },
+    {
+      "ply": 44,
+      "side": "白方",
+      "notation": "A13"
+    },
+    {
+      "ply": 45,
+      "side": "黑方",
+      "notation": "J7"
+    },
+    {
+      "ply": 46,
+      "side": "白方",
+      "notation": "K7",
+      "tactics": "block"
+    },
+    {
+      "ply": 47,
+      "side": "黑方",
+      "notation": "L9",
+      "tactics": "open4"
+    },
+    {
+      "ply": 48,
+      "side": "白方",
+      "notation": "K8",
+      "tactics": "block"
+    },
+    {
+      "ply": 49,
+      "side": "黑方",
+      "notation": "K9",
+      "tactics": "win"
+    }
+  ]
+}
