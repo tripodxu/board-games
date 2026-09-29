@@ -810,6 +810,12 @@ details.settings[open] summary { color: var(--ink); border-bottom: 1px solid var
 details.settings[open] summary::after { content: "－"; }
 details.settings .settings-body { padding: 4px 16px 14px; }
 .settings-body label { margin: 9px 0 0; }
+.settings-body label.check-row {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.settings-body label.check-row input[type="checkbox"] {
+  width: auto; margin: 0; accent-color: var(--mo, #1f242c);
+}
 .hint { font-size: 11px; color: var(--ink-mute); line-height: 1.7; margin-top: 6px; }
 
 #probeRow { margin-top: 12px; }
