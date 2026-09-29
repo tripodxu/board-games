@@ -84,6 +84,30 @@ resp: {
 漏 `model` 会被真实端点 422 拒绝（已踩过，单测有用例④钉住）。UI 直读输入框当前值，
 不依赖是否已保存；探测期间按钮禁用。
 
+### 2.2 状态增强与战术保险（Jev 强度杠杆）
+
+Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态质量」。`decide()` 在发请求前
+统一做两层增强（对 `serializeForJev` 的产出做后处理，六棋种通用，mock 渠道不受影响）：
+
+1. **`state.tactics`**：用引擎自身的 `applyMove`/`getStatus` 模拟推算双方「一步致胜点」——
+   `{ winning_points_you: [...], winning_points_opponent: [...] }`。己方致胜 = 必走，
+   对方致胜 = 必挡；go 等无中途终局的棋种自然为空数组。指令里同步声明这两个字段的语义
+   （英文，追加在 `questions.move.instructions` 尾部）。
+2. **`state.experience`**（可选，由 `opts.experience` 传入）：同一棋种、真实渠道的历史局中
+   与当前开局前 4 手相同的那部分，统计 `{ opening_plies, games, first_player_win_rate }`。
+   样本 <2 局不注入（噪声）；离线演示局从不参与（合成数据不自证）。
+
+**战术保险（客户端接管）**：解析概率后，若有致胜点 → 必走其一；否则有对方致胜点 → 必挡其一；
+在概率榜内的战术点按概率加权抽（尊重 topK），榜外（候选预筛遗漏）直接执行该点并在
+`meta.warning` 标注「战术保险接管」。概率只是偏好，事实优先——Jev 不再漏算单步胜负。
+
+实现细节：推算按 state 身份 WeakMap 缓存；`moveNum < 4` 的早期局面直接跳过；
+引擎对模拟着法的任何拒绝都降级为空战术。**`moveFromNotation(st, n)` 是双参契约**
+（漏传 st 会在 gomoku 上炸 parseN，已踩过）。
+
+实测：黑四连局面注入 tactics 后，真实 Jev 把 G8/L8 两致胜点概率打到 0.91/0.09（合计≈1.0），
+模型确实读懂并使用了注入事实；保险层 `meta.tactics='win'` 确认无接管必要。
+
 ## 3. 两个代理实现（BYOK，服务端不存 key）
 
 - **`functions/api/jev.js`**（Cloudflare Pages Functions）：仅做 CORS 转发，
@@ -110,6 +134,7 @@ resp: {
 | `top[]` | 概率前 8 名 `{notation, p}`（概率条渲染） |
 | `candidates` | 合法候选总数；`restProb` 第 9 名以后概率合计 |
 | `noul` / `score` | 局势优劣概率 / 0–10 局势分 |
+| `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `null` |
 | `warning` | 非法响应回退等异常提示 |
 | `mock: true` | 离线演示标记（面板需显示"演示"角标） |
 

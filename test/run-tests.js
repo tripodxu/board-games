@@ -202,6 +202,42 @@ async function jevClientTests() {
   BG.util.assert(!pr.ok && pr.kind === 'shape', 'probe 200 但缺 answers 应判 shape，实际：' + pr.kind);
   pr = await BG.jev.probe({ channel: 'mock' });
   BG.util.assert(pr.ok === true && pr.kind === 'mock', 'probe mock 应直接返回 mock 判定');
+
+  /* ⑥ 战术事实：黑四连且轮黑走 → G8/L8 双成五点；换白方视角 → 同两点为必挡点。 */
+  let stx = e.newGame();
+  for (const n of ['H8', 'A1', 'I8', 'C2', 'J8', 'E3', 'K8', 'G5']) stx = e.applyMove(stx, e.moveFromNotation(stx, n));
+  const tacMe = BG.jev.computeTactics(e, stx, e.getLegalMoves(stx));
+  BG.util.assert(tacMe.winning_points_you.indexOf('G8') >= 0 && tacMe.winning_points_you.indexOf('L8') >= 0,
+    '黑四连应识别出 G8/L8 致胜点，实际：' + JSON.stringify(tacMe));
+  BG.util.assert(tacMe.winning_points_opponent.length === 0, '白只有三子，不应有必挡点');
+  const stxW = BG.util.clone(stx);
+  stxW.turn = 'white';
+  const tacOpp = BG.jev.computeTactics(e, stxW, e.getLegalMoves(stxW));
+  BG.util.assert(tacOpp.winning_points_you.length === 0 && tacOpp.winning_points_opponent.indexOf('G8') >= 0,
+    '白方视角下黑四连点应为必挡点，实际：' + JSON.stringify(tacOpp));
+
+  /* ⑦ 战术保险接管：概率偏向 G7 仍必须走致胜点；state/指令应含 tactics 语义。 */
+  const guardBody = { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { G7: 0.9, G8: 0.05 } } } };
+  let sent7 = null;
+  const d7 = await withFetch(async (url, init) => { sent7 = JSON.parse(init.body); return mk(200, guardBody); },
+    () => BG.jev.decide(e, stx, stx.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(d7.notation === 'G8' && d7.meta.tactics === 'win',
+    '致胜点应被保险接管，实际：' + d7.notation + '/' + d7.meta.tactics);
+  BG.util.assert(sent7.state.tactics && sent7.state.tactics.winning_points_you.length === 2,
+    'state 应注入 tactics，实际：' + JSON.stringify(sent7.state.tactics));
+  BG.util.assert(/winning_points_you/.test(sent7.questions.move.instructions), '指令应声明 tactics 语义');
+  BG.util.assert(!/experience/.test(sent7.questions.move.instructions), '无经验时指令不应提 experience');
+
+  /* ⑧ 经验注入：opts.experience 写进 state 并在指令中声明。 */
+  const st0 = e.newGame();
+  let sent8 = null;
+  await withFetch(async (url, init) => { sent8 = JSON.parse(init.body); return mk(200, okBody); },
+    () => BG.jev.decide(e, st0, st0.turn, { channel: 'proxy', topK: 1,
+      experience: { opening_plies: 2, games: 3, first_player_win_rate: 0.67 } }));
+  BG.util.assert(sent8.state.experience && sent8.state.experience.games === 3,
+    'state 应注入 experience，实际：' + JSON.stringify(sent8.state.experience));
+  BG.util.assert(/experience/.test(sent8.questions.move.instructions), '有经验时指令应声明其语义');
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

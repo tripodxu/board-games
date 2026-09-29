@@ -105,6 +105,69 @@
 
   const PROBE_TIMEOUT_MS = 10000;
 
+  /* ---------- 战术事实与经验注入（Jev 强度杠杆） ----------
+   * Jev 是无状态概率模型，不会学习；把客户端算得清的事实写进 state，
+   * 指令同步声明语义（一次并行多问结构不变）。
+   * tactics：模拟推算双方「一步致胜点」——走子即胜的点，己方 = 必走，对方 = 必挡。
+   * 用引擎自己的 applyMove/getStatus 推演，六棋种通用；go 等无中途终局的棋种自然为空。
+   * 结果按 state 身份缓存（WeakMap），同一局面重复决策不重算。 */
+
+  const tacCache = typeof WeakMap === 'function' ? new WeakMap() : null;
+
+  function computeTactics(engine, st, legal) {
+    if (tacCache) {
+      const hit = tacCache.get(st);
+      if (hit) return hit;
+    }
+    /* 开局无战术：moveNum 可用时跳过早期局面，省去无谓模拟 */
+    if (typeof st.moveNum === 'number' && st.moveNum < 4) {
+      return { winning_points_you: [], winning_points_opponent: [] };
+    }
+    const side = st.turn;
+    const win = [];
+    for (const m of legal) {
+      try {
+        const g = engine.getStatus(engine.applyMove(st, m));
+        if (g.over && g.winner === side) win.push(m.notation);
+      } catch (_) { /* 模拟着法被引擎拒绝：跳过 */ }
+    }
+    const block = [];
+    const oppSide = engine.sides && engine.sides.find((s) => s.id !== side);
+    if (oppSide) {
+      const stOpp = Object.assign({}, st, { turn: oppSide.id });
+      let oppMoves = [];
+      try { oppMoves = engine.getLegalMoves(stOpp); } catch (_) { oppMoves = []; }
+      for (const m of oppMoves) {
+        try {
+          const g = engine.getStatus(engine.applyMove(stOpp, m));
+          if (g.over && g.winner === oppSide.id) block.push(m.notation);
+        } catch (_) { /* 跳过 */ }
+      }
+    }
+    const res = { winning_points_you: win, winning_points_opponent: block };
+    if (tacCache && st && typeof st === 'object') tacCache.set(st, res);
+    return res;
+  }
+
+  function attachFacts(ser, tactics, experience) {
+    const facts = { tactics };
+    if (experience) facts.experience = experience;
+    if (ser.state && typeof ser.state === 'object' && !Array.isArray(ser.state)) {
+      Object.assign(ser.state, facts);
+    } else if (typeof ser.state === 'string') {
+      try { ser.state = JSON.stringify(Object.assign(JSON.parse(ser.state), facts)); }
+      catch (_) { ser.state += '\n' + JSON.stringify(facts); }
+    } else if (Array.isArray(ser.state)) {
+      ser.state.push(JSON.stringify(facts));
+    }
+    if (ser.questions && ser.questions.move && typeof ser.questions.move.instructions === 'string') {
+      ser.questions.move.instructions +=
+        ' The state includes a `tactics` object: if `winning_points_you` is non-empty, playing one of those points wins immediately this turn. ' +
+        'If `winning_points_opponent` is non-empty, the opponent would win there next turn unless stopped, so play one of those points unless you can win immediately. ' +
+        (experience ? 'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ' : '');
+    }
+  }
+
   /* 连通性探测：诊断「要不要开局」之前的事。
    * A 段 no-cors GET：响应不可读但能区分「网络/DNS 不通」（reject）与「服务器可达」（resolve）。
    * B 段最小 noul 请求：CORS 拦截与网络错误在 fetch 层同为 TypeError，用 A 段结果区分两者。
@@ -179,6 +242,8 @@
     presetEndpoint,
     /* 开局前连通性探测（设置面板「测试连接」） */
     probe,
+    /* 战术事实推算（导出供测试；decide 内部已自动调用） */
+    computeTactics,
     /* 走一步棋：engine.serializeForJev 的产出交给 Jev，返回决策对象
      * opts: { channel, apiKey, endpoint?, topK, signal, onRetry }
      * 返回 { notation, move, meta }
@@ -193,6 +258,11 @@
       if (channel === 'mock') {
         return BG.mock.decide(engine, st, side, legal, ser);
       }
+
+      /* 战术事实 + 对局经验注入 state，并同步指令语义 */
+      let tactics = { winning_points_you: [], winning_points_opponent: [] };
+      try { tactics = computeTactics(engine, st, legal); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
+      attachFacts(ser, tactics, opts.experience);
 
       const data = await callWithRetry(channel, ser, opts);
       const latencyMs = Date.now() - t0;
@@ -211,24 +281,52 @@
         return {
           notation: fallback.notation, move: fallback,
           meta: { channel, model: data.model, latencyMs, usage, costUsd, confidence: 0, top: [],
-                  candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position },
+                  candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
+                  tactics: null },
         };
       }
       pairs.sort((a, b) => b[1] - a[1]);
 
+      /* 战术保险：一步致胜必走，对方一步致胜必挡——概率只是偏好，事实优先。
+       * 战术点不在概率榜（候选预筛遗漏）时直接执行该点并如实标注接管。 */
+      let notation = null;
+      let tacticUsed = null;
+      let tacticBypassed = false;
+      const pickAmong = (list) => {
+        const inPairs = pairs.filter(([n]) => list.indexOf(n) >= 0);
+        const k2 = Math.max(1, opts.topK | 0 || 1);
+        if (inPairs.length) {
+          if (k2 > 1 && inPairs.length > 1) {
+            return BG.util.weightedPick(inPairs.map((p) => p[0]), inPairs.map((p) => p[1]));
+          }
+          return inPairs[0][0];
+        }
+        tacticBypassed = true;
+        const mv = engine.moveFromNotation(st, list[0]);
+        return mv ? mv.notation : null;
+      };
+      if (tactics.winning_points_you.length) {
+        notation = pickAmong(tactics.winning_points_you);
+        if (notation) tacticUsed = 'win';
+      } else if (tactics.winning_points_opponent.length) {
+        notation = pickAmong(tactics.winning_points_opponent);
+        if (notation) tacticUsed = 'block';
+      }
+
       /* top-k 概率加权随机（随机度） */
-      let notation;
-      const k = Math.max(1, opts.topK | 0 || 1);
-      if (k === 1) {
-        notation = pairs[0][0];
-      } else {
-        const top = pairs.slice(0, k);
-        notation = BG.util.weightedPick(top.map((p) => p[0]), top.map((p) => p[1]));
+      if (!notation) {
+        const k = Math.max(1, opts.topK | 0 || 1);
+        if (k === 1) {
+          notation = pairs[0][0];
+        } else {
+          const top = pairs.slice(0, k);
+          notation = BG.util.weightedPick(top.map((p) => p[0]), top.map((p) => p[1]));
+        }
       }
 
       return {
         notation,
-        move: byNotation.get(notation),
+        move: byNotation.get(notation) || engine.moveFromNotation(st, notation),
         meta: {
           channel, model: data.model, latencyMs, usage, costUsd, confidence: conf,
           top: pairs.slice(0, 8).map(([n, p]) => ({ notation: n, p })),
@@ -236,6 +334,10 @@
           restProb: pairs.slice(8).reduce((s, x) => s + x[1], 0), // 第 9 名以后的概率合计
           noul: answers.edge ? answers.edge.noul : undefined,
           score: answers.position ? answers.position.score : undefined,
+          tactics: tacticUsed,
+          warning: tacticBypassed
+            ? '战术保险接管：Jev 概率未覆盖' + (tacticUsed === 'win' ? '致胜点' : '必挡点') + '，已直接执行'
+            : undefined,
         },
       };
     },

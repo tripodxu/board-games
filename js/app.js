@@ -188,6 +188,24 @@
     return s ? s.name : id;
   }
 
+  /* 对局经验：同棋种、真实渠道的历史局里，与当前局面开局前 4 手相同的那部分，
+     统计先手胜率注入 state.experience。样本 <2 局不给（噪声），离线演示局从不参与。 */
+  function buildExperience(gid) {
+    const k = Math.min(4, S.history.length);
+    if (!k) return null;
+    const prefix = S.history.slice(0, k).map((h) => h.move.notation);
+    let n = 0, fw = 0;
+    for (const r of loadRecords()) {
+      if (r.gid !== gid || r.mock || !Array.isArray(r.notas)) continue;
+      if (r.notas.length >= prefix.length && prefix.every((x, i) => r.notas[i] === x)) {
+        n++;
+        if (r.firstWin === true) fw++;
+      }
+    }
+    if (n < 2) return null;
+    return { opening_plies: prefix.length, games: n, first_player_win_rate: Math.round(fw / n * 100) / 100 };
+  }
+
   /* 成本显示：极小值不显示成 $0.00000 */
   function fmtCost(c) {
     if (!c) return '$0';
@@ -397,6 +415,7 @@
         channel,
         apiKey: channel === 'openrouter' ? S.settings.orKey : S.settings.apiKey,
         endpoint: (S.settings.endpoints && S.settings.endpoints[channel]) || '',
+        experience: buildExperience(S.gameId),
         topK: S.settings.topK,
         signal: S.aborter.signal,
         onRetry: (code) => toast('限流(' + code + ')，退避重试中…'),
@@ -632,6 +651,7 @@
       winner: g.winner ? sideName(g.winner) : '和棋',
       firstWin: g.winner ? g.winner === S.engine.sides[0].id : null,
       reason: g.reason || '',
+      notas: S.history.map((h) => h.move.notation), // 棋谱写法：经验注入（开局胜率统计）的数据源
       moves: S.history.length,
       aiMoves: items.length,
       avgLat: lats.length ? Math.round(lats.reduce((s, x) => s + x, 0) / lats.length) : 0,
@@ -772,7 +792,8 @@
     card.className = 'decision';
     card.innerHTML =
       '<span class="who">第' + h.ply + '手 · <b>' + (m.sideName || '') + '</b>' +
-      (m.mock ? ' · 演示' : ' · Jev') + '</span>' +
+      (m.mock ? ' · 演示' : ' · Jev') +
+      (m.tactics === 'win' ? ' · 保险·致胜' : m.tactics === 'block' ? ' · 保险·拦截' : '') + '</span>' +
       '<span class="mv">' + h.move.notation + '</span>';
     const barsWrap = document.createElement('div');
     barsWrap.style.gridColumn = '1 / 3';
