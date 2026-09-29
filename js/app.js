@@ -92,6 +92,14 @@
     if (!key) return 'mock';
     return ch;
   }
+  /* 实验模式下黑白方可走不同渠道；平时与 effectiveChannel() 一致 */
+  function effectiveChannelFor(side) {
+    if (S.expChannels && S.engine) {
+      const ch = side === S.engine.sides[0].id ? S.expChannels.black : S.expChannels.white;
+      if (ch) return ch;
+    }
+    return effectiveChannel();
+  }
 
   /* 连通性探测：直接读输入框当前值（测的就是眼前这套配置，不依赖是否已保存） */
   let probing = false;
@@ -319,6 +327,7 @@
     saveSettings();
     S.mode = $('mode').value;
     S.humanSide = $('side').value;
+    if (!EXP.running) { S.expChannels = null; S.expInfo = null; } // 手动开局不清掉上次实验的渠道
     S.paused = false;
     resetSession();
     const eff = effectiveChannel();
@@ -345,6 +354,19 @@
     setEngineStatus('idle', '已终局');
     saveGameRecord(g);
     uploadGameRecord(); // 终局自动同步棋谱（可关）
+    if (EXP.running) {
+      // 实验连跑：记录本局，2.5 秒后自动开下一局（交替黑白）
+      const blackChan = S.expChannels.black, whiteChan = S.expChannels.white;
+      const winnerChan = !g.winner ? null
+        : (g.winner === S.engine.sides[0].id ? blackChan : whiteChan);
+      EXP.results.push({
+        no: EXP.idx + 1, blackChan, whiteChan, winner: g.winner,
+        winnerChan: winnerChan === EXP.chanA ? 'A' : (winnerChan === EXP.chanB ? 'B' : null),
+      });
+      EXP.idx++;
+      renderExpStatus(); renderExpResults();
+      setTimeout(() => { if (EXP.running) runExperimentGame(); }, 2500);
+    }
   }
 
   /* 引擎状态灯：thinking / running / idle */
@@ -413,7 +435,7 @@
     startThinkClock(side);
     setEngineStatus('thinking', '推理中');
     try {
-      const channel = effectiveChannel();
+      const channel = effectiveChannelFor(side);
       const decision = await BG.jev.decide(S.engine, S.st, side, {
         channel,
         apiKey: channel === 'openrouter' ? S.settings.orKey : S.settings.apiKey,
@@ -464,6 +486,7 @@
       if (h.meta && h.meta.tactics) m.tactics = h.meta.tactics;
       return m;
     });
+    const exp = S.expInfo || null;
     return {
       format: 'jev-qiguan-game/v1',
       exported: new Date().toISOString(),
@@ -471,6 +494,10 @@
       gid: S.gameId,
       mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
       channel: effectiveChannel(),
+      blackChannel: exp ? exp.blackChannel : undefined,
+      whiteChannel: exp ? exp.whiteChannel : undefined,
+      experiment: exp ? exp.tag : undefined,
+      expGameNo: exp ? exp.gameNo : undefined,
       result: g.over
         ? (g.winner ? sideName(g.winner) + ' 获胜' : '和棋') + '（' + (g.reason || '') + '）'
         : '进行中（已 ' + S.history.length + ' 手）',
@@ -509,6 +536,77 @@
       if (!r.ok) console.warn('[gameSync] 上传失败:', r.status, await r.text().catch(() => ''));
       else console.info('[gameSync] 棋谱已同步');
     } catch (e) { console.warn('[gameSync] 上传异常:', e); }
+  }
+
+  /* ---------- 对比实验：A渠道 vs B渠道，自动交替执黑白 ---------- */
+  const EXP = { running: false, idx: 0, total: 4, chanA: 'proxy', chanB: 'random', tag: null, results: [] };
+  const CHAN_LABEL = { proxy: 'Jev(代理)', openrouter: 'Jev(OpenRouter)', official: 'Jev(官方)', random: '纯随机', mock: '离线演示' };
+  const chanLabel = (c) => CHAN_LABEL[c] || c;
+
+  function startExperiment() {
+    if (EXP.running) return;
+    EXP.running = true; EXP.idx = 0; EXP.results = [];
+    EXP.chanA = $('expChanA').value;
+    EXP.chanB = $('expChanB').value;
+    EXP.total = Math.max(1, Math.min(20, parseInt($('expGames').value, 10) || 4));
+    EXP.tag = 'exp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+    $('expResults').innerHTML = '';
+    runExperimentGame();
+  }
+  function runExperimentGame() {
+    if (!EXP.running || EXP.idx >= EXP.total) { finishExperiment(); return; }
+    const aBlack = EXP.idx % 2 === 0; // 偶数局 A 执黑：双方各执黑白一半
+    S.expChannels = {
+      black: aBlack ? EXP.chanA : EXP.chanB,
+      white: aBlack ? EXP.chanB : EXP.chanA,
+    };
+    S.expInfo = {
+      tag: EXP.tag, gameNo: EXP.idx + 1,
+      blackChannel: S.expChannels.black, whiteChannel: S.expChannels.white,
+    };
+    $('mode').value = 'ai-ai';
+    startGame(); // startGame 内非实验时才清 expChannels，此处 EXP.running 为 true 会保留
+    setStatus(`实验 ${EXP.idx + 1}/${EXP.total}：${chanLabel(S.expChannels.black)}（黑） vs ${chanLabel(S.expChannels.white)}（白）`, false);
+    renderExpStatus();
+  }
+  function stopExperiment() {
+    EXP.running = false;
+    S.expChannels = null; S.expInfo = null;
+    renderExpStatus();
+    toast('实验已停止');
+  }
+  function finishExperiment() {
+    EXP.running = false;
+    S.expChannels = null; S.expInfo = null;
+    renderExpStatus(); renderExpResults();
+    toast('实验完成：' + expSummary());
+  }
+  function expSummary() {
+    let a = 0, b = 0, d = 0;
+    EXP.results.forEach((r) => {
+      if (!r.winner) d++;
+      else if (r.winnerChan === 'A') a++;
+      else b++;
+    });
+    return `${chanLabel(EXP.chanA)} ${a}胜 · ${chanLabel(EXP.chanB)} ${b}胜 · 和棋 ${d}`;
+  }
+  function renderExpStatus() {
+    const el = $('expStatus');
+    if (!el) return;
+    el.textContent = EXP.running
+      ? `进行中 ${EXP.idx + 1}/${EXP.total}`
+      : (EXP.results.length ? '已完成' : '待开始');
+    $('expStartBtn').classList.toggle('hidden', EXP.running);
+    $('expStopBtn').classList.toggle('hidden', !EXP.running);
+  }
+  function renderExpResults() {
+    const el = $('expResults');
+    if (!el || !EXP.results.length) { if (el) el.innerHTML = ''; return; }
+    const rows = EXP.results.map((r) =>
+      `<div class="exp-row"><span>#${r.no}</span>` +
+      `<span>${chanLabel(r.blackChan)}(黑)</span><span>vs</span><span>${chanLabel(r.whiteChan)}(白)</span>` +
+      `<b>${r.winner ? '→ ' + chanLabel(r.winnerChan === 'A' ? EXP.chanA : EXP.chanB) + '胜' : '→ 和棋'}</b></div>`).join('');
+    el.innerHTML = `<div class="exp-head">${expSummary()}</div>` + rows;
   }
 
   /* ---------- 数据可视化 ---------- */
@@ -1004,6 +1102,9 @@
     $('endpoint').onchange = saveSettings;
     $('probeBtn').onclick = runProbe;
     $('exportGame').onclick = exportGame;
+    $('expStartBtn').onclick = startExperiment;
+    $('expStopBtn').onclick = stopExperiment;
+    renderExpStatus();
     $('apiKey').onchange = saveSettings;
     $('orKey').onchange = saveSettings;
     $('topK').onchange = saveSettings;

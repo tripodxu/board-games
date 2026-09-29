@@ -370,6 +370,20 @@ async function jevClientTests() {
     () => BG.jev.decide(e, st9e, st9e.turn, { channel: 'proxy', topK: 1 }));
   BG.util.assert(d9e.notation === 'E9' && d9e.meta.tactics === 'parry',
     'p18 双 danger 并存应安全排序选 E9（Jev 偏向 I9 也应纠正），实际：' + d9e.notation + '/' + d9e.meta.tactics);
+
+  /* ⑩ random 渠道回归：纯随机（均匀概率、零启发式）必须走完整战术管线——
+   * 对方有一步杀时不能随机漏挡。黑 E5/F5/G5/H5 四连，白走必须堵 D5 或 I5。 */
+  let stR = e.newGame();
+  for (const n of ['E5','E6','F5','F6','G5','G6','H5'])
+    stR = e.applyMove(stR, e.moveFromNotation(stR, n));
+  BG.util.assert(stR.turn === 'white', '应轮白走，实际：' + stR.turn);
+  const tacR = BG.jev.computeTactics(e, stR, e.getLegalMoves(stR),
+    Object.keys(e.serializeForJev(stR, 'white').questions.move.criteria));
+  BG.util.assert(tacR.winning_points_opponent.indexOf('D5') >= 0 && tacR.winning_points_opponent.indexOf('I5') >= 0,
+    '对方一步杀点应含 D5,I5，实际：' + JSON.stringify(tacR.winning_points_opponent));
+  const dR = await BG.jev.decide(e, stR, stR.turn, { channel: 'random', topK: 1 });
+  BG.util.assert((dR.notation === 'D5' || dR.notation === 'I5') && dR.meta.tactics === 'block' && dR.meta.channel === 'random',
+    'random 渠道面对一步杀必须战术接管堵杀，实际：' + dR.notation + '/' + dR.meta.tactics);
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

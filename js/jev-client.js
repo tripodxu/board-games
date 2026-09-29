@@ -402,15 +402,27 @@
       try { tactics = computeTactics(engine, st, legal, cands); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
       attachFacts(ser, tactics, opts.experience);
 
-      const data = await callWithRetry(channel, ser, opts);
+      let answers, usage, costUsd, probs, conf, modelName;
+      if (channel === 'random') {
+        /* 纯随机基线（对比实验用）：均匀概率、零启发式，照样走完整战术管线。
+         * 与 mock 的区别：mock 直接返回不经过战术层；random 刻意走战术层，
+         * 这样"随机+战术" vs "Jev+战术"的唯一变量就是概率分布的质量。 */
+        answers = {}; usage = {};
+        costUsd = 0; modelName = 'random-baseline';
+        probs = {};
+        legal.forEach((m) => { probs[m.notation] = 1; });
+        conf = null;
+      } else {
+        const data = await callWithRetry(channel, ser, opts);
+        answers = data.answers || {};
+        usage = data.usage || {};
+        costUsd = (usage.input_tokens || 0) * 42 / 1e9; // 输入 $42/十亿token ≈ $42/百万，输出免费
+        modelName = data.model;
+        const ans = answers.move || {};
+        probs = ans.probabilities || {};
+        conf = typeof ans.confidence === 'number' ? ans.confidence : null;
+      }
       const latencyMs = Date.now() - t0;
-      const answers = data.answers || {};
-      const usage = data.usage || {};
-      const costUsd = (usage.input_tokens || 0) * 42 / 1e9; // 输入 $42/十亿token ≈ $42/百万，输出免费
-
-      const ans = answers.move || {};
-      let probs = ans.probabilities || {};
-      let conf = typeof ans.confidence === 'number' ? ans.confidence : null;
 
       /* 只保留合法着法的概率（响应理论上是选项子集） */
       const pairs = Object.entries(probs).filter(([k]) => byNotation.has(k));
@@ -418,7 +430,7 @@
         const fallback = legal[0];
         return {
           notation: fallback.notation, move: fallback,
-          meta: { channel, model: data.model, latencyMs, usage, costUsd, confidence: 0, top: [],
+          meta: { channel, model: modelName, latencyMs, usage, costUsd, confidence: 0, top: [],
                   candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
                   tactics: null },
         };
@@ -513,7 +525,7 @@
         notation,
         move: byNotation.get(notation) || engine.moveFromNotation(st, notation),
         meta: {
-          channel, model: data.model, latencyMs, usage, costUsd, confidence: conf,
+          channel, model: modelName, latencyMs, usage, costUsd, confidence: conf,
           top: pairs.slice(0, 8).map(([n, p]) => ({ notation: n, p })),
           candidates: pairs.length, // 合法候选总数
           restProb: pairs.slice(8).reduce((s, x) => s + x[1], 0), // 第 9 名以后的概率合计

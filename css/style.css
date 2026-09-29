@@ -816,6 +816,22 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .settings-body label.check-row input[type="checkbox"] {
   width: auto; margin: 0; accent-color: var(--mo, #1f242c);
 }
+/* 对比实验面板 */
+.exp-panel {
+  margin-top: 12px; padding: 10px 12px;
+  border: 1px dashed var(--line-ctl); border-radius: var(--r-ctl);
+  background: rgba(31, 36, 44, .03);
+}
+.exp-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.exp-controls { display: flex; gap: 10px; }
+.exp-controls label { flex: 1; margin: 0 !important; }
+.exp-controls .exp-games { flex: 0 0 64px; }
+.exp-actions { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+#expStatus { font-size: 11px; color: var(--ink-mute); }
+#expResults { margin-top: 8px; font-size: 12px; }
+.exp-head { font-weight: 700; margin-bottom: 4px; }
+.exp-row { display: flex; gap: 8px; padding: 2px 0; color: var(--ink-mute); }
+.exp-row b { color: var(--ink); }
 .hint { font-size: 11px; color: var(--ink-mute); line-height: 1.7; margin-top: 6px; }
 
 #probeRow { margin-top: 12px; }

@@ -257,6 +257,39 @@
           </select>
         </label>
         <label class="check-row"><input type="checkbox" id="gameSync" checked> 终局自动同步棋谱（供复盘分析）</label>
+        <div class="exp-panel">
+          <div class="exp-title">⚗ 对比实验（机机自动跑）</div>
+          <div class="exp-controls">
+            <label>A 方
+              <select id="expChanA">
+                <option value="proxy" selected>Jev(代理)+战术</option>
+                <option value="openrouter">Jev(OpenRouter)+战术</option>
+                <option value="official">Jev(官方)+战术</option>
+                <option value="random">纯随机+战术</option>
+                <option value="mock">离线演示</option>
+              </select>
+            </label>
+            <label>B 方
+              <select id="expChanB">
+                <option value="proxy">Jev(代理)+战术</option>
+                <option value="openrouter">Jev(OpenRouter)+战术</option>
+                <option value="official">Jev(官方)+战术</option>
+                <option value="random" selected>纯随机+战术</option>
+                <option value="mock">离线演示</option>
+              </select>
+            </label>
+            <label class="exp-games">局数
+              <input type="number" id="expGames" value="4" min="1" max="20">
+            </label>
+          </div>
+          <div class="hint">自动交替执黑白（双方各半），终局 2.5 秒后自动开下一局；每局棋谱照常同步，可复盘。</div>
+          <div class="exp-actions">
+            <button id="expStartBtn">开始实验</button>
+            <button id="expStopBtn" class="hidden">停止实验</button>
+            <span id="expStatus" class="mono"></span>
+          </div>
+          <div id="expResults"></div>
+        </div>
         <div class="hint" id="modeHint"></div>
       </div>
     </details>
