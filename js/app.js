@@ -139,7 +139,7 @@
   function loadFoldOpen() {
     try {
       const raw = localStorage.getItem(FOLD_KEY);
-      if (raw === null) return ['trend']; /* 首访默认：驾驶舱 + Jev 判断展开 */
+      if (raw === null) return ['trend', 'expreport']; /* 首访默认：驾驶舱 + Jev 判断 + 实验报告展开 */
       return JSON.parse(raw) || [];
     } catch (_) { return ['trend']; }
   }
@@ -578,7 +578,7 @@
   function finishExperiment() {
     EXP.running = false;
     S.expChannels = null; S.expInfo = null;
-    renderExpStatus(); renderExpResults();
+    renderExpStatus(); renderExpResults(); recordExperiment();
     toast('实验完成：' + expSummary());
   }
   function expSummary() {
@@ -609,24 +609,141 @@
     el.innerHTML = `<div class="exp-head">${expSummary()}</div>` + rows;
   }
 
+  /* ---------- 实验历史归档（实验报告面板） ---------- */
+  const EXP_HISTORY_KEY = 'jev-exp-history-v1';
+  const JEV_CHANS = ['proxy', 'openrouter', 'official'];
+  /* 两轮已跑完的真实实验（2026-09-29，棋谱已同步到仓库 games/2026-09-29/） */
+  const EXP_SEED = [
+    {
+      tag: 'exp-20260929111222', date: '2026-09-29T11:12:22.000Z',
+      chanA: 'proxy', chanB: 'random', total: 3,
+      note: '次轮：random 渠道已修复为真随机采样（均匀抽取合法着法）。基线 3 局进攻性战术触发 0 次。',
+      games: [
+        { no: 1, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A' },
+        { no: 2, blackChan: 'random', whiteChan: 'proxy', winnerChan: 'A' },
+        { no: 3, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A' },
+      ],
+    },
+    {
+      tag: 'exp-20260929105234', date: '2026-09-29T10:52:34.000Z',
+      chanA: 'proxy', chanB: 'random', total: 6,
+      note: '首轮：基线因 topK=1 退化为顺序走子（A1→B1→C1…）；#1 与 #3 棋谱完全相同，记为重复局。基线 5 局进攻性战术（threat/open4/win）触发 0 次，纯被动防守。',
+      games: [
+        { no: 1, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A' },
+        { no: 2, blackChan: 'random', whiteChan: 'proxy', winnerChan: 'A' },
+        { no: 3, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A', dup: true },
+        { no: 4, blackChan: 'random', whiteChan: 'proxy', winnerChan: 'A' },
+        { no: 5, blackChan: 'proxy', whiteChan: 'random', winnerChan: 'A' },
+        { no: 6, blackChan: 'random', whiteChan: 'proxy', winnerChan: 'A' },
+      ],
+    },
+  ];
+  function loadExpHistory() {
+    try {
+      const raw = localStorage.getItem(EXP_HISTORY_KEY);
+      if (raw) { const list = JSON.parse(raw); if (Array.isArray(list)) return list; }
+    } catch (_) { /* ignore */ }
+    try { localStorage.setItem(EXP_HISTORY_KEY, JSON.stringify(EXP_SEED)); } catch (_) { /* ignore */ }
+    return EXP_SEED.slice();
+  }
+  function saveExpHistory(list) {
+    try { localStorage.setItem(EXP_HISTORY_KEY, JSON.stringify(list)); } catch (_) { /* ignore */ }
+  }
+  function fmtExpDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function recordExperiment() {
+    const entry = {
+      tag: EXP.tag, date: new Date().toISOString(),
+      chanA: EXP.chanA, chanB: EXP.chanB, total: EXP.total,
+      games: EXP.results.map((r) => ({
+        no: r.no, blackChan: r.blackChan, whiteChan: r.whiteChan,
+        winnerChan: r.winner ? r.winnerChan : null,
+      })),
+      note: '',
+    };
+    const list = loadExpHistory();
+    if (!list.some((e) => e.tag === entry.tag)) list.unshift(entry);
+    saveExpHistory(list);
+    renderExpHistory();
+  }
+  function renderExpHistory() {
+    const el = $('expHistory');
+    if (!el) return;
+    const list = loadExpHistory();
+    const noteEl = $('expReportNote');
+    if (!list.length) {
+      el.innerHTML = '<div class="hint">暂无实验记录——跑完一轮对比实验后，这里会自动归档战报。</div>';
+      if (noteEl) noteEl.textContent = '';
+      return;
+    }
+    let jevW = 0, baseW = 0, draws = 0, effGames = 0;
+    const cards = list.map((e) => {
+      let a = 0, b = 0, d = 0, eff = 0;
+      const rows = e.games.map((g) => {
+        const dup = !!g.dup;
+        const wside = !dup ? g.winnerChan : null; // 'A' | 'B' | null
+        const wchan = wside ? (wside === 'A' ? e.chanA : e.chanB) : null;
+        if (!dup) {
+          eff++;
+          if (!wside) { d++; draws++; }
+          else if (wside === 'A') { a++; }
+          else { b++; }
+          if (wchan) { if (JEV_CHANS.includes(wchan)) jevW++; else baseW++; }
+        }
+        const wl = dup ? '<span class="dim">重复局（与 #1 相同）</span>'
+          : !wchan ? '→ 和棋'
+          : '→ <b>' + chanLabel(wchan) + '胜</b>';
+        return `<div class="exp-row"><span class="mono">#${g.no}</span>` +
+          `<span>${chanLabel(g.blackChan)}(黑)</span><span class="dim">vs</span>` +
+          `<span>${chanLabel(g.whiteChan)}(白)</span><span>${wl}</span></div>`;
+      }).join('');
+      effGames += eff;
+      return `<div class="exp-card"><div class="exp-card-head">` +
+        `<b>${chanLabel(e.chanA)} <span class="mono">${a} : ${b}</span> ${chanLabel(e.chanB)}</b>` +
+        `<span class="dim">${eff} 局有效 · ${fmtExpDate(e.date)}</span></div>` +
+        `<div class="exp-card-rows">${rows}</div>` +
+        (e.note ? `<div class="hint">${e.note}</div>` : '') +
+        `</div>`;
+    }).join('');
+    el.innerHTML =
+      `<div class="exp-total">累计：Jev 渠道 <b class="mono">${jevW}</b> 胜 · 其他 <b class="mono">${baseW}</b> 胜` +
+      (draws ? ` · 和棋 <b class="mono">${draws}</b>` : '') +
+      `（${effGames} 局有效对局）</div>` + cards;
+    if (noteEl) noteEl.textContent = `${list.length} 轮实验 · Jev ${jevW}:${baseW}`;
+  }
+
   /* ---------- 数据可视化 ---------- */
 
   /* 从对局历史构建 Jev 判断序列（先手方视角） */
   function buildSeries() {
     const firstSide = S.engine.sides[0].id;
     return S.history
-      .filter((h) => h.meta && h.meta.byAI && typeof h.meta.noul === 'number')
+      /* random 基线着法不是 Jev 的判断，不进趋势图；放宽 noul 强要求，
+       * 有任一可用信号即收录（旧棋谱/残缺响应也能画） */
+      .filter((h) => h.meta && h.meta.byAI && h.meta.channel !== 'random' &&
+        (typeof h.meta.noul === 'number' || typeof h.meta.score === 'number' ||
+         typeof h.meta.confidence === 'number' ||
+         (h.meta.top && h.meta.top.length && typeof h.meta.top[0].p === 'number')))
       .map((h) => {
         const mover = h.meta.side;
         const toFirst = mover === firstSide ? 1 : 0; // 0: 视角翻转
         const flip = (v, hi) => (toFirst ? v : hi - v);
+        const noul = typeof h.meta.noul === 'number' ? h.meta.noul : null;
+        const topP = (h.meta.top && h.meta.top.length && typeof h.meta.top[0].p === 'number') ? h.meta.top[0].p : null;
         return {
           ply: h.ply,
           notation: h.move.notation,
           sideName: h.meta.sideName,
-          win: flip(h.meta.noul, 1),
-          score: typeof h.meta.score === 'number' ? flip(h.meta.score, 10) : null,
-          conf: typeof h.meta.confidence === 'number' ? h.meta.confidence : null,
+          win: noul == null ? null : flip(noul, 1),
+          /* 兜底让三个芯片永远有曲线：局势分缺失时用胜率×10（0-10 刻度），
+           * 置信度缺失时用首选着法概率 */
+          score: typeof h.meta.score === 'number' ? flip(h.meta.score, 10)
+            : (noul == null ? null : flip(noul * 10, 10)),
+          conf: typeof h.meta.confidence === 'number' ? h.meta.confidence : topP,
           latencyMs: h.meta.latencyMs,
           costUsd: h.meta.costUsd || 0,
           mock: !!h.meta.mock,
@@ -1104,7 +1221,7 @@
     $('exportGame').onclick = exportGame;
     $('expStartBtn').onclick = startExperiment;
     $('expStopBtn').onclick = stopExperiment;
-    renderExpStatus();
+    renderExpStatus(); renderExpHistory();
     $('apiKey').onchange = saveSettings;
     $('orKey').onchange = saveSettings;
     $('topK').onchange = saveSettings;

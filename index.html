@@ -106,6 +106,20 @@
       </div>
     </section>
 
+    <!-- 实验报告：历史对比实验归档 -->
+    <section class="panel collapsible" data-panel="expreport" aria-label="实验报告">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="true" aria-controls="body-expreport" title="收起 / 展开" aria-label="收起或展开「实验报告」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>实验报告</h2>
+        <span class="note" id="expReportNote"></span>
+      </div>
+      <div class="panel-body" id="body-expreport">
+        <div id="expHistory"></div>
+      </div>
+    </section>
+
     <!-- 双方对决：两个 Jev 的实时对比 -->
     <section class="panel collapsible" data-panel="duel" aria-label="双方 Jev 对决">
       <div class="panel-title">
@@ -289,6 +303,7 @@
             <span id="expStatus" class="mono"></span>
           </div>
           <div id="expResults"></div>
+          <div class="hint">跑完自动归档到「实验报告」面板，可回看历史战绩。</div>
         </div>
         <div class="hint" id="modeHint"></div>
       </div>
