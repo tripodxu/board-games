@@ -1,0 +1,121 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-29T09:51:22.386Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "人机",
+  "channel": "proxy",
+  "result": "白方 获胜（五连）",
+  "notation": "H8,H7,I8,G8,H9,J7,I7,I6,J5,J6,H6,J8,G7,I5,F8,F6,G9,F9,E7,E10",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "H7"
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "I8"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "G8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H9"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "J7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "I7"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "I6",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "J5"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "J6",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "H6"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "J8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "G7"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "I5",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "F8"
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "F6",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "G9"
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "F9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "E7"
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "E10",
+      "tactics": "win"
+    }
+  ]
+}
