@@ -185,7 +185,11 @@
   /* ---------- 侧栏页签（对局 / 数据 / 设置） ---------- */
   const SIDETAB_KEY = 'jev_qiguan_sidetab_v1';
   const SIDETAB_NAMES = ['play', 'data', 'settings'];
-  function activateSidePane(name, persist) {
+  /* runHooks：仅用户主动切换时补渲染。初始化调用必须传 false——
+   * 此时 S.engine 尚未就绪（switchGame 在后面才跑），FOLD_HOOKS 里的
+   * renderAnalytics → buildSeries 会直接抛 TypeError，把 DOMContentLoaded
+   * 整个 handler 中断（bind/switchGame 全都不执行）。 */
+  function activateSidePane(name, persist, runHooks) {
     document.querySelectorAll('.side-tabs button[data-pane]').forEach((b) => {
       const on = b.dataset.pane === name;
       b.classList.toggle('active', on);
@@ -197,6 +201,7 @@
     if (persist) {
       try { localStorage.setItem(SIDETAB_KEY, name); } catch (_) { /* ignore */ }
     }
+    if (!runHooks) return;
     /* 隐藏期间容器量宽为 0：切回时对已展开面板补一次全量渲染（与展开折叠同理） */
     const pane = document.getElementById('pane-' + name);
     if (!pane) return;
@@ -210,10 +215,10 @@
     if (!bar) return;
     let saved = null;
     try { saved = localStorage.getItem(SIDETAB_KEY); } catch (_) { /* ignore */ }
-    activateSidePane(SIDETAB_NAMES.includes(saved) ? saved : 'play', false);
+    activateSidePane(SIDETAB_NAMES.includes(saved) ? saved : 'play', false, false);
     bar.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-pane]');
-      if (b) activateSidePane(b.dataset.pane, true);
+      if (b) activateSidePane(b.dataset.pane, true, true);
     });
     /* ←/→ 在页签间循环移动（WAI-ARIA tabs 惯例） */
     bar.addEventListener('keydown', (e) => {
@@ -224,7 +229,7 @@
       e.preventDefault();
       const n = btns[(i + (e.key === 'ArrowRight' ? 1 : btns.length - 1)) % btns.length];
       n.focus();
-      activateSidePane(n.dataset.pane, true);
+      activateSidePane(n.dataset.pane, true, true);
     });
   }
 

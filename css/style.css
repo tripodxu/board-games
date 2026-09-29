@@ -316,28 +316,30 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 
 /* ---------- 右栏 ---------- */
 
-/* 侧栏吸附在视口内并独立滚动：面板再多也不把页面撑长，页面总高由棋盘列决定。
+/* 侧栏吸附在视口内：面板再多也不把页面撑长，页面总高由棋盘列决定。
+ * 关键：滚动只发生在「当前页签内容区」——驾驶舱与页签栏是固定区，
+ * 多面板同时展开时成本/状态面板不会被挤出视口；flex 子项默认 shrink:1
+ * 会在空间不足时压缩固定区，故显式 flex:none 锁死。
  * 窄屏（单列布局）回归文档流，吸附反而碍事。 */
 .side {
   display: flex; flex-direction: column; gap: 10px; min-width: 0;
   position: sticky; top: 18px;
   max-height: calc(100vh - 36px);
-  overflow-y: auto;
-  padding-bottom: 2px; /* 给末尾面板的投影留一点余地 */
 }
+.side > .engine-panel,
+.side > .side-tabs { flex: 0 0 auto; }
 
 @media (max-width: 1080px) {
-  .side { position: static; max-height: none; overflow: visible; }
+  .side { position: static; max-height: none; }
+  .side-pane { overflow: visible; max-height: none; }
 }
 
 /* ---------- 侧栏页签 ----------
  * 与棋种页签同一笔法（展示字 + 朱砂下划线），但小一号——它是栏内导航，
- * 不与顶部主导航争层级。栏内滚动时吸附在栏顶，随时可切换。 */
+ * 不与顶部主导航争层级。固定区的一部分，不随内容滚动。 */
 .side-tabs {
-  position: sticky; top: 0; z-index: 5;
   display: flex; gap: 2px;
   padding: 2px 2px 0;
-  background: var(--bg0);
   border-bottom: 1px solid var(--line);
 }
 .side-tabs button {
@@ -364,15 +366,22 @@ input[type="range"] { padding: 0; accent-color: var(--mo); }
 .side-tabs button.active { color: var(--ink); }
 .side-tabs button.active::after { transform: scaleX(1); }
 
-.side-pane { display: flex; flex-direction: column; gap: 10px; }
+/* 当前页签内容区：侧栏内唯一滚动的区域。min-height:0 允许它在 flex 列里
+ * 收缩到剩余空间；2px 内边距防止面板投影在滚动口边缘被硬切。 */
+.side-pane {
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  padding: 2px 2px 3px;
+}
 .side-pane[hidden] { display: none; }
 
-/* 侧栏自身的滚动条：与文末共享主题同一口径，但底色是栏后的 --bg0 */
-.side { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
-.side::-webkit-scrollbar { width: 8px; }
-.side::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid var(--bg0); }
-.side::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
-.side::-webkit-scrollbar-track { background: transparent; }
+/* 内容区自身的滚动条：与文末共享主题同一口径，但底色是栏后的 --bg0 */
+.side-pane { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.side-pane::-webkit-scrollbar { width: 8px; }
+.side-pane::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid var(--bg0); }
+.side-pane::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+.side-pane::-webkit-scrollbar-track { background: transparent; }
 
 .panel {
   background: var(--bg1);
