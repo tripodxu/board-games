@@ -484,6 +484,24 @@ async function jevClientTests() {
   const vcfG = epro.vcfWin(st12g, 'black', 7);
   BG.util.assert(vcfG.win && vcfG.first === 'H7',
     'pro 模式黑也应有 VCF 将死链（首步 H7），实际：' + JSON.stringify(vcfG));
+
+  /* ⑫h 实战回归（exp-20260930025135 game4 第 18 手，白走）：黑方有 VCF 将死链，
+   * 但只占链首 C13 杀不死（黑转走 E13 线），旧逻辑直接放弃 vcfDefense，白走
+   * D13(parry3) 后被黑 E13 双重威胁打死。补丁后应逐点试干预，E13 可彻底破杀。 */
+  let st12h = e.newGame();
+  for (const n of ['H8', 'H7', 'E11', 'H9', 'B14', 'H10', 'A14', 'H11', 'C15', 'H12',
+    'H13', 'I13', 'G11', 'I11', 'D12', 'F10', 'D14'])
+    st12h = e.applyMove(st12h, e.moveFromNotation(st12h, n));
+  BG.util.assert(st12h.turn === 'white', '应轮白走，实际：' + st12h.turn);
+  const tac12h = BG.jev.computeTactics(e, st12h, e.getLegalMoves(st12h),
+    Object.keys(e.serializeForJev(st12h, 'white').questions.move.criteria));
+  BG.util.assert(tac12h.vcf_win_opponent.length > 0,
+    'vcf_win_opponent 不应为空（链上多点可破杀），实际：' + JSON.stringify(tac12h.vcf_win_opponent));
+  const d12h = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { D13: 0.9, E13: 0.05 } } } }),
+    () => BG.jev.decide(e, st12h, st12h.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(d12h.meta.tactics === 'vcfDefense' && tac12h.vcf_win_opponent.indexOf(d12h.notation) >= 0,
+    '白方偏向 D13 也应被 vcfDefense 纠正到破杀点，实际：' + d12h.notation + '/' + d12h.meta.tactics);
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

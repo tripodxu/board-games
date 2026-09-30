@@ -8,6 +8,21 @@
 
 ---
 
+## 2026-09-30 · vcfDefense 多点干预重试（exp-20260930025135 复盘补丁）
+
+- 实验 exp-20260930025135：Jev(proxy) vs Rapfi 4 局，Rapfi 4:0 全胜（黑白各两盘）。
+  4 盘共 10 次"vcfDefense 发现对方 VCF 但放弃"（game4 ply18 / game2 ply42 / game1 ply69 等）。
+- 根因（game4 ply18 白方已验证）：旧逻辑只试"占住将死链首步"，复搜发现对方还有链
+  就直接放弃。但链上其他点可破杀——game4 的 7 步链 C13,A15,E13,F12,E14,C14,E12 中，
+  E13/F12/E14/C14/E12 占任一点都能彻底杀死黑方 VCF。旧逻辑试 C13 失败就放弃，白走
+  D13(parry3)，黑 E13 双重威胁（即时五连 F12 + 活四 E12）打死，白 25 手落败。
+- 补丁（js/jev-client.js）：vcfDefense 改为先链首、再链条顺序逐点试干预，每点试走后
+  复搜，首个"对方彻底无将死链"的点采用；全部失败才回落 parry。链首成功时行为与旧版一致。
+- 回归 ⑫h：game4 前 17 手局面，白方 vcf_win_opponent 非空（旧代码为空）；mock 偏向
+  D13 也被纠正到破杀点，tactics=vcfDefense。
+- game3 的败因是另一回事：黑 vcfAttack 链本身成立，但白方防守反击造杀（VCT 范畴，
+  vcfWin 注释已声明为局限），不在本补丁范围，不硬造。
+
 ## 2026-09-30 · VCF 威胁空间搜索上线（Jev 战术保险第六/七层）
 
 - 新增 `vcfWin(st, attackerId, maxPlies)`（js/games/gomoku.js，gomoku/pro 共用）：

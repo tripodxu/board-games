@@ -290,13 +290,27 @@
       if (res.vcf_win_you.length === 0) {
         try {
           const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, VCF_PLIES);
-          const defMove = def && def.win && def.first && engine.moveFromNotation(st, def.first);
-          if (defMove) {
-            /* 试走后复搜：对方可能有多条 VCF 根（见 ⑨e：I9/E9 双链），只有干预后
-             * 对方彻底无将死链才采用；否则留空，回落 parry/pickSafestParry 老路。 */
-            const stAfter = engine.applyMove(st, defMove);
-            const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, VCF_PLIES);
-            if (!recheck.win) res.vcf_win_opponent = [def.first];
+          if (def && def.win && def.first) {
+            /* 干预点候选：先试链首，再按链条顺序逐点试。实战（2026-09-30
+             * exp-20260930025135 game4 ply18）：只占链首 C13 杀不死将死链
+             * （黑转走 E13 线），旧逻辑直接放弃 vcfDefense，白 D13(parry3)
+             * 后被黑 E13 双重威胁打死；但链上 E13/F12/E14/C14/E12 均可彻底
+             * 破杀。故链首失败不直接放弃，继续试链条上其他点。 */
+            const cands = [];
+            const seen = new Set();
+            const pushCand = (n) => { if (n && !seen.has(n)) { seen.add(n); cands.push(n); } };
+            pushCand(def.first);
+            for (const n of (def.line || [])) pushCand(n);
+            for (const n of cands) {
+              const mv = engine.moveFromNotation(st, n);
+              if (!mv) continue;
+              /* 试走后复搜：对方可能有多条 VCF 根（见 ⑨e：I9/E9 双链），只有干预后
+               * 对方彻底无将死链才采用；否则继续试下一点，全部失败则留空，
+               * 回落 parry/pickSafestParry 老路。 */
+              const stAfter = engine.applyMove(st, mv);
+              const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, VCF_PLIES);
+              if (!recheck.win) { res.vcf_win_opponent = [n]; break; }
+            }
           }
         } catch (_) { /* fail-soft */ }
       }
