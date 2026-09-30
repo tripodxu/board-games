@@ -57,7 +57,7 @@
 
 **修法（契约）：渲染结构恒定**——标题行恒 1 行 + 指标行恒 3 槽（缺指标显示 `–`）+ 候选行恒 `LATEST_SLOTS`(8) 槽（缺候选显示空槽弱化）+ 「其余候选」行恒在（无内容时 `visibility:hidden` 保高度）+ 无决策时也走同一条骨架（首绘即终高，不跳变）。
 
-- [ ] **Step 1: 写失败测试（最新决策固定槽位契约）**
+- [x] **Step 1: 写失败测试（最新决策固定槽位契约）**
 
  在 `test/run-tests.js` 新增函数（放在 `jevClientTests()` 之后；模块加载见 Step 3）：
 
@@ -117,12 +117,12 @@
    results.push('✓ 最新决策固定槽位契约（结构恒定，面板不跳高）');
  ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
  Run: `node test/run-tests.js`
  Expected: FAIL，报 `BG.latest is not defined`（js/latest-board.js 尚未创建）。
 
-- [ ] **Step 3: 实现（先补模块加载，再写模块与接线）**
+- [x] **Step 3: 实现（先补模块加载，再写模块与接线）**
 
  3a. `test/run-tests.js:13-25` 的模块加载数组（在 `'js/board.js',` 之后插入一行；Phase 1 再往同一数组插 `'js/tactics-versions.js'` 与 `'js/duel.js'`）：
 
@@ -254,7 +254,7 @@
  .panel-title h2, .panel-title .rank-count { flex: 0 0 auto; }
  ```
 
-- [ ] **Step 4: 实跑确认通过 + 人工核查**
+- [x] **Step 4: 实跑确认通过 + 人工核查**
 
  Run: `node test/run-tests.js` → 全绿。
  人工核查（Chrome DevTools，1280×800）：
@@ -263,7 +263,7 @@
  3. 切到候选数很多的局面（中盘 candidates>8）与残局（candidates 少）对比——高度仍相等，仅内容不同；「其余候选」行只在 >8 时有字。
  4. 把窗口收到 900px 宽：标题行仍单行，说明文字以省略号收尾，不被挤成两行。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
  ```bash
  git add js/latest-board.js js/app.js css/style.css test/run-tests.js index.html
@@ -281,7 +281,7 @@
 
 **定位（附带修正，非用户主诉）**：用户主诉是 Task 0.1 的面板高度跳动；但同一类病灶在横轴也存在——`main { grid-template-columns: minmax(430px, auto) minmax(380px, 490px) }` 中第一列 `auto`=剩余空间，侧栏第二列是内容相关的 `minmax(380px,490px)`，对局/实验/数据三页签 max-content 宽度不同 → 切页签侧栏宽度变 → 棋盘列宽变 → `#board{max-width:100%}`（style.css:250）重新缩放。修法：侧栏列改为只随视口变化（切页签不再影响），并为根元素预留滚动条槽。两步合起来才是完整的「尺寸稳定化」。
 
-- [ ] **Step 1: 写失败测试（布局契约）**
+- [x] **Step 1: 写失败测试（布局契约）**
 
 在 `test/run-tests.js` 的 `layoutContractTests()` 新函数中：
 
@@ -310,12 +310,12 @@ function layoutContractTests() {
   results.push('✓ 布局稳定化契约（侧栏定宽 + scrollbar-gutter）');
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，报 `main 应为「内容无关棋盘列 + 视口相关定宽侧栏」`（当前 178 行是 `minmax(430px, auto) minmax(380px, 490px)`）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `css/style.css:69`（html 规则内新增一行）：
 
@@ -329,7 +329,7 @@ Expected: FAIL，报 `main 应为「内容无关棋盘列 + 视口相关定宽�
   grid-template-columns: minmax(430px, 1fr) clamp(380px, 31vw, 430px);
 ```
 
-- [ ] **Step 4: 实跑确认通过 + 人工核查**
+- [x] **Step 4: 实跑确认通过 + 人工核查**
 
 Run: `node test/run-tests.js` → 全绿。
 人工核查（Playwright/Chrome DevTools，1280×800 与 1024×700 各做一次）：
@@ -337,7 +337,7 @@ Run: `node test/run-tests.js` → 全绿。
 2. 让页面出现/消失纵向滚动条（在 console 里 `document.body.style.height='3000px'` 切换）——棋盘宽不得跳变。
 3. 窗口从 1280 拖到 1120——棋盘不得小于 430px 列（小屏走 1080px 断点堆叠，允许变小但不允许抖动）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add css/style.css test/run-tests.js
@@ -376,7 +376,7 @@ git commit -m "style(ui): 宽度稳定化——侧栏列改视口定宽 + scroll
 机制键 12 个：`win block open4 threat parry parry3 parry4 vcfAttack vcfDefense safeSort vcfTry sound`。
 优先级顺序（用户 m00302）= `win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4`，与 `js/jev-client.js:548-579` 接管链一致；v7 把 VCF 两级插在 threat 与 parry 之间，层数 5→9。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 /* 单元：战术版本登记表（git 历史 × 棋谱数据双锚定：9 个战术版本 + 1 数据驱动基线） */
@@ -448,12 +448,12 @@ function tacticsRegistryTests() {
   results.push('✓ 战术版本登记表（9 档机制阶梯 + 基线）');
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`BG.tacticsVersions 应存在`。
 
-- [ ] **Step 3: 实现 `js/tactics-versions.js`**
+- [x] **Step 3: 实现 `js/tactics-versions.js`**
 
 ```js
 /* tactics-versions.js — 战术层版本登记表（复现与对比实验的唯一事实来源）
@@ -545,11 +545,11 @@ Expected: FAIL，`BG.tacticsVersions 应存在`。
 })();
 ```
 
-- [ ] **Step 4: 实跑确认通过**
+- [x] **Step 4: 实跑确认通过**
 
 Run: `node test/run-tests.js` → `✓ 战术版本登记表（9 档机制阶梯 + 基线）`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/tactics-versions.js test/run-tests.js
@@ -562,7 +562,7 @@ git commit -m "feat(tactics): 战术版本登记表——9 档机制阶梯 + 基
 - Create: `js/duel.js`
 - Modify: `test/run-tests.js`（注册 + 单测）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 /* 单元：对阵联名与棋谱 slug（战绩簿 / 实验报告 / 服务端文件名共用同一套命名） */
@@ -603,12 +603,12 @@ function duelTests() {
   results.push('✓ 对阵联名与棋谱 slug');
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`BG.duel 应存在`。
 
-- [ ] **Step 3: 实现 `js/duel.js`**
+- [x] **Step 3: 实现 `js/duel.js`**
 
 ```js
 /* duel.js — 战绩簿显示名、实验联名、棋谱文件名 slug（纯函数）
@@ -701,7 +701,7 @@ Expected: FAIL，`BG.duel 应存在`。
 })();
 ```
 
-- [ ] **Step 4: 实跑确认通过 + 页面内自检挂载**
+- [x] **Step 4: 实跑确认通过 + 页面内自检挂载**
 
 Run: `node test/run-tests.js` → 全绿。
 在 `js/app.js` 的自检面板（:1554-1572 那段）里补两行（与 `BG.calibration.selfTest()` 同款）：
@@ -711,7 +711,7 @@ Run: `node test/run-tests.js` → 全绿。
       if (BG.duel) { BG.duel.selfTest(); panel.innerHTML += '<span class="ok">✓ 对阵联名</span><br>'; }
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/duel.js test/run-tests.js js/app.js
@@ -779,7 +779,7 @@ decide 的 `meta`（:598-609）新增字段：`tacticsVersion: ver.id`。
 
 `js/board.js` `aiMoveMeta(notation, m)` 新增：`tv: m && m.tacticsVersion != null ? String(m.tacticsVersion) : null`（放在 `tactics` 字段旁）。
 
-- [ ] **Step 1: 写失败测试（版本闸门归因 + meta 透传）**
+- [x] **Step 1: 写失败测试（版本闸门归因 + meta 透传）**
 
 在 `jevClientTests()` 末尾追加（复用已建好的 `withFetch` / `mk` / `e`）：
 
@@ -837,12 +837,12 @@ decide 的 `meta`（:598-609）新增字段：`tacticsVersion: ver.id`。
   BG.util.assert(meta0.tv === null, '无档位时 tv 应为 null，实际：' + meta0.tv);
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`v0-off 不应有战术接管`（当前 decide 无条件走全接管链，v0-off 也会 G8/L8）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 按上文「关键改法」逐处改写 `js/jev-client.js`。注意：
 - `computeTactics` 现有 return 点（win/block 早退分支 :249-268 是扫描不是 return）只包 `if (M.win)` / `if (M.block)`；函数结尾的汇总 return 保持。
@@ -850,11 +850,11 @@ Expected: FAIL，`v0-off 不应有战术接管`（当前 decide 无条件走全�
 - **vcfTry 闸门（v8 行为）**：在 `def` 分支里，防守候选点的构造由 `候选 = [链首点]` 改为 `const 候选 = M.vcfTry ? [链首点].concat(line) : [链首点];`——v7 只占链首（占不住就放弃、落到 parry3），v8 起链上逐点试干预。此行为差由 `tacticsRegistryTests` 的 `vcfTry` 档位断言守住（v7 false / v8 true）。
 - 接管链中现有局部函数名 `open4Points/parry3Points/parry4Points` 与上面目标代码里的 `open4Points` 冲突——改为目标代码中的 `open4Points/parry3Pts/parry4Pts`（内层箭头函数定义上移为具名函数 `openFourPoints/parryThreePoints/parryFourPoints`，原逻辑一行不改）。
 
-- [ ] **Step 4: 实跑确认通过**
+- [x] **Step 4: 实跑确认通过**
 
 Run: `node test/run-tests.js` → 全绿（注意 ⑥/⑥d/⑦/⑨ 等旧断言仍须通过——它们走默认档=CURRENT，行为不变）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/jev-client.js js/board.js test/run-tests.js
@@ -900,7 +900,7 @@ git commit -m "feat(jev): 接管链按战术版本闸门接管，decide 记 meta
 </aside>
 ```
 
-- [ ] **Step 1: 写失败测试（DOM 契约）**
+- [x] **Step 1: 写失败测试（DOM 契约）**
 
 ```js
 /* 单元：DOM 契约——R3/R5/R6 新控件必须存在且全文档 id 唯一 */
@@ -933,12 +933,12 @@ function domContractTests() {
   results.push('✓ DOM 契约（抽屉/三页签/沿革条控件齐全且 id 唯一）');
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`index.html 缺控件 #settingsGear`（并可能报 `rapfiThinkLabel 不应再按渠道隐藏`）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `index.html` header（:15-27）加 `settingsGear` 按钮（放 `head-spacer` 之后、三个 chip 之前）。
 2. 新建抽屉 markup（toast 之前）；把映射表控件整段搬入，保持 id 与 `class` 不变；`rapfiThinkLabel` 的 class 去掉 `hidden`。
@@ -983,12 +983,12 @@ Expected: FAIL，`index.html 缺控件 #settingsGear`（并可能报 `rapfiThink
 .drawer-body { overflow-y: auto; padding: 14px 16px 28px; }
 ```
 
-- [ ] **Step 4: 实跑确认通过 + 人工核查**
+- [x] **Step 4: 实跑确认通过 + 人工核查**
 
 Run: `node test/run-tests.js` → 全绿。
 人工核查：齿轮开抽屉/Esc/遮罩关闭；Rapfi 下拉在抽屉常显（不再随主渠道隐藏）；页签「实验」含模式/我方执子/机机间隔/实验面板；`backendBlock` 在数据栏；`localStorage` 里旧 key（无 `tacticsVersion`/`sideConfig`）刷新后自动补齐不报错。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.html css/style.css js/app.js test/run-tests.js
