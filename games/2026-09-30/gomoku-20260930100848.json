@@ -1,0 +1,535 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T10:08:48.302Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "机机",
+  "channel": "proxy",
+  "blackChannel": "rapfi",
+  "whiteChannel": "proxy",
+  "experiment": "exp-20260930090336",
+  "expGameNo": 18,
+  "result": "黑方 获胜（五连）",
+  "notation": "H8,H7,E11,G7,B14,F7,E7,I7,J7,K7,B15,G8,F9,H9,I10,G9,G6,G10,G11,F11,D13,I8,E12,E10,L9,K8,D12,C13,D10,D11,F12,G12,G13,H14,C9",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "H7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.3,
+        "p": 0.34,
+        "rank": 1,
+        "cands": 24,
+        "ms": 392
+      }
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "E11",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "G7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.14,
+        "rank": 1,
+        "cands": 48,
+        "ms": 416
+      }
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "B14",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "F7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 62,
+        "ms": 513
+      }
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "E7",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "I7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.39,
+        "p": 0.39,
+        "rank": 1,
+        "cands": 64,
+        "ms": 534
+      }
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "J7",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "K7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 64,
+        "ms": 528
+      }
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "B15",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "G8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.18,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 64,
+        "ms": 481
+      }
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "F9",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "H9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.18,
+        "p": 0.18,
+        "rank": 1,
+        "cands": 64,
+        "ms": 498
+      }
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "I10",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "G9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 497
+      }
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "G6",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "G10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 517
+      }
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "G11",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "F11",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.1,
+        "rank": 1,
+        "cands": 64,
+        "ms": 482
+      }
+    },
+    {
+      "ply": 21,
+      "side": "黑方",
+      "notation": "D13",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 22,
+      "side": "白方",
+      "notation": "I8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.16999999999999998,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1848
+      }
+    },
+    {
+      "ply": 23,
+      "side": "黑方",
+      "notation": "E12",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 24,
+      "side": "白方",
+      "notation": "E10",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.060000000000000005,
+        "rank": 2,
+        "cands": 64,
+        "ms": 559
+      }
+    },
+    {
+      "ply": 25,
+      "side": "黑方",
+      "notation": "L9",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 26,
+      "side": "白方",
+      "notation": "K8",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.03,
+        "rank": 6,
+        "cands": 64,
+        "ms": 594
+      }
+    },
+    {
+      "ply": 27,
+      "side": "黑方",
+      "notation": "D12",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 28,
+      "side": "白方",
+      "notation": "C13",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 580
+      }
+    },
+    {
+      "ply": 29,
+      "side": "黑方",
+      "notation": "D10",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 30,
+      "side": "白方",
+      "notation": "D11",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.24,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 564
+      }
+    },
+    {
+      "ply": 31,
+      "side": "黑方",
+      "notation": "F12",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 32,
+      "side": "白方",
+      "notation": "G12",
+      "tactics": "parry",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.49,
+        "p": 0.51,
+        "rank": 1,
+        "cands": 64,
+        "ms": 554
+      }
+    },
+    {
+      "ply": 33,
+      "side": "黑方",
+      "notation": "G13",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    },
+    {
+      "ply": 34,
+      "side": "白方",
+      "notation": "H14",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.43,
+        "p": 0.45,
+        "rank": 1,
+        "cands": 64,
+        "ms": 436
+      }
+    },
+    {
+      "ply": 35,
+      "side": "黑方",
+      "notation": "C9",
+      "ai": {
+        "ch": "rapfi",
+        "conf": null,
+        "p": null,
+        "rank": null,
+        "cands": null,
+        "ms": null
+      }
+    }
+  ],
+  "meta": {
+    "code": "0.7.0",
+    "topK": 1,
+    "seed": null,
+    "aiMoves": 35,
+    "costUsd": 0.001738,
+    "tokens": 41370,
+    "latencyMs": {
+      "avg": 588,
+      "max": 1848
+    },
+    "conf": 0.192,
+    "tactics": {
+      "parry3": 3,
+      "vcfDefense": 2,
+      "parry": 1,
+      "block": 1
+    }
+  },
+  "cal": [
+    0.77,
+    0.73,
+    0.67,
+    0.66,
+    0.66,
+    0.59,
+    0.59,
+    0.63,
+    0.62,
+    0.62,
+    0.62,
+    0.64,
+    0.63,
+    0.74,
+    0.7,
+    0.67,
+    0.74
+  ],
+  "firstWin": true,
+  "mock": false
+}
