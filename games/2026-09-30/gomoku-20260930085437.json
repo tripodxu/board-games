@@ -1,0 +1,1311 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T08:54:37.604Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "机机",
+  "channel": "proxy",
+  "blackChannel": "proxy",
+  "whiteChannel": "rapfi",
+  "experiment": "exp-20260930084500",
+  "expGameNo": 3,
+  "result": "和棋（棋盘已满）",
+  "notation": "H8,E11,H7,B14,H6,H9,H5,H4,H10,C13,D12,I5,J6,G9,I9,D9,F9,G8,G7,F6,F7,I7,I6,K6,G5,G10,I8,G6,G11,J8,E7,D7,D8,E9,E10,L8,J10,K11,K10,L9,L10,I10,J11,J13,J9,L11,K12,K8,M10,N10,K7,M8,N8,J5,L7,E13,F8,F13,D13,A7,F10,F11,I11,D11,E12,B11,C11,F12,D10,F14,F15,G4,I4,D6,E6,O3,C10,B10,B9,B13,B12,C12,G12,F5,E5,E8,E4,E3,M7,J7,N7,O7,H11,I15,G13,G14,H14,H13,H12,K9,I12,J12,I13,J14,I14,O9,O8,M9,N9,A15,N6,N5,N11,B15,M11,L15,H15,C15,K13,D15,E15,N15,G15,K15,M15,A14,D14,O6,O5,O15,J15,K14,L14,M14,M13,N13,N12,A13,A12,C14,E14,N14,L12,L13,M12,O12,O11,O13,O14,A11,A10,B6,D4,A9,C4,A4,B5,D5,F4,B4,O10,A5,A6,C9,C8,L6,M6,A3,A2,B7,B8,C7,C6,K5,L5,K4,K3,A8,C5,J4,I3,D2,C3,C2,E2,D3,M5,L4,M4,M3,N2,J3,J2,N4,O4,F3,G3,L3,M2,B3,B2,A1,H2,I1,K2,L2,I2,G2,F2,C1,H3,G1,H1,D1,E1,M1,N1,O2,N3,J1,K1,B1,F1,L1,O1",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "E11"
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "H7"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "B14"
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H6"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "H9"
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "H5"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "H4"
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "H10"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "C13"
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "D12",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "I5"
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "J6",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "G9"
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "I9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "D9"
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "F9",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "G8"
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "G7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "F6"
+    },
+    {
+      "ply": 21,
+      "side": "黑方",
+      "notation": "F7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 22,
+      "side": "白方",
+      "notation": "I7"
+    },
+    {
+      "ply": 23,
+      "side": "黑方",
+      "notation": "I6",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 24,
+      "side": "白方",
+      "notation": "K6"
+    },
+    {
+      "ply": 25,
+      "side": "黑方",
+      "notation": "G5",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 26,
+      "side": "白方",
+      "notation": "G10"
+    },
+    {
+      "ply": 27,
+      "side": "黑方",
+      "notation": "I8",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 28,
+      "side": "白方",
+      "notation": "G6"
+    },
+    {
+      "ply": 29,
+      "side": "黑方",
+      "notation": "G11",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 30,
+      "side": "白方",
+      "notation": "J8"
+    },
+    {
+      "ply": 31,
+      "side": "黑方",
+      "notation": "E7"
+    },
+    {
+      "ply": 32,
+      "side": "白方",
+      "notation": "D7"
+    },
+    {
+      "ply": 33,
+      "side": "黑方",
+      "notation": "D8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 34,
+      "side": "白方",
+      "notation": "E9"
+    },
+    {
+      "ply": 35,
+      "side": "黑方",
+      "notation": "E10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 36,
+      "side": "白方",
+      "notation": "L8"
+    },
+    {
+      "ply": 37,
+      "side": "黑方",
+      "notation": "J10"
+    },
+    {
+      "ply": 38,
+      "side": "白方",
+      "notation": "K11"
+    },
+    {
+      "ply": 39,
+      "side": "黑方",
+      "notation": "K10"
+    },
+    {
+      "ply": 40,
+      "side": "白方",
+      "notation": "L9"
+    },
+    {
+      "ply": 41,
+      "side": "黑方",
+      "notation": "L10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 42,
+      "side": "白方",
+      "notation": "I10"
+    },
+    {
+      "ply": 43,
+      "side": "黑方",
+      "notation": "J11",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 44,
+      "side": "白方",
+      "notation": "J13"
+    },
+    {
+      "ply": 45,
+      "side": "黑方",
+      "notation": "J9"
+    },
+    {
+      "ply": 46,
+      "side": "白方",
+      "notation": "L11"
+    },
+    {
+      "ply": 47,
+      "side": "黑方",
+      "notation": "K12",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 48,
+      "side": "白方",
+      "notation": "K8"
+    },
+    {
+      "ply": 49,
+      "side": "黑方",
+      "notation": "M10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 50,
+      "side": "白方",
+      "notation": "N10"
+    },
+    {
+      "ply": 51,
+      "side": "黑方",
+      "notation": "K7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 52,
+      "side": "白方",
+      "notation": "M8"
+    },
+    {
+      "ply": 53,
+      "side": "黑方",
+      "notation": "N8",
+      "tactics": "block"
+    },
+    {
+      "ply": 54,
+      "side": "白方",
+      "notation": "J5"
+    },
+    {
+      "ply": 55,
+      "side": "黑方",
+      "notation": "L7",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 56,
+      "side": "白方",
+      "notation": "E13"
+    },
+    {
+      "ply": 57,
+      "side": "黑方",
+      "notation": "F8"
+    },
+    {
+      "ply": 58,
+      "side": "白方",
+      "notation": "F13"
+    },
+    {
+      "ply": 59,
+      "side": "黑方",
+      "notation": "D13",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 60,
+      "side": "白方",
+      "notation": "A7"
+    },
+    {
+      "ply": 61,
+      "side": "黑方",
+      "notation": "F10"
+    },
+    {
+      "ply": 62,
+      "side": "白方",
+      "notation": "F11"
+    },
+    {
+      "ply": 63,
+      "side": "黑方",
+      "notation": "I11"
+    },
+    {
+      "ply": 64,
+      "side": "白方",
+      "notation": "D11"
+    },
+    {
+      "ply": 65,
+      "side": "黑方",
+      "notation": "E12",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 66,
+      "side": "白方",
+      "notation": "B11"
+    },
+    {
+      "ply": 67,
+      "side": "黑方",
+      "notation": "C11",
+      "tactics": "block"
+    },
+    {
+      "ply": 68,
+      "side": "白方",
+      "notation": "F12"
+    },
+    {
+      "ply": 69,
+      "side": "黑方",
+      "notation": "D10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 70,
+      "side": "白方",
+      "notation": "F14"
+    },
+    {
+      "ply": 71,
+      "side": "黑方",
+      "notation": "F15",
+      "tactics": "block"
+    },
+    {
+      "ply": 72,
+      "side": "白方",
+      "notation": "G4"
+    },
+    {
+      "ply": 73,
+      "side": "黑方",
+      "notation": "I4",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 74,
+      "side": "白方",
+      "notation": "D6"
+    },
+    {
+      "ply": 75,
+      "side": "黑方",
+      "notation": "E6",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 76,
+      "side": "白方",
+      "notation": "O3"
+    },
+    {
+      "ply": 77,
+      "side": "黑方",
+      "notation": "C10"
+    },
+    {
+      "ply": 78,
+      "side": "白方",
+      "notation": "B10"
+    },
+    {
+      "ply": 79,
+      "side": "黑方",
+      "notation": "B9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 80,
+      "side": "白方",
+      "notation": "B13"
+    },
+    {
+      "ply": 81,
+      "side": "黑方",
+      "notation": "B12",
+      "tactics": "block"
+    },
+    {
+      "ply": 82,
+      "side": "白方",
+      "notation": "C12"
+    },
+    {
+      "ply": 83,
+      "side": "黑方",
+      "notation": "G12"
+    },
+    {
+      "ply": 84,
+      "side": "白方",
+      "notation": "F5"
+    },
+    {
+      "ply": 85,
+      "side": "黑方",
+      "notation": "E5"
+    },
+    {
+      "ply": 86,
+      "side": "白方",
+      "notation": "E8"
+    },
+    {
+      "ply": 87,
+      "side": "黑方",
+      "notation": "E4"
+    },
+    {
+      "ply": 88,
+      "side": "白方",
+      "notation": "E3"
+    },
+    {
+      "ply": 89,
+      "side": "黑方",
+      "notation": "M7"
+    },
+    {
+      "ply": 90,
+      "side": "白方",
+      "notation": "J7"
+    },
+    {
+      "ply": 91,
+      "side": "黑方",
+      "notation": "N7"
+    },
+    {
+      "ply": 92,
+      "side": "白方",
+      "notation": "O7"
+    },
+    {
+      "ply": 93,
+      "side": "黑方",
+      "notation": "H11"
+    },
+    {
+      "ply": 94,
+      "side": "白方",
+      "notation": "I15"
+    },
+    {
+      "ply": 95,
+      "side": "黑方",
+      "notation": "G13",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 96,
+      "side": "白方",
+      "notation": "G14"
+    },
+    {
+      "ply": 97,
+      "side": "黑方",
+      "notation": "H14",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 98,
+      "side": "白方",
+      "notation": "H13"
+    },
+    {
+      "ply": 99,
+      "side": "黑方",
+      "notation": "H12"
+    },
+    {
+      "ply": 100,
+      "side": "白方",
+      "notation": "K9"
+    },
+    {
+      "ply": 101,
+      "side": "黑方",
+      "notation": "I12"
+    },
+    {
+      "ply": 102,
+      "side": "白方",
+      "notation": "J12"
+    },
+    {
+      "ply": 103,
+      "side": "黑方",
+      "notation": "I13"
+    },
+    {
+      "ply": 104,
+      "side": "白方",
+      "notation": "J14"
+    },
+    {
+      "ply": 105,
+      "side": "黑方",
+      "notation": "I14"
+    },
+    {
+      "ply": 106,
+      "side": "白方",
+      "notation": "O9"
+    },
+    {
+      "ply": 107,
+      "side": "黑方",
+      "notation": "O8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 108,
+      "side": "白方",
+      "notation": "M9"
+    },
+    {
+      "ply": 109,
+      "side": "黑方",
+      "notation": "N9",
+      "tactics": "block"
+    },
+    {
+      "ply": 110,
+      "side": "白方",
+      "notation": "A15"
+    },
+    {
+      "ply": 111,
+      "side": "黑方",
+      "notation": "N6"
+    },
+    {
+      "ply": 112,
+      "side": "白方",
+      "notation": "N5"
+    },
+    {
+      "ply": 113,
+      "side": "黑方",
+      "notation": "N11"
+    },
+    {
+      "ply": 114,
+      "side": "白方",
+      "notation": "B15"
+    },
+    {
+      "ply": 115,
+      "side": "黑方",
+      "notation": "M11"
+    },
+    {
+      "ply": 116,
+      "side": "白方",
+      "notation": "L15"
+    },
+    {
+      "ply": 117,
+      "side": "黑方",
+      "notation": "H15"
+    },
+    {
+      "ply": 118,
+      "side": "白方",
+      "notation": "C15"
+    },
+    {
+      "ply": 119,
+      "side": "黑方",
+      "notation": "K13"
+    },
+    {
+      "ply": 120,
+      "side": "白方",
+      "notation": "D15"
+    },
+    {
+      "ply": 121,
+      "side": "黑方",
+      "notation": "E15",
+      "tactics": "block"
+    },
+    {
+      "ply": 122,
+      "side": "白方",
+      "notation": "N15"
+    },
+    {
+      "ply": 123,
+      "side": "黑方",
+      "notation": "G15"
+    },
+    {
+      "ply": 124,
+      "side": "白方",
+      "notation": "K15"
+    },
+    {
+      "ply": 125,
+      "side": "黑方",
+      "notation": "M15",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 126,
+      "side": "白方",
+      "notation": "A14"
+    },
+    {
+      "ply": 127,
+      "side": "黑方",
+      "notation": "D14"
+    },
+    {
+      "ply": 128,
+      "side": "白方",
+      "notation": "O6"
+    },
+    {
+      "ply": 129,
+      "side": "黑方",
+      "notation": "O5",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 130,
+      "side": "白方",
+      "notation": "O15"
+    },
+    {
+      "ply": 131,
+      "side": "黑方",
+      "notation": "J15"
+    },
+    {
+      "ply": 132,
+      "side": "白方",
+      "notation": "K14"
+    },
+    {
+      "ply": 133,
+      "side": "黑方",
+      "notation": "L14"
+    },
+    {
+      "ply": 134,
+      "side": "白方",
+      "notation": "M14"
+    },
+    {
+      "ply": 135,
+      "side": "黑方",
+      "notation": "M13"
+    },
+    {
+      "ply": 136,
+      "side": "白方",
+      "notation": "N13"
+    },
+    {
+      "ply": 137,
+      "side": "黑方",
+      "notation": "N12"
+    },
+    {
+      "ply": 138,
+      "side": "白方",
+      "notation": "A13"
+    },
+    {
+      "ply": 139,
+      "side": "黑方",
+      "notation": "A12",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 140,
+      "side": "白方",
+      "notation": "C14"
+    },
+    {
+      "ply": 141,
+      "side": "黑方",
+      "notation": "E14"
+    },
+    {
+      "ply": 142,
+      "side": "白方",
+      "notation": "N14"
+    },
+    {
+      "ply": 143,
+      "side": "黑方",
+      "notation": "L12"
+    },
+    {
+      "ply": 144,
+      "side": "白方",
+      "notation": "L13"
+    },
+    {
+      "ply": 145,
+      "side": "黑方",
+      "notation": "M12"
+    },
+    {
+      "ply": 146,
+      "side": "白方",
+      "notation": "O12"
+    },
+    {
+      "ply": 147,
+      "side": "黑方",
+      "notation": "O11"
+    },
+    {
+      "ply": 148,
+      "side": "白方",
+      "notation": "O13"
+    },
+    {
+      "ply": 149,
+      "side": "黑方",
+      "notation": "O14"
+    },
+    {
+      "ply": 150,
+      "side": "白方",
+      "notation": "A11"
+    },
+    {
+      "ply": 151,
+      "side": "黑方",
+      "notation": "A10"
+    },
+    {
+      "ply": 152,
+      "side": "白方",
+      "notation": "B6"
+    },
+    {
+      "ply": 153,
+      "side": "黑方",
+      "notation": "D4",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 154,
+      "side": "白方",
+      "notation": "A9"
+    },
+    {
+      "ply": 155,
+      "side": "黑方",
+      "notation": "C4"
+    },
+    {
+      "ply": 156,
+      "side": "白方",
+      "notation": "A4"
+    },
+    {
+      "ply": 157,
+      "side": "黑方",
+      "notation": "B5",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 158,
+      "side": "白方",
+      "notation": "D5"
+    },
+    {
+      "ply": 159,
+      "side": "黑方",
+      "notation": "F4"
+    },
+    {
+      "ply": 160,
+      "side": "白方",
+      "notation": "B4"
+    },
+    {
+      "ply": 161,
+      "side": "黑方",
+      "notation": "O10"
+    },
+    {
+      "ply": 162,
+      "side": "白方",
+      "notation": "A5"
+    },
+    {
+      "ply": 163,
+      "side": "黑方",
+      "notation": "A6",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 164,
+      "side": "白方",
+      "notation": "C9"
+    },
+    {
+      "ply": 165,
+      "side": "黑方",
+      "notation": "C8"
+    },
+    {
+      "ply": 166,
+      "side": "白方",
+      "notation": "L6"
+    },
+    {
+      "ply": 167,
+      "side": "黑方",
+      "notation": "M6"
+    },
+    {
+      "ply": 168,
+      "side": "白方",
+      "notation": "A3"
+    },
+    {
+      "ply": 169,
+      "side": "黑方",
+      "notation": "A2",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 170,
+      "side": "白方",
+      "notation": "B7"
+    },
+    {
+      "ply": 171,
+      "side": "黑方",
+      "notation": "B8"
+    },
+    {
+      "ply": 172,
+      "side": "白方",
+      "notation": "C7"
+    },
+    {
+      "ply": 173,
+      "side": "黑方",
+      "notation": "C6"
+    },
+    {
+      "ply": 174,
+      "side": "白方",
+      "notation": "K5"
+    },
+    {
+      "ply": 175,
+      "side": "黑方",
+      "notation": "L5",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 176,
+      "side": "白方",
+      "notation": "K4"
+    },
+    {
+      "ply": 177,
+      "side": "黑方",
+      "notation": "K3",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 178,
+      "side": "白方",
+      "notation": "A8"
+    },
+    {
+      "ply": 179,
+      "side": "黑方",
+      "notation": "C5"
+    },
+    {
+      "ply": 180,
+      "side": "白方",
+      "notation": "J4"
+    },
+    {
+      "ply": 181,
+      "side": "黑方",
+      "notation": "I3",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 182,
+      "side": "白方",
+      "notation": "D2"
+    },
+    {
+      "ply": 183,
+      "side": "黑方",
+      "notation": "C3",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 184,
+      "side": "白方",
+      "notation": "C2"
+    },
+    {
+      "ply": 185,
+      "side": "黑方",
+      "notation": "E2",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 186,
+      "side": "白方",
+      "notation": "D3"
+    },
+    {
+      "ply": 187,
+      "side": "黑方",
+      "notation": "M5"
+    },
+    {
+      "ply": 188,
+      "side": "白方",
+      "notation": "L4"
+    },
+    {
+      "ply": 189,
+      "side": "黑方",
+      "notation": "M4",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 190,
+      "side": "白方",
+      "notation": "M3"
+    },
+    {
+      "ply": 191,
+      "side": "黑方",
+      "notation": "N2",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 192,
+      "side": "白方",
+      "notation": "J3"
+    },
+    {
+      "ply": 193,
+      "side": "黑方",
+      "notation": "J2",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 194,
+      "side": "白方",
+      "notation": "N4"
+    },
+    {
+      "ply": 195,
+      "side": "黑方",
+      "notation": "O4"
+    },
+    {
+      "ply": 196,
+      "side": "白方",
+      "notation": "F3"
+    },
+    {
+      "ply": 197,
+      "side": "黑方",
+      "notation": "G3",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 198,
+      "side": "白方",
+      "notation": "L3"
+    },
+    {
+      "ply": 199,
+      "side": "黑方",
+      "notation": "M2",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 200,
+      "side": "白方",
+      "notation": "B3"
+    },
+    {
+      "ply": 201,
+      "side": "黑方",
+      "notation": "B2"
+    },
+    {
+      "ply": 202,
+      "side": "白方",
+      "notation": "A1"
+    },
+    {
+      "ply": 203,
+      "side": "黑方",
+      "notation": "H2"
+    },
+    {
+      "ply": 204,
+      "side": "白方",
+      "notation": "I1"
+    },
+    {
+      "ply": 205,
+      "side": "黑方",
+      "notation": "K2"
+    },
+    {
+      "ply": 206,
+      "side": "白方",
+      "notation": "L2"
+    },
+    {
+      "ply": 207,
+      "side": "黑方",
+      "notation": "I2"
+    },
+    {
+      "ply": 208,
+      "side": "白方",
+      "notation": "G2"
+    },
+    {
+      "ply": 209,
+      "side": "黑方",
+      "notation": "F2"
+    },
+    {
+      "ply": 210,
+      "side": "白方",
+      "notation": "C1"
+    },
+    {
+      "ply": 211,
+      "side": "黑方",
+      "notation": "H3"
+    },
+    {
+      "ply": 212,
+      "side": "白方",
+      "notation": "G1"
+    },
+    {
+      "ply": 213,
+      "side": "黑方",
+      "notation": "H1",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 214,
+      "side": "白方",
+      "notation": "D1"
+    },
+    {
+      "ply": 215,
+      "side": "黑方",
+      "notation": "E1",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 216,
+      "side": "白方",
+      "notation": "M1"
+    },
+    {
+      "ply": 217,
+      "side": "黑方",
+      "notation": "N1"
+    },
+    {
+      "ply": 218,
+      "side": "白方",
+      "notation": "O2"
+    },
+    {
+      "ply": 219,
+      "side": "黑方",
+      "notation": "N3"
+    },
+    {
+      "ply": 220,
+      "side": "白方",
+      "notation": "J1"
+    },
+    {
+      "ply": 221,
+      "side": "黑方",
+      "notation": "K1",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 222,
+      "side": "白方",
+      "notation": "B1"
+    },
+    {
+      "ply": 223,
+      "side": "黑方",
+      "notation": "F1"
+    },
+    {
+      "ply": 224,
+      "side": "白方",
+      "notation": "L1"
+    },
+    {
+      "ply": 225,
+      "side": "黑方",
+      "notation": "O1"
+    }
+  ],
+  "cal": [
+    0.46,
+    0.41,
+    0.56,
+    0.55,
+    0.57,
+    0.38,
+    0.54,
+    0.5,
+    0.51,
+    0.48,
+    0.47,
+    0.47,
+    0.49,
+    0.26,
+    0.47,
+    0.42,
+    0.46,
+    0.38,
+    0.39,
+    0.38,
+    0.39,
+    0.37,
+    0.41,
+    0.38,
+    0.36,
+    0.34,
+    0.26,
+    0.28,
+    0.35,
+    0.26,
+    0.37,
+    0.34,
+    0.34,
+    0.23,
+    0.35,
+    0.26,
+    0.34,
+    0.28,
+    0.35,
+    0.34,
+    0.25,
+    0.32,
+    0.32,
+    0.3,
+    0.32,
+    0.32,
+    0.31,
+    0.31,
+    0.32,
+    0.3,
+    0.32,
+    0.31,
+    0.32,
+    0.31,
+    0.21,
+    0.32,
+    0.32,
+    0.32,
+    0.3,
+    0.33,
+    0.19,
+    0.3,
+    0.2,
+    0.31,
+    0.32,
+    0.3,
+    0.31,
+    0.29,
+    0.3,
+    0.31,
+    0.3,
+    0.29,
+    0.27,
+    0.27,
+    0.26,
+    0.29,
+    0.28,
+    0.3,
+    0.31,
+    0.28,
+    0.3,
+    0.27,
+    0.28,
+    0.28,
+    0.29,
+    0.28,
+    0.3,
+    0.27,
+    0.27,
+    0.27,
+    0.25,
+    0.27,
+    0.27,
+    0.27,
+    0.27,
+    0.27,
+    0.29,
+    0.27,
+    0.29,
+    0.29,
+    0.28,
+    0.29,
+    0.27,
+    0.27,
+    0.27,
+    0.27,
+    0.26,
+    0.31,
+    0.27,
+    0.27,
+    0.26,
+    0.28,
+    0.26
+  ],
+  "firstWin": null,
+  "mock": false
+}
