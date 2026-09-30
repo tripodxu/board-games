@@ -1,0 +1,36 @@
+[
+  {
+    "tag": "exp-20260930025135",
+    "date": "2026-09-30T02:57:13.292Z",
+    "chanA": "proxy",
+    "chanB": "rapfi",
+    "total": 4,
+    "games": [
+      {
+        "no": 1,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 2,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      },
+      {
+        "no": 3,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 4,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      }
+    ],
+    "note": ""
+  }
+]
