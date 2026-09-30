@@ -16,7 +16,9 @@
 | 中国跳棋 cc | ✅ | 六角星 121 格，连跳递归、先抵对营 |
 | 对弈模式 | ✅ | 人机（选执子）/ 机机（速度滑杆、暂停、单步）/ 人人 |
 | Jev 接入 | ✅ | 四渠道（official/openrouter/proxy/mock）+ 各渠道可自定义 Base URL（留空用预设）+ 「测试连接」连通性探测（网络/CORS/key/端点形状六种判定）+ 429/529 退避 + top-k 采样 |
-| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点）+ 战术保险（meta.tactics = win/block/open4/threat/parry/parry3 透出，优先级 win > block > open4 > threat > parry > parry3；parry = 拆对手双杀制造点且多个并存时按 3-ply 安全性排序（排除给对方持续攻击节奏的点），parry3 = 抢占对手活三/活四制造点）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
+| Rapfi 本地引擎 | ✅ | 新增第五渠道 `rapfi`：浏览器内 WASM 运行 Rapfi（tag 250615，单线程 SIMD128，Gomocup 协议，无禁手）；`rapfi/` 预编译产物约 10.8MB（.data 9.6MB 精简版），首次选用时懒加载，无需 key；`BG.rapfi` 协议客户端（`js/rapfi.js`，16 项单测），`decide` 不走 Jev 战术层；引擎 GPLv3、权重 CC0（`rapfi/NOTICE`）；已知局限：单线程同步搜索冻结 UI 约 3s（ADR-0006） |
+| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点）+ 战术保险（meta.tactics = win/block/open4/threat/parry/parry3/parry4 透出，优先级 win > block > open4 > threat > parry > parry3 > parry4；parry = 拆对手双杀制造点且多个并存时按 3-ply 安全性排序（排除给对方持续攻击节奏的点），parry3 = 抢占对手活三/活四制造点（deny:open4/deny:live3），parry4 = 抢占对手冲四制造点（deny:four，Rapfi 实战复盘增补））+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
+| 五子棋·禁手 | ✅ | 新增 `gomoku-pro` 引擎（与 `gomoku` 同文件工厂 `createGomoku`，`forbidden` 开关区分）：黑方三三/四四/长连禁手（落子即负），黑方仅精确五连获胜，白方无禁手、五连以上获胜；禁手点从合法着法剔除，Jev 序列化带 `forbidden_points_black`；大众无禁手模式保留不变 |
 | 决策面板 | ✅ | top-3 概率条、置信度、局势判断、延迟、token/成本累计 |
 | 校准实验室 | ✅ | Jev 胜率预测 vs 真实胜负：Brier/技巧分/ECE/过度自信 + 可靠性图（真实渠道才有数据） |
 | 可访问性 | ✅ | 见下方「设计例外」；对比度按 WCAG AA 核算，焦点环/滚动条已主题化 |
@@ -47,6 +49,12 @@ CF Pages 三端点上线后实测（push main 自动部署，约 1 分钟生效�
 `jev-qiguan-pages v1.0.0` 且 `github:true`；`/api/stats` 聚合 21 份与本地 server.js
 逐字一致（`cal.games:0`——现存棋谱早于 cal 字段，新对局开始累积）；`/api/experiments`
 空归档正常返回。三端点的单测（pagesApiTests）随全量自检跑。
+2026-09-29 Rapfi 接入轮：真实 WASM Node 冒烟（`rapfi-single-simd128.js/wasm/data`，
+单线程 SIMD128，精简数据包 9.6MB）：`START 15`→`OK`；空盘走 H8；四连局面 2ms 内走出制胜 H7；
+白方视角返回合法着法；中盘 Eval 非零（NNUE 权重加载确认：`mix9svq nnue: load weight from
+mix9svqfreestyle_bsmix.bin.lz4`）。`js/rapfi.js` 协议层 16 项单测（stub Module）全绿，
+跑在 `node test/run-tests.js` 全量内。注意：Rapfi 懒加载与 UI 阻塞仅在真实浏览器验证，
+本轮仅 `node` 冒烟 + 单测（缺口见已知限制）。
 
 ## 设计例外（有意保留，不是遗漏）
 
@@ -63,7 +71,12 @@ CF Pages 三端点上线后实测（push main 自动部署，约 1 分钟生效�
 
 ## 已知限制（按优先级）
 
-1. **官方 API 的浏览器直连不可行（平台侧约束，非本项目缺陷）**：2026-09-29 实测官方 API 带
+1. **Jev+战术 vs Rapfi 实战 0-4（2026-09-29，原生 Rapfi 250615，2 线程/5s）**：
+   四局皆为 Rapfi 造双杀、Jev 堵一漏一。复盘结论：2-ply 保险能处理单双杀与
+   部分三层危险，但看不见冠军引擎 3-4 步的连续逼杀链（VCF）与"双双杀"局面；
+   parry4（deny:four 预挡）为针对性增补，但属安静局面的防守加强，非深算替代。
+   当前定位：Jev+战术对弱/中对手优势明显（此前 8-0-1），对强搜索引擎仍处下风。
+2. **官方 API 的浏览器直连不可行（平台侧约束，非本项目缺陷）**：2026-09-29 实测官方 API 带
    CORS 来源白名单，仅放行 typesafe.ai 自有域名，任意第三方 Origin（含 localhost / file://）一律
    400 "Disallowed CORS origin"，官方文档未开放配置。浏览器侧走官方 key 的唯一路径是同源代理
    （本地 dev-proxy.py / 线上 CF Pages Function）；双击 file:// 打开时自动落离线演示。
@@ -83,6 +96,10 @@ CF Pages 三端点上线后实测（push main 自动部署，约 1 分钟生效�
    规模到「每天几十份」无感，再上层需换存储（届时是新 ADR）。
 10. 本机历史遗留：曾有多個 dev-proxy.py 实例残留占用 8788（Windows SO_REUSEADDR 允许多个
     监听共存，新连接落点不确定）。遇到端口行为异常先 `netstat -ano | findstr 8788`。
+11. **Rapfi 渠道为单线程同步搜索**：思考期间（默认 3s）主线程被 WASM 搜索阻塞，UI 会冻结
+    约 3s；后续应迁 Web Worker。另注意：Rapfi 仅支持 `gomoku`（大众模式，无禁手），
+    `gomoku-pro`（禁手）会拒绝（Rapfi 是 Gomocup freestyle 引擎）；本轮 Rapfi 的懒加载与
+    UI 阻塞仅在 `node` 冒烟 + 单测覆盖，**真实浏览器尚未验证**（后续待补）。
 
 ## 路线图（候选，未承诺）
 

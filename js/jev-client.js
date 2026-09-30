@@ -391,6 +391,12 @@
         return BG.mock.decide(engine, st, side, legal, ser);
       }
 
+      if (channel === 'rapfi') {
+        /* Rapfi 是完整搜索引擎（非 prompt 型），不走 Jev 战术层；
+         * 与 mock 一样直接返回，保持「Rapfi vs Jev」实验变量纯净。 */
+        return BG.rapfi.decide(engine, st, side, legal, ser);
+      }
+
       /* 战术事实 + 对局经验注入 state，并同步指令语义 */
       let tactics = emptyTactics();
       /* 候选点记法：2-ply 外层只扫候选（省时间），取自序列化 questions.move.criteria 的键 */
@@ -444,7 +450,7 @@
       let tacticUsed = null;
       let tacticBypassed = false;
       /* 战术点中文名（接管提示用） */
-      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', parry: '拆杀点', parry3: '活三/活四预挡点' }[tacticUsed] || '战术点');
+      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', parry: '拆杀点', parry3: '活三/活四预挡点', parry4: '冲四预挡点' }[tacticUsed] || '战术点');
       const pickAmong = (list) => {
         const inPairs = pairs.filter(([n]) => list.indexOf(n) >= 0);
         const k2 = Math.max(1, opts.topK | 0 || 1);
@@ -486,9 +492,16 @@
         .map(([n]) => n);
       /* 第四级（3-ply 预挡）：对手的 deny:open4/deny:live3 标签点 = 对方下回合可造活四/活三的
        * 制造点。放任不管会被迫逐手拆杀（实战败局：p20 白走闲着 E6，黑 E7 活三点 → 强制拆 →
-       * J8 双杀 → 输）。win/block/open4/threat/parry 都无时抢先占掉，让对手造不成活三。 */
+       * J8 双杀 → 输）。win/block/open4/threat/parry 都无时抢先占掉，让对手造不成活三。
+       * 第五级（Rapfi 实战复盘 2026-09-29 增补）：deny:four = 对方下回合可造冲四（单杀逼迫链
+       * 起点）。Rapfi 对局显示：放任冲四制造点会被连续单杀逼迫 → 双杀收尾（4 局 3 次）。
+       * 优先级 deny:open4/deny:live3 > deny:four（后者多为单杀，可被 block 层处理，但提前
+       * 抢占能打断对方的连续逼杀节奏）。 */
       const parry3Points = Object.entries(ser.questions.move.criteria || {})
         .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:(open4|live3)(\+|$)/.test(v) && byNotation.has(n))
+        .map(([n]) => n);
+      const parry4Points = Object.entries(ser.questions.move.criteria || {})
+        .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:four(\+|$)/.test(v) && byNotation.has(n))
         .map(([n]) => n);
       if (tactics.winning_points_you.length) {
         notation = pickAmong(tactics.winning_points_you);
@@ -508,6 +521,9 @@
       } else if (parry3Points.length) {
         notation = pickAmong(parry3Points);
         if (notation) tacticUsed = 'parry3';
+      } else if (parry4Points.length) {
+        notation = pickAmong(parry4Points);
+        if (notation) tacticUsed = 'parry4';
       }
 
       /* top-k 概率加权随机（随机度） */

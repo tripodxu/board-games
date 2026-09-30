@@ -43,6 +43,7 @@ node server.js                # http://localhost:8788（PORT=9000 可换端口�
 | 官方 API | [console.typesafe.ai](https://console.typesafe.ai) 的 key | **浏览器直连不可行**（官方 CORS 来源白名单实测仅放行 typesafe.ai 自有域）；请在「同源代理」渠道下使用官方 key |
 | OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) 的 key | 与官方接口同构（`/api/v1/systemone`），允许跨域，唯一可浏览器直连的渠道（注意需要的是 OpenRouter key） |
 | 同源代理 | 无需填 | key 放服务端（见下） |
+| Rapfi 本地 | 无需 key | 浏览器内运行的 Rapfi 引擎（Gomocup 协议，无禁手五子棋）；首次使用下载约 10MB 模型，之后纯本地走子 |
 
 **自定义 Base URL**：选渠道后，「接口地址」输入框会预填该渠道的预设值——留空用预设，
 改成自己的地址即可接自建网关或任何兼容端点（自定义端点不强制 key；各渠道的地址分别记忆，互不影响）。

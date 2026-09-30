@@ -3,7 +3,7 @@
  * 模式：人 vs Jev / Jev vs Jev / 人 vs 人；悔棋、认输、停一手、决策流、趋势图。 */
 (function () {
   const $ = (id) => document.getElementById(id);
-  const GAME_ORDER = ['gomoku', 'go', 'xiangqi', 'chess', 'checkers', 'cc'];
+  const GAME_ORDER = ['gomoku', 'gomoku-pro', 'go', 'xiangqi', 'chess', 'checkers', 'cc'];
   const STORE_KEY = 'jev_qiguan_settings_v2';
   const RECORDS_KEY = 'jev_qiguan_records_v1';
   const FEED_MAX = 40;
@@ -35,7 +35,7 @@
   /* 接口地址按渠道归档。必须在改写 S.settings.channel 之前调用：
      渠道切换时输入框里还是旧渠道的值，归到新渠道名下会串渠道。 */
   function stashEndpoint(ch) {
-    if (ch === 'mock' || !ch) return;
+    if (ch === 'mock' || ch === 'rapfi' || !ch) return;
     S.settings.endpoints[ch] = $('endpoint').value.trim();
   }
   function saveSettings() {
@@ -51,6 +51,7 @@
   }
   const CHANNEL_NAMES = {
     official: '官方 API', openrouter: 'OpenRouter', proxy: '同源代理', mock: '离线演示',
+    rapfi: 'Rapfi 本地',
   };
   function syncChannelUI() {
     const ch = $('channel').value;
@@ -58,7 +59,7 @@
     $('apiKeyLabel').childNodes[0].textContent =
       ch === 'proxy' ? 'TypeSafe API Key（经代理透传，仅存本机）' : '官方 API Key（仅存本机）';
     $('orKeyLabel').classList.toggle('hidden', ch !== 'openrouter');
-    $('endpointLabel').classList.toggle('hidden', ch === 'mock');
+    $('endpointLabel').classList.toggle('hidden', ch === 'mock' || ch === 'rapfi');
     $('endpoint').placeholder = BG.jev.presetEndpoint(ch) || '';
     $('endpoint').value = S.settings.endpoints[ch] || '';
     $('probeRow').classList.toggle('hidden', ch === 'mock');
@@ -69,6 +70,7 @@
       official: '实测官方 API 有来源白名单（仅 typesafe.ai 自有域可用），浏览器直连必被拦。官方 key 请改走「同源代理」：本地跑 dev-proxy.py 或部署站点后填 key，效果等同直连。',
       openrouter: '唯一可浏览器直连的渠道（OpenRouter 允许跨域），但需要的是 OpenRouter key（openrouter.ai 申请），不是 TypeSafe key。',
       mock: '离线演示：内置简单启发式 AI 与合成概率，无需 key。双击 index.html 打开时也走这里。',
+      rapfi: '本地引擎：浏览器内运行的 Rapfi（Gomocup 协议），首次使用下载模型（约 10–40MB），之后纯本地走子，无需 key。',
     };
     $('modeHint').textContent = hint[ch] || '';
     updateChannelChip();
@@ -83,6 +85,8 @@
   function effectiveChannel() {
     const ch = S.settings.channel;
     if (ch === 'mock') return 'mock';
+    /* Rapfi 是本地 WASM 引擎，无需 key、无远程探测，直接可用 */
+    if (ch === 'rapfi') return 'rapfi';
     /* 双击 file:// 打开时同源代理必然不存在，直接落演示，不再让第一手棋报 Failed to fetch */
     if (ch === 'proxy' && location.protocol === 'file:') return 'mock';
     /* 自定义端点视作用户明确要求走该渠道：不再因未填 key 回落演示模式 */
@@ -106,7 +110,28 @@
   async function runProbe() {
     if (probing) return;
     const ch = $('channel').value;
+    /* mock 无需探测；rapfi 是本地引擎，探测改为触发懒加载 */
     if (ch === 'mock') return;
+    if (ch === 'rapfi') {
+      probing = true;
+      const btn = $('probeBtn');
+      const out = $('probeOut');
+      btn.disabled = true;
+      out.className = 'pending';
+      out.textContent = '加载 Rapfi 引擎中…（首次约 10–40MB）';
+      try {
+        await BG.rapfi.ensureLoaded();
+        out.textContent = '✓ Rapfi 本地引擎就绪';
+        out.className = 'ok';
+      } catch (e) {
+        out.textContent = '✗ ' + e.message;
+        out.className = 'fail';
+      } finally {
+        btn.disabled = false;
+        probing = false;
+      }
+      return;
+    }
     probing = true;
     const btn = $('probeBtn');
     const out = $('probeOut');
@@ -725,7 +750,7 @@
 
   /* ---------- 对比实验：A渠道 vs B渠道，自动交替执黑白 ---------- */
   const EXP = { running: false, idx: 0, total: 4, chanA: 'proxy', chanB: 'random', tag: null, results: [] };
-  const CHAN_LABEL = { proxy: 'Jev(代理)', openrouter: 'Jev(OpenRouter)', official: 'Jev(官方)', random: '纯随机', mock: '离线演示' };
+  const CHAN_LABEL = { proxy: 'Jev(代理)', openrouter: 'Jev(OpenRouter)', official: 'Jev(官方)', random: '纯随机', mock: '离线演示', rapfi: 'Rapfi' };
   const chanLabel = (c) => CHAN_LABEL[c] || c;
 
   function startExperiment() {

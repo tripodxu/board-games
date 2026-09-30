@@ -675,6 +675,12 @@ integration()
   .catch((e) => { failed++; results.push('✗ 集成测试: ' + e.message); })
   .then(() => jevClientTests())
   .catch((e) => { failed++; results.push('✗ jev-client 单元测试: ' + e.message); })
+  .then(() => {
+    /* Rapfi 本地引擎通道：stub Module，不加载真实 WASM（见 test/rapfi-tests.js） */
+    const { rapfiTests } = require('./rapfi-tests.js');
+    return rapfiTests((line) => results.push(line));
+  })
+  .catch((e) => { failed++; results.push('✗ rapfi 单元测试: ' + e.message); })
   .then(() => pagesFunctionTests())
   .catch((e) => { failed++; results.push('✗ Pages Function 单元测试: ' + e.message); })
   .then(() => pagesApiTests())

@@ -3,10 +3,53 @@
 > **约定：新条目一律追加在最上面（倒序），最新在最顶。** 一条一事，写事实与结论，
 > 不写客套；带日期的条目格式 `## YYYY-MM-DD · 标题`。
 > 本文件是项目级持久记忆（入库、工具无关）。各 agent 工具自己的记忆/指针
+
+---
+
+## 2026-09-29 · Jev vs Rapfi 实战 0-4 与 parry4 增补、gomoku-pro 禁手模式
+
+- 4 局基线（tag rapfi-base1，原生 Rapfi 250615，2 线程/每手 5s，topK=3）：Jev+战术 0-4。
+  g1 黑 26 手负（白 B6：双杀 B6/G6）；g2 白 37 手负（黑 L6-L10 列五：32 手 parry3 选 K10
+  未挡 L8）；g3 黑 56 手负（白 J10-N14 斜五）；g4 白 43 手负（黑 G14-K14 横五）。
+  统一模式：Rapfi 造双杀 → Jev 堵一 → Rapfi 从另一点击杀。
+- 根因：2-ply 保险处理单双杀无虞，但看不见 3-4 步连续单杀逼迫链（VCF）与"双双杀"
+  （两个独立双杀点并存，堵一必漏一）。parry3 只覆盖 deny:open4/deny:live3，
+  漏掉 deny:four 制造点（g2 的 L8、smoke 局的 E10）。
+- 增补 parry4（第五级，deny:four 预挡，优先级低于 parry3）：安静局面提前抢占对方
+  冲四制造点，打断连续逼杀节奏。验证：g2 第 31 手复盘确认 parry4 逻辑生效，
+  但因 K10 的 deny:live3 优先级更高仍选 K10——属启发式固有局限，非 bug。
+  全量测试全绿。定位诚实化：Jev+战术对弱/中对手强（此前 8-0-1），对冠军级
+  搜索引擎仍下风，深算差距非启发式补丁可弥合。
+- gomoku-pro（五子棋·禁手）：与 gomoku 同文件工厂 createGomoku(forbidden 开关)，
+  黑方三三/四四/长连禁手（落子即负）、黑仅精确五连胜、白无禁手；禁手点剔除出
+  合法着法，Jev 序列化带 forbidden_points_black；已入 GAME_ORDER，大众模式不变。
+  当前为连珠式禁手原型，未做 Swap2/RIF 开局协议，不可称完整赛事规则。
 > （如 `.workbuddy/MEMORY.md`）只允许指向本文件，不得成为事实源。
 > 沉淀规则见 [README.md](../README.md)「维护规则」。
 
 ---
+
+## 2026-09-29 · Rapfi WASM 本地引擎接入（rapfi 渠道）
+
+- 构建：Emscripten 6.0.10，Rapfi tag 250615，`NO_MULTI_THREADING=ON` + `NO_COMMAND_MODULES=ON`
+  （Emscripten 强制）+ `USE_WASM_SIMD=ON`；产物 `rapfi/rapfi-single-simd128.{js,wasm,data}`。
+- 两个构建坑：① `Networks/wasm_preloads.txt` 是 CRLF，CMake 的 `file(READ)` 会留下 `\r`
+  污染虚拟 FS 路径，构建前转 LF；② tag 250615 单线程构建有编译错误
+  （`searchthread.cpp` 的 `ThreadPool::waitForIdle` 用了多线程才有的 `th->thread` 成员），
+  本地加 `#ifdef MULTI_THREADING` 守卫（单线程下该函数本就是空操作）。
+- 数据包精简：只预加载 `config.toml` + freestyle 权重，`.data` 从 40MB 降到 9.6MB；
+  权重缺失抛的是 `runtime_error`（不是 `UnsupportedEvaluatorError`），会残废整个 evaluator，
+  但 freestyle 权重排第一且存在，实测无影响。
+- 协议细节（源码级，非猜测）：`INFO rule 0`=无禁手；`BOARD` 颜色相对引擎（1=SELF 轮走方，
+  2=OPPO），落子必须按 SELF/OPPO 交替且首子 SELF，否则引擎插 PASS 对齐会打乱轮走方；
+  `config.toml` 的 `coord_conversion_mode=X_flipY` 输入输出同构，往返一致，取协议惯例
+  x=列(0左) y=行(0顶) 与项目记法对齐。
+- `js/rapfi.js`（`BG.rapfi`）：懒加载胶水脚本，`START 15`→`INFO rule 0`，每手
+  `INFO timeout_turn`+整盘 `BOARD`；解析只认严格 `x,y` 行（引擎搜索日志走 `MESSAGE`，
+  必须过滤）；无着法/非法着法抛错走现有错误路径；仅 `engine.id==='gomoku'`。
+- 单线程 `sendCommand` 同步阻塞，思考期间 UI 冻结约 thinkMs（默认 3s）；后续应迁 Web Worker。
+- 许可：引擎 GPLv3、权重 CC0，`rapfi/NOTICE` + `rapfi/COPYING.txt`；`js/rapfi.js` 自研 MIT。
+- 冒烟（真实 WASM，Node）：START→OK、空盘 H8、四连 2ms 内走出制胜 H7、白方视角正常。
 
 ## 2026-09-29 · 侧栏页签化：右栏不再把页面撑长
 
