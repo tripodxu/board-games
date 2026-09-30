@@ -63,17 +63,22 @@ try {
   results.push('✗ 校准实验室: ' + e.message);
 }
 
+/* 单手 meta 的测试夹具（文件级：sync 元数据块与 async jevClientTests ⑬g 都要用，
+ * 放在 try 里做 const 会跨不了作用域——「aiM is not defined」就是这么来的） */
+function aiM(notation, extra) {
+  return Object.assign({
+    byAI: true, channel: 'proxy', model: 'jev-latest', confidence: 0.6,
+    candidates: 12, latencyMs: 800, costUsd: 0.00005, usage: { input_tokens: 1200 },
+    top: [{ notation: 'H8', p: 0.4 }, { notation: 'G8', p: 0.25 }, { notation: 'H7', p: 0.1 }],
+  }, extra);
+}
+
 /* 单元：棋谱导出的 meta 构造（BG.util.aiMoveMeta / aiGameMeta）
  * 放在 board.js 而非 app.js：app.js 是 DOM 闭包，Node 自检不加载它，
  * meta 又是「把败局归因到具体代码」的唯一凭据，必须有回归覆盖。 */
 try {
   const A = BG.util.assert;
   A(BG.codeVersion, 'BG.codeVersion 未设置（棋谱 meta 无代码版本，归因失效）');
-  const aiM = (notation, extra) => Object.assign({
-    byAI: true, channel: 'proxy', model: 'jev-latest', confidence: 0.6,
-    candidates: 12, latencyMs: 800, costUsd: 0.00005, usage: { input_tokens: 1200 },
-    top: [{ notation: 'H8', p: 0.4 }, { notation: 'G8', p: 0.25 }, { notation: 'H7', p: 0.1 }],
-  }, extra);
 
   /* 非 AI 着法（人走）不该产出 meta */
   A(BG.util.aiMoveMeta('H8', { human: true }) === null, '人走的手不该有 aiMoveMeta');
@@ -760,6 +765,72 @@ async function jevClientTests() {
     () => BG.jev.decide(e, st12h, st12h.turn, { channel: 'proxy', topK: 1 }));
   BG.util.assert(d12h.meta.tactics === 'vcfDefense' && tac12h.vcf_win_opponent.indexOf(d12h.notation) >= 0,
     '白方偏向 D13 也应被 vcfDefense 纠正到破杀点，实际：' + d12h.notation + '/' + d12h.meta.tactics);
+
+  /* ⑬ 战术版本闸门（Phase 2）：同一局面按战术版本给出不同的战术事实与接管行为。
+     版本缺失/未知时按当前档（v9）跑，保证老调用方零感知。 */
+  /* 13a v0-off：win/block 层全关 → computeTactics 必须全空（纯 Jev 概率基线）。
+     注：stx 已被当前档缓存过，顺带验证缓存按版本分键。 */
+  const tacV0 = BG.jev.computeTactics(e, stx, e.getLegalMoves(stx),
+    Object.keys(e.serializeForJev(stx, stx.turn).questions.move.criteria), 'v0-off');
+  BG.util.assert(Object.keys(tacV0).every((k) => Array.isArray(tacV0[k]) && tacV0[k].length === 0),
+    'v0-off 应无任何战术（含 win/block），实际：' + JSON.stringify(tacV0));
+  /* 13b 2-ply 闸门：⑨b 局面黑活三，v2 无造杀点、v3 有（缓存同样按版本分键） */
+  const crit9b = Object.keys(e.serializeForJev(st9b, st9b.turn).questions.move.criteria);
+  const tacV2b = BG.jev.computeTactics(e, st9b, e.getLegalMoves(st9b), crit9b, 'v2-open4');
+  BG.util.assert(tacV2b.chance_points_you.length === 0 && tacV2b.danger_points_opponent.length === 0,
+    'v2-open4 未实现 2-ply，造杀/拆杀必须为空，实际：' + JSON.stringify(tacV2b));
+  const tacV3b = BG.jev.computeTactics(e, st9b, e.getLegalMoves(st9b), crit9b, 'v3-make2');
+  BG.util.assert(tacV3b.chance_points_you.indexOf('F6') >= 0 && tacV3b.chance_points_you.indexOf('F10') >= 0,
+    'v3-make2 应认出黑活三的造杀点 F6/F10，实际：' + JSON.stringify(tacV3b.chance_points_you));
+  /* 13c 引擎标签闸门：v1 无 open4 层 → 不接管；v2 有 → 概率偏向 G6 也被纠到活四点 */
+  const d13v1 = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { G6: 0.9 } } } }),
+    () => BG.jev.decide(e, stl, stl.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v1-facts' }));
+  BG.util.assert(d13v1.meta.tactics !== 'open4' && d13v1.meta.tacticsVersion === 'v1-facts',
+    'v1-facts 无 open4 层，不应接管到活四点，实际：' + d13v1.notation + '/' + d13v1.meta.tactics);
+  const d13v2 = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { G6: 0.9 } } } }),
+    () => BG.jev.decide(e, stl, stl.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v2-open4' }));
+  BG.util.assert(d13v2.meta.tactics === 'open4' && (d13v2.notation === 'E8' || d13v2.notation === 'I8'),
+    'v2-open4 应接管到活四点，实际：' + d13v2.notation + '/' + d13v2.meta.tactics);
+  /* 13d vcfTry 边界（⑫h 局面）：v7 只试链首→仍被杀→放弃 vcfDefense；v8 逐点试→找到破杀点 */
+  const crit12h = Object.keys(e.serializeForJev(st12h, st12h.turn).questions.move.criteria);
+  const legal12h = e.getLegalMoves(st12h);
+  const tacV7h = BG.jev.computeTactics(e, st12h, legal12h, crit12h, 'v7-vcf');
+  BG.util.assert(tacV7h.vcf_win_opponent.length === 0,
+    'v7-vcf 只试链首仍被杀时应放弃 vcfDefense，实际：' + JSON.stringify(tacV7h.vcf_win_opponent));
+  const tacV8h = BG.jev.computeTactics(e, st12h, legal12h, crit12h, 'v8-vcf-try');
+  BG.util.assert(tacV8h.vcf_win_opponent.length === 1,
+    'v8-vcf-try 逐点试应恰好采用一个破杀点，实际：' + JSON.stringify(tacV8h.vcf_win_opponent));
+  /* 13e 决策级：v8 下 vcfDefense 接管且 meta 记版本；v7 下不得以 vcfDefense 接管 */
+  const d13v8 = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { D13: 0.9, E13: 0.05 } } } }),
+    () => BG.jev.decide(e, st12h, st12h.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v8-vcf-try' }));
+  BG.util.assert(d13v8.meta.tactics === 'vcfDefense' && d13v8.meta.tacticsVersion === 'v8-vcf-try',
+    'v8 下应接管 vcfDefense 且 meta.tacticsVersion 记录版本，实际：' +
+    d13v8.meta.tactics + '/' + d13v8.meta.tacticsVersion);
+  const d13v7 = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { D13: 0.9, E13: 0.05 } } } }),
+    () => BG.jev.decide(e, st12h, st12h.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v7-vcf' }));
+  BG.util.assert(d13v7.meta.tactics !== 'vcfDefense' && d13v7.meta.tacticsVersion === 'v7-vcf',
+    'v7 下 vcfDefense 为空不得接管（可回落其它层），实际：' +
+    d13v7.meta.tactics + '/' + d13v7.meta.tacticsVersion);
+  /* 13f 缺省/未知 id 都收敛到当前档（老调用方零感知，二级缓存不互染） */
+  const curId = globalThis.BG.tacticsVersions.CURRENT;
+  const critX2 = Object.keys(e.serializeForJev(stx, stx.turn).questions.move.criteria);
+  const xLegal = e.getLegalMoves(stx);
+  const tacDef = BG.jev.computeTactics(e, stx, xLegal, critX2);
+  const tacCur = BG.jev.computeTactics(e, stx, xLegal, critX2, curId);
+  const tacBogus = BG.jev.computeTactics(e, stx, xLegal, critX2, 'v99-nope');
+  BG.util.assert(JSON.stringify(tacDef) === JSON.stringify(tacCur) && JSON.stringify(tacBogus) === JSON.stringify(tacCur),
+    '缺省/未知 tacticsVersion 必须都按当前档跑，实际当前档：' + curId);
+  /* 13g 着记透出版本：aiMoveMeta 把 decide 的 tacticsVersion 压成 tv 字段（每手可归源） */
+  const aiMTv = BG.util.aiMoveMeta('G8', aiM('G8', { tacticsVersion: 'v3-make2' }));
+  BG.util.assert(aiMTv !== null && aiMTv.tv === 'v3-make2',
+    'aiMoveMeta 应透出 tv=v3-make2，实际：' + JSON.stringify(aiMTv));
+  const aiMNoTv = BG.util.aiMoveMeta('G8', aiM('G8'));
+  BG.util.assert(aiMNoTv !== null && aiMNoTv.tv === null,
+    '无 tacticsVersion 时 tv 应为 null：' + JSON.stringify(aiMNoTv));
 
   /* ⑫i 伪胜回归（soundness）：守方被迫堵点的那一手若顺手给守方自己造出四，
    * 守方下一手直接成五，攻方后面所有双杀都兑现不了 → 这条链是假的。

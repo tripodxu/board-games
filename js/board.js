@@ -25,7 +25,7 @@
   /* 代码版本标记。零构建、无 git 注入，只能手工维护：
    * 改动会改变对局行为（引擎规则、战术层、Jev prompt、导出格式）时必须同步 bump，
    * 否则历史棋谱无法归因到具体代码。格式 v0.7 起写入棋谱 meta。 */
-  BG.codeVersion = '0.7.0';
+  BG.codeVersion = '0.8.0';
 
   BG.util = {
     clone: (o) => JSON.parse(JSON.stringify(o)),
@@ -69,6 +69,7 @@
         rank: i >= 0 ? i + 1 : null, // 1 = 模型首选；null = 不在前 8 名（未进榜）
         cands: m.candidates || null, // 合法候选总数
         ms: typeof m.latencyMs === 'number' ? m.latencyMs : null,
+        tv: m.tacticsVersion != null ? String(m.tacticsVersion) : null, // 接手这手的战术档位（可归源）
       };
     },
     /* 棋谱导出：全局 meta（代码版本 + 采样参数 + 成本/延迟汇总 + 战术保险使用分布）。

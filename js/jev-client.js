@@ -126,6 +126,20 @@
 
   const flipTurn = (st, sideId) => Object.assign({}, st, { turn: sideId });
 
+  /* 战术版本闸门（Phase 2）：computeTactics / 接管链按版本给出的机制开关走。
+   * tactics-versions.js 未加载（单测只 eval 本文件等场景）时按全开兜底，
+   * 保证老调用方行为不变；resolve(null/未知 id) 亦收敛到当前档。 */
+  const ALL_MECH = {
+    win: true, block: true, open4: true, threat: true, parry: true, parry3: true,
+    parry4: true, vcfAttack: true, vcfDefense: true, safeSort: true, vcfTry: true, sound: true,
+  };
+  function resolveVersion(versionId) {
+    const reg = globalThis.BG && globalThis.BG.tacticsVersions;
+    if (!reg) return { id: versionId || 'unregistered', mech: ALL_MECH };
+    const v = reg.resolve(versionId);
+    return { id: v.id, mech: v.mech || ALL_MECH };
+  }
+
   /* 数 st2 中 sideId 的一步致胜点，到 limit 即停（2-ply 内层省时间用） */
   function countWinningPoints(engine, st2, sideId, limit) {
     const s = flipTurn(st2, sideId);
@@ -236,10 +250,15 @@
     return false;
   }
 
-  function computeTactics(engine, st, legal, cands) {
+  function computeTactics(engine, st, legal, cands, versionId) {
+    const ver = resolveVersion(versionId);
+    const M = ver.mech;
     if (tacCache) {
-      const hit = tacCache.get(st);
-      if (hit) return hit;
+      const byVer = tacCache.get(st);
+      if (byVer) {
+        const hit = byVer.get(ver.id);
+        if (hit) return hit;
+      }
     }
     /* 开局无战术：moveNum 可用时跳过早期局面，省去无谓模拟 */
     if (typeof st.moveNum === 'number' && st.moveNum < 4) {
@@ -247,15 +266,17 @@
     }
     const side = st.turn;
     const win = [];
-    for (const m of legal) {
-      try {
-        const g = engine.getStatus(engine.applyMove(st, m));
-        if (g.over && g.winner === side) win.push(m.notation);
-      } catch (_) { /* 模拟着法被引擎拒绝：跳过 */ }
+    if (M.win) {
+      for (const m of legal) {
+        try {
+          const g = engine.getStatus(engine.applyMove(st, m));
+          if (g.over && g.winner === side) win.push(m.notation);
+        } catch (_) { /* 模拟着法被引擎拒绝：跳过 */ }
+      }
     }
     const block = [];
     const oppSide = engine.sides && engine.sides.find((s) => s.id !== side);
-    if (oppSide) {
+    if (oppSide && M.block) {
       const stOpp = flipTurn(st, oppSide.id);
       let oppMoves = [];
       try { oppMoves = engine.getLegalMoves(stOpp); } catch (_) { oppMoves = []; }
@@ -272,7 +293,7 @@
       vcf_win_you: [], vcf_win_opponent: [],
     };
     /* 2-ply 造杀：仅 1-ply 无战术时跑；引擎需声明 deepTactics（候选点须是无色差的空点集，如 gomoku） */
-    if (engine.deepTactics && win.length === 0 && block.length === 0 && oppSide) {
+    if (engine.deepTactics && win.length === 0 && block.length === 0 && oppSide && (M.threat || M.parry)) {
       const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
       res.chance_points_you = threatMakers(engine, st, side, oppSide.id, candNotations, true);
       res.danger_points_opponent = threatMakers(engine, st, oppSide.id, side, candNotations, false);
@@ -282,29 +303,31 @@
      * 防守：对方是否有将死链（首步为干预点，须是我方当前合法着法）。
      * 有我方将死链时不再算对方的——将死必走，对方链条无从谈起。 */
     const VCF_PLIES = 7;
-    if (engine.deepTactics && engine.vcfWin && win.length === 0 && block.length === 0 && oppSide) {
-      try {
-        const atk = engine.vcfWin(st, side, VCF_PLIES);
-        if (atk && atk.win && atk.first) res.vcf_win_you = [atk.first];
-      } catch (_) { /* fail-soft：VCF 异常不影响原有战术 */ }
-      if (res.vcf_win_you.length === 0) {
+    if (engine.deepTactics && engine.vcfWin && win.length === 0 && block.length === 0 && oppSide && (M.vcfAttack || M.vcfDefense)) {
+      if (M.vcfAttack) {
+        try {
+          const atk = engine.vcfWin(st, side, VCF_PLIES);
+          if (atk && atk.win && atk.first) res.vcf_win_you = [atk.first];
+        } catch (_) { /* fail-soft：VCF 异常不影响原有战术 */ }
+      }
+      if (res.vcf_win_you.length === 0 && M.vcfDefense) {
         try {
           const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, VCF_PLIES);
           if (def && def.win && def.first) {
-            /* 干预点候选：先试链首，再按链条顺序逐点试。实战（2026-09-30
-             * exp-20260930025135 game4 ply18）：只占链首 C13 杀不死将死链
-             * （黑转走 E13 线），旧逻辑直接放弃 vcfDefense，白 D13(parry3)
+            /* 干预点候选：v8 起先试链首，再按链条顺序逐点试（v7 只试链首）。
+             * 实战（2026-09-30 exp-20260930025135 game4 ply18）：只占链首 C13
+             * 杀不死将死链（黑转走 E13 线），旧逻辑直接放弃 vcfDefense，白 D13(parry3)
              * 后被黑 E13 双重威胁打死；但链上 E13/F12/E14/C14/E12 均可彻底
-             * 破杀。故链首失败不直接放弃，继续试链条上其他点。 */
+             * 破杀。故链首失败不直接放弃，继续试链条上其他点（vcfTry 闸门）。 */
             const cands = [];
             const seen = new Set();
             const pushCand = (n) => { if (n && !seen.has(n)) { seen.add(n); cands.push(n); } };
             pushCand(def.first);
-            for (const n of (def.line || [])) pushCand(n);
+            if (M.vcfTry) for (const n of (def.line || [])) pushCand(n);
             for (const n of cands) {
               const mv = engine.moveFromNotation(st, n);
               if (!mv) continue;
-              /* 试走后复搜：对方可能有多条 VCF 根（见 ⑨e：I9/E9 双链），只有干预后
+              /* 试走后复搜：对方可能有多条 VCF 根（见 ⑫h/⑨e），只有干预后
                * 对方彻底无将死链才采用；否则继续试下一点，全部失败则留空，
                * 回落 parry/pickSafestParry 老路。 */
               const stAfter = engine.applyMove(st, mv);
@@ -315,7 +338,11 @@
         } catch (_) { /* fail-soft */ }
       }
     }
-    if (tacCache && st && typeof st === 'object') tacCache.set(st, res);
+    if (tacCache && st && typeof st === 'object') {
+      let byVer = tacCache.get(st);
+      if (!byVer) { byVer = new Map(); tacCache.set(st, byVer); }
+      byVer.set(ver.id, res);
+    }
     return res;
   }
 
@@ -424,6 +451,9 @@
      */
     async decide(engine, st, side, opts) {
       const channel = opts.channel || 'official';
+      /* 战术版本（Phase 2）：整条事实/接管链都按它走；缺省/未知按当前档 */
+      const ver = resolveVersion(opts.tacticsVersion);
+      const M = ver.mech;
       const ser = engine.serializeForJev(st, side);
       const legal = engine.getLegalMoves(st);
       const byNotation = new Map(legal.map((m) => [m.notation, m]));
@@ -447,7 +477,7 @@
         const crit = ser.questions && ser.questions.move && ser.questions.move.criteria;
         if (crit && typeof crit === 'object') cands = Object.keys(crit);
       } catch (_) { /* 降级为全量 */ }
-      try { tactics = computeTactics(engine, st, legal, cands); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
+      try { tactics = computeTactics(engine, st, legal, cands, opts.tacticsVersion); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
       attachFacts(ser, tactics, opts.experience);
 
       let answers, usage, costUsd, probs, conf, modelName;
@@ -480,7 +510,7 @@
           notation: fallback.notation, move: fallback,
           meta: { channel, model: modelName, latencyMs, usage, costUsd, confidence: 0, top: [],
                   candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
-                  tactics: null },
+                  tactics: null, tacticsVersion: ver.id },
         };
       }
       pairs.sort((a, b) => b[1] - a[1]);
@@ -529,9 +559,11 @@
         } catch (_) { /* 降级 */ }
         return pickAmong(list);
       };
-      const open4Points = Object.entries(ser.questions.move.criteria || {})
+      /* 引擎标签层（open4 / parry3 / parry4）同样按版本闸门：版本没实现的层连
+       * criteria 都不用扫，才能让老版本的战略行为可复现。 */
+      const open4Points = M.open4 ? Object.entries(ser.questions.move.criteria || {})
         .filter(([n, v]) => typeof v === 'string' && /(^|\+)you:open4(\+|$)/.test(v) && byNotation.has(n))
-        .map(([n]) => n);
+        .map(([n]) => n) : [];
       /* 第四级（3-ply 预挡）：对手的 deny:open4/deny:live3 标签点 = 对方下回合可造活四/活三的
        * 制造点。放任不管会被迫逐手拆杀（实战败局：p20 白走闲着 E6，黑 E7 活三点 → 强制拆 →
        * J8 双杀 → 输）。win/block/open4/threat/parry 都无时抢先占掉，让对手造不成活三。
@@ -539,12 +571,12 @@
        * 起点）。Rapfi 对局显示：放任冲四制造点会被连续单杀逼迫 → 双杀收尾（4 局 3 次）。
        * 优先级 deny:open4/deny:live3 > deny:four（后者多为单杀，可被 block 层处理，但提前
        * 抢占能打断对方的连续逼杀节奏）。 */
-      const parry3Points = Object.entries(ser.questions.move.criteria || {})
+      const parry3Points = M.parry3 ? Object.entries(ser.questions.move.criteria || {})
         .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:(open4|live3)(\+|$)/.test(v) && byNotation.has(n))
-        .map(([n]) => n);
-      const parry4Points = Object.entries(ser.questions.move.criteria || {})
+        .map(([n]) => n) : [];
+      const parry4Points = M.parry4 ? Object.entries(ser.questions.move.criteria || {})
         .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:four(\+|$)/.test(v) && byNotation.has(n))
-        .map(([n]) => n);
+        .map(([n]) => n) : [];
       if (tactics.winning_points_you.length) {
         notation = pickAmong(tactics.winning_points_you);
         if (notation) tacticUsed = 'win';
@@ -567,8 +599,12 @@
          * "潜在双杀"更紧急，故优先。 */
         notation = pickAmong(tactics.vcf_win_opponent);
         if (notation) tacticUsed = 'vcfDefense';
-      } else if (tactics.danger_points_opponent.length) {
+      } else if (M.safeSort && tactics.danger_points_opponent.length) {
+        /* v5 起多 danger 并存时 3-ply 安全排序；v5 之前直接取概率最高者 */
         notation = pickSafestParry(tactics.danger_points_opponent);
+        if (notation) tacticUsed = 'parry';
+      } else if (tactics.danger_points_opponent.length) {
+        notation = pickAmong(tactics.danger_points_opponent);
         if (notation) tacticUsed = 'parry';
       } else if (parry3Points.length) {
         notation = pickAmong(parry3Points);
@@ -606,6 +642,7 @@
           noul: answers.edge ? answers.edge.noul : undefined,
           score: answers.position ? answers.position.score : undefined,
           tactics: tacticUsed,
+          tacticsVersion: ver.id,
           warning: tacticBypassed
             ? '战术保险接管：Jev 概率未覆盖' + tacticName() + '，已直接执行'
             : undefined,
