@@ -13,6 +13,7 @@ const ROOT = path.join(__dirname, '..');
 [
   'js/board.js',
   'js/latest-board.js',
+  'js/tactics-versions.js',
   'js/calibration.js',
   'js/games/gomoku.js',
   'js/games/chess.js',
@@ -216,6 +217,67 @@ try {
 } catch (e) {
   failed++;
   results.push('✗ 布局稳定化契约: ' + e.message);
+}
+
+/* 单元：战术版本登记表（git 历史 × 棋谱数据双锚定：9 个战术版本 + 1 数据驱动基线） */
+function tacticsRegistryTests() {
+  const R = globalThis.BG.tacticsVersions;
+  BG.util.assert(R, 'BG.tacticsVersions 应存在（需先加载 js/tactics-versions.js）');
+  BG.util.assert(R.CURRENT === 'v9-vcf-sound', '当前档应为 v9-vcf-sound（a16fdd9），实际 ' + R.CURRENT);
+  const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound'];
+  for (const id of ANCHORED)
+    BG.util.assert(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id + '（git 历史每一版都必须有）');
+  BG.util.assert(R.VERSIONS.length === 10, '应为 9 战术版本 + 1 基线，实际 ' + R.VERSIONS.length);
+  BG.util.assert(R.VERSIONS[0].id === 'v0-off', 'rank 0 应为无战术基线（战术层上线前）');
+  /* rank 从 0 连续 */
+  R.VERSIONS.forEach((v, i) => BG.util.assert(v.rank === i, v.id + ' rank 应为 ' + i));
+  /* 机制集合沿梯级单调不减（老版本的机制不能被新版本丢掉） */
+  const MECHS = R.MECHS; // 12 个机制键，见 js/tactics-versions.js
+  for (let i = 1; i < R.VERSIONS.length; i++) {
+    const prev = R.VERSIONS[i - 1].mech, cur = R.VERSIONS[i].mech;
+    for (const k of MECHS)
+      if (prev[k]) BG.util.assert(cur[k], R.VERSIONS[i].id + ' 丢了上级机制 ' + k);
+  }
+  /* 层数对照用户 m00348 权威表：2/3/5/6/6/7/9/9/9（基线 0） */
+  const LAYERS = { 'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
+    'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9 };
+  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vcfDefense', 'parry', 'parry3', 'parry4'];
+  for (const v of R.VERSIONS)
+    BG.util.assert(TIER.filter((k) => v.mech[k]).length === LAYERS[v.id],
+      v.id + ' 接管层数应为 ' + LAYERS[v.id] + '，实际 ' + TIER.filter((k) => v.mech[k]).length);
+  /* 棋谱归属（棋谱 exported 落库时刻换算北京时间 + moves[].tactics 标签实证；防改错） */
+  BG.util.assert(R.resolve('v0-off').games === 0 && R.resolve('v1-facts').games === 0, 'v0/v1 应无归档棋谱');
+  BG.util.assert(R.resolve('v5-safesort').games === 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
+  BG.util.assert(R.resolve('v7-vcf').games === 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
+  BG.util.assert(R.resolve('v8-vcf-try').games === 3, 'v8 应归档 3 局（线上旧引擎）');
+  BG.util.assert(R.resolve('v9-vcf-sound').games === 0, 'v9 刚修完应无归档棋谱');
+  BG.util.assert(R.VERSIONS.reduce((a, v) => a + v.games, 0) === 28, 'games 字段合计应等于 games/ 现有 28 局');
+  /* 解析：空→当前档；未知 id→当前档（写错档号静默回退，不抛错） */
+  BG.util.assert(R.resolve(null).id === R.CURRENT && R.resolve('').id === R.CURRENT, '空 id 应回退当前档');
+  BG.util.assert(R.resolve('v10-nope').id === R.CURRENT, '未知 id 应回退当前档，实际 ' + R.resolve('v10-nope').id);
+  BG.util.assert(R.resolve('v3-make2').id === 'v3-make2', '已知 id 应原样返回');
+  /* 闸门 */
+  BG.util.assert(R.allows(R.resolve('v1-facts'), 'win') === true, 'v1 应有 win');
+  BG.util.assert(R.allows(R.resolve('v1-facts'), 'open4') === false, 'v1 不应有 open4');
+  BG.util.assert(R.allows(R.resolve('v0-off'), 'win') === false, 'v0 无任何机制');
+  BG.util.assert(R.allows(R.resolve('v7-vcf'), 'vcfDefense') === true, 'v7 应有 vcfDefense');
+  BG.util.assert(R.allows(R.resolve('v7-vcf'), 'vcfTry') === false && R.allows(R.resolve('v8-vcf-try'), 'vcfTry') === true,
+    'vcfTry（逐点试干预）应是 v8 才有');
+  BG.util.assert(R.allows(R.resolve('v8-vcf-try'), 'sound') === false && R.allows(R.resolve('v9-vcf-sound'), 'sound') === true,
+    'sound（引擎伪胜闸门）应是 v9 才有');
+  const V0 = R.resolve('v0-off');
+  BG.util.assert(!MECHS.some((k) => V0.mech[k]), 'v0-off 必须全 false（纯概率基线）');
+  /* selfTest 自带登记表自检（页面内「战术沿革条」渲染失败时会在控制台报） */
+  R.selfTest();
+}
+
+try {
+  tacticsRegistryTests();
+  results.push('✓ 战术版本登记表（9 档机制阶梯 + 基线）');
+} catch (e) {
+  failed++;
+  results.push('✗ 战术版本登记表: ' + e.message);
 }
 
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
