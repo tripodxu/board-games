@@ -322,6 +322,37 @@ test('/api/games：同 payload 重复 POST → 幂等且不改写文件', async 
   });
 });
 
+test('/api/games：文件名规则——slug 联名 / 回退 gid / 脏字符消毒', async () => {
+  await withServer(async (port, root) => {
+    const base = () => ({
+      format: 'jev-qiguan-game/v1',
+      game: '五子棋',
+      gid: 'gomoku',
+      result: '黑方 获胜',
+      moves: [{ ply: 1, notation: 'H8' }],
+    });
+    const h = { 'X-Forwarded-For': '10.7.0.9' };
+    /* R4：出战联名直接进文件名，战绩簿里的 slug 与磁盘文件一一对应 */
+    const r1 = await req(port, 'POST', '/api/games',
+      Object.assign(base(), { slug: 'jev-v9-vs-rapfi-3s', exported: '2026-09-30T12:00:00.000Z' }), h);
+    eq(r1.status, 200, 'slug 提交 200');
+    eq(path.basename(r1.json.path), 'jev-v9-vs-rapfi-3s-20260930120000.json', '文件名应为 <slug>-<stamp>.json');
+    /* 旧客户端没有 slug：文件名规则不变（games/ 历史文件仍可回读） */
+    const r2 = await req(port, 'POST', '/api/games',
+      Object.assign(base(), { exported: '2026-09-30T12:00:01.000Z' }), h);
+    eq(path.basename(r2.json.path), 'gomoku-20260930120001.json', '无 slug 回退 gid');
+    /* 脏 slug 必须消毒：不能穿越目录、不能改扩展名 */
+    const r3 = await req(port, 'POST', '/api/games',
+      Object.assign(base(), { slug: '../../etc/pa', exported: '2026-09-30T12:00:02.000Z' }), h);
+    eq(r3.status, 200, '脏 slug 也应 200（消毒而非拒绝）');
+    eq(r3.json.path.indexOf('/etc/') < 0, true, '脏 slug 不得穿越目录');
+    eq(/^[A-Za-z0-9_-]+-\d{14}\.json$/.test(path.basename(r3.json.path)), true,
+      '消毒后的文件名仍须合法：' + path.basename(r3.json.path));
+    const dayDir = path.join(root, 'games', '2026-09-30');
+    eq(fs.existsSync(path.join(dayDir, 'jev-v9-vs-rapfi-3s-20260930120000.json')), true, 'slug 文件应落盘');
+  });
+});
+
 test('/api/games：坏 payload → 422（format / moves / JSON）', async () => {
   await withServer(async (port) => {
     const h = { 'X-Forwarded-For': '10.6.0.1' };

@@ -55,18 +55,19 @@ export async function onRequestPost(context) {
   if (!body || body.format !== 'jev-qiguan-game/v1' || !Array.isArray(body.moves)) {
     return json({ error: 'not a jev-qiguan-game/v1 payload' }, 422);
   }
-  // 文件名：games/2026-09-29/<gid>-<exported>.json，防重名加随机后缀
+  // 文件名：games/2026-09-29/<slug>-<stamp>.json；slug 缺省时回退 gid（旧客户端兼容）
   const d = new Date(body.exported || Date.now());
   const ymd = d.toISOString().slice(0, 10);
   const stamp = d.toISOString().slice(0, 19).replace(/[-:T]/g, '');
   const gid = String(body.gid || 'nogid').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
-  const path = `games/${ymd}/${gid}-${stamp}.json`;
+  const slug = (String(body.slug || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24)) || gid;
+  const path = `games/${ymd}/${slug}-${stamp}.json`;
   const content = b64encode(JSON.stringify(body, null, 2));
 
   try {
     await gh(token, `/repos/${REPO}/contents/${path}`, 'PUT', {
       // [skip ci]：棋谱数据提交不触发 Pages 重新构建，避免构建队列被对局淹没
-      message: (`game: ${body.game || '?'} ${gid} ${body.result || ''} [skip ci]`).slice(0, 140),
+      message: (`game: ${body.game || '?'} ${slug} ${body.result || ''} [skip ci]`).slice(0, 140),
       content,
       branch: BRANCH,
     });

@@ -325,7 +325,12 @@ function createServer(opts) {
     }
     const { day, stamp } = dayAndStamp(body.exported, nowFn);
     const gid = sanitizeGid(body.gid);
-    const fileName = gid + '-' + stamp + '.json';
+    /* R4：文件名用联名 slug（jev-v9-vs-rapfi-3s），战绩簿/实验记录一眼对得上；
+       旧客户端没有 slug 字段时回退 gid，历史文件名规则不变。
+       注意：不能直接 sanitizeGid(body.slug)——它内部会把空串兜底成 'nogid'，
+       回退分支就永远 miss，所以这里先净化再 `|| gid`（与 functions/api/games.js 同款）。 */
+    const slug = String(body.slug == null ? '' : body.slug).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || gid;
+    const fileName = slug + '-' + stamp + '.json';
     const rel = 'games/' + day + '/' + fileName; // POSIX 分隔符：跨端文件名兼容
     const abs = path.join(gamesDir, day, fileName);
     try {
