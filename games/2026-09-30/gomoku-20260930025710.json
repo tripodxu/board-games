@@ -1,0 +1,162 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T02:57:10.299Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "机机",
+  "channel": "proxy",
+  "blackChannel": "rapfi",
+  "whiteChannel": "proxy",
+  "experiment": "exp-20260930025135",
+  "expGameNo": 4,
+  "result": "黑方 获胜（五连）",
+  "notation": "H8,H7,E11,H9,B14,H10,A14,H11,C15,H12,H13,I13,G11,I11,D12,F10,D14,D13,E14,C14,E13,F12,E12,E10,E15",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "H7"
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "E11"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "H9"
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "B14"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "H10"
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "A14"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "H11"
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "C15"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "H12"
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "H13"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "I13"
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "G11"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "I11"
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "D12"
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "F10",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "D14"
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "D13",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "E14"
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "C14",
+      "tactics": "block"
+    },
+    {
+      "ply": 21,
+      "side": "黑方",
+      "notation": "E13"
+    },
+    {
+      "ply": 22,
+      "side": "白方",
+      "notation": "F12",
+      "tactics": "block"
+    },
+    {
+      "ply": 23,
+      "side": "黑方",
+      "notation": "E12"
+    },
+    {
+      "ply": 24,
+      "side": "白方",
+      "notation": "E10",
+      "tactics": "block"
+    },
+    {
+      "ply": 25,
+      "side": "黑方",
+      "notation": "E15"
+    }
+  ],
+  "cal": [
+    0.77,
+    0.77,
+    0.68,
+    0.59,
+    0.53,
+    0.5,
+    0.49,
+    0.66,
+    0.52,
+    0.75,
+    0.76,
+    0.76
+  ],
+  "firstWin": true,
+  "mock": false
+}
