@@ -753,17 +753,27 @@ button.fold svg { transition: transform .18s var(--ease); }
 }
 .rec-row .rec-time { color: var(--ink-mute); }
 .rec-row .rec-game { font-weight: 600; }
-/* ---------- 战术沿革条 ---------- */
-.tactics-strip { margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.tactics-strip-label { font-size: 11px; color: var(--ink-dim); letter-spacing: .12em; margin-right: 2px; }
-.tv-chip {
-  font: inherit; font-family: var(--font-mono); font-size: 11px; line-height: 1;
-  padding: 4px 8px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--bg2); color: var(--ink-dim);
+/* ---------- 战术沿革（普通竖列，棋盘下方） ---------- */
+.tactics-list { margin: 10px 0 0; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); overflow: hidden; }
+.tactics-list-title {
+  font-size: 11px; color: var(--ink-dim); letter-spacing: .12em;
+  padding: 7px 10px; border-bottom: 1px solid var(--line); background: var(--bg1);
 }
-.tv-chip:hover { border-color: var(--line-strong); color: var(--ink); }
-.tv-chip.used { border-color: rgba(194, 64, 42, .45); color: var(--zhu); }
-.tv-chip.cur { background: var(--zhu); border-color: var(--zhu); color: #fff; font-weight: 700; }
+.tactics-list-body { display: block; }
+.tv-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  font: inherit; font-size: 11.5px; line-height: 1.5; padding: 4px 10px;
+  border: none; border-bottom: 1px solid var(--line); background: transparent;
+  color: var(--ink-dim); cursor: pointer;
+}
+.tactics-list-body .tv-row:last-child { border-bottom: none; }
+.tv-row:hover { background: var(--bg1); color: var(--ink); }
+.tv-row .tv-id { font-family: var(--font-mono); font-size: 11px; flex: 0 0 34px; color: var(--ink-mute); }
+.tv-row .tv-name { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tv-row .tv-meta { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-mute); }
+.tv-row.used .tv-id { color: var(--zhu); }
+.tv-row.cur { background: rgba(194, 64, 42, .1); color: var(--ink); font-weight: 700; }
+.tv-row.cur .tv-id { color: var(--zhu); }
 
 /* 战绩簿联名副行：谁执黑执白、各带哪一版战术（超出列宽省略，hover 看全） */
 .rec-row .rec-game i {
@@ -902,6 +912,24 @@ button.fold svg { transition: transform .18s var(--ease); }
   padding: 0 6px; margin-left: 5px;
 }
 .ledger .tag.jev { color: var(--ink); border-color: var(--mo); }
+
+/* 棋谱归档：按战术版本分组的普通分组列表（无后端时只剩一句 hint） */
+.archive { display: block; }
+.arc-group + .arc-group { margin-top: 10px; }
+.arc-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-size: 11.5px; font-weight: 700; color: var(--ink);
+  padding: 5px 8px; border-radius: 6px; background: var(--bg2);
+}
+.arc-count { font-size: 10.5px; font-weight: 400; color: var(--ink-mute); }
+.arc-row {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11px; color: var(--ink-dim); padding: 2px 8px;
+}
+.arc-row .arc-when { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-mute); flex: 0 0 96px; }
+.arc-row .arc-game { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.arc-row .arc-open { flex: 0 0 auto; font-size: 10.5px; color: var(--mo); text-decoration: none; }
+.arc-row .arc-open:hover { text-decoration: underline; }
 
 /* 设置 */
 

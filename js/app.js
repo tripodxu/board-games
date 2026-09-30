@@ -128,6 +128,8 @@
     };
     $('modeHint').textContent = hint[ch] || '';
     updateChannelChip();
+    /* 全局渠道/档位变了：没手动改过的机器对手面板跟着镜像（改过的以显式值为准） */
+    if (typeof renderFoe === 'function') renderFoe();
   }
   function updateChannelChip() {
     const ch = S.settings.channel;
@@ -209,6 +211,7 @@
     feed: () => renderFeed(),
     records: () => renderRecords(),
     cal: () => renderCalibration(),
+    archive: () => loadGameArchive(),
   };
   function loadFoldOpen() {
     try {
@@ -865,6 +868,8 @@
   /* ---------- 抽屉：双方覆盖 + 实验 A/B 档位（选项一律由登记表生成，新增档位零改 UI） ---------- */
   const THINK_OPTS = [['', '跟随'], ['500', '0.5s'], ['1000', '1s'], ['2000', '2s'], ['3000', '3s'], ['5000', '5s'], ['10000', '10s']];
   const SIDE_CHANS = [['', '跟随全局'], ['proxy', 'Jev 模型'], ['openrouter', 'Jev·OpenRouter'], ['official', 'Jev·官方'], ['rapfi', 'Rapfi 引擎'], ['random', '随机+战术'], ['mock', '演示']];
+  /* 机器对手面板：渠道多一项空值「跟随全局」；战术/思考同 THINK_OPTS 语义（空 = 跟随） */
+  const FOE_CHANS = [['', '跟随全局'], ['proxy', 'Jev 模型（代理）'], ['openrouter', 'Jev · OpenRouter'], ['official', 'Jev · 官方 API'], ['rapfi', 'Rapfi 引擎'], ['random', '随机 + 战术'], ['mock', '离线演示']];
   function fillTacticsSelect(sel) {
     if (!sel) return;
     sel.innerHTML = '';
@@ -895,6 +900,7 @@
     $('expTacB').value = globalThis.BG.tacticsVersions.resolve(EXP.tacB).id;
     $('expThinkA').value = EXP.thinkA ? String(EXP.thinkA) : '';
     $('expThinkB').value = EXP.thinkB ? String(EXP.thinkB) : '';
+    renderFoe(); // 抽屉配置是权威源：它重渲染，机器面板跟着镜像
   }
   function saveSideCfg() {
     for (const side of ['black', 'white']) {
@@ -909,32 +915,149 @@
     renderTacticsStrip(); // 覆盖变了：沿革条的 used 描边要跟着变
   }
 
-  /* ---------- 棋盘下方：战术沿革条 ----------
-   * 9 档战术版本 + 1 无战术基线全列出来：哪一版引入了哪个机制、归了多少棋谱，
-   * hover 看 note；点击把它设为全局默认档位。只写 S.settings.tacticsVersion——
+  /* ---------- 机器对手面板（对局页）：只改白方那一侧 ----------
+   * 与抽屉「双方覆盖 · 白方」共用 S.settings.sideConfig.white。差别在交互：
+   * 没手动改过时这里显示的是生效值（跟随全局），一旦改动才把显式值写进去——
+   * 所以全局改了，面板会跟着镜像；用户选过，就以用户选的为准。 */
+  function renderFoe() {
+    const chSel = $('foeChannel'), tacSel = $('foeTactics'), thinkSel = $('foeThink');
+    if (!chSel || !tacSel || !thinkSel) return;
+    chSel.innerHTML = FOE_CHANS.map(([v, t]) => '<option value="' + v + '">' + t + '</option>').join('');
+    if (!tacSel.options.length) {
+      tacSel.insertAdjacentHTML('beforeend', '<option value="">跟随全局</option>');
+      fillTacticsSelect(tacSel);
+    }
+    if (!thinkSel.options.length) fillThinkSelect(thinkSel);
+    const cfg = (S.settings.sideConfig && S.settings.sideConfig.white) || {};
+    /* 覆盖没写过就显示「跟随全局」：生效值写进 hint，一眼看清机器方到底怎么走 */
+    chSel.value = FOE_CHANS.some(([v]) => v === (cfg.channel || '')) ? (cfg.channel || '') : '';
+    tacSel.value = cfg.tactics ? globalThis.BG.tacticsVersions.resolve(cfg.tactics).id : '';
+    thinkSel.value = THINK_OPTS.some(([v]) => String(v) === String(cfg.rapfiThinkMs || '')) ? String(cfg.rapfiThinkMs || '') : '';
+    const eff = effSide('white');
+    const tv = globalThis.BG.tacticsVersions.resolve(eff.tactics);
+    const hint = $('foeHint');
+    if (hint) {
+      hint.textContent = '当前生效：' + (CHANNEL_NAMES[eff.channel] || eff.channel)
+        + ' · ' + tv.id + ' ' + tv.name
+        + (eff.rapfiThinkMs ? ' · ' + (eff.rapfiThinkMs / 1000) + 's' : '')
+        + '。留空 = 跟随全局设置；改动只影响机器方，不动你自己的引擎。'
+        + 'Rapfi 思考期间界面会短暂卡住（ADR-0006）。';
+    }
+    syncFoeEnabled();
+  }
+  /* 人人对战没有机器方：控件禁用而不是隐藏（切模式时面板不跳布局） */
+  function syncFoeEnabled() {
+    const off = $('mode').value === 'pvp';
+    for (const id of ['foeChannel', 'foeTactics', 'foeThink']) {
+      const el = $(id);
+      if (el) el.disabled = off;
+    }
+    const note = $('foeNote');
+    if (note) note.textContent = off ? '人人对战不适用' : '人机模式下生效';
+  }
+  function saveFoe() {
+    /* 选「跟随全局」= 写空串，不是写当前全局值：这样以后改了全局，机器方照样跟着变 */
+    const tac = $('foeTactics').value;
+    S.settings.sideConfig.white = {
+      channel: $('foeChannel').value,
+      tactics: tac ? globalThis.BG.tacticsVersions.resolve(tac).id : '',
+      rapfiThinkMs: +($('foeThink').value) || 0,
+    };
+    saveSettings();      // → syncChannelUI → renderFoe（按新覆盖刷新生效提示）
+    renderTacticsStrip(); // 在用档可能变化
+  }
+
+  /* ---------- 棋谱归档：把 games/ 目录的归档棋谱按战术版本分组 ----------
+   * 归属不看文件内容，看文件名 stamp：server.js / Pages Function 存盘时用
+   * body.exported 生成 <gid>-<stamp>.json，stamp 落在哪一版的引入时间窗口
+   * （BG.tacticsVersions.versionForFileStamp），这局就归哪一版。
+   * 不需要逐份抓内容：一次 listGames 就够，离线时给一句人话。 */
+  async function loadGameArchive() {
+    const box = $('archiveBody');
+    if (!box) return;
+    box.innerHTML = '<div class="hint">读取中…</div>';
+    let list = null;
+    try { list = await BG.api.listGames(100); } catch (_) { list = null; }
+    if (!list || !Array.isArray(list.games)) {
+      box.innerHTML = '<div class="hint">棋谱归档需要同源后端（node server.js，或已部署的 CF Pages）。离线时只能看本机「战绩簿」。</div>';
+      const n = $('archiveNote');
+      if (n) n.textContent = '后端不可用';
+      return;
+    }
+    const groups = new Map();
+    for (const g of list.games) {
+      const vid = BG.tacticsVersions.versionForFileStamp(g.name || '');
+      const key = vid || '__none';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(g);
+    }
+    const order = BG.tacticsVersions.VERSIONS.map((v) => v.id);
+    const keys = [...groups.keys()].sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    if (!keys.length) {
+      box.innerHTML = '<div class="hint">后端还没有归档棋谱。跑完一局（勾了「棋谱同步」）就会出现在这里。</div>';
+      return;
+    }
+    const R = BG.tacticsVersions;
+    let html = '';
+    for (const key of keys) {
+      const v = key === '__none' ? null : R.resolve(key);
+      const items = groups.get(key).slice().sort((a, b) => (a.name < b.name ? 1 : -1));
+      const head = v
+        ? v.id + ' · ' + v.name + '（' + v.commitAt + ' 引入）'
+        : '未能归版本（文件名无 stamp 或早于登记表）';
+      html += '<div class="arc-group"><div class="arc-head">' + head
+        + '<span class="arc-count">' + items.length + ' 局</span></div>';
+      for (const g of items) {
+        const gid = String(g.name || '').split('-')[0];
+        const gname = (globalThis.BG.games[gid] && globalThis.BG.games[gid].name) || gid || '?';
+        const stamp = /(\d{14})/.exec(g.name || '');
+        const when = stamp ? stamp[1].slice(4, 8) + ' ' + stamp[1].slice(8, 10) + ':' + stamp[1].slice(10, 12) : '';
+        html += '<div class="arc-row"><span class="arc-when">' + (g.day || '').slice(5) + ' ' + when + '</span>'
+          + '<span class="arc-game">' + gname + '</span>'
+          + '<a class="arc-open" href="' + BG.api.gameUrl(g.path) + '" target="_blank" rel="noreferrer">棋谱</a></div>';
+      }
+      html += '</div>';
+    }
+    box.innerHTML = html;
+    const n = $('archiveNote');
+    if (n) n.textContent = list.games.length + ' 份 · 按战术版本分组';
+  }
+
+  /* ---------- 棋盘下方：战术沿革（普通竖列） ----------
+   * 10 档登记表原样列出：哪一版引入了哪个机制、归档多少局、commit 与日期，
+   * 点击把它设为全局默认档位。只写 S.settings.tacticsVersion——
    * 双方覆盖（sideConfig）是显式指定，不受默认档变化影响。 */
   function renderTacticsStrip() {
-    const box = $('tacticsStrip');
+    const box = $('tacticsListBody');
     if (!box || !globalThis.BG.tacticsVersions) return;
-    box.querySelectorAll('.tv-chip').forEach((n) => n.remove());
+    box.textContent = '';
     const R = globalThis.BG.tacticsVersions;
     const inUse = [effSide('black').tactics, effSide('white').tactics];
     for (const v of R.VERSIONS) {
       const cur = S.settings.tacticsVersion === v.id;
       const used = inUse.indexOf(v.id) >= 0;
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'tv-chip' + (cur ? ' cur' : '') + (used ? ' used' : '');
-      el.dataset.ver = v.id;
-      el.title = v.name + '（' + v.commit + '，' + v.date + '，归档 ' + v.games + ' 局）\n' + v.note;
-      el.textContent = v.id.replace(/^v(\d+).*/, (m, n) => 'v' + n) + (v.id === R.CURRENT ? '·今' : '');
-      el.addEventListener('click', () => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'tv-row' + (cur ? ' cur' : '') + (used ? ' used' : '');
+      row.dataset.ver = v.id;
+      row.title = v.name + '（' + v.commit + '，' + v.commitAt + '）'
+        + (v.games ? '归档 ' + v.games + ' 局' : '暂无归档棋谱') + '\n' + v.note;
+      row.insertAdjacentHTML('beforeend',
+        '<span class="tv-id">' + v.id.replace(/^v(\d+).*/, (m, n) => 'v' + n)
+        + (v.id === R.CURRENT ? '·今' : '') + '</span>'
+        + '<span class="tv-name">' + v.name + '</span>'
+        + '<span class="tv-meta">' + (v.games ? v.games + ' 局' : '—')
+        + (cur ? ' · 当前' : (used ? ' · 在用' : '')) + '</span>');
+      row.addEventListener('click', () => {
         S.settings.tacticsVersion = v.id;
         saveSettings();
         renderTacticsStrip();
         toast('默认战术档位 → ' + v.id + ' ' + v.name);
       });
-      box.appendChild(el);
+      box.appendChild(row);
     }
   }
 
@@ -1645,6 +1768,7 @@
     $('stepBtn').classList.toggle('hidden', !aiAi);
     $('speedRow').classList.toggle('hidden', !aiAi);
     syncModeButtons();
+    syncFoeEnabled(); // 人人对战没有机器方
     syncSwapBtn(); // 换边重开只对人机开放
   }
   /* 按钮组只反映 $('mode')：实验跑起来会把 mode 置成 ai-ai，按钮要跟着亮。
@@ -1708,6 +1832,11 @@
     }
     $('probeBtn').onclick = runProbe;
     $('exportGame').onclick = exportGame;
+    /* 机器对手面板：三项任一改动即写白方覆盖（与抽屉「双方覆盖」同一份配置） */
+    $('foeChannel').onchange = saveFoe;
+    $('foeTactics').onchange = saveFoe;
+    $('foeThink').onchange = saveFoe;
+    $('archiveReload').onclick = () => loadGameArchive();
     $('expStartBtn').onclick = startExperiment;
     $('expStopBtn').onclick = stopExperiment;
     renderExpStatus(); renderExpHistory();
@@ -1810,7 +1939,8 @@
     buildTabs();
     loadSettings();
     renderSideCfg(); // 抽屉双方覆盖 + 实验 A/B 档位选项（登记表驱动）
-    renderTacticsStrip(); // 棋盘下方战术沿革条（当前档高亮）
+    renderFoe(); // 机器对手面板：白方覆盖的镜像（没改过就显示生效值）
+    renderTacticsStrip(); // 棋盘下方战术沿革竖列（当前档高亮）
     initFolds();
     initSideTabs();
     bind();

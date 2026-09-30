@@ -404,6 +404,70 @@ function domContractTests() {
     '趋势芯片切换应按 id 取值：forEach((cid) => $(cid).classList.remove(...))');
   A(!/\(\s*id\s*\)\s*=>\s*id\.classList/.test(app),
     '不得再出现 (id) => id.classList 这类字符串上调 classList 的写法');
+  /* 战术沿革：普通竖列（ chips 横条已按用户要求废弃），列表容器与行 class 必须在 */
+  A(html.indexOf('id="tacticsList"') >= 0 && html.indexOf('id="tacticsListBody"') >= 0,
+    'index.html 应有战术沿革竖列容器 #tacticsList/#tacticsListBody');
+  A(html.indexOf('id="tacticsStrip"') < 0 && html.indexOf('tactics-strip') < 0,
+    'chips 横条（tactics-strip）应替换为普通竖列 tactics-list');
+  A(/tv-row/.test(app) && !/tv-chip/.test(app),
+    'app.js 应渲染 .tv-row 行，不得再生成 .tv-chip');
+  /* 机器对手面板：人机模式下机器方三项（渠道/战术/思考）从对局页直接改 */
+  for (const id of ['foeChannel', 'foeTactics', 'foeThink'])
+    A(html.indexOf('id="' + id + '"') >= 0, 'index.html 缺机器对手控件 #' + id);
+  A(/function renderFoe\(/.test(app) && /function saveFoe\(/.test(app),
+    'app.js 应有 renderFoe/saveFoe（机器面板与抽屉「双方覆盖 · 白方」同源）');
+  A(/S\.settings\.sideConfig\.white\s*=/.test(app),
+    'saveFoe 应写 sideConfig.white（改只影响机器方）');
+  A(/tactics:\s*tac\s*\?/.test(app),
+    '战术选「跟随全局」应写空串（否则以后改全局机器方不跟着变）');
+  A(/function syncFoeEnabled\(/.test(app), 'app.js 应有人人对战禁用逻辑 syncFoeEnabled');
+  A(/模式按钮/.test(html) === false && html.indexOf('人 vs 机器') >= 0, '模式按钮文案应为「人 vs 机器」');
+  /* 棋谱归档面板：按战术版本分组的归档棋谱 */
+  for (const id of ['archiveBody', 'archiveReload'])
+    A(html.indexOf('id="' + id + '"') >= 0, 'index.html 缺棋谱归档控件 #' + id);
+  A(/function loadGameArchive\(/.test(app) && /versionForFileStamp/.test(app),
+    'app.js 应按版本分组加载棋谱归档（loadGameArchive + versionForFileStamp）');
+  A(/archive:\s*\(\)\s*=>\s*loadGameArchive\(\)/.test(app), '折叠展开时应触发棋谱归档加载');
+}
+
+/* 单元：归档棋谱按版本归位（tactics-versions.versionForFileStamp）
+ * 归属只看文件名 stamp：<gid>-<stamp>.json 的 stamp 由 body.exported 生成（14 位 UTC），
+ * 落在 [本档 commitAt, 下一档 commitAt) 即归本档。这里拿 games/ 真目录实测：
+ * 既证明登记表窗口与历史归档自洽（v5=21/v7=4/v8=3），也保证以后新存的棋谱自动落位。 */
+function archiveAttributionTests() {
+  const A = BG.util.assert;
+  const R = globalThis.BG.tacticsVersions;
+  A(R && typeof R.versionForFileStamp === 'function', 'BG.tacticsVersions.versionForFileStamp 应存在');
+  const gamesDir = path.join(ROOT, 'games');
+  const files = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/^\d{4}-\d{2}-\d{2}\.json$/.test(e.name) || e.name.endsWith('.json')) files.push(e.name);
+    }
+  };
+  if (fs.existsSync(gamesDir)) walk(gamesDir);
+  A(files.length > 0, 'games/ 应有归档棋谱，实测 0 份');
+  const tally = {};
+  for (const f of files) {
+    const v = R.versionForFileStamp(f);
+    A(v !== null, f + ' 应能归到某一档（无 stamp 的旧命名归不到）');
+    if (v) tally[v] = (tally[v] || 0) + 1;
+  }
+  /* 登记表登记的局数必须与实测归属一致：改版本时间窗/漏登记都会在这里红 */
+  for (const v of R.VERSIONS) {
+    if (!v.games) continue;
+    A(tally[v.id] === v.games,
+      v.id + ' 登记 ' + v.games + ' 局，但 games/ 实测归属 ' + (tally[v.id] || 0) + ' 局');
+  }
+  const total = Object.keys(tally).reduce((s, k) => s + tally[k], 0);
+  const expectUnattributed = files.filter((f) => !R.versionForFileStamp(f)).length;
+  A(total === files.length - expectUnattributed, '归属总数应与可归位文件数一致');
+  /* 边界：早于 v1 → v0-off；末档之后 → 当前档；无 stamp → null */
+  A(R.versionForFileStamp('gomoku-20260101000000.json') === 'v0-off', 'v1 之前的 stamp 应归 v0-off');
+  A(R.versionForFileStamp('gomoku-20991231235959.json') === R.CURRENT, '末档之后的 stamp 应归当前档');
+  A(R.versionForFileStamp('loose.json') === null, '无 stamp 的文件名应归不到版本');
 }
 try {
   domContractTests();
@@ -411,6 +475,14 @@ try {
 } catch (e) {
   failed++;
   results.push('✗ DOM 契约: ' + e.message);
+}
+
+try {
+  archiveAttributionTests();
+  results.push('✓ 棋谱归档按版本归位（games/ 实测）');
+} catch (e) {
+  failed++;
+  results.push('✗ 棋谱归档按版本归位: ' + e.message);
 }
 
 /* 单元：双方配置归一化（sideConfig）+ 联名端到端
@@ -513,7 +585,7 @@ try {
   results.push('✗ 换边重开契约: ' + e.message);
 }
 
-/* 单元：战术沿革条的渲染数据（当前档唯一高亮、在用档标出、点击只改全局默认档）
+/* 单元：战术沿革竖列的渲染数据（当前档唯一高亮、在用档标出、点击只改全局默认档）
  * app.js 闭包内不可直接调用 renderTacticsStrip，这里复刻它的纯函数部分钉契约；
  * 另外静态锁 index.html 容器与「点沿革条不得改 sideConfig」的调用顺序。 */
 function tacticsStripTests() {
@@ -522,28 +594,29 @@ function tacticsStripTests() {
   const render = (settings, inUse) => R.VERSIONS.map((v) => ({
     id: v.id, cur: settings.tacticsVersion === v.id, used: inUse.indexOf(v.id) >= 0,
   }));
-  const chips = render({ tacticsVersion: 'v4-parry3' }, ['v9-vcf-sound', 'v4-parry3']);
-  A(chips.length === 10, '应渲染 10 枚（9 档战术版本 + 无战术基线），实际 ' + chips.length);
-  A(chips.filter((c) => c.cur).length === 1 && chips.find((c) => c.cur).id === 'v4-parry3', '当前档应唯一高亮');
-  A(chips.filter((c) => c.used).length === 2, '在用档应被标出');
+  const rows = render({ tacticsVersion: 'v4-parry3' }, ['v9-vcf-sound', 'v4-parry3']);
+  A(rows.length === 10, '竖列应有 10 行（9 档战术版本 + 无战术基线），实际 ' + rows.length);
+  A(rows.filter((r) => r.cur).length === 1 && rows.find((r) => r.cur).id === 'v4-parry3', '当前档应唯一高亮');
+  A(rows.filter((r) => r.used).length === 2, '在用档应被标出');
   /* 点击只改全局默认档，不得顺手改动双方覆盖 */
   const next = (s, id) => Object.assign({}, s, { tacticsVersion: id });
   const after = next({ tacticsVersion: 'v4-parry3', sideConfig: { black: { tactics: 'v1-facts' } } }, 'v6-parry4');
-  A(after.tacticsVersion === 'v6-parry4' && after.sideConfig.black.tactics === 'v1-facts', '点沿革条不得改覆盖配置');
+  A(after.tacticsVersion === 'v6-parry4' && after.sideConfig.black.tactics === 'v1-facts', '点沿革竖列不得改覆盖配置');
   /* 接线：容器存在、渲染函数存在、点击写的是 S.settings.tacticsVersion */
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  A(html.indexOf('id="tacticsStrip"') >= 0, 'index.html 缺战术沿革条容器 #tacticsStrip');
+  A(html.indexOf('id="tacticsList"') >= 0, 'index.html 缺战术沿革竖列容器 #tacticsList');
   const app = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
   A(/function renderTacticsStrip\(\)/.test(app), 'app.js 应有 renderTacticsStrip');
-  A(/S\.settings\.tacticsVersion = v\.id;/.test(app), '点沿革条应改全局默认档');
-  A(/renderTacticsStrip\(\)/.test(app) && (app.match(/renderTacticsStrip\(\)/g) || []).length >= 2, '点击后与开局后都应刷新沿革条');
+  A(/row\.className = 'tv-row'/.test(app), '沿革竖列应渲染普通行 .tv-row（用户要求：不要 chips 横条）');
+  A(/S\.settings\.tacticsVersion = v\.id;/.test(app), '点沿革竖列应改全局默认档');
+  A(/renderTacticsStrip\(\)/.test(app) && (app.match(/renderTacticsStrip\(\)/g) || []).length >= 2, '点击后与开局后都应刷新沿革竖列');
 }
 try {
   tacticsStripTests();
-  results.push('✓ 战术沿革条契约（10 枚 / 当前档唯一 / 只改默认档）');
+  results.push('✓ 战术沿革竖列契约（10 行 / 当前档唯一 / 只改默认档）');
 } catch (e) {
   failed++;
-  results.push('✗ 战术沿革条契约: ' + e.message);
+  results.push('✗ 战术沿革竖列契约: ' + e.message);
 }
 
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */

@@ -8,6 +8,34 @@
 
 ---
 
+## 2026-09-30 · UX 收尾：机器对手直达面板 / 战术沿革竖列 / 棋谱按版本归档
+
+- **用户四项诉求的落点**：① 模式按钮文案「人 vs Jev」→「人 vs 机器」；
+  ② 人机模式机器方要能直接选 Jev/随机+战术/Rapfi + 思考时间——原先埋在设置抽屉
+  「双方覆盖 · 白方」，现在对局页新增「机器对手」面板 `#foeChannel/#foeTactics/#foeThink`；
+  ③ 战术沿革 chips 横条改普通竖列 `.tv-row`（用户明确说「就做成普通的 ui 列在下面」）；
+  ④ 「棋谱归档」面板按战术版本分组列 `games/` 归档棋谱。
+- **「机器对手」与抽屉「双方覆盖 · 白方」是同一份 `S.settings.sideConfig.white`**：
+  面板是浅出口径（`renderFoe` 镜像），抽屉是深出口径（`renderSideCfg`），
+  **任何一边保存都触发另一边重绘**（saveFoe→saveSettings→syncChannelUI→renderFoe 链条上
+  闭环，不递归）。未改过时面板显示「跟随全局」，**当前生效配置写进 `#foeHint`**
+  （`effSide('white')` 渠道·档位·思考），人 vs 人 模式三项 **disabled 而非 hidden**。
+- **「跟随全局」必须写空串**：`resolve('')` 会收敛成 CURRENT，写成显式值后，
+  以后改全局机器方就不跟着变了——`saveFoe` 里 `tactics: tac ? resolve(tac).id : ''`。
+- **棋谱归版不看内容，看文件名 stamp**：28 份老棋谱全无 `meta.tactics`，但服务端存盘时
+  用 `body.exported` 生成 `<gid>-<14位UTCstamp>.json`，`versionForFileStamp()` 按
+  `[本档 commitAt, 下一档 commitAt)` 时间窗归组即可。**坑：stamp 必须带秒**
+  （YYYYMMDDHHmmSS）——只给 12 位会让所有 stamp 数值上大于所有 from / 小于末档 to，
+  全部误归 v9（实测 derived `{v9:28}`）；补秒后实测 `{v5:21, v7:4, v8:3}` 与登记表逐档吻合。
+- **归位有单测兜底**：`archiveAttributionTests()` 直接走 `games/` 真目录，断言
+  「登记表 `v.games` == 实测归属数」+ 三边界（v1 前→v0-off / 末档后→CURRENT / 无 stamp→null）。
+  以后新加版本档必须在登记表写对 `commitAt`，否则立即红。
+- **只 `listGames(100)` 拉一次列表，不逐份抓内容**（`BG.api.gameUrl` 纯拼 URL 供 `<a href>`），
+  离线/无后端时面板降级给人话提示，不影响本机战绩簿。
+- Open objectives: 无（四项诉求已实现并全绿，交用户人工核验布局与分区）。
+
+---
+
 ## 2026-09-30 · 实验面板双卡重排 + 趋势芯片 bug（v0.8 后第一修）
 
 - **`forEach((id) => id.classList.remove())` 是真事故源**：`id` 是字符串，

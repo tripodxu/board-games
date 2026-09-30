@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**v0.8**：七个棋种引擎（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋）+ 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）+ Rapfi WASM 本地引擎渠道 + VCF 将死链（九级战术保险，**已修复伪胜 soundness 缺陷**）+ 棋谱导出 meta（代码版本/采样参数/单手归因）+ **战术版本实验室（十档战术梯可复现：版本闸门 + 归因 meta + 沿革条 + 双方自由配置 + A/B 战术实验 + 联名 slug 归档 + 换边重开，见 ADR-0009）**。
+**v0.8**：七个棋种引擎（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋）+ 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）+ Rapfi WASM 本地引擎渠道 + VCF 将死链（九级战术保险，**已修复伪胜 soundness 缺陷**）+ 棋谱导出 meta（代码版本/采样参数/单手归因）+ **战术版本实验室（十档战术梯可复现：版本闸门 + 归因 meta + 战术沿革竖列 + 双方自由配置 + A/B 战术实验 + 联名 slug 归档 + 换边重开 + 对局页「机器对手」直达面板 + 按版本分组的「棋谱归档」面板，见 ADR-0009）**。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
@@ -25,11 +25,11 @@
 | 侧栏一屏化 | ✅ | 面板按「对局 / 实验 / 数据」三页签分组 + 8 个分析面板可折叠（驾驶舱常开），侧栏吸附视口内、仅当前页签内容区滚动（驾驶舱与页签栏为固定区，多面板展开不挤占），页面不再被面板撑长；折叠与页签状态均持久化，切换/展开时补渲染防零宽图表；≤1080px 单列布局回归文档流 |
 | 棋谱导出 | ✅ | 棋谱面板「导出」一键下载当前对局 JSON（`jev-qiguan-game/v1`：记法序列 + 双方每手含保险标记 + 对局信息）；悔棋自动跟随，空局拦截。**v0.7 起附归因 meta**：顶层 `meta` = 代码版本 `BG.codeVersion` / topK / 种子 / AI 手数 / 成本 / token / 延迟 avg·max / 平均置信度 / 战术保险使用直方图；每个 AI 着法带 `ai = {ch, mdl, conf, p, rank, cands, ms}`（`rank` = 实走这手在模型 top-8 里的名次，1 = 模型首选，可据此区分「模型这么想的」与「保险改写的」）|
 | 棋谱自动同步 | ✅ | 终局自动 POST `/api/games` → CF Pages Function 用 GitHub API 把棋谱 commit 进仓库 `games/<日期>/`（提交信息带 `[skip ci]`，不触发 Pages 构建）；设置面板「终局自动同步棋谱」开关可关；需 Pages 环境变量 `GAMES_GITHUB_TOKEN`（PAT，仓库 Contents 读写），未配置则静默失败不影响对局 |
-| 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–50 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端）。**A/B 双方可各自指定战术档与 Rapfi 思考时长**（`#expTacA/#expTacB`、`#expThinkA/#expThinkB`），跑的是哪一版战术直接写进结果联名；**面板为 A/B 并排双卡**（每方一张：渠道/战术/思考三行，`.exp-sides`；局数+开始/停止挪底部通栏 `.exp-foot`，状态独立一行），**面板顶部对局模式按钮组**（人机 vs Jev / Jev vs Jev / 人 vs 人，与折叠「对局设置」里的 `#mode` 同步，实验运行中锁定为机机） |
+| 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–50 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端）。**A/B 双方可各自指定战术档与 Rapfi 思考时长**（`#expTacA/#expTacB`、`#expThinkA/#expThinkB`），跑的是哪一版战术直接写进结果联名；**面板为 A/B 并排双卡**（每方一张：渠道/战术/思考三行，`.exp-sides`；局数+开始/停止挪底部通栏 `.exp-foot`，状态独立一行），**面板顶部对局模式按钮组**（人 vs 机器 / 机器 vs 机器 / 人 vs 人，与折叠「对局设置」里的 `#mode` 同步并随全局设置持久化，实验运行中锁定为机机） |
 | 后端 | ✅ | **`server.js` 零依赖 Node 后端**（`node server.js`，默认 8788）：静态托管 + `/api/jev` 代理（BYOK，key 不落盘）+ `/api/games` 棋谱落盘（幂等原子写，文件名与 CF 端一致）+ `/api/experiments` 实验归档（`data/`，gitignore）+ `/api/stats` 跨对局聚合 + `/api/health`；19 项 HTTP 契约测试随全量自检跑。**CF Pages 侧契约对齐**（health/experiments/stats 三端点，持久化走 GitHub，≤42 子请求守免费版限额）。前端 `js/api.js` 探活：有后端则服务端样本并入校准实验室、实验双端归档；无后端（file:///纯静态）自动降级，功能不变（ADR-0005） |
 | 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ **`node server.js` 自托管**（本地/内网完整后端，棋谱落盘不依赖 GitHub token）+ dev-proxy.py 最小备用 |
-| 自检 | ✅ | `node test/run-tests.js`：七引擎 selfTest（含禁手分支）+ 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点/**vcfWin soundness：合成伪胜反例 ⑫i/⑫j + 真链不误杀** + **⑬ 战术版本闸门：v0-off 全空 / v2·v3 逐层解锁 / v7·v8 VCF 边界 / 缺省与未知 id 收敛当前档**）+ 战术登记表单测（十档 ANCHORED / MECHS 单调 / games 归属 / resolve·allows 闸门）+ 对阵联名与 slug 单测 + **战术档位应用层贯通单测（档位控件十档齐全 + 设置/显隐/decide 透传/实验两侧/棋谱导出版本）** + 棋谱导出 meta 单测（单手归因/全局汇总/种子）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + health/experiments/stats）+ server.js 19 项 HTTP 契约测试 + Rapfi 协议层 16 项单测 |
-| 战术版本实验室 | ✅ | 十档战术梯 v0-off→v9-vcf-sound（`js/tactics-versions.js` 登记表：rank/机制键/commitAt/实战局数，git × 棋谱双锚定，见 ADR-0009）：`decide({tacticsVersion})` 按档开/关每层保险（`js/jev-client.js` 的 `resolveVersion` + `computeTactics` 五参签名 + `tacCache` 按 st×versionId 二级缓存，老战绩不受影响）；UI 四处入口——设置抽屉「战术版本」（仅 Jev 三渠道与 random 露出，mock/rapfi 不读战术层故隐藏）、**棋盘下方「战术沿革条」**（10 枚 chip：当前档实心、在用档描边、hover 看提交/归档局数/机制依据，点击只改全局默认档）、**抽屉「双方覆盖」**（`S.settings.sideConfig`：黑白各自覆盖 渠道/战术/思考时长，空=继承全局；人机与实验共用一套，实验开跑借走、手动开局归还）、实验面板「A 战术/B 战术」+ A/B 思考时长；实验报告与战绩簿按渠道·档位联名（`sideAttribution`，老记录无档位自动退化为纯渠道名）；**棋谱导出带 `tacticsVersion`（单边）/`blackTactics`+`whiteTactics`+`blackThink`/`whiteThink`（实验）+ `slug`/`duel` 联名，每手 `ai.tv` 记接手档位**；服务端棋谱文件名改用 slug（`jev-v9-vs-ran-v3-<stamp>.json`，无 slug 回退 gid，脏字符消毒，旧文件名仍可 GET）——「旧代码 vs 新代码」从此有可复现凭据，不再靠嘴说 |
+| 自检 | ✅ | `node test/run-tests.js`：七引擎 selfTest（含禁手分支）+ 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点/**vcfWin soundness：合成伪胜反例 ⑫i/⑫j + 真链不误杀** + **⑬ 战术版本闸门：v0-off 全空 / v2·v3 逐层解锁 / v7·v8 VCF 边界 / 缺省与未知 id 收敛当前档**）+ 战术登记表单测（十档 ANCHORED / MECHS 单调 / games 归属 / resolve·allows 闸门）+ 对阵联名与 slug 单测 + **战术档位应用层贯通单测（档位控件十档齐全 + 设置/显隐/decide 透传/实验两侧/棋谱导出版本）** + **棋谱归档归位实测（走 `games/` 真目录：每份 stamp 落进的版本窗必须与登记表登记的局数一致，边界 v1 前→v0-off / 末档后→当前档 / 无 stamp→归不到）+ DOM 契约（设置抽屉四件套 / 三页签 / Rapfi 时长常显 / 趋势芯片按 id 取值 / 沿革竖列容器 / 机器对手三控件 / 归档面板）** + 棋谱导出 meta 单测（单手归因/全局汇总/种子）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + health/experiments/stats）+ server.js 19 项 HTTP 契约测试 + Rapfi 协议层 16 项单测 |
+| 战术版本实验室 | ✅ | 十档战术梯 v0-off→v9-vcf-sound（`js/tactics-versions.js` 登记表：rank/机制键/commitAt/实战局数，git × 棋谱双锚定，见 ADR-0009）：`decide({tacticsVersion})` 按档开/关每层保险（`js/jev-client.js` 的 `resolveVersion` + `computeTactics` 五参签名 + `tacCache` 按 st×versionId 二级缓存，老战绩不受影响）；UI 入口——设置抽屉「战术版本」（仅 Jev 三渠道与 random 露出，mock/rapfi 不读战术层故隐藏）、**「机器对手」面板**（对局页直接改机器方：渠道 Jev 三渠道/Rapfi/随机+战术/演示、战术档、思考时长；与抽屉「双方覆盖 · 白方」同一份 `S.settings.sideConfig.white`，未改过时显示「跟随全局」并把**当前生效配置**写进 hint，选「跟随全局」即写空串清除覆盖；人 vs 人 模式下三项禁用而非隐藏）、**棋盘下方「战术沿革」竖列**（10 档普通行：当前档淡朱底、在用档 id 着朱、行内 `v5 · 拆杀安全排序 · 21 局 · 当前`，hover 看 commit/日期/机制依据，点击只改全局默认档）、**抽屉「双方覆盖」**（`S.settings.sideConfig`：黑白各自覆盖 渠道/战术/思考时长，空=继承全局；人机与实验共用一套，实验开跑借走、手动开局归还）、实验面板「A 战术/B 战术」+ A/B 思考时长；实验报告与战绩簿按渠道·档位联名（`sideAttribution`，老记录无档位自动退化为纯渠道名）；**「棋谱归档」面板**（数据页，按战术版本分组的归档棋谱列表：`versionForFileStamp` 按文件名 stamp 落进版本时间窗归组，只 `listGames(100)` 一次拉列表、不逐份抓内容；离线/无后端时给一句人话降级到本机战绩簿）；**棋谱导出带 `tacticsVersion`（单边）/`blackTactics`+`whiteTactics`+`blackThink`/`whiteThink`（实验）+ `slug`/`duel` 联名，每手 `ai.tv` 记接手档位**；服务端棋谱文件名改用 slug（`jev-v9-vs-ran-v3-<stamp>.json`，无 slug 回退 gid，脏字符消毒，旧文件名仍可 GET）——「旧代码 vs 新代码」从此有可复现凭据，不再靠嘴说 |
 | 换边重开 | ✅ | R6 语义（spec §4.3.1）：人机模式下「换边重开」按钮把原局按 `winner:null + reason:'换边中断'` 记「未终局」（照常记账/导出/同步），随后交换我方执子重开；不写 localStorage、不伪造终局；未终局的 `firstWin` 置 null，分胜负统计与校准取样一律剔除（不污染先手胜率） |
 
 ## 已验证（验收证据）
@@ -64,6 +64,10 @@ mix9svqfreestyle_bsmix.bin.lz4`）。`js/rapfi.js` 协议层 16 项单测（stub
 修复后 4 局 190 点回放 `win=7 valid=7 FALSE=0`（原 `win=9 valid=7 FALSE=2`），
 `025710` p18 `vcfDefense=E13`、`025550` p58 `vcfDefense=D9` 未退化，perCall 0.38ms 无增长。
 反向验证：把 HEAD 版引擎覆盖回工作区重跑，新用例如期红。全量自检全绿。
+2026-09-30 战术版本实验室收尾轮（v0.8）：`games/` 下 28 份归档棋谱按文件名 stamp
+逐份归版实测——`v5-safesort` 21 局、`v7-vcf` 4 局、`v8-vcf-try` 3 局，与
+`js/tactics-versions.js` 登记表的 `games` 字段逐档吻合；相邻档时间窗首尾相接、v0 兜底、
+末档开到 infinity 三项窗口断言进 selfTest（写错 commitAt 会让棋谱归错版本，测试直接红）。
 
 ## 设计例外（有意保留，不是遗漏）
 
@@ -121,14 +125,21 @@ mix9svqfreestyle_bsmix.bin.lz4`）。`js/rapfi.js` 协议层 16 项单测（stub
     详见 ADR-0008「代价与不做什么」。宁可少报一条链，不可错报一条。
 14. **战术版本闸门只影响 Jev 渠道与 random 渠道**：`mock` 与 `rapfi` 在 `decide()` 内
     早退，不经过战术层（mock 是给自检/离线演示用的、rapfi 引擎自带战术）——选这两档时
-    抽屉里的「战术版本」与沿革条都是隐藏/无意义状态，实验面板里给 mock/rapfi 配战术档
-    不会生效（联名上会退化为渠道名，不谎称版本）。
+    抽屉里的「战术版本」与沿革竖列都是无意义状态，实验面板里给 mock/rapfi 配战术档
+    不会生效（联名上会退化为渠道名，不谎称版本）；「机器对手」面板选这两档时 hint
+    仍会给出当前生效渠道与档位，但战术档不起作用。
 15. **`sideConfig` 是单值不是按局持久**：刷新页面即回全局默认（走 localStorage 的
     settings 通道，但不进战绩）。想留一次实验配置就 Import/导出棋谱里的
     `blackTactics/whiteTactics/slug` 字段；实验中改抽屉覆盖，下一局生效、当局不回溯。
-16. **沿革条与抽屉改的都是「全局默认档」**：实验中改它们不影响**已开局**双方的覆盖
+16. **沿革竖列与抽屉改的都是「全局默认档」**：实验中改它们不影响**已开局**双方的覆盖
     （覆盖在开局时已解析进 `effSide`），也不影响手动开局前显式指定的那一侧。
-    沿革条的「在用」描边读的是当前 `effSide` 两侧，不是历史对局用过哪些档。
+    沿革竖列的「在用」读的是当前 `effSide` 两侧，不是历史对局用过哪些档。
+17. **棋谱归档按文件名 stamp 归版，不读文件内容**：老棋谱没有 `meta.tactics`（早于
+    v0.7），只能靠 `body.exported` 生成的文件名时间戳落进版本窗口归组；因此
+    ① 名字人工改过/不带 stamp 的棋谱归不到版本（单列「未能归版本」）；② 一局棋若
+    跨版本时间窗保存，归档归到**保存那一刻**的版本，不是每手各自的版本（每手版本
+    仍看棋谱内 `ai.tv`）；③ 需要同源后端（`node server.js` 或 CF Pages）才能列目录，
+    `file://`/纯静态打开时面板降级为本机战绩簿。
 
 ## 路线图（候选，未承诺）
 

@@ -61,6 +61,38 @@
     if (id == null || id === '') return BY_ID[CURRENT];
     return BY_ID[String(id)] || BY_ID[CURRENT];
   }
+
+  /* ---------- 归档棋谱按版本归位 ----------
+   * server.js / Pages Function 的棋谱文件名一律 <gid>-<stamp>.json，stamp 由
+   * body.exported 生成（`iso.slice(0,19).replace(/[-:T]/g,'')`，14 位 UTC 数字）。
+   * 于是「这局跑的是哪一版战术」可以直接从文件名推出来：stamp 落在
+   * [本档 commitAt, 下一档 commitAt) 区间内即归属本档。commitAt 是北京时间
+   * （git log %ci），减 8 小时换 UTC 才能和文件名里的 stamp 比。
+   * v0-off 没有 commit：它是 v1 之前的全部时间，区间起点取 0。 */
+  function stampUtcStart(v) {
+    const m = /(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(v.commitAt || '');
+    if (!m) return 0;
+    /* 北京时间 → UTC：减 8 小时。Date.UTC 再成 14 位，保证和文件名 stamp 同格式可比 */
+    const t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - 8 * 3600e3;
+    const d = new Date(t);
+    const pad = (n) => String(n).padStart(2, '0');
+    return +('' + d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate())
+      + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()));
+  }
+  const WINDOWS = VERSIONS.map((v, i) => ({
+    id: v.id,
+    /* v0-off 是「战术层上线前」的兜底档：窗口起点恒为 0，v1 之前的一切都归它 */
+    from: i === 0 ? 0 : stampUtcStart(v),
+    to: i + 1 < VERSIONS.length ? stampUtcStart(VERSIONS[i + 1]) : Number.MAX_SAFE_INTEGER,
+  }));
+  /** 文件名（或纯 stamp）→ 归属档位 id；解析不出 stamp（早期 gid 命名等）→ null。 */
+  function versionForFileStamp(nameOrStamp) {
+    const m = /(\d{14})/.exec(String(nameOrStamp || ''));
+    if (!m) return null;
+    const s = +m[1];
+    for (const w of WINDOWS) if (s >= w.from && s < w.to) return w.id;
+    return null;
+  }
   /** 机制闸门：该版本没有的机制必须整条跳过（computeTactics 与接管链共用）。 */
   function allows(version, mech) {
     return !!version && !!version.mech[mech];
@@ -81,11 +113,17 @@
     for (let i = 1; i < VERSIONS.length; i++)
       for (const k of MECHS)
         if (VERSIONS[i - 1].mech[k]) U(!!VERSIONS[i].mech[k], VERSIONS[i].id + ' 丢了上级机制 ' + k);
+    /* 归位窗口：单调不减、v0 从 0 起、末档无上界（写错 commitAt 会让棋谱归错版本） */
+    for (let i = 1; i < WINDOWS.length; i++)
+      U(WINDOWS[i - 1].to === WINDOWS[i].from, VERSIONS[i].id + ' 窗口与上一档不衔接');
+    U(WINDOWS[0].from === 0, 'v0-off 窗口起点应为 0');
+    U(WINDOWS[WINDOWS.length - 1].to === Number.MAX_SAFE_INTEGER, '末档窗口应无上界');
   }
 
   BG.tacticsVersions = {
     VERSIONS, CURRENT,
     MECHS: Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vcfDefense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound']),
     resolve, allows, ids: () => VERSIONS.map((v) => v.id), selfTest,
+    versionForFileStamp, WINDOWS,
   };
 })();

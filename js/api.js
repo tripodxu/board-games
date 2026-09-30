@@ -42,6 +42,8 @@
     /* 入参兼容两种形态：列表返回的 path（games/<日>/<名>.json）或 <日>/<名>.json。
      * 前端从列表拿到的就是带 games/ 前缀的 path，这里统一剥掉，少一个调用方踩坑的点。 */
     getGame: (relPath) => call('/api/games/' + String(relPath || '').replace(/^games\//, '')),
+    /* 同一份路径的可读 URL：归档面板直接给 <a href>，不抓内容也能打开棋谱 */
+    gameUrl: (relPath) => '/api/games/' + String(relPath || '').replace(/^games\//, ''),
 
     /* 实验归档：entry 为 { tag, date, chanA, chanB, total, games, note } */
     saveExperiment: (entry) => post('/api/experiments', entry),

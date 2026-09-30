@@ -49,8 +49,10 @@
         <div id="promoBox" class="hidden"></div>
       </div>
     </div>
-    <section class="tactics-strip" id="tacticsStrip" aria-label="战术版本沿革（点击设为默认战术档位）">
-      <span class="tactics-strip-label">战术沿革</span>
+    <!-- 战术沿革：普通竖列（10 档登记表原样列出，点击把该档设为全局默认） -->
+    <section class="tactics-list" id="tacticsList" aria-label="战术版本沿革（点击设为默认战术档位）">
+      <div class="tactics-list-title" id="tacticsListTitle">战术沿革</div>
+      <div class="tactics-list-body" id="tacticsListBody"></div>
     </section>
     <div class="status-strip" id="status" aria-live="polite">选择模式后点「开始对局」。</div>
     <div class="controls">
@@ -99,6 +101,34 @@
     </div>
 
     <div class="side-pane" id="pane-play" role="tabpanel" aria-label="对局">
+    <!-- 机器对手：人机模式下机器方怎么走（渠道 / 战术档 / 思考时间）。
+         与全局设置抽屉的「双方覆盖 · 白方」是同一份配置（sideConfig.white）——
+         这里是对局时最常改的三项，抽屉留给要同时改两边的高级用法。 -->
+    <section class="panel collapsible" data-panel="foe" aria-label="机器对手">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="true" aria-controls="body-foe" title="收起 / 展开" aria-label="收起或展开「机器对手」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>机器对手</h2>
+        <span class="note" id="foeNote">人机模式下生效</span>
+      </div>
+      <div class="panel-body" id="body-foe">
+        <label>渠道
+          <select id="foeChannel">
+            <option value="">跟随全局</option>
+            <option value="proxy">Jev 模型（代理）</option>
+            <option value="openrouter">Jev · OpenRouter</option>
+            <option value="official">Jev · 官方 API</option>
+            <option value="rapfi">Rapfi 引擎</option>
+            <option value="random">随机 + 战术</option>
+            <option value="mock">离线演示</option>
+          </select>
+        </label>
+        <label>战术 <select id="foeTactics"></select></label>
+        <label>思考 <select id="foeThink"></select></label>
+        <div class="hint" id="foeHint">留空 = 跟随全局设置；改动只影响机器方，不动你自己的引擎。Rapfi 思考期间界面会短暂卡住（ADR-0006）。</div>
+      </div>
+    </section>
     <section class="panel collapsible" data-panel="trend" aria-label="Jev 判断趋势">
       <div class="panel-title">
         <button class="fold" aria-expanded="true" aria-controls="body-trend" title="收起 / 展开" aria-label="收起或展开「Jev 判断」">
@@ -236,6 +266,22 @@
       </div>
     </section>
 
+    <!-- 棋谱归档：按战术版本分组的归档棋谱（games/ 目录，后端在线时可读） -->
+    <section class="panel collapsible" data-panel="archive" aria-label="棋谱归档">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-archive" title="收起 / 展开" aria-label="收起或展开「棋谱归档」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>棋谱归档</h2>
+        <span class="note" id="archiveNote">按战术版本分组</span>
+        <span class="spacer"></span>
+        <button id="archiveReload" class="mini-btn" title="重新读取后端棋谱列表">刷新</button>
+      </div>
+      <div class="panel-body" id="body-archive">
+        <div id="archiveBody" class="archive"></div>
+      </div>
+    </section>
+
     <section class="panel collapsible" data-panel="ledger" aria-label="棋谱">
       <div class="panel-title">
         <button class="fold" aria-expanded="false" aria-controls="body-ledger" title="收起 / 展开" aria-label="收起或展开「棋谱」">
@@ -281,7 +327,7 @@
         对比实验（机机自动跑）
       </div>
       <div class="mode-switch" role="group" aria-label="对局模式">
-        <button type="button" data-mode="human-ai" aria-pressed="false">人 vs Jev</button>
+        <button type="button" data-mode="human-ai" aria-pressed="false">人 vs 机器</button>
         <button type="button" data-mode="ai-ai" aria-pressed="false" class="active">Jev vs Jev</button>
         <button type="button" data-mode="pvp" aria-pressed="false">人 vs 人</button>
       </div>
