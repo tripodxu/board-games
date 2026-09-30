@@ -86,12 +86,18 @@
 - UI（index.html 对局面板）：mode=ai-ai 时展开两块配置行（渠道 / 战术版本 / Rapfi 时长覆盖），模式文案「Jev vs Jev」→「引擎 vs 引擎」；human-ai 时第一块收起、保留人类方提示。实验面板 A/B 复用同一渲染函数 + 「自动交替执黑白」勾选（保留现状默认行为）。
 - 人类方（human-ai）沿用 `#side`「我方执子」，不引入新概念。
 
-#### 4.3.1 人机对局中即时换边（R6）
+#### 4.3.1 人机对局中换边重开（R6，用户已定语义）
 
-- index.html `.controls`（:50-58）增 `#swapSideBtn`「交换黑白」（title 说明即时生效）；human-ai 模式显示，ai-ai/pvp 隐藏或点击时 toast 提示仅人机可用。
-- `js/app.js` 点击处理：`S.humanSide` 取反方 `engine.sides.find(s => s.id !== S.humanSide).id`；同步回填 `$('side').value`；刷新状态行/徽标；若轮到的新 AI 方且无 inflight，`setTimeout(aiStep, aiDelayMs())` 接管。
-- 语义边界：**不重开对局、不动棋盘**，已落子棋谱归属不变（每手 meta.side 已记录）；`S.inflight` 中的决策按原方走完，落地后 `playMove` 的 `isAISide(S.st.turn)`（:476）自然把控制权翻给新 AI 方；换边不写入 localStorage（属当局设置，重开恢复 `#side` 选择值）。
-- 换边后若原人类方刚走过去一手、此刻轮到对方（AI），AI 应立即响应——避免出现「双方都在等」的死等。
+「点一下重开一局并交换执子」：当前局**保留为独立棋谱记录**，新局以交换后的执子即时开局。
+
+- index.html `.controls`（:50-58）增 `#swapBtn`「换边重开」；human-ai 模式常显，ai-ai/pvp 与实验进行中隐藏。
+- 点击处理（js/app.js）：
+  1. `EXP.running` 或模式非 human-ai → 忽略（按钮已隐藏，双保险）；
+  2. 当前局有历史且未终局（`S.history.length && !S.engine.getStatus(S.st).over`）→ 以合成终局 `{over: true, winner: null, reason: '换边中断'}` 走 `finishGame`：**原棋谱照常记账**（战绩簿、棋谱导出、终局同步，一步不少，且都发生在新局 resetSession 之前——`uploadGameRecord` 同步快照 export，无竞态）；
+  3. 已终局或无历史 → 跳过记账；
+  4. `S.humanSide` 取反方，回填 `$('side').value`，调 `startGame()` 开新局；新人类方非先手时 AI 先走（复用 :422 逻辑）。
+- `saveGameRecord`（:1139-1168）适配：`winner: null` 且 `reason === '换边中断'` 时渲染「未终局」而非「和棋」；战绩簿行不加 draw 样式；校准样本不受影响（无 winner → `firstWin` 为 null → 不计入，js/app.js:1181 `decided` 过滤天然成立）。
+- 语义边界：**不中途翻面、不改已落子归属**；换边重开是「保存并重启」不是「续命」；属当局操作不写 localStorage，重开恢复 `#side` 值。
 
 ### 4.4 全局设置抽屉（R1）
 
@@ -144,7 +150,7 @@
 
 1. **登记表单测**（test/run-tests.js）：8 档 id 唯一、layers 字段齐全、默认档存在、沿革顺序与 date 单调。
 2. **行为回归**：合成反例（沿用 .work/jev-analysis/probe-vcf.js 手法）断言 v7 与现状一致；v6→v7 差异恰好落在 soundness 闸门点；v0-off 时接管链零触发。
-3. **UI 冒烟**（离线 mock+random）：三种模式 × 双方异渠道/异版本/异时长矩阵跑通终局；**人机模式中局换边**（空窗期换 / AI 思考中换 / 连换两次）控制权正确翻转、不卡死；战绩与实验 label/slug 正确落 localStorage。
+3. **UI 冒烟**（离线 mock+random）：三种模式 × 双方异渠道/异版本/异时长矩阵跑通终局；**换边重开**（有历史时 → 原局记「未终局」且新局以对方执子开局、AI 先手时自动接管；终局后点 / 空局点均只开新局不产记录）；战绩与实验 label/slug 正确落 localStorage。
 4. **服务端契约**：server.js 18 项 HTTP 用例补：slug 文件名生成、非法 slug 消毒、无 slug 兼容；Pages Function 单测同补。
 5. 全绿后实跑 ≥4 局版本对垒（v7 vs v6、v7 vs random·v3）验证报告可读性与归因字段完整。
 
