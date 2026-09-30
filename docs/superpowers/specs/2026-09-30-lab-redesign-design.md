@@ -13,6 +13,7 @@
 | R3 | 战术分版本，可搭载 Jev 或随机算法对弈；证明每版进步 | 战术层硬编码无版本（js/jev-client.js:239 `computeTactics` + :488-539 接管链）；版本沿革只存在于 git 提交史 |
 | R4 | 实验报告/棋谱命名鲜明（谁打谁、战术版本、Rapfi 时长） | 实验 tag 纯时间戳（js/app.js:769）；棋谱文件名 `gid-stamp.json`（server.js:328）；战绩簿行无对阵信息（js/app.js:1190-1202） |
 | R5 | 棋盘下方罗列历代战术版本供参考调用 | 无任何版本沿革展示位；棋盘下方 controls 之后为空白（index.html:50-58） |
+| R6 | 人机对局中可随时自由换边 | 「我方执子」`#side` 仅 `startGame` 开局时读取一次（js/app.js:408），对局中修改无效；且入口埋在侧栏设置页签，不可发现 |
 
 ## 2. 已确认决策（用户 2026-09-30 拍板）
 
@@ -85,6 +86,13 @@
 - UI（index.html 对局面板）：mode=ai-ai 时展开两块配置行（渠道 / 战术版本 / Rapfi 时长覆盖），模式文案「Jev vs Jev」→「引擎 vs 引擎」；human-ai 时第一块收起、保留人类方提示。实验面板 A/B 复用同一渲染函数 + 「自动交替执黑白」勾选（保留现状默认行为）。
 - 人类方（human-ai）沿用 `#side`「我方执子」，不引入新概念。
 
+#### 4.3.1 人机对局中即时换边（R6）
+
+- index.html `.controls`（:50-58）增 `#swapSideBtn`「交换黑白」（title 说明即时生效）；human-ai 模式显示，ai-ai/pvp 隐藏或点击时 toast 提示仅人机可用。
+- `js/app.js` 点击处理：`S.humanSide` 取反方 `engine.sides.find(s => s.id !== S.humanSide).id`；同步回填 `$('side').value`；刷新状态行/徽标；若轮到的新 AI 方且无 inflight，`setTimeout(aiStep, aiDelayMs())` 接管。
+- 语义边界：**不重开对局、不动棋盘**，已落子棋谱归属不变（每手 meta.side 已记录）；`S.inflight` 中的决策按原方走完，落地后 `playMove` 的 `isAISide(S.st.turn)`（:476）自然把控制权翻给新 AI 方；换边不写入 localStorage（属当局设置，重开恢复 `#side` 选择值）。
+- 换边后若原人类方刚走过去一手、此刻轮到对方（AI），AI 应立即响应——避免出现「双方都在等」的死等。
+
 ### 4.4 全局设置抽屉（R1）
 
 - index.html header（:15-27）增齿轮按钮 `#settingsBtn`；正文新增居中抽屉 `#settingsDrawer`（`dialog` 语义用 `<div role="dialog" aria-modal="true">` + 原生 CSS 实现，零依赖），内容 = 渠道/Key/Base URL/topK/机机间隔/棋谱同步/后端状态块；Esc 与遮罩点击关闭，焦点圈进抽屉。
@@ -122,6 +130,7 @@
 - 默认档 v7 = 现状行为；单测加「默认档与登记表闸门全开等价」断言。
 - 旧 localStorage settings/sideConfig 缺字段 → 继承默认；旧战绩/实验记录无 name/label → 渲染层回退。
 - 旧棋谱文件（games/2026-09-2x/*.json）不动、不改名；新文件名多一段 slug，列表页按 `gid-` 前缀仍可解析。
+- 换边为当局操作：不改写历史棋谱归属；战绩簿的 `winner`/`name` 按终局实际方渲染，不追溯。
 - `BG.codeVersion` bump 至 `0.8.0`；棋谱 meta `codeVersion` 自动反映新版。
 
 ## 7. 错误处理与边界
@@ -135,7 +144,7 @@
 
 1. **登记表单测**（test/run-tests.js）：8 档 id 唯一、layers 字段齐全、默认档存在、沿革顺序与 date 单调。
 2. **行为回归**：合成反例（沿用 .work/jev-analysis/probe-vcf.js 手法）断言 v7 与现状一致；v6→v7 差异恰好落在 soundness 闸门点；v0-off 时接管链零触发。
-3. **UI 冒烟**（离线 mock+random）：三种模式 × 双方异渠道/异版本/异时长矩阵跑通终局；战绩与实验 label/slug 正确落 localStorage。
+3. **UI 冒烟**（离线 mock+random）：三种模式 × 双方异渠道/异版本/异时长矩阵跑通终局；**人机模式中局换边**（空窗期换 / AI 思考中换 / 连换两次）控制权正确翻转、不卡死；战绩与实验 label/slug 正确落 localStorage。
 4. **服务端契约**：server.js 18 项 HTTP 用例补：slug 文件名生成、非法 slug 消毒、无 slug 兼容；Pages Function 单测同补。
 5. 全绿后实跑 ≥4 局版本对垒（v7 vs v6、v7 vs random·v3）验证报告可读性与归因字段完整。
 
