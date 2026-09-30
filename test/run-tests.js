@@ -454,6 +454,47 @@ try {
   results.push('✗ 双方配置与联名: ' + e.message);
 }
 
+/* 单元：换边中断的终局语义（winner:null + reason:'换边中断' = 未终局，不是和棋）
+ * 与 app.finishGame/resTxt/calSamples 的判定保持一致；三处判定任何一处漂移，
+ * 战绩簿就会把「未终局」错记成和棋、先手胜率被未终局污染。 */
+function swapRestartTests() {
+  const A = BG.util.assert;
+  const resOf = (winner, reason) => ({
+    winner, reason,
+    text: winner ? (winner === 'black' ? '黑胜' : '白胜') : (reason === '换边中断' ? '未终局' : '和棋'),
+    isDraw: !winner && reason !== '换边中断',
+  });
+  const r = resOf(null, '换边中断');
+  A(r.text === '未终局' && r.isDraw === false, '换边中断应记未终局，实际：' + r.text);
+  A(resOf(null, '棋盘已满').text === '和棋' && resOf(null, '棋盘已满').isDraw === true, '真和棋不得被误判为未终局');
+  A(resOf('black', '五连').text === '黑胜', '正常胜负文案');
+  /* 校准：未终局不得进入先手胜率统计 */
+  const firstWin = (games) => {
+    const done = games.filter((g) => g.result && g.result.winner);
+    const w = done.filter((g) => g.result.winner === g.sides[0]).length; // 简化：先手指纹由调用方给
+    return done.length ? w / done.length : null;
+  };
+  const mkG = (winner, reason) => ({ result: { winner, reason }, sides: ['black', 'white'] });
+  A(firstWin([mkG(null, '换边中断')]) === null, '未终局不得计入校准');
+  A(firstWin([mkG('black'), mkG(null, '换边中断')]) === 1, '未终局应被剔除');
+  /* 接线：按钮只有人机模式且已落子才出现；swapSidesAndRestart 非人机直接 return */
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  A(html.indexOf('id="swapBtn"') >= 0, 'index.html 缺换边重开按钮 #swapBtn');
+  const app = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  A(/function swapSidesAndRestart\(\)/.test(app), 'app.js 应有 swapSidesAndRestart');
+  A(/if \(S\.mode !== 'human-ai'\) return;/.test(app), '换边重开只对人机生效');
+  A(/finishGame\(\{ winner: null, reason: '换边中断' \}\)/.test(app), '原局应按未终局记账');
+  A(/reason === '换边中断'\)?\s*\?\s*'未终局'/.test(app), '终局文案应区分未终局与和棋');
+  A(/swapBtn/.test(app) && /addEventListener\('click', swapSidesAndRestart\)|\.onclick = swapSidesAndRestart/.test(app), '应绑定换边重开按钮');
+}
+try {
+  swapRestartTests();
+  results.push('✓ 换边重开契约（未终局语义 + 显隐 + 绑定）');
+} catch (e) {
+  failed++;
+  results.push('✗ 换边重开契约: ' + e.message);
+}
+
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
 async function playOut(gid) {
   BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现

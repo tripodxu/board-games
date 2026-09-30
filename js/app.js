@@ -474,13 +474,42 @@
       $('stepBtn').classList.remove('hidden');
     }
     syncChannelUI();
+    syncSwapBtn();
     setStatus(inGameStatus(), false);
     if (isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
   }
 
+  /* 换边重开只对人机、且已经落子时才有意义（空局直接切侧栏「我方执子」即可） */
+  function syncSwapBtn() {
+    const btn = $('swapBtn');
+    if (btn) btn.classList.toggle('hidden', !(S.mode === 'human-ai' && S.history.length > 0));
+  }
+
+  /* R6 换边重开：原局记「未终局」照常记账/导出/同步（都在新局 resetSession 之前），
+   * 随后交换我方执子重开。语义见 spec §4.3.1：不写 localStorage、不伪造终局。 */
+  function swapSidesAndRestart() {
+    if (S.mode !== 'human-ai') return;
+    if (S.history.length && !S.over) finishGame({ winner: null, reason: '换边中断' });
+    const other = S.engine.sides[1].id;
+    S.humanSide = (S.humanSide === other) ? S.engine.sides[0].id : other;
+    const sel = $('side'); if (sel) sel.value = S.humanSide;
+    startGame();
+  }
+
+  /* 终局语义唯一来源：胜方名 / 「和棋」 / 「未终局」（换边中断）。
+   * finishGame 的提示语、战绩簿胜方列、实验汇总都走这里，避免三处判定漂移。 */
+  function resultText(g) {
+    if (g && g.winner) return sideName(g.winner);
+    return (g && g.reason === '换边中断') ? '未终局' : '和棋';
+  }
+
   function finishGame(g) {
     let txt;
-    if (g.winner === null) txt = '和棋：' + (g.reason || '');
+    /* 换边中断（winner:null + reason:'换边中断'）= 未终局，不是和棋：
+       文案、战绩簿颜色、校准取样三处都要按这个语义分流。 */
+    const unfinished = g.winner === null && g.reason === '换边中断';
+    if (unfinished) txt = '未终局（' + g.reason + '）';
+    else if (g.winner === null) txt = '和棋：' + (g.reason || '');
     else txt = sideName(g.winner) + ' 获胜' + (g.reason ? '（' + g.reason + '）' : '');
     setStatus('终局 · ' + txt, true);
     toast(txt);
@@ -531,6 +560,7 @@
     renderCockpit();
     /* 决策流只增不改，这里增量插入；人类走子不产生 AI 决策，无需重画 */
     if (meta && meta.byAI) prependFeed(h);
+    syncSwapBtn(); // 落子后换边重开才有意义（原局记「未终局」）
     const g = S.engine.getStatus(S.st);
     if (g.over) { finishGame(g); return true; }
     if (isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
@@ -637,6 +667,8 @@
       });
     return {
       cal,
+      /* winner 为空 = 和棋 / 换边中断（未终局）：firstWin 置 null，
+       * 消费方（战绩簿分胜负统计、校准、后端 stats）一律剔除，不污染先手胜率 */
       firstWin: g.winner ? g.winner === firstId : null,
       mock: items.length > 0 && items.every((h) => h.meta.mock),
     };
@@ -1266,7 +1298,7 @@
       duel: BG.duel.duelLabel(bCfg, wCfg),
       mock: cs.mock,
       mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
-      winner: g.winner ? sideName(g.winner) : '和棋',
+      winner: resultText(g),
       firstWin: cs.firstWin,
       reason: g.reason || '',
       notas: S.history.map((h) => h.move.notation), // 棋谱写法：经验注入（开局胜率统计）的数据源
@@ -1559,6 +1591,7 @@
     renderCockpit();
     renderFeed();
     redraw();
+    syncSwapBtn(); // 悔棋可能清空历史：空局不该出现「换边重开」
     /* 悔棋常把控制权交回 Jev（机机模式恒定如此）。此前这里不调度，AI 回合永不到来，
      * 界面却显示「等待 Jev」——对局就此卡死。 */
     if (S.history.length && isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
@@ -1574,6 +1607,7 @@
       $('pauseBtn').classList.toggle('hidden', !aiAi);
       $('stepBtn').classList.toggle('hidden', !aiAi);
       $('speedRow').classList.toggle('hidden', !aiAi);
+      syncSwapBtn(); // 换边重开只对人机开放
     };
     $('speed').oninput = () => {
       $('speedVal').textContent = (150 + parseInt($('speed').value, 10) * 150) / 1000 + 's';
@@ -1596,14 +1630,14 @@
       const pm = S.engine.passMove && S.engine.passMove(S.st);
       if (pm) playMove(pm, { human: true });
     };
-    $('resignBtn').onclick = () => {
-      if (!S.st || S.inflight != null || S.engine.getStatus(S.st).over) return;
+    $('resignBtn').onclick = () => {      if (!S.st || S.inflight != null || S.engine.getStatus(S.st).over) return;
       const loser = S.st.turn;
       const opp = S.engine.sides.find((s) => s.id !== loser);
       S.st = BG.util.clone(S.st);
       S.st.result = { over: true, winner: opp ? opp.id : null, reason: '认输' };
       finishGame(S.engine.getStatus(S.st));
     };
+    $('swapBtn').onclick = swapSidesAndRestart;
     $('channel').onchange = saveSettings;
     $('endpoint').onchange = saveSettings;
     /* 抽屉「双方覆盖」：任一侧改动即写 sideConfig 并保存 */
