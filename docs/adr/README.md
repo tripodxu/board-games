@@ -16,3 +16,4 @@
 | [0006](0006-rapfi-wasm-opponent.md) | Rapfi WASM 本地引擎对手（Gomocup 协议），新增 rapfi 渠道 | accepted |
 | [0007](0007-vcf-threat-space-search.md) | VCF 威胁空间搜索（连续冲四将死链）接入 Jev 战术保险 | accepted（§1 末条勘误见 0008） |
 | [0008](0008-vcfwin-defender-counterkill-gate.md) | vcfWin 守方反杀闸门（soundness 修复）：撤回 0007 的「守方反击造杀不覆盖」论断 | accepted |
+| [0009](0009-tactics-version-registry.md) | 战术版本登记表 + 机制闸门 + 联名 slug 归档（实验设施三件套，codeVersion 0.8.0） | accepted |

@@ -1007,7 +1007,7 @@ git commit -m "feat(ui): 全局设置进右上角抽屉（Rapfi 时长常显）+
 - Modify: `css/style.css`（.side-cfg）
 - Modify: `test/run-tests.js`（配置解析/联名回归；Node 侧不测 DOM，用纯函数断言 effSide 语义）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 /* 单元：双方配置归一化 + 联名端到端（零依赖纯逻辑，复刻 app.effSide 的语义） */
@@ -1044,14 +1044,14 @@ function sideConfigTests() {
 
 （该测试在本 Task 先落地；`app.js` 的 `effSide` 必须与 `eff` 语义一致——实现时把 `effSide` 写成调同一套解析。）
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`空覆盖应继承全局`（R.resolve 存在但断言先于 app.effSide 存在——先以测试钉死契约；确认失败信息正确后进入实现）。
 
 > 说明：本任务测试的是「契约本身」，不 import app.js（app.js 依赖 DOM）。实现时必须让 `js/app.js` 的 `effSide()` 与测试中的 `eff()` 逐字同义，否则 Phase 5 集成时人机/实验会与登记表脱节。
 
-- [ ] **Step 3: 实现 `js/app.js`**
+- [x] **Step 3: 实现 `js/app.js`**
 
 1. `:17` settings 默认新增：
 
@@ -1212,12 +1212,12 @@ Expected: FAIL，`空覆盖应继承全局`（R.resolve 存在但断言先于 ap
 .side-cfg select { flex: 1 1 auto; min-width: 0; }
 ```
 
-- [ ] **Step 4: 实跑确认通过 + 人工核查**
+- [x] **Step 4: 实跑确认通过 + 人工核查**
 
 Run: `node test/run-tests.js` → 全绿。
 人工核查：抽屉改「白方渠道=rapfi、战术=v3-make2、思考=5s」→ 人机局白方确实由 Rapfi 以 5s/档走子且 `meta.tacticsVersion='v3-make2'`；导出棋谱 JSON 含 `slug`/`duel`/`blackTactics`/`whiteTactics`；战绩簿新列显示联名；实验面板选 A/B 版本后 4 局交换先后。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/app.js index.html css/style.css test/run-tests.js
@@ -1232,7 +1232,7 @@ git commit -m "feat(lab): 黑白双方独立配置（渠道/战术版本/思考�
 - Modify: `js/app.js` calibrate 取样（:568-582，确认 `winner:null` 不计入先手胜率）
 - Modify: `test/run-tests.js`（换边中断棋谱记录的渲染契约——用纯函数复刻判定）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 /* 单元：换边中断的终局语义（winner:null + reason:'换边中断' = 未终局，不是和棋） */
@@ -1257,12 +1257,12 @@ function swapRestartTests() {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL（当前无 `换边中断` reason 的处理路径，文案走「和棋」分支）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `index.html:50-58` controls 内追加：
 
@@ -1295,12 +1295,12 @@ Expected: FAIL（当前无 `换边中断` reason 的处理路径，文案走「�
 4. `calSamples`（:568-582）：先手胜率统计只取 `result.winner` 非空的样本（`未终局` 剔除）。
 5. 显隐：`syncChannelUI()` 或 `startGame` 后按 `S.mode === 'human-ai' && S.history.length > 0` 控制 `#swapBtn` 的 `hidden`（空局无需换边）。bind：`$('swapBtn').addEventListener('click', swapSidesAndRestart);`
 
-- [ ] **Step 4: 实跑确认通过 + 人工核查**
+- [x] **Step 4: 实跑确认通过 + 人工核查**
 
 Run: `node test/run-tests.js` → 全绿。
 人工核查：人机下几手点「换边重开」→ 出现终局提示「未终局」、战绩簿多一行未终局（不同色）、新局我方执子已交换且棋盘清空；校准面板先手胜率不变。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/app.js index.html test/run-tests.js
@@ -1314,7 +1314,7 @@ git commit -m "feat(lab): 换边重开——原局记未终局、新局交换执
 - Modify: `functions/api/games.js:58-63`
 - Modify: `test/server-tests.js`（slug / 回退 / 消毒 三例）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `test/server-tests.js` 既有棋谱 POST 用例附近追加：
 
@@ -1330,12 +1330,12 @@ git commit -m "feat(lab): 换边重开——原局记未终局、新局交换执
 
 > 注：`baseGame()`/`postJson()` 用文件里既有的 helper；临时 gamesDir 已在 fixture 中。stamp 格式以 `dayAndStamp` 实际输出为准（`iso.slice(0,19).replace(/[-:T]/g,'')` → `20260930T120000`）。
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`文件名应为 <slug>-<stamp>.json`（当前忽略 `body.slug`）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `server.js:328`：
 
@@ -1355,12 +1355,12 @@ Expected: FAIL，`文件名应为 <slug>-<stamp>.json`（当前忽略 `body.slug
 
 commit message 里的 `gid` 改 `slug`（:69），便于 git log 直读对阵。
 
-- [ ] **Step 4: 实跑确认通过**
+- [x] **Step 4: 实跑确认通过**
 
 Run: `node test/run-tests.js` → 全绿。
 人工核查：本地 `node server.js` 起服务，前端导出一盘并同步 → `games/<今天>/jev-v9-vs-ran-v3-<stamp>.json` 生成，内容含 `slug`/`duel`。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server.js functions/api/games.js test/server-tests.js
@@ -1379,7 +1379,7 @@ git commit -m "feat(games): 棋谱文件名改用联名 slug（无 slug 回退 g
 - Modify: `css/style.css`（.tactics-strip / .tv-chip / .tv-chip.cur / .tv-chip.used）
 - Modify: `test/run-tests.js`（domContractTests 已含 `tacticsStrip`，本任务补渲染逻辑纯函数测试）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 /* 单元：战术沿革条的渲染数据（当前档高亮、在用档标出、点击改默认档只写 settings） */
@@ -1399,12 +1399,12 @@ function tacticsStripTests() {
 }
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`应渲染 10 枚（9 档战术版本 + 无战术基线）`（render 函数尚未定义——测试先钉契约）。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `index.html`：`.controls` 之后、`.status-strip` 之前：
 
@@ -1461,12 +1461,12 @@ Expected: FAIL，`应渲染 10 枚（9 档战术版本 + 无战术基线）`（r
 .tv-chip.cur { background: var(--zhu); border-color: var(--zhu); color: #fff; font-weight: 700; }
 ```
 
-- [ ] **Step 4: 实跑确认通过 + 人工核查**
+- [x] **Step 4: 实跑确认通过 + 人工核查**
 
 Run: `node test/run-tests.js` → 全绿。
 人工核查：沿革条 10 枚（v0 基线 + v1–v9）、当前档实心、在用档描边；点击 `v3-make2` → toast 提示、默认档变更、新对局（无覆盖侧）落到 v3；页签切到数据再回来条不变。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.html js/app.js css/style.css test/run-tests.js
@@ -1485,7 +1485,7 @@ git commit -m "feat(ui): 棋盘下方战术沿革条——9 档战术版本 + �
 - Modify: `js/board.js:28`（`BG.codeVersion='0.7.0'` → `'0.8.0'`）
 - Modify: `test/run-tests.js`（若已有 codeVersion 断言则同步期望——当前仅断言非空，无需改）
 
-- [ ] **Step 1: 写失败测试（版本号闸门）**
+- [x] **Step 1: 写失败测试（版本号闸门）**
 
 在 `test/run-tests.js` 的 meta 单元段（:63-129 附近）补一行，把 codeVersion 钉成 `0.8.0`：
 
@@ -1493,12 +1493,12 @@ git commit -m "feat(ui): 棋盘下方战术沿革条——9 档战术版本 + �
   BG.util.assert(BG.codeVersion === '0.8.0', 'codeVersion 应随本计划升到 0.8.0，实际 ' + BG.codeVersion);
 ```
 
-- [ ] **Step 2: 实跑确认失败**
+- [x] **Step 2: 实跑确认失败**
 
 Run: `node test/run-tests.js`
 Expected: FAIL，`codeVersion 应随本计划升到 0.8.0，实际 0.7.0`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 1. `js/board.js:28` → `BG.codeVersion = '0.8.0';`
 2. ADR-0009（新建）必含：背景（战术层 9 次提交累加上线→无法归因）、决策（登记表 + 机制闸门 + `meta.tacticsVersion` + 联名 slug）、备选（把版本写进 git tag / 分支 per 实验——否决理由：标签不进棋谱 meta，跨分支 diff 噪音）、后果（对决增加一次 resolve 调用；旧棋谱无 slug 由服务端回退 gid 兼容）。
@@ -1506,13 +1506,13 @@ Expected: FAIL，`codeVersion 应随本计划升到 0.8.0，实际 0.7.0`。
 4. `docs/memory/MEMORY.md` 顶部加一段：本期实验设施三件套（`js/tactics-versions.js` 登记表 / `js/duel.js` 联名 / `effSide` 双方配置）+ 一句「改战术层必同步登记表，否则版本归因断裂」。
 5. 各 Phase 已带的文案更新保持；本任务做全文校对（grep `0.7.0`、`S.expChannels`、`pane-settings` 应无残留）。
 
-- [ ] **Step 4: 实跑全量验证**
+- [x] **Step 4: 实跑全量验证**
 
 Run: `node test/run-tests.js`
 Expected: 全绿（七引擎 selfTest + 校准 + 登记表 + 联名 + 闸门 + DOM/布局契约 + 集成 + server 契约 + Pages + Rapfi）。
 人工终验清单：① 人机换边重开全流程；② 抽屉改白方为 Rapfi(5s) 生效；③ 实验 4 局交换先后、结果联名正确；④ 导出棋谱含 slug/duel/blackTactics/whiteTactics/tv；⑤ 切页签棋盘宽度不变；⑥ 连走 ≥6 步，「最新决策」面板每步高度完全相等（DevTools 量 `#body-latest` 所在面板 height）；⑦ 沿革条点击切档生效。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/ js/board.js test/run-tests.js
@@ -1523,12 +1523,12 @@ git commit -m "docs: ADR-0009 战术版本登记表 + status/MEMORY 同步 + cod
 
 ## Integration Checklist（合并前必跑）
 
-- [ ] `node test/run-tests.js` 全绿
-- [ ] `git grep -n "S.expChannels\|pane-settings\|0\.7\.0"` 无残留（历史棋谱 games/ 内的旧 JSON 除外）
-- [ ] 页面在 1280×800 / 1024×700 无横向滚动条；棋盘点击命中正常（`BG.eventXY` 按 rect 换算，CSS 缩放不影响）
-- [ ] 关掉网络后：Jev 渠道走 mock 降级不得让沿革条/抽屉报错（纯前端逻辑）
-- [ ] 旧 `localStorage`（无 `tacticsVersion`/`sideConfig`）刷新后自动补齐
-- [ ] `games/` 旧文件名（`gomoku-<stamp>.json`）仍可被 `GET /api/games/:day/:name` 读取（NAME_RE 未动）
+- [x] `node test/run-tests.js` 全绿
+- [x] `git grep -n "S.expChannels\|pane-settings\|0\.7\.0"` 无残留（历史棋谱 games/ 内的旧 JSON 除外）
+- [x] 页面在 1280×800 / 1024×700 无横向滚动条；棋盘点击命中正常（`BG.eventXY` 按 rect 换算，CSS 缩放不影响）
+- [x] 关掉网络后：Jev 渠道走 mock 降级不得让沿革条/抽屉报错（纯前端逻辑）
+- [x] 旧 `localStorage`（无 `tacticsVersion`/`sideConfig`）刷新后自动补齐
+- [x] `games/` 旧文件名（`gomoku-<stamp>.json`）仍可被 `GET /api/games/:day/:name` 读取（NAME_RE 未动）
 
 ## Manual Verification（每个 UI 任务重复一次）
 

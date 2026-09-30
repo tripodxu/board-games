@@ -79,6 +79,9 @@ function aiM(notation, extra) {
 try {
   const A = BG.util.assert;
   A(BG.codeVersion, 'BG.codeVersion 未设置（棋谱 meta 无代码版本，归因失效）');
+  /* 版本号闸门：战术版本登记表/沿革条/slug 归档都属于 0.8.0 这一版实验设施，
+     忘了 bump 会让「哪版代码跑出这盘棋」的归因整体错位。 */
+  A(BG.codeVersion === '0.8.0', 'codeVersion 应随实验设施计划升到 0.8.0，实际 ' + BG.codeVersion);
 
   /* 非 AI 着法（人走）不该产出 meta */
   A(BG.util.aiMoveMeta('H8', { human: true }) === null, '人走的手不该有 aiMoveMeta');

@@ -8,6 +8,33 @@
 
 ---
 
+## 2026-09-30 · 实验设施收尾：双方覆盖 sideConfig / 换边重开 / 沿革条 / slug 归档
+
+- **`S.settings.sideConfig` 是这一版的枢纽**：黑白各自覆盖 渠道/战术/思考时长
+  （空=继承全局），`effSide(side)` 统一归一（channel 过 `effectiveChannelOf`、
+  tactics 过 `tacticsVersions.resolve`），人机与实验共用同一套，原来的双轨
+  `S.expChannels` + `S.expTactics` 删除。实验开跑 `borrowSideCfg()` 借走 sideConfig、
+  手动开局 `restoreSideCfg()` 归还——**mutate 全局 settings 再还原**这种模式要配
+  renderSideCfg 重绘，否则抽屉显示与实际不一致。
+- **换边重开（R6）三处判定必须走同一个 `resultText(g)`**：终局提示语、战绩簿胜方列、
+  校准取样（`firstWin` 置 null 即被消费方剔除）。漂移的后果是战绩簿把「未终局」
+  画成和棋、先手胜率被污染。`#swapBtn` 只在 `S.mode==='human-ai' && S.history.length>0`
+  出现（`syncSwapBtn()`，playMove/undo/mode 变化/开局四处同步）。
+- **slug 归档踩的坑**：`sanitizeGid(body.slug) || gid` **永远回退不到 gid**——
+  `sanitizeGid` 内部 `return s || 'nogid'`，空串被兜底成 truthy 的 `'nogid'`。
+  必须先净化再 `|| gid`（server.js 与 functions/api/games.js 同款）。
+- **战绩簿联名不做第 8 列**：7 列网格在 1024px 加一列必溢出，改成棋种列下的
+  10px 副行（`.rec-game i` + ellipsis + title 悬浮看全）。
+- **改战术层必同步登记表**（含 `games` 局数），否则版本归因断裂；
+  `tacticsRegistryTests` 有 ANCHORED 十档 / rank 连续 / MECHS 单调 / games 合计
+  四道护栏，漏改立刻红。
+- **app.js 静态断言会随实现演进过期**：这一轮就修了 4 条（`eff.tactics` 替
+  `effectiveTacticsVersion`、`sideConfig` 替 `expTactics`、联名副行正则、
+  跨行正则容许 `[\s\S]{0,80}`）。断言本文是「契约」，实现细化后要同步改，
+  不要为了让它绿而把断言删掉。
+
+---
+
 ## 2026-09-30 · 战术版本实验室：十档战术梯，让「哪版代码、哪层保险」第一次可复现
 
 - **动机**：Jev+战术打 Rapfi 0-4 之后，收益最大的下一件事不是加机制，而是**把十档战术
