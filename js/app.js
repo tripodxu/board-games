@@ -586,6 +586,8 @@
     const moves = S.history.map((h) => {
       const m = { ply: h.ply, side: sideName(h.side), notation: h.move.notation };
       if (h.meta && h.meta.tactics) m.tactics = h.meta.tactics;
+      const ai = BG.util.aiMoveMeta(h.move.notation, h.meta);
+      if (ai) m.ai = ai;
       return m;
     });
     const exp = S.expInfo || null;
@@ -606,6 +608,7 @@
         : '进行中（已 ' + S.history.length + ' 手）',
       notation: moves.map((m) => m.notation).join(','),
       moves,
+      meta: BG.util.aiGameMeta(S.history, { topK: S.settings.topK }),
       cal: cs.cal,
       firstWin: cs.firstWin,
       mock: cs.mock,

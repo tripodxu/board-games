@@ -60,6 +60,74 @@ try {
   results.push('✗ 校准实验室: ' + e.message);
 }
 
+/* 单元：棋谱导出的 meta 构造（BG.util.aiMoveMeta / aiGameMeta）
+ * 放在 board.js 而非 app.js：app.js 是 DOM 闭包，Node 自检不加载它，
+ * meta 又是「把败局归因到具体代码」的唯一凭据，必须有回归覆盖。 */
+try {
+  const A = BG.util.assert;
+  A(BG.codeVersion, 'BG.codeVersion 未设置（棋谱 meta 无代码版本，归因失效）');
+  const aiM = (notation, extra) => Object.assign({
+    byAI: true, channel: 'proxy', model: 'jev-latest', confidence: 0.6,
+    candidates: 12, latencyMs: 800, costUsd: 0.00005, usage: { input_tokens: 1200 },
+    top: [{ notation: 'H8', p: 0.4 }, { notation: 'G8', p: 0.25 }, { notation: 'H7', p: 0.1 }],
+  }, extra);
+
+  /* 非 AI 着法（人走）不该产出 meta */
+  A(BG.util.aiMoveMeta('H8', { human: true }) === null, '人走的手不该有 aiMoveMeta');
+  A(BG.util.aiMoveMeta('H8', null) === null, 'meta 缺失时 aiMoveMeta 应为 null');
+
+  /* 实走首选：rank=1，概率取 top[0] */
+  const m1 = BG.util.aiMoveMeta('H8', aiM('H8'));
+  A(m1.rank === 1 && m1.p === 0.4 && m1.cands === 12 && m1.ms === 800,
+    '首选手归因字段不对：' + JSON.stringify(m1));
+  A(m1.ch === 'proxy' && m1.mdl === 'jev-latest' && m1.conf === 0.6, '渠道/模型/置信度应透出');
+
+  /* 实走第 2 名：rank=2（被 top-k 采样或战术保险改写过的典型形态） */
+  const m2 = BG.util.aiMoveMeta('G8', aiM('G8'));
+  A(m2.rank === 2 && m2.p === 0.25, '第 2 名归因不对：' + JSON.stringify(m2));
+
+  /* 不在前 8 名：rank/p 为 null，不能填 0（0 会被误读成"模型给了 0 概率"） */
+  const m3 = BG.util.aiMoveMeta('A1', aiM('A1'));
+  A(m3.rank === null && m3.p === null, '未进榜手的 rank/p 应为 null：' + JSON.stringify(m3));
+
+  /* 缺字段的老/降级响应不得抛错，缺失一律 null（无 top 列表时名次无从定位 → null） */
+  const m4 = BG.util.aiMoveMeta('H8', { byAI: true, channel: 'mock' });
+  A(m4.conf === null && m4.ms === null && m4.cands === null && m4.rank === null && m4.p === null,
+    '残缺 meta 应降级为 null 字段：' + JSON.stringify(m4));
+
+  /* 全局 meta：汇总 + 战术分布 */
+  const items = [
+    { meta: aiM('H8', { tactics: 'vcfAttack', latencyMs: 900, costUsd: 0.00005 }) },
+    { meta: aiM('G8', { tactics: 'vcfAttack', latencyMs: 500, costUsd: 0.00005 }) },
+    { meta: aiM('H7', { tactics: 'win', latencyMs: 700, costUsd: 0.00004, confidence: 0.8 }) },
+    { meta: { human: true } }, // 人走的手不参与汇总
+  ];
+  const gm = BG.util.aiGameMeta(items, { topK: 3 });
+  A(gm.code === BG.codeVersion, 'meta.code 应等于代码版本');
+  A(gm.topK === 3 && gm.seed === null, 'topK/seed 不对：' + JSON.stringify(gm));
+  A(gm.aiMoves === 3, 'aiMoves 只数 AI 手：' + gm.aiMoves);
+  A(gm.latencyMs.avg === 700 && gm.latencyMs.max === 900, '延迟汇总不对：' + JSON.stringify(gm.latencyMs));
+  A(gm.conf === 0.667, '平均置信度应保留 3 位小数：' + gm.conf);
+  A(gm.tokens === 3600, 'token 合计不对：' + gm.tokens);
+  A(gm.tactics.vcfAttack === 2 && gm.tactics.win === 1, '战术分布不对：' + JSON.stringify(gm.tactics));
+  A(gm.costUsd > 0 && gm.costUsd < 0.001, '成本量级不对：' + gm.costUsd);
+
+  /* 无 AI 手 / 全无延迟：不得出现 NaN 或 max=0 的假数字 */
+  const g0 = BG.util.aiGameMeta([], { topK: 1 });
+  A(g0.aiMoves === 0 && g0.latencyMs === null && g0.conf === null, '空局 meta 不应有汇总值：' + JSON.stringify(g0));
+  A(Object.keys(g0.tactics).length === 0, '空局 tactics 应为空对象');
+
+  /* 种子可归因：设了 ?seed=42 的对局必须能看出来 */
+  BG.setSeed(42);
+  A(BG.util.aiGameMeta([], {}).seed === 42, '已设种子时 meta.seed 应为该值');
+  BG.setSeed(7);
+  A(BG.util.aiGameMeta([], {}).seed === 7, '换种子后 meta.seed 应跟随');
+  results.push('✓ 棋谱导出 meta（单手归因 / 全局汇总 / 种子）');
+} catch (e) {
+  failed++;
+  results.push('✗ 棋谱导出 meta: ' + e.message);
+}
+
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
 async function playOut(gid) {
   BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现
@@ -502,6 +570,44 @@ async function jevClientTests() {
     () => BG.jev.decide(e, st12h, st12h.turn, { channel: 'proxy', topK: 1 }));
   BG.util.assert(d12h.meta.tactics === 'vcfDefense' && tac12h.vcf_win_opponent.indexOf(d12h.notation) >= 0,
     '白方偏向 D13 也应被 vcfDefense 纠正到破杀点，实际：' + d12h.notation + '/' + d12h.meta.tactics);
+
+  /* ⑫i 伪胜回归（soundness）：守方被迫堵点的那一手若顺手给守方自己造出四，
+   * 守方下一手直接成五，攻方后面所有双杀都兑现不了 → 这条链是假的。
+   * 合成局面（黑 F2,F3,F4,G5,H5,G6；白 F1,C6,D6,E6，轮到黑走，入口双方无一步杀）：
+   *   旧版给黑判胜 line=F5,F6,E5 —— 黑 F5 成四 → 白被迫堵 F6 → 白 F6 与 C6,D6,E6
+   *   接成四（另一端 G6 被黑占，唯一成五点 B6）→ 黑 E5 双杀（引擎见 wins≥2 直接判胜）
+   *   但真实时序里白下一手 B6 就成五了，攻方双杀永远轮不到。
+   * 修复后每层校验"攻方这一手是否占掉了守方的即时致胜点"，占不掉就丢弃该分支。 */
+  const syn2 = e.newGame();
+  [[1, 5, 1], [2, 5, 1], [3, 5, 1], [4, 6, 1], [4, 7, 1], [5, 6, 1],
+    [0, 5, 2], [5, 2, 2], [5, 3, 2], [5, 4, 2]].forEach(([r, c, p]) => { syn2.board[r][c] = p; });
+  syn2.moveNum = 12;
+  const vcf2 = e.vcfWin(syn2, 'black', 7);
+  BG.util.assert(!vcf2.win && vcf2.first === null,
+    '守方堵点造四反杀时不应判攻方胜（伪胜回归），实际：' + JSON.stringify(vcf2));
+  /* soundness 的另一半：真链不能被误杀。
+   * ① 同一局面里白攻 B6 是根节点双四（A6/F6 皆空，轮白走），这步本身就该判胜；
+   * ② ⑫a 基准局面（7 ply 真链 H7→I7→H4）仍应判胜。 */
+  const vcf2w = e.vcfWin(Object.assign({}, syn2, { turn: 'white' }), 'white', 7);
+  BG.util.assert(vcf2w.win && vcf2w.first === 'B6',
+    '白 B6 是根节点双四，应判真胜（soundness 闸门不得误杀），实际：' + JSON.stringify(vcf2w));
+  BG.util.assert(vcfA.win, '真将死链不应被 soundness 闸门误杀，实际：' + JSON.stringify(vcfA));
+
+  /* ⑫j 守方有 2 个即时致胜点时必无解（攻方一步只能占一个点）。
+   * 合成局面 = ⑫i 拿掉黑 G6：黑 F2,F3,F4 + G5,H5；白 F1 + C6,D6,E6，轮到黑走，入口双方无一步杀。
+   *   旧版给黑判胜 line=F5,F6,E5 —— 黑 F5 成四 → 白被迫堵 F6 → 白第 5 行 C6..F6
+   *   成活四（两端 B6/G6 皆空，2 个成五点）→ 黑 E5 双杀（引擎见 wins≥2 直接判胜）
+   *   但真实时序里白任一手 B6/G6 就成五了，攻方双杀永远轮不到。 */
+  const syn3 = e.newGame();
+  [[1, 5, 1], [2, 5, 1], [3, 5, 1],                   /* 黑 F2,F3,F4 */
+    [4, 6, 1], [4, 7, 1],                              /* 黑 G5,H5 */
+    [0, 5, 2],                                          /* 白 F1 */
+    [5, 2, 2], [5, 3, 2], [5, 4, 2]                    /* 白 C6,D6,E6 */
+  ].forEach(([r, c, p]) => { syn3.board[r][c] = p; });
+  syn3.moveNum = 12;
+  const vcf3 = e.vcfWin(syn3, 'black', 7);
+  BG.util.assert(!vcf3.win && vcf3.first === null,
+    '守方堵点成活四（2 个成五点）时应判无解，实际：' + JSON.stringify(vcf3));
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

@@ -8,6 +8,51 @@
 
 ---
 
+## 2026-09-30 · vcfWin 伪胜（soundness）修复：game3 败因归因作废
+
+- **推翻两条旧结论**（都写进了代码注释与 ADR，是本缺陷能活过一整轮实战复盘的原因）：
+  ① `vcfWin` 函数头 + ADR-0007 §1 的「守方即时致胜点不可能因攻方落子新增（五连须同色），
+  守方反击造杀属 VCT 范畴不覆盖」；② 上一条 memory 里「game3 的败因是白方防守反击造杀
+  （VCT 范畴，不在本补丁范围）」。**两条都错**——这不是 VCT 深度问题，是 A 类实现 bug。
+- **真机理**：攻方造四 → 守方唯一合法应对是堵 → **堵的那一手可能顺手给守方自己造出四**
+  → 守方下一手直接成五 → 攻方后面的双杀永远兑现不了。`search()` 曾在
+  `m.wins.length >= 2`（双杀）处直接返回胜，从不检查守方状态。
+- **合成反例**（`test/run-tests.js` ⑫i，入口双方均无一步杀）：黑 F2,F3,F4 + G5,H5,G6；
+  白 F1 + C6,D6,E6。旧引擎 `win=true line=F5,F6,E5`——黑 F5 成四 → 白堵 F6 →
+  白 F6 与 C6,D6,E6 接成四（另一端 G6 被黑占，**唯一成五点 B6**）→ 黑 E5 双杀是假的；
+  真实时序里白先走 B6 就成五了。⑫j 拿掉黑 G6 → 白堵完成**活四**（两端 B6/G6 = 2 个
+  反杀点，攻方一步占不完）→ 该分支必无解。
+- **实证**：`games/2026-09-30/gomoku-20260930025550.json`（Jev 执黑 19 手投子），
+  第 36 手 black L14、第 38 手 black I11 都带 `tactics=vcfAttack`——正是探针判定的两条
+  伪胜链。Jev 当时"在追一条不存在的杀"。
+- **修复**（`js/games/gomoku.js`）：`search(pliesLeft, dWins)` 带守方即时致胜点参数，
+  在双杀短路**之前**加闸门 `if (dWins.length && !(dWins.length===1 && 同点)) continue;`
+  ——守方有反杀点时攻方这一手必须占掉它。递归传 `winsAfter(wr,wc,D)`（堵点后守方新致胜点
+  只能过这一点，攻子进不了守方五连）；入口做一次全盘扫 `defenderWinsFull()`。
+- **验证**：4 局 190 个决策点回放 `win=9/valid=7/FALSE=2` → `win=7/valid=7/FALSE=0`；
+  151 点 A/B 基准只去掉那 2 条伪胜，7 条有效链全留，perCall 仍 0.38ms（零开销）；
+  `025710` p18 `vcfDefense=E13`、`025550` p58 `vcfDefense=D9` 未退化。
+  **反向验证**：把 HEAD 版引擎覆盖回工作区重跑全量，新用例如期红（不是恒真断言）。
+- **ADR-0008**（新增，0007 已标注勘误）。教训写进 ADR：把**推论**写进 ADR「决定」段
+  且不标注它依赖的前提 = 下一个 agent 会当既成事实照抄；注释比代码长寿，没人再验证它。
+
+## 2026-09-30 · 棋谱导出 meta：让每盘棋能归因到"哪版代码、哪手是模型首选"
+
+- 动机：修完 vcfWin 立刻遇到下一个瓶颈——**没法把败局归因**。棋谱只记记法序列和
+  `tactics` 标签，看不出这手是模型首选（top-1）还是被采样/战术保险改写的，
+  也看不出这盘跑的是哪版代码。下一轮实验（≥24 局分桶）没有这些就没法做对照。
+- `js/board.js` 新增 `BG.codeVersion = '0.7.0'` + `BG._seed`（`setSeed` 记录种子）
+  + `BG.util.aiMoveMeta(notation, meta)` + `BG.util.aiGameMeta(history, {topK})`。
+  导出里每手带 `ai = {ch, mdl, conf, p, rank, cands, ms}`，顶层带
+  `meta = {code, topK, seed, aiMoves, costUsd, tokens, latencyMs{avg,max}, conf, tactics}`。
+- **刻意放 board.js 而不是 app.js**：`app.js` 是 DOM 闭包，`test/run-tests.js` 根本不加载它，
+  写在那儿 = 没有回归护栏。纯计算下沉到无 DOM 依赖、测试已加载的 `BG.util`，
+  `app.js` 只留调用——`docs/status.md` 技术债里已记成通用对策。
+- 两个语义细节写测试时才发现，值得记住：① `rank`/`p` 在该手不在 top-8 里时**用 null
+  不用 0**（0 会被误读成"模型给了这手 0 概率"，两回事）；② `aiGameMeta` 入参传整局
+  history、函数内自己 `filter(byAI)`——我第一版信任调用方已过滤，`aiMoves` 把人走的手
+  也数进去了，断言当场抓到。120 手 payload 33.8KB（2MB 上限的 1.6%）。
+
 ## 2026-09-30 · Rapfi 思考时长（强度）可调
 
 - 用户问 Rapfi 能否调强度：可以，唯一旋钮是 Gomocup `INFO timeout_turn`（每步思考时长），
@@ -29,8 +74,11 @@
   复搜，首个"对方彻底无将死链"的点采用；全部失败才回落 parry。链首成功时行为与旧版一致。
 - 回归 ⑫h：game4 前 17 手局面，白方 vcf_win_opponent 非空（旧代码为空）；mock 偏向
   D13 也被纠正到破杀点，tactics=vcfDefense。
-- game3 的败因是另一回事：黑 vcfAttack 链本身成立，但白方防守反击造杀（VCT 范畴，
-  vcfWin 注释已声明为局限），不在本补丁范围，不硬造。
+- ~~game3 的败因是另一回事：黑 vcfAttack 链本身成立，但白方防守反击造杀（VCT 范畴，
+  vcfWin 注释已声明为局限），不在本补丁范围，不硬造。~~
+  **勘误（2026-09-30，见上方「vcfWin 伪胜（soundness）修复」条）**：此归因**错了**。
+  game3 的黑 vcfAttack 链是**假的**——不是白方反击造杀，是 vcfWin 自己判错了。
+  本条原话正是那个错误结论的源头，改动的动因也来自它。
 
 ## 2026-09-30 · VCF 威胁空间搜索上线（Jev 战术保险第六/七层）
 
@@ -38,7 +86,9 @@
   连续冲四将死链搜索。只走逼迫着法（落子出致胜点），2+ 致胜点即双杀判胜，
   唯一则假定守方被迫堵后递归。默认 7 ply / 节点 4000 / 每层 ≤12 候选 /
   只扫攻击子距离 ≤3 空点；禁手模式黑攻禁走、黑堵禁手视为堵不住、黑致胜点须
-  精确五连。**守方反击造杀属 VCT 范畴，不覆盖**。
+  精确五连。~~**守方反击造杀属 VCT 范畴，不覆盖**~~
+  **勘误（2026-09-30）：这句是错的，见上方 soundness 修复条 + ADR-0008。**
+  守方**被迫堵的那一手**能给它自己造四（不是攻方落子给的），已用反杀闸门补上。
 - jev-client.js 新增 vcfAttack / vcfDefense 层，优先级
   win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4；
   仅 1-ply 为空时跑，异常 fail-soft；meta.tactics 与 Jev instructions 同步语义。

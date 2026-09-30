@@ -19,7 +19,13 @@
     };
   };
   BG._rng = null;
-  BG.setSeed = function (seed) { BG._rng = BG.rng(seed); }; // _rng 只应由 setSeed 写；并行对局勿共享全局 RNG
+  BG._seed = null; // 当前种子（未设 = null）。棋谱导出用它标注可复现性。
+  BG.setSeed = function (seed) { BG._rng = BG.rng(seed); BG._seed = seed; }; // _rng 只应由 setSeed 写；并行对局勿共享全局 RNG
+
+  /* 代码版本标记。零构建、无 git 注入，只能手工维护：
+   * 改动会改变对局行为（引擎规则、战术层、Jev prompt、导出格式）时必须同步 bump，
+   * 否则历史棋谱无法归因到具体代码。格式 v0.7 起写入棋谱 meta。 */
+  BG.codeVersion = '0.7.0';
 
   BG.util = {
     clone: (o) => JSON.parse(JSON.stringify(o)),
@@ -45,6 +51,63 @@
     },
     assert(cond, msg) {
       if (!cond) throw new Error('assert failed: ' + msg);
+    },
+
+    /* 棋谱导出：单手 AI 决策的归因信息（纯函数，放在这里以便 Node 自检覆盖——app.js 是 DOM 闭包，
+     * 测试里不加载）。字段名压到最短：一局可达两百手，导出体积分页有 2MB 上限。
+     * 回答的问题：实走这手模型给了多少概率、排第几、是否被战术保险顶掉、代价多少。 */
+    aiMoveMeta(notation, m) {
+      if (!m || !m.byAI) return null;
+      const top = m.top || [];
+      const i = top.findIndex((t) => t && t.notation === notation);
+      const p = i >= 0 ? top[i].p : null;
+      return {
+        ch: m.channel,
+        mdl: m.model,
+        conf: typeof m.confidence === 'number' ? m.confidence : null,
+        p: typeof p === 'number' ? p : null, // 实走这手在候选里的概率
+        rank: i >= 0 ? i + 1 : null, // 1 = 模型首选；null = 不在前 8 名（未进榜）
+        cands: m.candidates || null, // 合法候选总数
+        ms: typeof m.latencyMs === 'number' ? m.latencyMs : null,
+      };
+    },
+    /* 棋谱导出：全局 meta（代码版本 + 采样参数 + 成本/延迟汇总 + 战术保险使用分布）。
+     * 入参传整局 history 即可，非 AI 着法在函数内过滤（aiMoves 必须是「AI 手数」）。
+     * tactics 分布是败因分桶的前置信号：先看哪一级保险被触发多少次，再逐局归因。 */
+    aiGameMeta(history, opts) {
+      const o = opts || {};
+      const items = history.filter((h) => h.meta && h.meta.byAI);
+      let cost = 0;
+      let tokens = 0;
+      let msSum = 0;
+      let msMax = 0;
+      let msN = 0;
+      let confSum = 0;
+      let confN = 0;
+      const tac = {};
+      items.forEach((h) => {
+        const m = h.meta;
+        if (m.costUsd) cost += m.costUsd;
+        if (m.usage && m.usage.input_tokens) tokens += m.usage.input_tokens;
+        if (typeof m.latencyMs === 'number') {
+          msSum += m.latencyMs;
+          msMax = Math.max(msMax, m.latencyMs);
+          msN++;
+        }
+        if (typeof m.confidence === 'number') { confSum += m.confidence; confN++; }
+        if (m.tactics) tac[m.tactics] = (tac[m.tactics] || 0) + 1;
+      });
+      return {
+        code: BG.codeVersion || null,
+        topK: typeof o.topK === 'number' ? o.topK : null,
+        seed: typeof BG._seed === 'number' ? BG._seed : null, // null = 未设种子（真实渠道本就真随机）
+        aiMoves: items.length,
+        costUsd: Math.round(cost * 1e6) / 1e6,
+        tokens,
+        latencyMs: msN ? { avg: Math.round(msSum / msN), max: msMax } : null,
+        conf: confN ? Math.round((confSum / confN) * 1000) / 1000 : null,
+        tactics: tac, // 空对象 = 本局没有一次战术保险接管
+      };
     },
   };
 

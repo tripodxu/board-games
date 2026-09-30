@@ -14,4 +14,5 @@
 | [0004](0004-unified-engine-interface.md) | 棋种引擎统一接口 + selfTest 自检 | accepted |
 | [0005](0005-zero-dep-node-backend.md) | 零依赖 Node 后端（server.js）：项目变为「静态前端 + 后端」 | accepted |
 | [0006](0006-rapfi-wasm-opponent.md) | Rapfi WASM 本地引擎对手（Gomocup 协议），新增 rapfi 渠道 | accepted |
-| [0007](0007-vcf-threat-space-search.md) | VCF 威胁空间搜索（连续冲四将死链）接入 Jev 战术保险 | accepted |
+| [0007](0007-vcf-threat-space-search.md) | VCF 威胁空间搜索（连续冲四将死链）接入 Jev 战术保险 | accepted（§1 末条勘误见 0008） |
+| [0008](0008-vcfwin-defender-counterkill-gate.md) | vcfWin 守方反杀闸门（soundness 修复）：撤回 0007 的「守方反击造杀不覆盖」论断 | accepted |

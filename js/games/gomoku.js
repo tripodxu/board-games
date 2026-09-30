@@ -157,11 +157,13 @@
     /* ---------- VCF 威胁空间搜索（棋盘级高速版） ----------
      * 只沿"逼迫招法"展开：攻击方每步须造出 ≥1 个致胜点（冲四/活四），防守方
      * 唯一应对是堵住唯一的致胜点。分支因子极小，可看 6-8 步深。
-     * 理论依据（递归中无需检查防守方反杀）：防守方的即时致胜点不可能因攻击方
-     * 落子而新增——五连须同色，攻击子不可能成为防守方五连的一部分；且搜索入口
-     * 要求双方开局即无一步杀（调用方保证 win/block 为空），故防守方在链条中
-     * 永远没有"不堵反而将死"的选项（唯一的例外是防守反击造杀，属 VCT 范畴，
-     * 本搜索不覆盖，已在文档中声明为局限）。
+     * soundness 前提（关键，缺了就会返回"伪胜"）：攻方造四后守方被迫堵的那一手，
+     * 可能顺手给守方自己造出四。于是轮到攻方时守方已有即时致胜点，守方下一手
+     * 直接成五，攻方后面那些双杀/冲四永远兑现不了，链子是假的。
+     * 故每层进入时算出守方即时致胜点 dWins：非空则攻方这一手必须占掉它（一步
+     * 只能占一个点，≥2 个时无解），否则该分支不是将死链，直接跳过。
+     * 守方的即时致胜点只能由守方自己的新子产生（攻子进不了守方五连），故只需
+     * 查经过"本层堵点"的四线；入口没有"最后一手"可依附，做一次全盘扫。
      * vcfWin(st, attackerId, maxPlies)：st.turn 应为 attackerId。
      * 返回 { win, first, line }（记法）；无将死链时 { win:false, first:null, line:[] }。
      * 禁手模式：黑方攻击时禁手点不可走；黑方防守时禁手堵点视为堵不住（攻方胜）；
@@ -235,17 +237,38 @@
         return out.slice(0, 12);
       }
 
-      function search(pliesLeft) {
+      /* 守方在全盘的即时致胜点（只有入口用：入口没有"守方最后一手"可依附，只能全扫） */
+      function defenderWinsFull() {
+        const out = [];
+        const seenKeys = new Set();
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+          if (board[r][c] !== D) continue;
+          for (const w of winsAfter(r, c, D)) {
+            const key = w[0] * 15 + w[1];
+            if (seenKeys.has(key)) continue;
+            seenKeys.add(key);
+            out.push(w);
+          }
+        }
+        return out;
+      }
+
+      /* dWins = 当前盘面上守方的即时致胜点（轮到攻方走）。 */
+      function search(pliesLeft, dWins) {
         if (pliesLeft <= 0 || nodes > NODE_LIMIT) return null;
         const moves = forcingMoves();
         for (const m of moves) {
+          /* soundness 闸门：守方手上有即时致胜点时，攻方这一手必须占掉它，否则守方
+           * 下一手直接成五，这条链走不到最后（一步只能占一个点，≥2 个点时无解）。 */
+          if (dWins.length && !(dWins.length === 1 && dWins[0][0] === m.r && dWins[0][1] === m.c)) continue;
           if (m.wins.length >= 2) return [[m.r, m.c]]; /* 双杀：对方至多堵其一 */
           const wr = m.wins[0][0], wc = m.wins[0][1];
           /* 黑方防守时禁手堵点 = 堵不住，攻方直接胜 */
           if (forbidden && D === 1 && isForbiddenPoint(board, wr, wc)) return [[m.r, m.c]];
           board[m.r][m.c] = A;
           board[wr][wc] = D;
-          const sub = search(pliesLeft - 2);
+          /* 堵点后守方新产生的即时致胜点只能经过 (wr,wc)（攻子进不了守方五连） */
+          const sub = search(pliesLeft - 2, winsAfter(wr, wc, D));
           board[wr][wc] = 0;
           board[m.r][m.c] = 0;
           if (sub) return [[m.r, m.c], [wr, wc], ...sub];
@@ -253,7 +276,7 @@
         return null;
       }
 
-      const line = search(maxPlies);
+      const line = search(maxPlies, defenderWinsFull());
       if (!line) return { win: false, first: null, line: [] };
       const toN = (rc) => notation(rc[0], rc[1]);
       return { win: true, first: toN(line[0]), line: line.map(toN) };
