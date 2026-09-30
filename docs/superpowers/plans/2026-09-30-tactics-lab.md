@@ -375,7 +375,6 @@ git commit -m "style(ui): 宽度稳定化——侧栏列改视口定宽 + scroll
 
 机制键 12 个：`win block open4 threat parry parry3 parry4 vcfAttack vcfDefense safeSort vcfTry sound`。
 优先级顺序（用户 m00302）= `win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4`，与 `js/jev-client.js:548-579` 接管链一致；v7 把 VCF 两级插在 threat 与 parry 之间，层数 5→9。
-优先级顺序（用户 m00302）= `win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4`，与 `js/jev-client.js:548-579` 接管链一致；v7 把 VCF 两级插在 threat 与 parry 之间，层数 5→9。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -624,8 +623,10 @@ Expected: FAIL，`BG.duel 应存在`。
   const BG = (typeof window !== 'undefined' && window.BG) || globalThis.BG;
   if (!BG || !BG.tacticsVersions) throw new Error('duel.js 必须先加载 js/tactics-versions.js');
 
-  /* 渠道 → 短名。Jev 三渠道（proxy/openrouter/official）同一个模型，联名一律 Jev。 */
+  /* 渠道 → 中文短名。Jev 三渠道（proxy/openrouter/official）同一个模型，联名一律 Jev。 */
   const CH_SHORT = { proxy: 'Jev', openrouter: 'Jev', official: 'Jev', mock: '演示', rapfi: 'Rapfi', random: '随机' };
+  /* 渠道 → 英文短名（slug 专用：中文在文件名里折叠成 - 会丢失语义，random 要能认出来） */
+  const CH_EN = { proxy: 'jev', openrouter: 'jev', official: 'jev', mock: 'mock', rapfi: 'rapfi', random: 'ran' };
 
   /** 版本短号：v9-vcf-sound → v9；未知档位原样透出（便于发现登记表漏项）。 */
   function versionTag(id) {
@@ -648,6 +649,17 @@ Expected: FAIL，`BG.duel 应存在`。
     return (CH_SHORT[ch] || ch) + '·' + versionTag(c.tactics);
   }
 
+  /** 单边配置 → slug 段（英文）。e.g. {channel:'random',tactics:'v3-make2'} → ran-v3 */
+  function sideSlug(cfg) {
+    const c = cfg || {};
+    if (c.human) return 'me';
+    const ch = c.channel || 'mock';
+    const en = CH_EN[ch] || String(ch).toLowerCase().replace(/[^a-z0-9]+/g, '');
+    if (ch === 'mock') return en;
+    if (ch === 'rapfi') return 'rapfi-' + (Math.round((c.rapfiThinkMs || 3000) / 100) / 10) + 's';
+    return en + '-' + versionTag(c.tactics);
+  }
+
   /** 联名：黑 Jev·v9 vs 白 Rapfi(3s) */
   function duelLabel(blackCfg, whiteCfg) {
     return '黑 ' + sideLabel(blackCfg) + ' vs 白 ' + sideLabel(whiteCfg);
@@ -667,7 +679,7 @@ Expected: FAIL，`BG.duel 应存在`。
   /** 棋谱文件名 slug：小写、非 [a-z0-9] 折叠成 -、去首尾 -、截 24（与 server.sanitizeGid 对齐）。
    *  e.g. 黑 随机·v3 vs 白 Jev·v9 → ran-v3-vs-jev-v9 */
   function slug(blackCfg, whiteCfg) {
-    const raw = (sideLabel(blackCfg) + '_vs_' + sideLabel(whiteCfg)).toLowerCase();
+    const raw = (sideSlug(blackCfg) + '-vs-' + sideSlug(whiteCfg)).toLowerCase();
     const s = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     return (s || 'nogid').slice(0, 24);
   }
@@ -685,7 +697,7 @@ Expected: FAIL，`BG.duel 应存在`。
     U(slug({}, {}).length > 0, '空配置兜底 slug');
   }
 
-  BG.duel = { CH_SHORT, sideLabel, duelLabel, gameLabel, expLabel, slug, selfTest };
+  BG.duel = { CH_SHORT, CH_EN, sideLabel, sideSlug, duelLabel, gameLabel, expLabel, slug, selfTest };
 })();
 ```
 

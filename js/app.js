@@ -1541,6 +1541,13 @@
     } catch (err) {
       panel.innerHTML += '<span class="fail">✗ 校准实验室：' + err.message + '</span><br>';
     }
+    /* 战术登记表 + 对阵联名：登记表错（漏版本/rank 断档）会让沿革条与棋谱归因同时失效 */
+    try {
+      if (BG.tacticsVersions) { BG.tacticsVersions.selfTest(); panel.innerHTML += '<span class="ok">✓ 战术登记表</span><br>'; }
+      if (BG.duel) { BG.duel.selfTest(); panel.innerHTML += '<span class="ok">✓ 对阵联名</span><br>'; }
+    } catch (err) {
+      panel.innerHTML += '<span class="fail">✗ 战术登记表/联名：' + err.message + '</span><br>';
+    }
   }
 
   /* ---------- 启动 ---------- */

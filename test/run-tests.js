@@ -14,6 +14,7 @@ const ROOT = path.join(__dirname, '..');
   'js/board.js',
   'js/latest-board.js',
   'js/tactics-versions.js',
+  'js/duel.js',
   'js/calibration.js',
   'js/games/gomoku.js',
   'js/games/chess.js',
@@ -278,6 +279,43 @@ try {
 } catch (e) {
   failed++;
   results.push('✗ 战术版本登记表: ' + e.message);
+}
+
+/* 单元：对阵联名与棋谱 slug（战绩簿 / 实验报告 / 服务端文件名共用同一套命名） */
+function duelTests() {
+  const D = globalThis.BG.duel;
+  BG.util.assert(D, 'BG.duel 应存在（需先加载 js/duel.js）');
+  /* 单边展示名 */
+  BG.util.assert(D.sideLabel({ human: true }) === '我', '人类侧应显示「我」');
+  BG.util.assert(D.sideLabel({ channel: 'mock' }) === '演示', 'mock 应显示「演示」');
+  BG.util.assert(D.sideLabel({ channel: 'proxy' }) === 'Jev·v9', 'Jev 渠道应带战术版本短号，实际 ' + D.sideLabel({ channel: 'proxy' }));
+  BG.util.assert(D.sideLabel({ channel: 'random', tactics: 'v4-parry3' }) === '随机·v4', '随机渠道也应带版本，实际 ' + D.sideLabel({ channel: 'random', tactics: 'v4-parry3' }));
+  BG.util.assert(D.sideLabel({ channel: 'rapfi', rapfiThinkMs: 3000 }) === 'Rapfi(3s)', 'Rapfi 应带思考时长，实际 ' + D.sideLabel({ channel: 'rapfi', rapfiThinkMs: 3000 }));
+  BG.util.assert(D.sideLabel({ channel: 'rapfi', rapfiThinkMs: 500 }) === 'Rapfi(0.5s)', '0.5s 档应显示 0.5s，实际 ' + D.sideLabel({ channel: 'rapfi', rapfiThinkMs: 500 }));
+  /* 联名 / 战绩簿 / 实验标签 */
+  BG.util.assert(D.duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }) === '黑 Jev·v9 vs 白 Rapfi(5s)',
+    '联名格式不对：' + D.duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }));
+  BG.util.assert(D.gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }) === '五子棋 · 人机 · 黑 我 vs 白 Jev·v9',
+    '战绩簿名不对：' + D.gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }));
+  BG.util.assert(D.expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4) === 'Jev·v9 vs 随机·v3 ×4局',
+    '实验标签不对：' + D.expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4));
+  /* slug：小写、只留 [a-z0-9-]、压连续分隔符、注入字符必须被清掉、≤24 */
+  const s = D.slug({ channel: 'random', tactics: 'v3-make2' }, { channel: 'proxy' });
+  BG.util.assert(s === 'ran-v3-vs-jev-v9', 'slug 不对：' + s);
+  BG.util.assert(!/[^a-z0-9_-]/.test(s) && s.length <= 24, 'slug 必须只含安全字符且 ≤24：' + s);
+  const inject = D.slug({ channel: 'proxy', tactics: '../../etc/pa' }, { channel: 'mock' });
+  BG.util.assert(inject.indexOf('/') < 0 && inject.indexOf('.') < 0, '路径注入必须被清掉：' + inject);
+  /* 空配置不得产出空 slug */
+  BG.util.assert(D.slug({}, {}).length > 0, '空配置也应有兜底 slug');
+  D.selfTest();
+}
+
+try {
+  duelTests();
+  results.push('✓ 对阵联名与棋谱 slug');
+} catch (e) {
+  failed++;
+  results.push('✗ 对阵联名与棋谱 slug: ' + e.message);
 }
 
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
