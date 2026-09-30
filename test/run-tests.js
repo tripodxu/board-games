@@ -260,8 +260,11 @@ function tacticsRegistryTests() {
   BG.util.assert(R.resolve('v5-safesort').games === 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   BG.util.assert(R.resolve('v7-vcf').games === 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   BG.util.assert(R.resolve('v8-vcf-try').games === 3, 'v8 应归档 3 局（线上旧引擎）');
-  BG.util.assert(R.resolve('v9-vcf-sound').games === 0, 'v9 刚修完应无归档棋谱');
-  BG.util.assert(R.VERSIONS.reduce((a, v) => a + v.games, 0) === 28, 'games 字段合计应等于 games/ 现有 28 局');
+  /* v9 是当前档、窗口开放：线上对局会持续把新棋谱 commit 进 games/，
+     所以这里只锁「v5/v7/v8 历史档与 games/ 实测严格一致」，当前档数量不锁死
+     （>= 由 archiveAttributionTests 兜底），否则每次同步新棋谱都红。 */
+  BG.util.assert(R.resolve('v9-vcf-sound').games >= 20, 'v9 当前档至少应登记上线当日 20 局');
+  BG.util.assert(R.VERSIONS.reduce((a, v) => a + v.games, 0) >= 48, 'games 字段合计应不少于 games/ 历史 48 局');
   /* 解析：空→当前档；未知 id→当前档（写错档号静默回退，不抛错） */
   BG.util.assert(R.resolve(null).id === R.CURRENT && R.resolve('').id === R.CURRENT, '空 id 应回退当前档');
   BG.util.assert(R.resolve('v10-nope').id === R.CURRENT, '未知 id 应回退当前档，实际 ' + R.resolve('v10-nope').id);
@@ -455,11 +458,20 @@ function archiveAttributionTests() {
     A(v !== null, f + ' 应能归到某一档（无 stamp 的旧命名归不到）');
     if (v) tally[v] = (tally[v] || 0) + 1;
   }
-  /* 登记表登记的局数必须与实测归属一致：改版本时间窗/漏登记都会在这里红 */
+  /* 归档局数核对：历史档窗口已封闭，登记数必须与实测**严格一致**（改 commitAt /
+     漏登记都算错，红）；
+     当前档窗口右端是开的，新棋谱会持续落进来（线上对局自动 commit 进 games/），
+     所以 CURRENT 只要求「不少于登记数」——否则每次同步新棋谱都会把测试搞红。 */
   for (const v of R.VERSIONS) {
     if (!v.games) continue;
-    A(tally[v.id] === v.games,
-      v.id + ' 登记 ' + v.games + ' 局，但 games/ 实测归属 ' + (tally[v.id] || 0) + ' 局');
+    const actual = tally[v.id] || 0;
+    if (v.id === R.CURRENT) {
+      A(actual >= v.games,
+        v.id + '（当前档，窗口开放）登记 ' + v.games + ' 局，实测只有 ' + actual + ' 局');
+    } else {
+      A(actual === v.games,
+        v.id + '（历史档，窗口已封闭）登记 ' + v.games + ' 局，实测 ' + actual + ' 局');
+    }
   }
   const total = Object.keys(tally).reduce((s, k) => s + tally[k], 0);
   const expectUnattributed = files.filter((f) => !R.versionForFileStamp(f)).length;
