@@ -264,6 +264,7 @@
             <option value="openrouter">OpenRouter（浏览器直连）</option>
             <option value="official">官方 API 直连（可能被 CORS 拦截）</option>
             <option value="mock">离线演示（无需 key）</option>
+            <option value="rapfi">Rapfi 本地引擎（首次下载模型）</option>
           </select>
         </label>
         <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
@@ -307,6 +308,7 @@
                 <option value="official">Jev(官方)+战术</option>
                 <option value="random">纯随机+战术</option>
                 <option value="mock">离线演示</option>
+                <option value="rapfi">Rapfi 本地引擎</option>
               </select>
             </label>
             <label>B 方
@@ -316,6 +318,7 @@
                 <option value="official">Jev(官方)+战术</option>
                 <option value="random" selected>纯随机+战术</option>
                 <option value="mock">离线演示</option>
+                <option value="rapfi">Rapfi 本地引擎</option>
               </select>
             </label>
             <label class="exp-games">局数
@@ -351,6 +354,7 @@
 <script src="js/games/chinese-checkers.js"></script>
 <script src="js/games/go.js"></script>
 <script src="js/mock-ai.js"></script>
+<script src="js/rapfi.js"></script>
 <script src="js/jev-client.js"></script>
 <script src="js/api.js"></script>
 <script src="js/app.js"></script>

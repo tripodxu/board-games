@@ -13,3 +13,4 @@
 | [0003](0003-byok-proxy.md) | 代理只做 CORS 转发的 BYOK 设计 | accepted |
 | [0004](0004-unified-engine-interface.md) | 棋种引擎统一接口 + selfTest 自检 | accepted |
 | [0005](0005-zero-dep-node-backend.md) | 零依赖 Node 后端（server.js）：项目变为「静态前端 + 后端」 | accepted |
+| [0006](0006-rapfi-wasm-opponent.md) | Rapfi WASM 本地引擎对手（Gomocup 协议），新增 rapfi 渠道 | accepted |

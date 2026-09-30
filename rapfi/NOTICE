@@ -1,0 +1,60 @@
+Rapfi WASM 引擎二进制文件说明
+================================
+
+本目录的 rapfi-single-simd128.{js,wasm,data} 是 Rapfi 五子棋引擎的
+WebAssembly 构建产物，供 js/rapfi.js 通过 Gomocup 协议调用。
+只有当用户在界面中选用「Rapfi 本地」渠道时，浏览器才会懒加载这些文件。
+
+上游
+----
+- 项目：Rapfi（https://github.com/dhbloo/rapfi）
+- 版本：tag 250615（构建时的上游最新 tag）
+- 权重：Networks 子模块（与上游 tag 锁定的提交 918b757a129258e9e765f77fe17d507c2bb1a60b），
+  权重文件为 CC0 1.0 公有领域贡献。
+
+许可证
+------
+- 引擎本体（含 .js 胶水与 .wasm 二进制）遵循 GNU General Public License v3.0，
+  全文见本目录 COPYING.txt。js/rapfi.js 是本项目自研的协议客户端（MIT，
+  与仓库其余代码一致），仅通过 Gomocup 标准协议与引擎进程通信。
+- .data 包内的神经网络权重文件遵循 CC0 1.0（见上游 Networks/LICENSE）。
+- 对应源码（Corresponding Source）：上游仓库上述 tag（含 Networks 子模块
+  上述提交），加下述「构建方式」中的本地补丁。
+
+构建方式（2026-09-29，Emscripten 6.0.10）
+----------------------------------------
+  emcmake cmake ../rapfi-250615/Rapfi \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DNO_MULTI_THREADING=ON \
+    -DNO_COMMAND_MODULES=ON \
+    -DUSE_WASM_SIMD=ON
+  cmake --build . -j$(nproc)
+
+说明：
+- 单线程构建（NO_MULTI_THREADING=ON）：多线程 WASM 需要 COOP/COEP 响应头，
+  与纯静态托管的定位冲突；单线程下 Gomocup 命令是同步执行的。
+- 开 WASM SIMD128（USE_WASM_SIMD=ON）：NNUE 推理加速，产物名后缀 -simd128。
+- Emscripten 构建强制 NO_COMMAND_MODULES=ON（CMake 会 otherwise 报错）。
+- 预加载清单为精简版（仅自由五子棋所需）：
+    config-example/gomocalc-mix9svq.toml@config.toml
+    mix9svq/mix9svqfreestyle_bsmix.bin.lz4@mix9svq/mix9svqfreestyle_bsmix.bin.lz4
+  （上游默认清单另含 standard/renju 权重与 classical 模型，本项目只走
+  INFO rule 0=无禁手，用不到；缺失的权重配置会被引擎优雅跳过，
+  冒烟测试已验证 freestyle 对局正常。）
+- 本地补丁（tag 250615 单线程构建的编译错误，上游未修）：
+  Rapfi/search/searchthread.cpp，ThreadPool::waitForIdle() 中
+  th->thread.get_id() 一行加 #ifdef MULTI_THREADING 守卫
+  （单线程下该成员不存在；waitForIdle 本就是空操作）。
+
+文件清单
+--------
+- rapfi-single-simd128.js   Emscripten 胶水（含上游 emscripten/preamble.js，
+                            提供 Module.sendCommand / onReceiveStdout）
+- rapfi-single-simd128.wasm 引擎本体（单线程，SIMD128）
+- rapfi-single-simd128.data 预加载文件包：config.toml + freestyle NNUE 权重
+- NOTICE                    本文件
+- COPYING.txt               GPLv3 全文
+
+体积（精简后）：.data 10037111 字节（约 9.6MB），.wasm 1161393 字节（约 1.1MB），
+.js 37972 字节（约 37KB），合计约 10.8MB。
+GitHub 单文件 100MB 限制内，无需 Git LFS；Cloudflare Pages 按静态文件 serving。
