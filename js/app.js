@@ -758,7 +758,7 @@
     EXP.running = true; EXP.idx = 0; EXP.results = [];
     EXP.chanA = $('expChanA').value;
     EXP.chanB = $('expChanB').value;
-    EXP.total = Math.max(1, Math.min(20, parseInt($('expGames').value, 10) || 4));
+    EXP.total = Math.max(1, Math.min(50, parseInt($('expGames').value, 10) || 4));
     EXP.tag = 'exp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
     $('expResults').innerHTML = '';
     runExperimentGame();

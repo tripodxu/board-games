@@ -25,7 +25,7 @@
 | 侧栏一屏化 | ✅ | 面板按「对局 / 数据 / 设置」三页签分组 + 8 个分析面板可折叠（驾驶舱常开），侧栏吸附视口内、仅当前页签内容区滚动（驾驶舱与页签栏为固定区，多面板展开不挤占），页面不再被面板撑长；折叠与页签状态均持久化，切换/展开时补渲染防零宽图表；≤1080px 单列布局回归文档流 |
 | 棋谱导出 | ✅ | 棋谱面板「导出」一键下载当前对局 JSON（`jev-qiguan-game/v1`：记法序列 + 双方每手含保险标记 + 对局信息）；悔棋自动跟随，空局拦截 |
 | 棋谱自动同步 | ✅ | 终局自动 POST `/api/games` → CF Pages Function 用 GitHub API 把棋谱 commit 进仓库 `games/<日期>/`（提交信息带 `[skip ci]`，不触发 Pages 构建）；设置面板「终局自动同步棋谱」开关可关；需 Pages 环境变量 `GAMES_GITHUB_TOKEN`（PAT，仓库 Contents 读写），未配置则静默失败不影响对局 |
-| 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–20 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端） |
+| 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–50 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端） |
 | 后端 | ✅ | **`server.js` 零依赖 Node 后端**（`node server.js`，默认 8788）：静态托管 + `/api/jev` 代理（BYOK，key 不落盘）+ `/api/games` 棋谱落盘（幂等原子写，文件名与 CF 端一致）+ `/api/experiments` 实验归档（`data/`，gitignore）+ `/api/stats` 跨对局聚合 + `/api/health`；18 项 HTTP 契约测试随全量自检跑。**CF Pages 侧契约对齐**（health/experiments/stats 三端点，持久化走 GitHub，≤42 子请求守免费版限额）。前端 `js/api.js` 探活：有后端则服务端样本并入校准实验室、实验双端归档；无后端（file:///纯静态）自动降级，功能不变（ADR-0005） |
 | 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ **`node server.js` 自托管**（本地/内网完整后端，棋谱落盘不依赖 GitHub token）+ dev-proxy.py 最小备用 |
 | 自检 | ✅ | `node test/run-tests.js`：六引擎 selfTest + 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + 新增 health/experiments/stats）+ **server.js 后端 18 项 HTTP 契约测试** |
