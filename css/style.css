@@ -1004,6 +1004,9 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   display: flex; flex-direction: column; gap: 5px;
 }
 .exp-side-name { font-size: 11.5px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 5px; }
+.exp-side-name .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.exp-side-name .dot.mo { background: var(--mo); }
+.exp-side-name .dot.zhu { background: var(--zhu); }
 .exp-field { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-dim); margin: 0; }
 .exp-field select { flex: 1 1 auto; min-width: 0; }
 /* 底部通栏：局数 + 开始/停止；状态单独一行，避免挤占按钮 */
