@@ -348,8 +348,8 @@ function tacticsUiTests() {
   A(/S\.settings\.tacticsVersion\s*=[\s\S]{0,80}\.resolve\(/.test(src), 'saveSettings 应保存战术档');
   A(/tacticsVersionLabel'\)\.classList\.toggle\('hidden'/.test(src), 'syncChannelUI 应控制战术档显隐');
   /* decide 透传 + 实验两侧记录 + 棋谱导出带版本 */
-  A(/tacticsVersion:\s*effectiveTacticsVersion\(side\)/.test(src), 'decide opts 应透传本手战术档');
-  A(/S\.expTactics\s*=/.test(src), '实验应按执子侧记录战术档');
+  A(/tacticsVersion:\s*eff\.tactics/.test(src), 'decide opts 应透传本手战术档（effSide 归一后）');
+  A(/S\.settings\.sideConfig\s*=\s*\{\s*black:/.test(src), '实验应按执子侧写 sideConfig（A/B 交替先后）');
   A(/blackTactics/.test(src) && /whiteTactics/.test(src), '棋谱导出应记双方战术档');
 }
 try {
@@ -393,6 +393,65 @@ try {
 } catch (e) {
   failed++;
   results.push('✗ DOM 契约: ' + e.message);
+}
+
+/* 单元：双方配置归一化（sideConfig）+ 联名端到端
+ * app.js 依赖 DOM，Node 侧进不去；这里把它 effSide 的语义复刻成纯函数钉死契约，
+ * 再用静态断言确认 js/app.js 里的 effSide/联名字段真的接上了同一套解析。 */
+function sideConfigTests() {
+  const A = BG.util.assert;
+  const R = globalThis.BG.tacticsVersions, D = globalThis.BG.duel;
+  /* 缺省继承：空覆盖 → 全局值（与 js/app.js effSide 逐字同义） */
+  const eff = (side, settings, sideConfig) => {
+    const c = (sideConfig && sideConfig[side]) || {};
+    return {
+      channel: c.channel || settings.channel,
+      tactics: R.resolve(c.tactics || settings.tacticsVersion).id,
+      rapfiThinkMs: c.rapfiThinkMs || settings.rapfiThinkMs,
+    };
+  };
+  const base = { channel: 'proxy', tacticsVersion: 'v9-vcf-sound', rapfiThinkMs: 3000 };
+  const inherit = eff('black', base, { black: {}, white: {} });
+  A(inherit.channel === 'proxy' && inherit.tactics === 'v9-vcf-sound' && inherit.rapfiThinkMs === 3000,
+    '空覆盖应继承全局，实际：' + JSON.stringify(inherit));
+  const over = eff('white', base, { white: { channel: 'rapfi', tactics: 'v3-make2', rapfiThinkMs: 500 } });
+  A(over.channel === 'rapfi' && over.tactics === 'v3-make2' && over.rapfiThinkMs === 500,
+    '覆盖应生效，实际：' + JSON.stringify(over));
+  A(eff('black', base, { white: { channel: 'rapfi' } }).channel === 'proxy', '不得串到另一边');
+  A(eff('black', base, { black: { tactics: 'v77' } }).tactics === 'v9-vcf-sound', '错档号应回退当前档');
+  /* 联名端到端：人机（我 vs Jev·v9）与实验（Jev·v9 vs 随机·v3） */
+  const humanDuel = D.gameLabel('五子棋', 'human-ai', { human: true, channel: 'proxy' }, { channel: 'proxy' });
+  A(humanDuel === '五子棋 · 人机 · 黑 我 vs 白 Jev·v9', '人机联名不对：' + humanDuel);
+  const expDuel = D.expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4);
+  A(expDuel === 'Jev·v9 vs 随机·v3 ×4局', '实验联名不对：' + expDuel);
+  const s = D.slug({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' });
+  A(s === 'jev-v9-vs-ran-v3', '实验 slug 不对：' + s);
+  /* 静态接线：app.js 必须真的有 sideConfig/effSide，且 decide/导出/战绩簿消费它 */
+  const app = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+  A(/sideConfig:\s*\{\s*black:\s*\{\},\s*white:\s*\{\}\s*\}/.test(app), 'settings 默认应有 sideConfig');
+  A(/function effectiveChannelOf\(/.test(app), '应有 effectiveChannelOf(ch)');
+  A(/function effSide\(/.test(app), '应有 effSide(side)');
+  A(/function sideIdOf\(/.test(app), '应有 sideIdOf(side)');
+  A(/const eff = effSide\(sideIdOf\(side\)\)/.test(app), 'scheduleAI 应按执子侧取 effSide');
+  A(/tacticsVersion: eff\.tactics/.test(app), 'decide 应传 eff.tactics');
+  A(/rapfiThinkMs: eff\.rapfiThinkMs/.test(app), 'decide 应传 eff.rapfiThinkMs');
+  A(/slug:\s*BG\.duel\.slug\(/.test(app), '导出应带 duel.slug');
+  A(/duel:\s*BG\.duel\.duelLabel\(/.test(app), '导出应带 duel 联名');
+  A(/const duel = r\.duel\s*\?/.test(app), '战绩簿应显示联名列（旧数据有兜底）');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  for (const id of ['sideCfgBlack', 'sideCfgWhite'])
+    A(html.indexOf('id="' + id + '"') >= 0, 'index.html 缺双方覆盖区 #' + id);
+  for (const id of ['blackChannel', 'blackTactics', 'blackThinkMs', 'whiteChannel', 'whiteTactics', 'whiteThinkMs'])
+    A(html.indexOf('id="' + id + '"') >= 0, 'index.html 缺双方覆盖控件 #' + id);
+  for (const id of ['expTacA', 'expTacB', 'expThinkA', 'expThinkB'])
+    A(html.indexOf('id="' + id + '"') >= 0, 'index.html 缺实验 A/B 档位控件 #' + id);
+}
+try {
+  sideConfigTests();
+  results.push('✓ 双方配置与联名（sideConfig / effSide / 联名归档）');
+} catch (e) {
+  failed++;
+  results.push('✗ 双方配置与联名: ' + e.message);
 }
 
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */

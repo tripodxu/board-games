@@ -325,7 +325,29 @@
              <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
            </select>
          </label>
-         <label class="exp-games">局数
+         <label class="exp-tac">A 思考
+          <select id="expThinkA">
+            <option value="" selected>跟随全局</option>
+            <option value="500">0.5s</option>
+            <option value="1000">1s</option>
+            <option value="2000">2s</option>
+            <option value="3000">3s</option>
+            <option value="5000">5s</option>
+            <option value="10000">10s</option>
+          </select>
+        </label>
+        <label class="exp-tac">B 思考
+          <select id="expThinkB">
+            <option value="" selected>跟随全局</option>
+            <option value="500">0.5s</option>
+            <option value="1000">1s</option>
+            <option value="2000">2s</option>
+            <option value="3000">3s</option>
+            <option value="5000">5s</option>
+            <option value="10000">10s</option>
+          </select>
+        </label>
+        <label class="exp-games">局数
           <input type="number" id="expGames" value="4" min="1" max="50">
         </label>
       </div>
@@ -406,6 +428,20 @@
     </label>
     <label class="check-row"><input type="checkbox" id="gameSync" checked> 终局自动同步棋谱（供复盘分析）</label>
     <div class="hint">设置保存在本机 localStorage；渠道/key 只进本机，不随棋谱上传。</div>
+    <div class="drawer-sub">双方覆盖（留空 = 跟随上方全局设置）</div>
+    <div class="side-cfg" id="sideCfgBlack">
+      <div class="side-cfg-name">黑方</div>
+      <label>渠道<select id="blackChannel"><option value="">跟随全局</option></select></label>
+      <label>战术<select id="blackTactics"></select></label>
+      <label>思考<select id="blackThinkMs"><option value="">跟随</option></select></label>
+    </div>
+    <div class="side-cfg" id="sideCfgWhite">
+      <div class="side-cfg-name">白方</div>
+      <label>渠道<select id="whiteChannel"><option value="">跟随全局</option></select></label>
+      <label>战术<select id="whiteTactics"></select></label>
+      <label>思考<select id="whiteThinkMs"><option value="">跟随</option></select></label>
+    </div>
+    <div class="hint">覆盖只影响「哪一方怎么走」，不改变全局默认；实验跑完自动还原回这里配的值。</div>
   </div>
 </aside>
 

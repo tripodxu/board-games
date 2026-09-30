@@ -14,7 +14,7 @@
     mode: 'human-ai', humanSide: null,
     epoch: 0, inflight: null, paused: false,
     trendMode: 'win', aborter: null, sessionRecorded: false, sessionId: null,
-    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000, tacticsVersion: 'v9-vcf-sound' },
+    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000, tacticsVersion: 'v9-vcf-sound', sideConfig: { black: {}, white: {} } },
   };
 
   /* ---------- 设置 ---------- */
@@ -33,6 +33,16 @@
     $('tacticsVersion').value = globalThis.BG.tacticsVersions
       .resolve(S.settings.tacticsVersion).id;
     $('gameSync').checked = S.settings.gameSync !== false;
+    /* 旧 localStorage 补齐：tacticsVersion + sideConfig 都是后加的键，
+       老用户刷新后必须有缺省值，否则 effSide 读到 undefined。 */
+    if (!S.settings.tacticsVersion) S.settings.tacticsVersion = 'v9-vcf-sound';
+    const mk = (s) => ({
+      channel: (s && s.channel) || '',
+      tactics: (s && s.tactics) || '',
+      rapfiThinkMs: +(s && s.rapfiThinkMs) || 0,
+    });
+    const sc = S.settings.sideConfig || {};
+    S.settings.sideConfig = { black: mk(sc.black), white: mk(sc.white) };
     syncChannelUI();
   }
   /* 接口地址按渠道归档。必须在改写 S.settings.channel 之前调用：
@@ -60,15 +70,32 @@
     official: '官方 API', openrouter: 'OpenRouter', proxy: '同源代理', mock: '离线演示',
     rapfi: 'Rapfi 本地',
   };
-  /* 本手要走哪套战术版本：实验按执子侧记（S.expTactics），平时读设置抽屉。
-     mock/rapfi 不经战术层，档位传了也不被消费；但 meta.tv 仍如实留档，便于回溯。 */
-  function effectiveTacticsVersion(side) {
-    /* 设置抽屉侧已归一（saveSettings 过 resolve）；实验侧防御一下脏值 */
-    const fallback = globalThis.BG.tacticsVersions
-      .resolve(S.settings.tacticsVersion).id;
-    if (!side || !S.expTactics) return fallback;
-    const v = side === 'black' ? S.expTactics.black : S.expTactics.white;
-    return v ? globalThis.BG.tacticsVersions.resolve(v).id : fallback;
+  /* 单边最终配置：先看 sideConfig 的覆盖，空值回落全局。
+     渠道再经 effectiveChannelOf 做可用性判定（没 key / file:// 时回落演示）。
+     战术档一律过 resolve 归一：写错的 id 收敛到当前档，绝不带进 decide。
+     mock 不经战术层、rapfi 是本地引擎，档位传了也不被消费，但 meta.tv 仍如实留档。 */
+  function effSide(side) {
+    const cfg = (S.settings.sideConfig && S.settings.sideConfig[side]) || {};
+    return {
+      channel: effectiveChannelOf(cfg.channel || S.settings.channel),
+      tactics: globalThis.BG.tacticsVersions
+        .resolve(cfg.tactics || S.settings.tacticsVersion).id,
+      rapfiThinkMs: +(cfg.rapfiThinkMs || S.settings.rapfiThinkMs) || S.settings.rapfiThinkMs,
+    };
+  }
+  /* side = 引擎 sides 的 id；归一为 'black'|'white'（与谁先走无关） */
+  function sideIdOf(side) { return S.engine.sides[1].id === side ? 'white' : 'black'; }
+  /* 实验期间 sideConfig 被 A/B 面板借用；借之前快照、借完还原，
+     抽屉里用户手配的那套不会因跑过一次实验而丢失。 */
+  let SIDE_CFG_SNAPSHOT = null;
+  function borrowSideCfg() {
+    SIDE_CFG_SNAPSHOT = JSON.parse(JSON.stringify(S.settings.sideConfig || {}));
+  }
+  function restoreSideCfg() {
+    if (!SIDE_CFG_SNAPSHOT) return;
+    S.settings.sideConfig = JSON.parse(JSON.stringify(SIDE_CFG_SNAPSHOT));
+    SIDE_CFG_SNAPSHOT = null;
+    if (typeof renderSideCfg === 'function') renderSideCfg();
   }
   function syncChannelUI() {
     const ch = $('channel').value;
@@ -104,8 +131,8 @@
     if (eff === 'mock' && ch !== 'mock') name += ' · 演示';
     $('channelChip').textContent = name;
   }
-  function effectiveChannel() {
-    const ch = S.settings.channel;
+  /* 渠道字符串 → 实际渠道（mock/rapfi/random 直通；Jev 三渠道无 key 时回落演示） */
+  function effectiveChannelOf(ch) {
     if (ch === 'mock') return 'mock';
     /* Rapfi 是本地 WASM 引擎，无需 key、无远程探测，直接可用 */
     if (ch === 'rapfi') return 'rapfi';
@@ -118,14 +145,9 @@
     if (!key) return 'mock';
     return ch;
   }
-  /* 实验模式下黑白方可走不同渠道；平时与 effectiveChannel() 一致 */
-  function effectiveChannelFor(side) {
-    if (S.expChannels && S.engine) {
-      const ch = side === S.engine.sides[0].id ? S.expChannels.black : S.expChannels.white;
-      if (ch) return ch;
-    }
-    return effectiveChannel();
-  }
+  function effectiveChannel() { return effectiveChannelOf(S.settings.channel); }
+  /* 黑白各自解析（sideConfig 覆盖优先）；平时退化为全局渠道 */
+  function effectiveChannelFor(side) { return effSide(sideIdOf(side)).channel; }
 
   /* 连通性探测：直接读输入框当前值（测的就是眼前这套配置，不依赖是否已保存） */
   let probing = false;
@@ -437,7 +459,10 @@
     saveSettings();
     S.mode = $('mode').value;
     S.humanSide = $('side').value;
-    if (!EXP.running) { S.expChannels = null; S.expInfo = null; S.expTactics = null; } // 手动开局不清掉上次实验的渠道
+    if (!EXP.running) {
+      S.expInfo = null; // 手动开局还原：实验借用的 sideConfig 在这里还回去
+      restoreSideCfg();
+    }
     S.paused = false;
     resetSession();
     const eff = effectiveChannel();
@@ -466,13 +491,15 @@
     uploadGameRecord(); // 终局自动同步棋谱（可关）
     if (EXP.running) {
       // 实验连跑：记录本局，2.5 秒后自动开下一局（交替黑白）
-      const blackChan = S.expChannels.black, whiteChan = S.expChannels.white;
+      const info = S.expInfo || {};
+      const blackChan = info.blackChannel, whiteChan = info.whiteChannel;
       const winnerChan = !g.winner ? null
         : (g.winner === S.engine.sides[0].id ? blackChan : whiteChan);
       EXP.results.push({
         no: EXP.idx + 1, blackChan, whiteChan, winner: g.winner,
-        blackTac: S.expTactics ? S.expTactics.black : null,
-        whiteTac: S.expTactics ? S.expTactics.white : null,
+        blackTac: info.blackTactics || null,
+        whiteTac: info.whiteTactics || null,
+        blackThink: info.blackThink || 0, whiteThink: info.whiteThink || 0,
         winnerChan: winnerChan === EXP.chanA ? 'A' : (winnerChan === EXP.chanB ? 'B' : null),
       });
       EXP.idx++;
@@ -547,15 +574,15 @@
     startThinkClock(side);
     setEngineStatus('thinking', '推理中');
     try {
-      const channel = effectiveChannelFor(side);
+      const eff = effSide(sideIdOf(side));
       const decision = await BG.jev.decide(S.engine, S.st, side, {
-        channel,
-        apiKey: channel === 'openrouter' ? S.settings.orKey : S.settings.apiKey,
-        endpoint: (S.settings.endpoints && S.settings.endpoints[channel]) || '',
+        channel: eff.channel,
+        apiKey: eff.channel === 'openrouter' ? S.settings.orKey : S.settings.apiKey,
+        endpoint: (S.settings.endpoints && S.settings.endpoints[eff.channel]) || '',
         experience: buildExperience(S.gameId),
         topK: S.settings.topK,
-        rapfiThinkMs: S.settings.rapfiThinkMs,
-        tacticsVersion: effectiveTacticsVersion(side),
+        rapfiThinkMs: eff.rapfiThinkMs,
+        tacticsVersion: eff.tactics,
         signal: S.aborter.signal,
         onRetry: (code) => toast('限流(' + code + ')，退避重试中…'),
       });
@@ -626,6 +653,8 @@
     });
     const exp = S.expInfo || null;
     const cs = calSamples(g);
+    /* 双方最终配置（实验局由 sideConfig 承载，随时可变） */
+    const bCfg = effSide('black'), wCfg = effSide('white');
     return {
       format: 'jev-qiguan-game/v1',
       exported: new Date().toISOString(),
@@ -633,13 +662,16 @@
       gid: S.gameId,
       mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
       channel: effectiveChannel(),
-      blackChannel: exp ? exp.blackChannel : undefined,
-      whiteChannel: exp ? exp.whiteChannel : undefined,
+      /* 联名三件套：文件名 slug / 展示联名 / 双方渠道与战术档（旧消费方都容许缺省） */
+      slug: BG.duel.slug(bCfg, wCfg),
+      duel: BG.duel.duelLabel(bCfg, wCfg),
+      blackChannel: exp ? exp.blackChannel : bCfg.channel,
+      whiteChannel: exp ? exp.whiteChannel : wCfg.channel,
       experiment: exp ? exp.tag : undefined,
       expGameNo: exp ? exp.gameNo : undefined,
-      tacticsVersion: exp ? exp.blackTactics : (S.settings.tacticsVersion || undefined),
-      blackTactics: exp ? exp.blackTactics : undefined,
-      whiteTactics: exp ? exp.whiteTactics : undefined,
+      tacticsVersion: bCfg.tactics,
+      blackTactics: exp ? exp.blackTactics : bCfg.tactics,
+      whiteTactics: exp ? exp.whiteTactics : wCfg.tactics,
       result: g.over
         ? (g.winner ? sideName(g.winner) + ' 获胜' : '和棋') + '（' + (g.reason || '') + '）'
         : '进行中（已 ' + S.history.length + ' 手）',
@@ -792,25 +824,74 @@
     renderCalibration();
   }
 
+  /* ---------- 抽屉：双方覆盖 + 实验 A/B 档位（选项一律由登记表生成，新增档位零改 UI） ---------- */
+  const THINK_OPTS = [['', '跟随'], ['500', '0.5s'], ['1000', '1s'], ['2000', '2s'], ['3000', '3s'], ['5000', '5s'], ['10000', '10s']];
+  const SIDE_CHANS = [['', '跟随全局'], ['proxy', 'Jev 模型'], ['openrouter', 'Jev·OpenRouter'], ['official', 'Jev·官方'], ['rapfi', 'Rapfi 引擎'], ['random', '随机+战术'], ['mock', '演示']];
+  function fillTacticsSelect(sel) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    for (const v of globalThis.BG.tacticsVersions.VERSIONS)
+      sel.insertAdjacentHTML('beforeend', '<option value="' + v.id + '">' + v.id + ' ' + v.name + '</option>');
+  }
+  function fillThinkSelect(sel) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    for (const [val, txt] of THINK_OPTS) sel.insertAdjacentHTML('beforeend', '<option value="' + val + '">' + txt + '</option>');
+  }
+  function renderSideCfg() {
+    for (const side of ['black', 'white']) {
+      const chSel = $(side + 'Channel');
+      if (!chSel) continue;
+      const tacSel = $(side + 'Tactics'), thinkSel = $(side + 'ThinkMs');
+      chSel.innerHTML = SIDE_CHANS.map(([v, t]) => '<option value="' + v + '">' + t + '</option>').join('');
+      fillTacticsSelect(tacSel);
+      fillThinkSelect(thinkSel);
+      const cfg = (S.settings.sideConfig && S.settings.sideConfig[side]) || {};
+      chSel.value = SIDE_CHANS.some(([v]) => v === (cfg.channel || '')) ? (cfg.channel || '') : '';
+      tacSel.value = globalThis.BG.tacticsVersions.resolve(cfg.tactics).id;
+      thinkSel.value = cfg.rapfiThinkMs ? String(cfg.rapfiThinkMs) : '';
+    }
+    for (const who of ['A', 'B']) { fillTacticsSelect($('expTac' + who)); fillThinkSelect($('expThink' + who)); }
+    /* 实验面板 A/B 档位从当前抽屉配置取默认（上次跑过的实验值） */
+    $('expTacA').value = globalThis.BG.tacticsVersions.resolve(EXP.tacA).id;
+    $('expTacB').value = globalThis.BG.tacticsVersions.resolve(EXP.tacB).id;
+    $('expThinkA').value = EXP.thinkA ? String(EXP.thinkA) : '';
+    $('expThinkB').value = EXP.thinkB ? String(EXP.thinkB) : '';
+  }
+  function saveSideCfg() {
+    for (const side of ['black', 'white']) {
+      S.settings.sideConfig[side] = {
+        channel: $(side + 'Channel').value,
+        tactics: globalThis.BG.tacticsVersions.resolve($(side + 'Tactics').value).id,
+        rapfiThinkMs: +($(side + 'ThinkMs').value) || 0,
+      };
+    }
+    saveSettings();
+    syncChannelUI();
+  }
+
   /* ---------- 对比实验：A渠道 vs B渠道，自动交替执黑白 ---------- */
-  const EXP = { running: false, idx: 0, total: 4, chanA: 'proxy', chanB: 'random', tacA: 'v9-vcf-sound', tacB: 'v9-vcf-sound', tag: null, results: [] };
+  const EXP = { running: false, idx: 0, total: 4, chanA: 'proxy', chanB: 'random', tacA: 'v9-vcf-sound', tacB: 'v9-vcf-sound', thinkA: 0, thinkB: 0, tag: null, results: [] };
   const CHAN_LABEL = { proxy: 'Jev(代理)', openrouter: 'Jev(OpenRouter)', official: 'Jev(官方)', random: '纯随机', mock: '离线演示', rapfi: 'Rapfi' };
   const chanLabel = (c) => CHAN_LABEL[c] || c;
-  /* 归因展示：渠道 + 战术档合成一行。老记录/未填档位时退化为纯渠道名，
-     保证 EXP_SEED 里的 2026-09-29 旧数据仍能渲染。 */
-  function sideAttribution(chan, tac) {
-    const c = chanLabel(chan);
-    return tac ? c + '·' + tac : c;
+  /* 归因一行：有档位时走 duel 联名（Jev·v9 / 随机·v3 / Rapfi(3s)）；
+     老记录没记档位时只标渠道——不谎称它跑的是哪一版战术。 */
+  function sideAttribution(chan, tac, think) {
+    if (!chan) return '旧数据';
+    if (!tac) return chanLabel(chan);
+    return BG.duel.sideLabel({ channel: chan, tactics: tac, rapfiThinkMs: think || 0 });
   }
-  const tacTag = (t) => (t ? String(t) : null);
 
   function startExperiment() {
     if (EXP.running) return;
     EXP.running = true; EXP.idx = 0; EXP.results = [];
+    borrowSideCfg(); // 借走 sideConfig，结束后还原用户抽屉配置
     EXP.chanA = $('expChanA').value;
     EXP.chanB = $('expChanB').value;
     EXP.tacA = $('expTacA').value;
     EXP.tacB = $('expTacB').value;
+    EXP.thinkA = +$('expThinkA').value || 0;
+    EXP.thinkB = +$('expThinkB').value || 0;
     EXP.total = Math.max(1, Math.min(50, parseInt($('expGames').value, 10) || 4));
     EXP.tag = 'exp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
     $('expResults').innerHTML = '';
@@ -819,33 +900,35 @@
   function runExperimentGame() {
     if (!EXP.running || EXP.idx >= EXP.total) { finishExperiment(); return; }
     const aBlack = EXP.idx % 2 === 0; // 偶数局 A 执黑：双方各执黑白一半
-    S.expChannels = {
-      black: aBlack ? EXP.chanA : EXP.chanB,
-      white: aBlack ? EXP.chanB : EXP.chanA,
-    };
-    S.expTactics = {
-      black: aBlack ? EXP.tacA : EXP.tacB,
-      white: aBlack ? EXP.tacB : EXP.tacA,
-    };
+    const A = aBlack ? 'A' : 'B', B = aBlack ? 'B' : 'A'; // A/B 是实验方，black/white 是执子方
+    const mk = (who) => ({
+      channel: who === 'A' ? EXP.chanA : EXP.chanB,
+      tactics: who === 'A' ? EXP.tacA : EXP.tacB,
+      rapfiThinkMs: who === 'A' ? EXP.thinkA : EXP.thinkB,
+    });
+    /* 直接写 sideConfig：人机与实验共用同一套双方配置，effSide 即取即用 */
+    S.settings.sideConfig = { black: mk(A), white: mk(B) };
     S.expInfo = {
       tag: EXP.tag, gameNo: EXP.idx + 1,
-      blackChannel: S.expChannels.black, whiteChannel: S.expChannels.white,
-      blackTactics: S.expTactics.black, whiteTactics: S.expTactics.white,
+      blackChannel: mk(A).channel, whiteChannel: mk(B).channel,
+      blackTactics: mk(A).tactics, whiteTactics: mk(B).tactics,
+      blackThink: mk(A).rapfiThinkMs, whiteThink: mk(B).rapfiThinkMs,
     };
     $('mode').value = 'ai-ai';
-    startGame(); // startGame 内非实验时才清 expChannels，此处 EXP.running 为 true 会保留
-    setStatus(`实验 ${EXP.idx + 1}/${EXP.total}：${chanLabel(S.expChannels.black)}（黑） vs ${chanLabel(S.expChannels.white)}（白）`, false);
+    startGame(); // startGame 内只在非实验时清 sideConfig，此处 EXP.running 为 true 会保留
+    const lbl = (who) => sideAttribution(mk(who).channel, mk(who).tactics, mk(who).rapfiThinkMs);
+    setStatus(`实验 ${EXP.idx + 1}/${EXP.total}：${lbl(A)}（黑） vs ${lbl(B)}（白）`, false);
     renderExpStatus();
   }
   function stopExperiment() {
     EXP.running = false;
-    S.expChannels = null; S.expInfo = null; S.expTactics = null;
+    S.expInfo = null; // sideConfig 保留：复盘时联名仍要能还原
     renderExpStatus();
     toast('实验已停止');
   }
   function finishExperiment() {
     EXP.running = false;
-    S.expChannels = null; S.expInfo = null; S.expTactics = null;
+    S.expInfo = null;
     renderExpStatus(); renderExpResults(); recordExperiment();
     toast('实验完成：' + expSummary());
   }
@@ -856,7 +939,12 @@
       else if (r.winnerChan === 'A') a++;
       else b++;
     });
-    return `${chanLabel(EXP.chanA)}${tacTag(EXP.tacA) ? '·' + tacTag(EXP.tacA) : ''} ${a}胜 · ${chanLabel(EXP.chanB)}${tacTag(EXP.tacB) ? '·' + tacTag(EXP.tacB) : ''} ${b}胜 · 和棋 ${d}`;
+    const mk = (who) => ({
+      channel: who === 'A' ? EXP.chanA : EXP.chanB,
+      tactics: who === 'A' ? EXP.tacA : EXP.tacB,
+      rapfiThinkMs: who === 'A' ? EXP.thinkA : EXP.thinkB,
+    });
+    return `${BG.duel.expLabel(mk('A'), mk('B'), EXP.total)} ${a}胜 · ${b}胜 · 和棋 ${d}`;
   }
   function renderExpStatus() {
     const el = $('expStatus');
@@ -872,7 +960,7 @@
     if (!el || !EXP.results.length) { if (el) el.innerHTML = ''; return; }
     const rows = EXP.results.map((r) =>
       `<div class="exp-row"><span>#${r.no}</span>` +
-      `<span>${sideAttribution(r.blackChan, r.blackTac)}(黑)</span><span>vs</span><span>${sideAttribution(r.whiteChan, r.whiteTac)}(白)</span>` +
+      `<span>${sideAttribution(r.blackChan, r.blackTac, r.blackThink)}(黑)</span><span>vs</span><span>${sideAttribution(r.whiteChan, r.whiteTac, r.whiteThink)}(白)</span>` +
       `<b>${r.winner ? '→ ' + chanLabel(r.winnerChan === 'A' ? EXP.chanA : EXP.chanB) + '胜' : '→ 和棋'}</b></div>`).join('');
     el.innerHTML = `<div class="exp-head">${expSummary()}</div>` + rows;
   }
@@ -943,10 +1031,12 @@
   function recordExperiment() {
     const entry = {
       tag: EXP.tag, date: new Date().toISOString(),
-      chanA: EXP.chanA, chanB: EXP.chanB, tacA: EXP.tacA, tacB: EXP.tacB, total: EXP.total,
+      chanA: EXP.chanA, chanB: EXP.chanB, tacA: EXP.tacA, tacB: EXP.tacB,
+      thinkA: EXP.thinkA, thinkB: EXP.thinkB, total: EXP.total,
       games: EXP.results.map((r) => ({
         no: r.no, blackChan: r.blackChan, whiteChan: r.whiteChan,
         blackTac: r.blackTac || null, whiteTac: r.whiteTac || null,
+        blackThink: r.blackThink || 0, whiteThink: r.whiteThink || 0,
         winnerChan: r.winner ? r.winnerChan : null,
       })),
       note: '',
@@ -986,12 +1076,12 @@
           : !wchan ? '→ 和棋'
           : '→ <b>' + chanLabel(wchan) + '胜</b>';
         return `<div class="exp-row"><span class="mono">#${g.no}</span>` +
-          `<span>${sideAttribution(g.blackChan, g.blackTac)}(黑)</span><span class="dim">vs</span>` +
-          `<span>${sideAttribution(g.whiteChan, g.whiteTac)}(白)</span><span>${wl}</span></div>`;
+          `<span>${sideAttribution(g.blackChan, g.blackTac, g.blackThink)}(黑)</span><span class="dim">vs</span>` +
+          `<span>${sideAttribution(g.whiteChan, g.whiteTac, g.whiteThink)}(白)</span><span>${wl}</span></div>`;
       }).join('');
       effGames += eff;
       return `<div class="exp-card"><div class="exp-card-head">` +
-        `<b>${sideAttribution(e.chanA, e.tacA)} <span class="mono">${a} : ${b}</span> ${sideAttribution(e.chanB, e.tacB)}</b>` +
+        `<b>${sideAttribution(e.chanA, e.tacA, e.thinkA)} <span class="mono">${a} : ${b}</span> ${sideAttribution(e.chanB, e.tacB, e.thinkB)}</b>` +
         `<span class="dim">${eff} 局有效 · ${fmtExpDate(e.date)}</span></div>` +
         `<div class="exp-card-rows">${rows}</div>` +
         (e.note ? `<div class="hint">${e.note}</div>` : '') +
@@ -1166,11 +1256,14 @@
     /* 校准样本口径与同步 payload 完全一致（calSamples），
      * 这样后端聚合出来的统计和本机战绩簿永远对得上。 */
     const cs = calSamples(g);
+    const bCfg = effSide('black'), wCfg = effSide('white');
     const rec = {
       id: S.sessionId,
       t: Date.now(),
       game: S.engine.name,
       gid: S.gameId,
+      slug: BG.duel.slug(bCfg, wCfg),
+      duel: BG.duel.duelLabel(bCfg, wCfg),
       mock: cs.mock,
       mode: { 'human-ai': '人机', 'ai-ai': '机机', pvp: '双人' }[S.mode] || S.mode,
       winner: g.winner ? sideName(g.winner) : '和棋',
@@ -1212,9 +1305,13 @@
     const rows = all.slice(-12).reverse().map((r) => {
       const d = new Date(r.t);
       const hh = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      /* 联名作为棋种下的副行：战绩簿一眼能看出这盘是谁的哪一版战术；
+         旧记录没有 duel 字段时留空，表格列数不变（不触发横向滚动）。 */
+      const duel = r.duel
+        ? '<i title="' + r.duel + '">' + r.duel + '</i>' : '';
       return '<div class="rec-row' + (r.winner === '和棋' ? ' draw' : '') + '">' +
         '<span class="rec-time mono">' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hh + '</span>' +
-        '<span class="rec-game">' + r.game.replace(/\s/g, '') + '</span>' +
+        '<span class="rec-game">' + r.game.replace(/\s/g, '') + duel + '</span>' +
         '<span class="rec-mode">' + r.mode + '</span>' +
         '<span class="rec-winner">' + r.winner + (r.reason && r.reason !== '认输' ? '<i>' + r.reason.slice(0, 4) + '</i>' : '') + '</span>' +
         '<span class="rec-meta mono">' + r.moves + '手</span>' +
@@ -1509,6 +1606,13 @@
     };
     $('channel').onchange = saveSettings;
     $('endpoint').onchange = saveSettings;
+    /* 抽屉「双方覆盖」：任一侧改动即写 sideConfig 并保存 */
+    for (const side of ['black', 'white']) {
+      const ch = $(side + 'Channel'), tac = $(side + 'Tactics'), think = $(side + 'ThinkMs');
+      if (ch) ch.onchange = saveSideCfg;
+      if (tac) tac.onchange = saveSideCfg;
+      if (think) think.onchange = saveSideCfg;
+    }
     $('probeBtn').onclick = runProbe;
     $('exportGame').onclick = exportGame;
     $('expStartBtn').onclick = startExperiment;
@@ -1612,6 +1716,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     buildTabs();
     loadSettings();
+    renderSideCfg(); // 抽屉双方覆盖 + 实验 A/B 档位选项（登记表驱动）
     initFolds();
     initSideTabs();
     bind();
