@@ -4,18 +4,18 @@
 
 ## 当前状态
 
-**v0.5**：六个棋种引擎 + 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）。
+**v0.6**：七个棋种引擎（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋）+ 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）+ Rapfi WASM 本地引擎渠道 + VCF 将死链（九级战术保险）。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| 五子棋 gomoku | ✅ | 15×15，候选预筛 ≤64，五连判定 |
+| 五子棋 gomoku | ✅ | 15×15 无禁手，候选预筛 ≤64，五连判定；criteria 战术标签、deepTactics、vcfWin（与禁手版同文件工厂，见「五子棋·禁手」行）|
 | 围棋 go | ✅ | 9×9，提子/禁自杀/劫/双停数子（贴 5.5，中国规则） |
 | 象棋 xiangqi | ✅ | 9×10 全走子规则、照面、将军/绝杀/困毙 |
 | 国际象棋 chess | ✅ | 易位/吃过路兵/升变/将杀逼和，perft(1/2/3)=20/400/8902 |
 | 西洋跳棋 checkers | ✅ | 英式 8×8，强制跳吃、连跳、升王即停 |
 | 中国跳棋 cc | ✅ | 六角星 121 格，连跳递归、先抵对营 |
 | 对弈模式 | ✅ | 人机（选执子）/ 机机（速度滑杆、暂停、单步）/ 人人 |
-| Jev 接入 | ✅ | 四渠道（official/openrouter/proxy/mock）+ 各渠道可自定义 Base URL（留空用预设）+ 「测试连接」连通性探测（网络/CORS/key/端点形状六种判定）+ 429/529 退避 + top-k 采样 |
+| Jev 接入 | ✅ | 五渠道（official/openrouter/proxy/rapfi/mock）+ random 基线（仅实验面板）+ 各渠道可自定义 Base URL（留空用预设）+ 「测试连接」连通性探测（网络/CORS/key/端点形状六种判定；rapfi 改为触发懒加载）+ 429/529 退避 + top-k 采样 |
 | Rapfi 本地引擎 | ✅ | 新增第五渠道 `rapfi`：浏览器内 WASM 运行 Rapfi（tag 250615，单线程 SIMD128，Gomocup 协议，无禁手）；`rapfi/` 预编译产物约 10.8MB（.data 9.6MB 精简版），首次选用时懒加载，无需 key；`BG.rapfi` 协议客户端（`js/rapfi.js`，16 项单测），`decide` 不走 Jev 战术层；引擎 GPLv3、权重 CC0（`rapfi/NOTICE`）；已知局限：单线程同步搜索冻结 UI 约 3s（ADR-0006） |
 | Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点 + **VCF 将死链**）+ 战术保险（meta.tactics = win/block/open4/threat/vcfAttack/vcfDefense/parry/parry3/parry4 透出，优先级 win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4；**vcfAttack/vcfDefense = 连续冲四将死链的攻守**：引擎 `vcfWin()` 威胁空间搜索（7 ply/4000 节点/每层≤12 候选，实测 0–22ms），进攻找己方将死链首步、防守占对方将死链入口且**试走后复搜确认破杀**（对方多条链并存时不硬挡、回落 parry）；parry = 拆对手双杀制造点且多个并存时按 3-ply 安全性排序（排除给对方持续攻击节奏的点），parry3 = 抢占对手活三/活四制造点（deny:open4/deny:live3），parry4 = 抢占对手冲四制造点（deny:four，Rapfi 实战复盘增补）；**VCF 是连续冲四搜索，不是完整 VCT/估值**）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
 | 五子棋·禁手 | ✅ | 新增 `gomoku-pro` 引擎（与 `gomoku` 同文件工厂 `createGomoku`，`forbidden` 开关区分）：黑方三三/四四/长连禁手（落子即负），黑方仅精确五连获胜，白方无禁手、五连以上获胜；禁手点从合法着法剔除，Jev 序列化带 `forbidden_points_black`；大众无禁手模式保留不变 |
@@ -28,7 +28,7 @@
 | 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–50 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端） |
 | 后端 | ✅ | **`server.js` 零依赖 Node 后端**（`node server.js`，默认 8788）：静态托管 + `/api/jev` 代理（BYOK，key 不落盘）+ `/api/games` 棋谱落盘（幂等原子写，文件名与 CF 端一致）+ `/api/experiments` 实验归档（`data/`，gitignore）+ `/api/stats` 跨对局聚合 + `/api/health`；18 项 HTTP 契约测试随全量自检跑。**CF Pages 侧契约对齐**（health/experiments/stats 三端点，持久化走 GitHub，≤42 子请求守免费版限额）。前端 `js/api.js` 探活：有后端则服务端样本并入校准实验室、实验双端归档；无后端（file:///纯静态）自动降级，功能不变（ADR-0005） |
 | 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ **`node server.js` 自托管**（本地/内网完整后端，棋谱落盘不依赖 GitHub token）+ dev-proxy.py 最小备用 |
-| 自检 | ✅ | `node test/run-tests.js`：六引擎 selfTest + 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + 新增 health/experiments/stats）+ **server.js 后端 18 项 HTTP 契约测试** |
+| 自检 | ✅ | `node test/run-tests.js`：七引擎 selfTest（含禁手分支）+ 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + health/experiments/stats）+ server.js 18 项 HTTP 契约测试 + Rapfi 协议层 16 项单测 |
 
 ## 已验证（验收证据）
 

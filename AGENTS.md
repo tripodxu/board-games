@@ -8,9 +8,9 @@
 
 ## 1. 项目一句话
 
-原生 HTML/JS 的六棋种对弈站（五子棋 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
-由 TypeSafe「系统一模型」Jev 走子。**零框架、零构建、零第三方依赖**：双击 `index.html`
-即玩（离线演示），`node server.js` 起本地后端（棋谱落盘 / 实验归档 / 跨对局统计），
+原生 HTML/JS 的七棋种对弈站（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
+由 TypeSafe「系统一模型」Jev 走子，另有 Rapfi WASM 本地引擎渠道。**零框架、零构建、零第三方依赖**：
+双击 `index.html` 即玩（离线演示），`node server.js` 起本地后端（棋谱落盘 / 实验归档 / 跨对局统计），
 部署形态见 [ADR-0005](docs/adr/0005-zero-dep-node-backend.md)。
 
 ## 2. 硬性规则（不可协商）
@@ -58,7 +58,8 @@ python dev-proxy.py             # 本地最小备用：静态 + /api/jev → htt
 ## 5. 代码约定速查
 
 - 全局命名空间 `BG`（`globalThis.BG`）：`BG.games`（引擎注册表）、`BG.util`、`BG.gfx`、
-  `BG.jev`（客户端）、`BG.mock`（离线 AI）。新模块用 IIFE 挂到 `BG.*`，不写模块系统。
+  `BG.jev`（客户端）、`BG.api`（后端客户端）、`BG.mock`（离线 AI）、`BG.rapfi`（WASM 本地引擎）。
+  新模块用 IIFE 挂到 `BG.*`，不写模块系统。
 - 引擎 move 对象：`{ notation, desc, ...私有字段 }`，`notation` 是 Jev Choice 选项的键，必须唯一且稳定。
 - state 一律 JSON 可克隆（`BG.util.clone` 用 JSON 深拷贝），不放函数/DOM 引用。
 - Jev 的 `state` 与 `instructions` **一律英文**（官方口径：中文精度较低），坐标记法，见 ADR-0002。

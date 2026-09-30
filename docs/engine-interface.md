@@ -20,14 +20,21 @@
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, selfTest,
     /* 可选方法 ↓ */
-    // passMove, mockPick
+    // passMove, mockPick, vcfWin
     /* 可选标记 ↓ */
     // deepTactics: true —— 候选点是无色差空点集（如 gomoku 落子点）时声明，
     //   jev-client 会在 1-ply 无战术时跑 2-ply 造杀扫描（己方双杀点/对方双杀点），
-    //   并由战术保险按 win > block > open4 > threat > parry 接管。
+    //   并由战术保险按 win > block > open4 > threat > vcfAttack > vcfDefense
+    //   > parry > parry3 > parry4 接管。
+    // vcfWin —— 配 deepTactics 的引擎可再提供威胁空间搜索（见下表）。
   });
 })();
 ```
+
+**一个文件注册多个引擎**（同一套逻辑、开关区分）：用工厂函数产出两份注册，
+`id`/`name`/`forbidden` 等进工厂参数。样板见 `js/games/gomoku.js`
+（`createGomoku(id, name, forbidden)` → `gomoku` 与 `gomoku-pro` 两个引擎）。
+注意：两份引擎的 `selfTest()` 都要覆盖各自的规则分支。
 
 注册后还要做两件事（缺一不可）：
 
@@ -49,6 +56,7 @@
 | `selfTest()` | `() => void` | 抛异常即失败 | 见 §5 |
 | `passMove(st)`（可选） | 停一手 | move | 仅围棋类需要 |
 | `mockPick(st, moves, side)`（可选） | 启发式选点 | move | 给离线演示用 |
+| `vcfWin(st, attackerId, maxPlies)`（可选） | `{win, first, line}` | 连续冲四将死链 | 配 `deepTactics` 的引擎提供；`st.turn` 须为 `attackerId`；`first` 为首步记法（进攻=走法，防守=干预点）；无链返回 `{win:false, first:null, line:[]}`；禁手等规则自行内化（见 gomoku.js 注释） |
 
 ### move 对象
 
@@ -98,8 +106,12 @@
    「胜负条件 + 本项目采用的特殊规则/参数」（如贴目、强制跳吃、无禁手），与引擎实现严格一致。
    模型的预训练规则知识可能与本项目口径不一致，规则细节必须随局面每手重发。
 7. **`criteria` 保留标签**（2026-09-29 起）：棋类引擎可为选项标注引擎验证过的战术含义，
-   `jev-client` 据此做三级战术保险——保留标签 `you:open4`（己方活四点，对方无先手五时必胜）
-   会触发第三级接管；标签用 `+` 连接组合效果。文本值 `null` = 无战术含义的静点。
+   `jev-client` 据此做战术保险——保留标签 `you:open4`（己方活四点，对方无先手五时必胜）
+   会触发 open4 级接管；预挡类标签 `deny:open4`/`deny:live3`（parry3）与 `deny:four`（parry4）
+   触发对应预挡级接管。标签用 `+` 连接组合效果。文本值 `null` = 无战术含义的静点。
+8. **禁手变体**（2026-09-30 起）：`gomoku-pro` 示范——禁手点从 `getLegalMoves` 剔除、
+   序列化里以 `state.forbidden_points_black` 声明（黑方视角），`state.rules` 写清禁手规则。
+   与大众版共用工厂时，`selfTest` 必须各覆盖一份。
 
 ## 5. selfTest 约定
 

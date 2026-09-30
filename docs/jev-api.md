@@ -36,18 +36,20 @@ resp: {
 - 429/529 → 指数退避重试（`jev-client.js` 最多 4 次：1s/2s/4s/8s）；401 → key 无效直接报错；
   30s 无响应判超时；外部 `AbortSignal`（切棋种/重开）立即终止。
 
-## 2. 渠道（四可选 + random 基线）
+## 2. 渠道（五可选 + random 基线）
 
 | channel | endpoint | model | key 放哪 | 说明 |
 |---|---|---|---|---|
 | `official` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 浏览器 localStorage | **官方 API 有 CORS 来源白名单（2026-09-29 实测：仅 typesafe.ai 自有域名放行，任意第三方 Origin 一律 400 "Disallowed CORS origin"，文档未开放配置）。浏览器直连不可行，浏览器侧走官方 key 的唯一路径是同源代理** |
 | `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，唯一可浏览器直连的渠道（需 OpenRouter key，非 TypeSafe key） |
 | `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | CF Pages Function 或 `dev-proxy.py`；**Pages 侧有每 IP 每分钟滑动窗口限流（默认 30，`RATE_LIMIT_PER_MIN` 可配），超限 429** |
+| `rapfi` | 本地（浏览器内 WASM） | Rapfi tag 250615 | 无 | **本地搜索引擎对手**（非 prompt 型）：Gomocup 协议，首次选用懒加载约 10–40MB 模型，之后纯本地走子；仅支持 `gomoku`（大众无禁手），`gomoku-pro` 会拒绝；单线程同步搜索期间阻塞 UI 约 3s（ADR-0006）；「测试连接」= 触发懒加载 |
 | `mock` | 本地 | — | 无 | `js/mock-ai.js` 离线演示，概率为合成值 |
 | `random` | 本地 | `random-baseline` | 无 | **纯随机基线，仅对比实验面板可选**（设置面板渠道下拉不含它）：均匀概率、零启发式、成本 0，但照样走完整战术管线——「随机+战术 vs Jev+战术」的唯一变量是概率分布质量。自由手真随机均匀采样（不经 topK，否则 topK=1 会坍缩成顺序走子） |
 
 默认渠道（`app.js` settings）：`proxy`。`effectiveChannel()` 在未填 key 时自动回落 `mock`，
-保证无 key 完整体验。
+保证无 key 完整体验；`rapfi` 是本地引擎，直接返回 `rapfi`（无需 key、无远程探测，
+「测试连接」改为触发懒加载）。
 
 **自定义 Base URL**（2026-09-29 起）：设置面板对每个真实渠道提供「接口地址」输入框，
 留空 = 上表预设，填了即覆盖（`decide` 的 `opts.endpoint`，预设值经 `BG.jev.presetEndpoint(ch)` 取）。
@@ -81,6 +83,9 @@ resp: {
 | `shape` | 200 但响应缺 `answers`：地址不是 System One 同构端点 |
 | `mock` / `config` | 离线演示无需连接 / 未知渠道 |
 
+注：`rapfi` 渠道不走 probe 的 HTTP 判定，`app.js` 把「测试连接」复用来触发
+`BG.rapfi.ensureLoaded()` 懒加载（成功/失败即引擎就绪/不可用）。
+
 实现注意：探测体必须与正式请求同构（`state`+`model`+`questions` 三字段齐全）——
 漏 `model` 会被真实端点 422 拒绝（已踩过，单测有用例④钉住）。UI 直读输入框当前值，
 不依赖是否已保存；探测期间按钮禁用。
@@ -94,23 +99,32 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
    `{ winning_points_you: [...], winning_points_opponent: [...] }`（一步致胜点：己方 = 必走，
    对方 = 必挡；go 等无中途终局的棋种自然为空数组）+ 2-ply
    `{ chance_points_you: [...], danger_points_opponent: [...] }`（造杀点：走出后己方有 ≥2 个
-   一步致胜点 = 两步必胜；对手的造杀点 = 必须现在拆）。指令里同步声明这些字段的语义
-   （英文，追加在 `questions.move.instructions` 尾部）。
+   一步致胜点 = 两步必胜；对手的造杀点 = 必须现在拆）+ VCF
+   `{ vcf_win_you: [...], vcf_win_opponent: [...] }`（连续冲四将死链：引擎可选提供
+   `vcfWin(st, attackerId, maxPlies)` 做威胁空间搜索，7 ply/4000 节点/每层≤12 候选，
+   实测 0–22ms；进攻取将死链首步，防守取链条入口干预点且**试走后复搜确认破杀**）。
+   指令里同步声明这些字段的语义（英文，追加在 `questions.move.instructions` 尾部）。
 2. **`state.experience`**（可选，由 `opts.experience` 传入）：同一棋种、真实渠道的历史局中
    与当前开局前 4 手相同的那部分，统计 `{ opening_plies, games, first_player_win_rate }`。
    样本 <2 局不注入（噪声）；离线演示局从不参与（合成数据不自证）。
 
-**战术保险（客户端六级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
-threat | parry | parry3 | null`——① `win` 有致胜点必走其一；② `block` 否则有对方致胜点必挡其一；
-③ `open4` 否则引擎以 `criteria` 保留标签 `you:open4` 声明的活四点必走（活四 + 对方无先手五
-= 理论必胜：两处成五点防不胜防）；④ `threat` 否则抢占 2-ply 造杀点（`chance_points_you`：
-走出后己方有 ≥2 个一步致胜点，带护栏）；⑤ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），
-**多个并存时按 3-ply 安全性排序**——先排除「堵完对手仍有双杀制造点」的坏点（给了对手持续攻击
-节奏），剩余按对手逼杀着法数取最少；⑥ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3`
-标签的点（对手的活三/活四制造点）。战术点在概率榜内按概率加权抽（尊重 topK），榜外（候选预筛
-遗漏）直接执行该点并在 `meta.warning` 标注「战术保险接管」。概率只是偏好，事实优先——Jev
-不再漏算单步胜负、活四胜机与对手的杀招制造点。深度换时间的边界写死在实现里（外层 64 候选、
-逼杀着法只查前 8 个、逼杀数数到 10 即停）。
+**战术保险（客户端九级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
+threat | vcfAttack | vcfDefense | parry | parry3 | parry4 | null`——① `win` 有致胜点必走其一；
+② `block` 否则有对方致胜点必挡其一；③ `open4` 否则引擎以 `criteria` 保留标签 `you:open4`
+声明的活四点必走（活四 + 对方无先手五 = 理论必胜：两处成五点防不胜防）；④ `threat` 否则抢占
+2-ply 造杀点（`chance_points_you`：走出后己方有 ≥2 个一步致胜点，带护栏）；⑤ `vcfAttack`
+否则走己方 VCF 将死链首步（连续冲四强制胜，排 threat 后因双杀两步更快、parry 前因将死是强制胜）；
+⑥ `vcfDefense` 否则占对方将死链入口（干预点经试走复搜确认真破杀；对方多条链并存时不硬挡，
+回落 parry）；⑦ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），**多个并存时按 3-ply
+安全性排序**——先排除「堵完对手仍有双杀制造点」的坏点（给了对手持续攻击节奏），剩余按对手逼杀
+着法数取最少；⑧ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3` 标签的点
+（对手的活三/活四制造点）；⑨ `parry4` 否则抢占带 `deny:four` 标签的点（对手的冲四制造点，
+Rapfi 实战复盘增补：放任冲四制造点会被连续单杀逼迫 → 双杀收尾）。战术点在概率榜内按概率加权抽
+（尊重 topK），榜外（候选预筛遗漏）直接执行该点并在 `meta.warning` 标注「战术保险接管」。
+概率只是偏好，事实优先。深度换时间的边界写死在实现里（外层 64 候选、逼杀着法只查前 8 个、
+逼杀数数到 10 即停、VCF 7 ply/4000 节点）。
+**边界声明**：VCF 只搜「连续冲四」强制链，不是完整 VCT/估值；Rapfi 实战 0-4 复盘见
+status.md「已知限制」第 1 条。
 
 **五子棋 criteria 战术标签**（引擎代读棋盘，`labelPoint` 真实推演非模式匹配）：
 `you:open4 / you:four / you:live3`（我落这造什么）、`deny:open4 / deny:four / deny:live3`
@@ -196,7 +210,7 @@ threat | parry | parry3 | null`——① `win` 有致胜点必走其一；② `b
 | `top[]` | 概率前 8 名 `{notation, p}`（概率条渲染） |
 | `candidates` | 合法候选总数；`restProb` 第 9 名以后概率合计 |
 | `noul` / `score` | 局势优劣概率 / 0–10 局势分 |
-| `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `open4`（走己方活四点）/ `threat`（抢占造杀点）/ `parry`（拆对手造杀点，含 3-ply 安全排序）/ `parry3`（预挡对手活三/活四制造点）/ `null` |
+| `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `open4`（走己方活四点）/ `threat`（抢占造杀点）/ `vcfAttack`（走己方将死链首步）/ `vcfDefense`（破对方将死链）/ `parry`（拆对手造杀点，含 3-ply 安全排序）/ `parry3`（预挡对手活三/活四制造点）/ `parry4`（预挡对手冲四制造点）/ `null` |
 | `warning` | 非法响应回退等异常提示 |
 | `mock: true` | 离线演示标记（面板需显示"演示"角标） |
 

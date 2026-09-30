@@ -9,8 +9,8 @@
 
 | 文件 | 默认 owner | 备注 |
 |---|---|---|
-| `js/games/gomoku.js` `go.js` `xiangqi.js` `chess.js` `checkers.js` `chinese-checkers.js` | 各自任务的 engine-dev | **天然并行边界**：六个引擎互相无引用，可同时开工 |
-| `js/jev-client.js` `js/mock-ai.js` `functions/api/jev.js` `dev-proxy.py` | jev-dev（同一时刻一个） | 改渠道/重试/成本时独占 |
+| `js/games/gomoku.js` `go.js` `xiangqi.js` `chess.js` `checkers.js` `chinese-checkers.js` | 各自任务的 engine-dev | **天然并行边界**：六个引擎文件互相无引用，可同时开工（注意 `gomoku.js` 一个文件注册两个引擎：`gomoku` 与 `gomoku-pro`，共七个引擎） |
+| `js/jev-client.js` `js/mock-ai.js` `js/rapfi.js` `functions/api/jev.js` `dev-proxy.py` | jev-dev（同一时刻一个） | 改渠道/重试/成本/本地引擎时独占 |
 | `index.html` `css/style.css` `js/app.js` `js/charts.js` | ui-dev（同一时刻一个） | `app.js` 是热点文件，见 §3 |
 | `test/run-tests.js` | 编排者 | 加载清单是公共资源 |
 | `docs/**` `AGENTS.md` `.gitignore` | 编排者 | 实现者可在自己 commit 里附带 docs 小修，但不得重构文档 |

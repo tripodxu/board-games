@@ -1,6 +1,6 @@
 # Jev 棋馆（board-games）
 
-六种棋类对弈，由 TypeSafe 的「系统一模型」**Jev** 走子：五子棋、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋。
+七种棋类对弈，由 TypeSafe 的「系统一模型」**Jev** 走子：五子棋（含禁手变体）、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；另有 Rapfi WASM 本地引擎可作为对手。
 
 支持 **人 vs Jev**、**Jev vs Jev**、**人 vs 人** 三种模式。原生 HTML/JS，无框架、无构建、无第三方依赖：双击即玩（离线演示），`node server.js` 起本地后端（棋谱落盘 + 实验归档 + 跨对局统计），也可原样部署到 Cloudflare Pages。
 
@@ -80,9 +80,10 @@ python dev-proxy.py              # http://localhost:8788（与 server.js 同端�
 - **棋谱自动同步**：终局自动把棋谱 commit 进仓库 `games/<日期>/`（经同源 `/api/games`，不触发站点构建），供复盘分析；设置面板「终局自动同步棋谱」可关。本地后端下落盘到本机 `games/`，CF Pages 上提交进仓库；设置面板「数据存储」一栏显示当前后端与归档计数。
 - **Jev 决策面板**：每步显示 top-3 候选概率条、置信度、局势判断（Noul/Score）、延迟、token 与成本累计。
 - **强度机制**：客户端把「双方一步致胜点 / 造杀拆杀点 / **VCF 将死链**」等战术事实直接算好注入 Jev 的局面（它不再需要从裸坐标里
-  自己算五连），并有八级战术保险兜底——致胜点必走、对方致胜必挡、活四必走、造杀点抢占、**己方将死链必走（VCF 进攻）**、
+  自己算五连），并有九级战术保险兜底——致胜点必走、对方致胜必挡、活四必走、造杀点抢占、**己方将死链必走（VCF 进攻）**、
   **对手将死链必破（VCF 防守，干预点经试走复搜确认真破杀）**、对手杀点拆挡（多个并存时按 3-ply
-  安全性排序，堵完对手还有杀的坏点会被排除）、预挡对手活三/冲四制造点（决策流里标注「保险·致胜/拦截/活四/造杀/将死攻/将死防/拆杀/预挡」）。
+  安全性排序，堵完对手还有杀的坏点会被排除）、预挡对手活三制造点、预挡对手冲四制造点
+  （决策流里标注「保险·致胜/拦截/活四/造杀/将死攻/将死防/拆杀/预挡」）。
   真实渠道的对局还会累计经验：相同开局的历史先手胜率会注入后续对局，越下越有数。
 - **校准实验室**：把 Jev 说的胜率和实际胜负放在同一把尺子上量——Brier 分、技巧分、校准误差与可靠性图。
   旁白「Jev 说 70% 的时候，真有 70% 兑现吗」。数据只统计**真实渠道**的对局；
@@ -115,11 +116,12 @@ board-games/
 │   ├── board.js            # 命名空间 + 绘图/工具
 │   ├── charts.js           # SVG 图表（趋势图/概率条/可靠性图）
 │   ├── calibration.js      # 校准实验室数学（纯函数，零依赖）
-│   ├── jev-client.js       # Jev API 封装（官方/OpenRouter/代理，429/529 退避重试）
+│   ├── jev-client.js       # Jev API 封装（官方/OpenRouter/代理/rapfi，429/529 退避重试）
 │   ├── api.js              # 后端 API 客户端（BG.api，失败降级为 null）
 │   ├── mock-ai.js          # 离线演示 AI
+│   ├── rapfi.js            # Rapfi WASM 本地引擎客户端（BG.rapfi，懒加载，ADR-0006）
 │   ├── app.js              # 对局循环、模式、决策可视化、实验、后端探活
-│   └── games/              # 六个规则引擎（统一接口 + selfTest）
+│   └── games/              # 七个规则引擎（统一接口 + selfTest；gomoku.js 一文件两引擎）
 │       ├── gomoku.js  go.js  xiangqi.js
 │       └── chess.js  checkers.js  chinese-checkers.js
 ├── server.js               # 零依赖 Node 后端：node server.js → 静态托管 + API + 持久化
@@ -128,6 +130,7 @@ board-games/
 ├── functions/api/          # health / experiments / stats 三端点（与 server.js 契约对齐）
 │   └── _github.js          #   Pages Functions 共享 GitHub 客户端（下划线前缀，不对应路由）
 ├── games/                  # 终局同步的棋谱归档（<日期>/<gid>-<时间戳>.json）
+├── rapfi/                  # Rapfi 预编译 WASM 产物（约 10.8MB，仅 rapfi 渠道按需下载）
 ├── data/                   # 后端运行时状态（experiments.json，gitignore，本机生成）
 ├── dev-proxy.py            # 本地最小代理（静态 + /api/jev，可选）
 ├── test/run-tests.js       # Node 自检：node test/run-tests.js

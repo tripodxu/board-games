@@ -11,7 +11,7 @@ docs/
 ├── status.md               ← 当前状态 / 已验证 / 已知限制 / 设计例外 / 路线图（改行为必更新）
 ├── architecture.md         ← 架构地图：文件职责、数据流、关键不变量
 ├── engine-interface.md     ← 棋种引擎统一接口契约 + 新棋种接入指南
-├── jev-api.md              ← Jev API 契约、四渠道、错误重试、成本模型
+├── jev-api.md              ← Jev API 契约、五渠道 + random 基线、错误重试、成本模型
 ├── memory/
 │   └── MEMORY.md           ← 项目记忆，【新条目在最上面】
 ├── adr/                    ← 架构决策记录（一次一文件，不可改历史）
@@ -20,7 +20,9 @@ docs/
 │   ├── 0002-coordinate-notation-state.md
 │   ├── 0003-byok-proxy.md
 │   ├── 0004-unified-engine-interface.md
-│   └── 0005-zero-dep-node-backend.md
+│   ├── 0005-zero-dep-node-backend.md
+│   ├── 0006-rapfi-wasm-opponent.md
+│   └── 0007-vcf-threat-space-search.md
 ├── plans/                  ← 实施计划（完成后保留为历史记录，标注状态）
 │   ├── 2026-09-28-board-games-mvp.md            ✅ 已完成
 │   ├── 2026-09-29-iteration-02-play-loop.md     ✅ 已完成（优化轮）
