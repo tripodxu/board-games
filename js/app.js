@@ -14,7 +14,7 @@
     mode: 'human-ai', humanSide: null,
     epoch: 0, inflight: null, paused: false,
     trendMode: 'win', aborter: null, sessionRecorded: false, sessionId: null,
-    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000, tacticsVersion: 'v9-vcf-sound', sideConfig: { black: {}, white: {} } },
+    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000, tacticsVersion: 'v9-vcf-sound', mode: 'human-ai', sideConfig: { black: {}, white: {} } },
   };
 
   /* ---------- 设置 ---------- */
@@ -33,6 +33,10 @@
     $('tacticsVersion').value = globalThis.BG.tacticsVersions
       .resolve(S.settings.tacticsVersion).id;
     $('gameSync').checked = S.settings.gameSync !== false;
+    /* 模式与其它全局设置一样持久化（旧 localStorage 无 mode：留 select 缺省）。
+       非法值一律回退人机，避免把 #mode 设成不存在的 option。 */
+    if (S.settings.mode === 'ai-ai' || S.settings.mode === 'pvp' || S.settings.mode === 'human-ai')
+      $('mode').value = S.settings.mode;
     /* 旧 localStorage 补齐：tacticsVersion + sideConfig 都是后加的键，
        老用户刷新后必须有缺省值，否则 effSide 读到 undefined。 */
     if (!S.settings.tacticsVersion) S.settings.tacticsVersion = 'v9-vcf-sound';
@@ -60,6 +64,7 @@
     S.settings.speed = parseInt($('speed').value, 10);
     S.settings.rapfiThinkMs = parseInt($('rapfiThinkMs').value, 10) || 3000;
     S.settings.gameSync = $('gameSync').checked;
+    S.settings.mode = $('mode').value; // 模式按钮组与 select 同源，改动即持久化
     /* 经 resolve 归一：localStorage 里的脏 id/空值收敛到当前档，绝不带进 decide */
     S.settings.tacticsVersion = globalThis.BG.tacticsVersions
       .resolve($('tacticsVersion').value).id;
