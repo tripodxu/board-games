@@ -1,5 +1,135 @@
 [
   {
+    "tag": "exp-20260930090336",
+    "date": "2026-09-30T10:19:18.788Z",
+    "chanA": "proxy",
+    "chanB": "rapfi",
+    "total": 20,
+    "games": [
+      {
+        "no": 1,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 2,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": null
+      },
+      {
+        "no": 3,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 4,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      },
+      {
+        "no": 5,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "A"
+      },
+      {
+        "no": 6,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      },
+      {
+        "no": 7,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "A"
+      },
+      {
+        "no": 8,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": null
+      },
+      {
+        "no": 9,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 10,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      },
+      {
+        "no": 11,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 12,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": null
+      },
+      {
+        "no": 13,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "A"
+      },
+      {
+        "no": 14,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      },
+      {
+        "no": 15,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 16,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "A"
+      },
+      {
+        "no": 17,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 18,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": "B"
+      },
+      {
+        "no": 19,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "winnerChan": "B"
+      },
+      {
+        "no": 20,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "winnerChan": null
+      }
+    ],
+    "note": ""
+  },
+  {
     "tag": "exp-20260930025135",
     "date": "2026-09-30T02:57:13.292Z",
     "chanA": "proxy",
