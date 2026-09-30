@@ -8,6 +8,25 @@
 
 ---
 
+## 2026-09-30 · 实验面板双卡重排 + 趋势芯片 bug（v0.8 后第一修）
+
+- **`forEach((id) => id.classList.remove())` 是真事故源**：`id` 是字符串，
+  `.classList` 为 undefined，TypeError 抛在 `renderAnalytics()` 之前——
+  表现是「胜率/局势分/置信度点击毫无反应」且控制台才有错。修法是
+  `(cid) => $(cid)`；已在 `domContractTests` 加双向静态断言（必须有
+  `forEach((cid) => $(cid).classList.remove`，且禁止 `(id) => id.classList`）。
+- **七个下拉一行 = 380px 侧栏里每个约 45px**，媒体查询 `max-width:560px` 按视口
+  不按容器生效，窄侧栏永远挤扁。改成 `.exp-sides` 两列双卡（每方一张：渠道/战术/
+  思考三行）+ `.exp-foot` 底部通栏（局数+开始/停止）+ `.exp-status-row` 独立状态行。
+- **模式入口统一到 `applyModeUI()`**：`#mode` select 仍是状态源（startGame /
+  runExperimentGame 读它），实验面板顶部按钮组只是它的镜像，
+  `syncModeButtons()` 负责亮/灭 + `EXP.running` 期间禁用。
+- **fillTacticsSelect/fillThinkSelect 一律先 `innerHTML=''`**，所以 index.html 里
+  写死的 option 只是首屏占位，不会重复累积（改档位清单只需动登记表）。
+- Open objectives: 无（本次为计划外的 UI 修复）。
+
+---
+
 ## 2026-09-30 · 实验设施收尾：双方覆盖 sideConfig / 换边重开 / 沿革条 / slug 归档
 
 - **`S.settings.sideConfig` 是这一版的枢纽**：黑白各自覆盖 渠道/战术/思考时长

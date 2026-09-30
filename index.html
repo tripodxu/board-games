@@ -280,87 +280,100 @@
         <svg class="exp-glyph" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 1.5h2"/><path d="M5.2 1.5v2.7L2.7 8.3Q2.2 9.2 2.9 9.9h6.2q.7-.7.2-1.6L6.8 4.2V1.5"/><path d="M3.7 7.6h4.6"/></svg>
         对比实验（机机自动跑）
       </div>
-      <div class="exp-controls">
-        <label>A 方
-          <select id="expChanA">
-            <option value="proxy" selected>Jev(代理)+战术</option>
-            <option value="openrouter">Jev(OpenRouter)+战术</option>
-            <option value="official">Jev(官方)+战术</option>
-            <option value="random">纯随机+战术</option>
-            <option value="mock">离线演示</option>
-            <option value="rapfi">Rapfi 本地引擎</option>
-          </select>
-        </label>
-        <label>B 方
-          <select id="expChanB">
-            <option value="proxy">Jev(代理)+战术</option>
-            <option value="openrouter">Jev(OpenRouter)+战术</option>
-            <option value="official">Jev(官方)+战术</option>
-            <option value="random" selected>纯随机+战术</option>
-            <option value="mock">离线演示</option>
-            <option value="rapfi">Rapfi 本地引擎</option>
-          </select>
-        </label>
-        <label class="exp-tac">A 战术
-           <select id="expTacA">
-             <option value="v0-off">v0 无战术（基线）</option>
-             <option value="v1-facts">v1 胜/挡</option>
-             <option value="v2-open4">v2 活四级</option>
-             <option value="v3-make2">v3 造杀/拆杀</option>
-             <option value="v4-parry3">v4 活三预挡</option>
-             <option value="v5-safesort">v5 拆杀安全排序</option>
-             <option value="v6-parry4">v6 冲四预挡</option>
-             <option value="v7-vcf">v7 VCF 攻防</option>
-             <option value="v8-vcf-try">v8 VCF 逐点试</option>
-             <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
-           </select>
-         </label>
-         <label class="exp-tac">B 战术
-           <select id="expTacB">
-             <option value="v0-off">v0 无战术（基线）</option>
-             <option value="v1-facts">v1 胜/挡</option>
-             <option value="v2-open4">v2 活四级</option>
-             <option value="v3-make2">v3 造杀/拆杀</option>
-             <option value="v4-parry3">v4 活三预挡</option>
-             <option value="v5-safesort">v5 拆杀安全排序</option>
-             <option value="v6-parry4">v6 冲四预挡</option>
-             <option value="v7-vcf">v7 VCF 攻防</option>
-             <option value="v8-vcf-try">v8 VCF 逐点试</option>
-             <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
-           </select>
-         </label>
-         <label class="exp-tac">A 思考
-          <select id="expThinkA">
-            <option value="" selected>跟随全局</option>
-            <option value="500">0.5s</option>
-            <option value="1000">1s</option>
-            <option value="2000">2s</option>
-            <option value="3000">3s</option>
-            <option value="5000">5s</option>
-            <option value="10000">10s</option>
-          </select>
-        </label>
-        <label class="exp-tac">B 思考
-          <select id="expThinkB">
-            <option value="" selected>跟随全局</option>
-            <option value="500">0.5s</option>
-            <option value="1000">1s</option>
-            <option value="2000">2s</option>
-            <option value="3000">3s</option>
-            <option value="5000">5s</option>
-            <option value="10000">10s</option>
-          </select>
-        </label>
+      <div class="mode-switch" role="group" aria-label="对局模式">
+        <button type="button" data-mode="human-ai" aria-pressed="false">人 vs Jev</button>
+        <button type="button" data-mode="ai-ai" aria-pressed="false" class="active">Jev vs Jev</button>
+        <button type="button" data-mode="pvp" aria-pressed="false">人 vs 人</button>
+      </div>
+      <div class="exp-sides">
+        <div class="exp-side" id="expSideA">
+          <div class="exp-side-name"><i class="dot mo"></i>A 方</div>
+          <label class="exp-field">渠道
+            <select id="expChanA">
+    <option value="proxy" selected>Jev(代理)+战术</option>
+    <option value="openrouter">Jev(OpenRouter)+战术</option>
+    <option value="official">Jev(官方)+战术</option>
+    <option value="random">纯随机+战术</option>
+    <option value="mock">离线演示</option>
+    <option value="rapfi">Rapfi 本地引擎</option>
+            </select>
+          </label>
+          <label class="exp-field">战术
+            <select id="expTacA">
+    <option value="v0-off">v0 无战术（基线）</option>
+    <option value="v1-facts">v1 胜/挡</option>
+    <option value="v2-open4">v2 活四级</option>
+    <option value="v3-make2">v3 造杀/拆杀</option>
+    <option value="v4-parry3">v4 活三预挡</option>
+    <option value="v5-safesort">v5 拆杀安全排序</option>
+    <option value="v6-parry4">v6 冲四预挡</option>
+    <option value="v7-vcf">v7 VCF 攻防</option>
+    <option value="v8-vcf-try">v8 VCF 逐点试</option>
+    <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+            </select>
+          </label>
+          <label class="exp-field">思考
+            <select id="expThinkA">
+    <option value="" selected>跟随全局</option>
+    <option value="500">0.5s</option>
+    <option value="1000">1s</option>
+    <option value="2000">2s</option>
+    <option value="3000">3s</option>
+    <option value="5000">5s</option>
+    <option value="10000">10s</option>
+            </select>
+          </label>
+        </div>
+        <div class="exp-side" id="expSideB">
+          <div class="exp-side-name"><i class="dot zhu"></i>B 方</div>
+          <label class="exp-field">渠道
+            <select id="expChanB">
+    <option value="proxy">Jev(代理)+战术</option>
+    <option value="openrouter">Jev(OpenRouter)+战术</option>
+    <option value="official">Jev(官方)+战术</option>
+    <option value="random" selected>纯随机+战术</option>
+    <option value="mock">离线演示</option>
+    <option value="rapfi">Rapfi 本地引擎</option>
+            </select>
+          </label>
+          <label class="exp-field">战术
+            <select id="expTacB">
+    <option value="v0-off">v0 无战术（基线）</option>
+    <option value="v1-facts">v1 胜/挡</option>
+    <option value="v2-open4">v2 活四级</option>
+    <option value="v3-make2">v3 造杀/拆杀</option>
+    <option value="v4-parry3">v4 活三预挡</option>
+    <option value="v5-safesort">v5 拆杀安全排序</option>
+    <option value="v6-parry4">v6 冲四预挡</option>
+    <option value="v7-vcf">v7 VCF 攻防</option>
+    <option value="v8-vcf-try">v8 VCF 逐点试</option>
+    <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+            </select>
+          </label>
+          <label class="exp-field">思考
+            <select id="expThinkB">
+    <option value="" selected>跟随全局</option>
+    <option value="500">0.5s</option>
+    <option value="1000">1s</option>
+    <option value="2000">2s</option>
+    <option value="3000">3s</option>
+    <option value="5000">5s</option>
+    <option value="10000">10s</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="exp-foot">
         <label class="exp-games">局数
           <input type="number" id="expGames" value="4" min="1" max="50">
         </label>
+        <div class="exp-actions">
+          <button type="button" id="expStartBtn">开始实验</button>
+          <button type="button" id="expStopBtn" class="hidden">停止实验</button>
+        </div>
       </div>
+      <div class="exp-status-row"><span id="expStatus" class="mono"></span></div>
       <div class="hint">自动交替执黑白（双方各半），终局 2.5 秒后自动开下一局；每局棋谱照常同步，可复盘。</div>
-      <div class="exp-actions">
-        <button id="expStartBtn">开始实验</button>
-        <button id="expStopBtn" class="hidden">停止实验</button>
-        <span id="expStatus" class="mono"></span>
-      </div>
       <div id="expResults"></div>
       <div class="hint">跑完自动归档到「实验报告」面板，可回看历史战绩。</div>
     </div>

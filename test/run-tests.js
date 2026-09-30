@@ -389,6 +389,21 @@ function domContractTests() {
   A(!/rapfiThinkLabel'\)\.classList\.toggle\('hidden'/.test(app),
     'rapfiThinkLabel 不应再按渠道隐藏（抽屉内常显）');
   A(!/class="hidden"\s*>\s*Rapfi 思考时长/.test(html), 'rapfiThinkLabel 不应再带初始 hidden');
+  /* 实验面板：A/B 并排双卡（七个下拉抢一行的旧布局已废弃） */
+  A(html.indexOf('id="expSideA"') >= 0 && html.indexOf('id="expSideB"') >= 0,
+    '实验面板应有 A/B 并排双卡 #expSideA/#expSideB');
+  A(html.indexOf('class="exp-controls"') < 0, 'exp-controls 单行七控件布局应替换为双卡');
+  /* 对局模式按钮组：三个模式 + 与 #mode 同步 */
+  for (const m of ['human-ai', 'ai-ai', 'pvp'])
+    A(html.indexOf('data-mode="' + m + '"') >= 0, '模式按钮组缺 ' + m);
+  A(/\.mode-switch button\[data-mode\]/.test(app) && /b\.dataset\.mode/.test(app) && /function applyModeUI\(/.test(app),
+    'app.js 应给模式按钮组接线（dataset.mode → #mode + applyModeUI）');
+  /* 趋势图三芯片：必须走 $() 取值。曾经的 `forEach((id) => id.classList.remove)`
+   * 让 id 停在字符串上抛 TypeError，点击任何芯片都不切换（用户报「无法切换」） */
+  A(/forEach\(\(cid\)\s*=>\s*\$\(cid\)\.classList\.remove/.test(app),
+    '趋势芯片切换应按 id 取值：forEach((cid) => $(cid).classList.remove(...))');
+  A(!/\(\s*id\s*\)\s*=>\s*id\.classList/.test(app),
+    '不得再出现 (id) => id.classList 这类字符串上调 classList 的写法');
 }
 try {
   domContractTests();

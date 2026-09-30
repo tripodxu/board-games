@@ -957,6 +957,7 @@
     EXP.thinkB = +$('expThinkB').value || 0;
     EXP.total = Math.max(1, Math.min(50, parseInt($('expGames').value, 10) || 4));
     EXP.tag = 'exp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+    syncModeButtons(); // 实验跑动中锁定模式按钮组
     $('expResults').innerHTML = '';
     runExperimentGame();
   }
@@ -978,6 +979,7 @@
       blackThink: mk(A).rapfiThinkMs, whiteThink: mk(B).rapfiThinkMs,
     };
     $('mode').value = 'ai-ai';
+    syncModeButtons(); // 实验强制机机：按钮组跟着亮
     startGame(); // startGame 内只在非实验时清 sideConfig，此处 EXP.running 为 true 会保留
     const lbl = (who) => sideAttribution(mk(who).channel, mk(who).tactics, mk(who).rapfiThinkMs);
     setStatus(`实验 ${EXP.idx + 1}/${EXP.total}：${lbl(A)}（黑） vs ${lbl(B)}（白）`, false);
@@ -986,13 +988,13 @@
   function stopExperiment() {
     EXP.running = false;
     S.expInfo = null; // sideConfig 保留：复盘时联名仍要能还原
-    renderExpStatus();
+    syncModeButtons(); renderExpStatus();
     toast('实验已停止');
   }
   function finishExperiment() {
     EXP.running = false;
     S.expInfo = null;
-    renderExpStatus(); renderExpResults(); recordExperiment();
+    syncModeButtons(); renderExpStatus(); renderExpResults(); recordExperiment();
     toast('实验完成：' + expSummary());
   }
   function expSummary() {
@@ -1629,17 +1631,38 @@
   }
 
   /* ---------- 事件绑定 ---------- */
+  /* 模式切换的两种入口共用一条路径：select（对局设置 details，状态源）与
+   * 实验面板顶部的按钮组都走 applyModeUI，避免「按钮亮了但侧栏没同步」。 */
+  function applyModeUI() {
+    saveSettings();
+    const aiAi = $('mode').value === 'ai-ai';
+    $('pauseBtn').classList.toggle('hidden', !aiAi);
+    $('stepBtn').classList.toggle('hidden', !aiAi);
+    $('speedRow').classList.toggle('hidden', !aiAi);
+    syncModeButtons();
+    syncSwapBtn(); // 换边重开只对人机开放
+  }
+  /* 按钮组只反映 $('mode')：实验跑起来会把 mode 置成 ai-ai，按钮要跟着亮。
+   * EXP.running 期间按钮禁用（机机由实验锁定），比 onClick 静默 return 更直白。 */
+  function syncModeButtons() {
+    document.querySelectorAll('.mode-switch button[data-mode]').forEach((b) => {
+      const on = b.dataset.mode === $('mode').value;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.disabled = EXP.running;
+    });
+  }
   function bind() {
     $('startBtn').onclick = startGame;
     $('undoBtn').onclick = undo;
-    $('mode').onchange = () => {
-      saveSettings();
-      const aiAi = $('mode').value === 'ai-ai';
-      $('pauseBtn').classList.toggle('hidden', !aiAi);
-      $('stepBtn').classList.toggle('hidden', !aiAi);
-      $('speedRow').classList.toggle('hidden', !aiAi);
-      syncSwapBtn(); // 换边重开只对人机开放
-    };
+    $('mode').onchange = applyModeUI;
+    document.querySelectorAll('.mode-switch button[data-mode]').forEach((b) => {
+      b.onclick = () => {
+        if (EXP.running) return; // 实验跑动中模式被锁定为机机
+        $('mode').value = b.dataset.mode;
+        applyModeUI();
+      };
+    });
     $('speed').oninput = () => {
       $('speedVal').textContent = (150 + parseInt($('speed').value, 10) * 150) / 1000 + 's';
       saveSettings();
@@ -1689,7 +1712,7 @@
 
     const setTrendMode = (mode) => {
       S.trendMode = mode;
-      ['chipWin', 'chipScore', 'chipConf'].forEach((id) => id.classList.remove('active'));
+      ['chipWin', 'chipScore', 'chipConf'].forEach((cid) => $(cid).classList.remove('active'));
       $({ win: 'chipWin', score: 'chipScore', conf: 'chipConf' }[mode]).classList.add('active');
       renderAnalytics();
     };
@@ -1786,6 +1809,7 @@
     initFolds();
     initSideTabs();
     bind();
+    syncModeButtons(); // 按钮组初始态 = loadSettings 回填后的 mode
     switchGame('gomoku');
     renderRecords();
     $('speedVal').textContent = (150 + S.settings.speed * 150) / 1000 + 's';
