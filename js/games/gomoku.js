@@ -154,6 +154,111 @@
       return out;
     }
 
+    /* ---------- VCF 威胁空间搜索（棋盘级高速版） ----------
+     * 只沿"逼迫招法"展开：攻击方每步须造出 ≥1 个致胜点（冲四/活四），防守方
+     * 唯一应对是堵住唯一的致胜点。分支因子极小，可看 6-8 步深。
+     * 理论依据（递归中无需检查防守方反杀）：防守方的即时致胜点不可能因攻击方
+     * 落子而新增——五连须同色，攻击子不可能成为防守方五连的一部分；且搜索入口
+     * 要求双方开局即无一步杀（调用方保证 win/block 为空），故防守方在链条中
+     * 永远没有"不堵反而将死"的选项（唯一的例外是防守反击造杀，属 VCT 范畴，
+     * 本搜索不覆盖，已在文档中声明为局限）。
+     * vcfWin(st, attackerId, maxPlies)：st.turn 应为 attackerId。
+     * 返回 { win, first, line }（记法）；无将死链时 { win:false, first:null, line:[] }。
+     * 禁手模式：黑方攻击时禁手点不可走；黑方防守时禁手堵点视为堵不住（攻方胜）；
+     * 黑方致胜点须为精确五连（长连不算赢，见 winsAfter 内过滤）。 */
+    function vcfWin(st, attackerId, maxPlies) {
+      const A = attackerId === 'black' ? 1 : 2;
+      const D = A === 1 ? 2 : 1;
+      const board = st.board.map((row) => row.slice()); /* 试走用拷贝，不碰原状态 */
+      let nodes = 0;
+      const NODE_LIMIT = 4000;
+      maxPlies = Math.max(1, Math.min(15, maxPlies | 0 || 7));
+
+      /* (r,c) 已落 p 子，找 p 的致胜点。只查过 (r,c) 的四线：新增致胜点必用 (r,c)，
+       * 否则落子前就已存在——与入口"双方无一步杀"矛盾。 */
+      function winsAfter(r, c, p) {
+        const out = [];
+        const seenKeys = new Set();
+        for (const [dr, dc] of DIRS4) {
+          for (let s = -4; s <= 0; s++) {
+            let stones = 0, er = -1, ec = -1, ok = true;
+            for (let k = 0; k < 5; k++) {
+              const rr = r + dr * (s + k), cc = c + dc * (s + k);
+              if (!inB(rr, cc)) { ok = false; break; }
+              const v = board[rr][cc];
+              if (v === p) stones++;
+              else if (v === 0) {
+                if (er >= 0) { ok = false; break; }
+                er = rr; ec = cc;
+              } else { ok = false; break; }
+            }
+            if (ok && stones === 4 && er >= 0) {
+              const key = er * 15 + ec;
+              if (seenKeys.has(key)) continue;
+              if (forbidden && p === 1) {
+                /* 黑方精确五连才是真致胜点：长连不算赢（且该点本身禁手） */
+                board[er][ec] = 1;
+                const exact = exactFiveAt(board, er, ec);
+                board[er][ec] = 0;
+                if (!exact) continue;
+              }
+              seenKeys.add(key);
+              out.push([er, ec]);
+            }
+          }
+        }
+        return out;
+      }
+
+      /* A 的逼迫着法：落子后有 ≥1 致胜点的空点。只扫 A 子周围（切比雪夫距离 ≤3；
+       * 造四须贴着己子，3 格足够且保守），按致胜点数降序取前 12 个。 */
+      function forcingMoves() {
+        const cand = new Set();
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+          if (board[r][c] !== A) continue;
+          for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) {
+            const rr = r + dr, cc = c + dc;
+            if (inB(rr, cc) && board[rr][cc] === 0) cand.add(rr * 15 + cc);
+          }
+        }
+        const out = [];
+        for (const key of cand) {
+          if (++nodes > NODE_LIMIT) break;
+          const r = (key / 15) | 0, c = key % 15;
+          if (forbidden && A === 1 && isForbiddenPoint(board, r, c)) continue;
+          board[r][c] = A;
+          const wins = winsAfter(r, c, A);
+          board[r][c] = 0;
+          if (wins.length > 0) out.push({ r, c, wins });
+        }
+        out.sort((a, b) => b.wins.length - a.wins.length);
+        return out.slice(0, 12);
+      }
+
+      function search(pliesLeft) {
+        if (pliesLeft <= 0 || nodes > NODE_LIMIT) return null;
+        const moves = forcingMoves();
+        for (const m of moves) {
+          if (m.wins.length >= 2) return [[m.r, m.c]]; /* 双杀：对方至多堵其一 */
+          const wr = m.wins[0][0], wc = m.wins[0][1];
+          /* 黑方防守时禁手堵点 = 堵不住，攻方直接胜 */
+          if (forbidden && D === 1 && isForbiddenPoint(board, wr, wc)) return [[m.r, m.c]];
+          board[m.r][m.c] = A;
+          board[wr][wc] = D;
+          const sub = search(pliesLeft - 2);
+          board[wr][wc] = 0;
+          board[m.r][m.c] = 0;
+          if (sub) return [[m.r, m.c], [wr, wc], ...sub];
+        }
+        return null;
+      }
+
+      const line = search(maxPlies);
+      if (!line) return { win: false, first: null, line: [] };
+      const toN = (rc) => notation(rc[0], rc[1]);
+      return { win: true, first: toN(line[0]), line: line.map(toN) };
+    }
+
     function getLegalMoves(st) {
       const ms = [];
       const ban = forbidden && st.turn === 'black';
@@ -558,6 +663,8 @@
       meta: { w: W, h: H }, supportsPass: false, supportsResign: true,
       /* 2-ply 造杀扫描：候选点是无色差的空点集，适合通用双杀检测（见 jev-client computeTactics） */
       deepTactics: true,
+      /* VCF 威胁空间搜索：连续冲四将死链（见 jev-client vcfAttack/vcfDefense） */
+      vcfWin,
       newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
       serializeForJev, draw, humanClick, mockPick, selfTest,
     };

@@ -313,8 +313,10 @@ async function jevClientTests() {
   let sent9 = null;
   const d9 = await withFetch(async (url, init) => { sent9 = JSON.parse(init.body); return mk(200, parryBody); },
     () => BG.jev.decide(e, st9, st9.turn, { channel: 'proxy', topK: 1 }));
-  BG.util.assert((d9.notation === 'F6' || d9.notation === 'F10') && d9.meta.tactics === 'parry',
-    '开放三连必须被保险拆杀，实际：' + d9.notation + '/' + d9.meta.tactics);
+  BG.util.assert((d9.notation === 'F6' || d9.notation === 'F10') &&
+    (d9.meta.tactics === 'parry' || d9.meta.tactics === 'vcfDefense'),
+    '开放三连必须被保险拆杀（VCF 将一步活四识别为强制将死链时标签为 vcfDefense，优先级更高），实际：' +
+    d9.notation + '/' + d9.meta.tactics);
   BG.util.assert(sent9.state.tactics.danger_points_opponent.length >= 2,
     'state.tactics 应含拆杀点，实际：' + JSON.stringify(sent9.state.tactics));
   BG.util.assert(/danger_points_opponent/.test(sent9.questions.move.instructions), '指令应声明拆杀语义');
@@ -343,7 +345,10 @@ async function jevClientTests() {
 
   /* ⑨d 用户实战败局（jev-gomoku-202609290843.json）第 20 手回归：danger 为空的自由手，
    * 此前走闲着 E6，被黑 E7 活三点 → 强制拆 → J8 双杀 → 输。parry3 层应抢先占
-   * deny:open4/live3 点（E7/H10），不给黑造活三的先手。 */
+   * deny:open4/live3 点（E7/H10），不给黑造活三的先手。
+   * 2026-09-30 VCF 上线后修正：VCF 发现黑有一条以 E6 为入口的真将死链
+   * （E6→D5→D6→F6→E7，双杀 C4+H10），占住 E6 即破杀；且后续黑若走 E7，
+   * 新层会继续 vcfDefense=D6 连贯防守。故 vcfDefense 优先于 parry3，接管到 E6。 */
   let st9d = e.newGame();
   for (const n of ['H8','H7','G8','I8','G6','G7','I7','I6','H6','G5','F7','H5','G9','J6','H9','I10','I9','F9','F8'])
     st9d = e.applyMove(st9d, e.moveFromNotation(st9d, n));
@@ -352,11 +357,13 @@ async function jevClientTests() {
     Object.keys(e.serializeForJev(st9d, 'white').questions.move.criteria));
   BG.util.assert(tac9d.danger_points_opponent.length === 0,
     'p20 的 2-ply danger 应为空（败因是 3-ply 深度），实际：' + JSON.stringify(tac9d.danger_points_opponent));
+  BG.util.assert(tac9d.vcf_win_opponent.indexOf('E6') >= 0,
+    'p20 黑方 VCF 入口应为 E6，实际：' + JSON.stringify(tac9d.vcf_win_opponent));
   const d9d = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
     answers: { move: { probabilities: { E6: 0.9 } } } }),
     () => BG.jev.decide(e, st9d, st9d.turn, { channel: 'proxy', topK: 1 }));
-  BG.util.assert((d9d.notation === 'E7' || d9d.notation === 'H10') && d9d.meta.tactics === 'parry3',
-    'p20 自由手应被 parry3 预挡，实际：' + d9d.notation + '/' + d9d.meta.tactics);
+  BG.util.assert(d9d.notation === 'E6' && d9d.meta.tactics === 'vcfDefense',
+    'p20 自由手应被 vcfDefense 预占 E6（破黑将死链入口），实际：' + d9d.notation + '/' + d9d.meta.tactics);
 
   /* ⑨e 用户实战败局（jev-gomoku-202609290924.json）第 18 手回归：danger=[I9,E9]
    * 两个双杀制造点并存，实战走 I9（Jev 偏好）→ 黑 E9 单杀逼杀 → 白被迫 D9 →
@@ -400,6 +407,83 @@ async function jevClientTests() {
     seen.add(d.notation);
   }
   BG.util.assert(seen.size >= 3, 'random 渠道自由手应真随机（20 次≥3 种），实际只见：' + [...seen].join(','));
+
+  /* ⑫ VCF 威胁空间搜索回归（连续冲四将死链）
+   * 基准局面：黑 E7 F7 G7 H5 H6，白 D7 A1 A2 A3 B1，黑走。
+   * 黑 H7 冲四（唯一致胜点 I7）→ 白被迫 I7 → 黑 H4 活四（H3/H8 双杀点）→ 将死。 */
+  const vcfSeq = ['E7', 'D7', 'F7', 'A1', 'G7', 'A2', 'H5', 'A3', 'H6', 'B1']; // 10 手，轮黑走
+  let st12a = e.newGame();
+  for (const n of vcfSeq) st12a = e.applyMove(st12a, e.moveFromNotation(st12a, n));
+  BG.util.assert(st12a.turn === 'black', '应轮黑走，实际：' + st12a.turn);
+
+  /* ⑫a 棋盘级 vcfWin：黑有将死链，首步 H7 */
+  const vcfA = e.vcfWin(st12a, 'black', 7);
+  BG.util.assert(vcfA.win && vcfA.first === 'H7',
+    '黑应有 VCF 将死链（首步 H7），实际：' + JSON.stringify(vcfA));
+
+  /* ⑫b 进攻接入：tactics 给出 vcf_win_you；Jev 概率偏向别处也被接管 */
+  const tac12b = BG.jev.computeTactics(e, st12a, e.getLegalMoves(st12a),
+    Object.keys(e.serializeForJev(st12a, 'black').questions.move.criteria));
+  BG.util.assert(tac12b.vcf_win_you.indexOf('H7') >= 0,
+    'vcf_win_you 应含 H7，实际：' + JSON.stringify(tac12b.vcf_win_you));
+  const d12b = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { E8: 0.9, H7: 0.05 } } } }),
+    () => BG.jev.decide(e, st12a, st12a.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(d12b.notation === 'H7' && d12b.meta.tactics === 'vcfAttack',
+    'Jev 偏向 E8 也应被 vcfAttack 接管到 H7，实际：' + d12b.notation + '/' + d12b.meta.tactics);
+
+  /* ⑫c 防守：远端加一子把行棋方翻成白（不碰杀链区域），vcf_win_opponent 给出干预点 H7 */
+  let st12c = e.newGame();
+  for (const n of vcfSeq.concat(['O1'])) st12c = e.applyMove(st12c, e.moveFromNotation(st12c, n));
+  BG.util.assert(st12c.turn === 'white', '应轮白走，实际：' + st12c.turn);
+  const tac12c = BG.jev.computeTactics(e, st12c, e.getLegalMoves(st12c),
+    Object.keys(e.serializeForJev(st12c, 'white').questions.move.criteria));
+  BG.util.assert(tac12c.vcf_win_opponent.indexOf('H7') >= 0,
+    'vcf_win_opponent 应含 H7 干预点，实际：' + JSON.stringify(tac12c.vcf_win_opponent));
+  const d12c = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { A4: 0.9 } } } }),
+    () => BG.jev.decide(e, st12c, st12c.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(d12c.notation === 'H7' && d12c.meta.tactics === 'vcfDefense',
+    '白方面对黑 VCF 应提前抢占 H7，实际：' + d12c.notation + '/' + d12c.meta.tactics);
+
+  /* ⑫d 无将死链的开局面不误接管 */
+  let st12d = e.newGame();
+  for (const n of ['H8', 'H7', 'J8']) st12d = e.applyMove(st12d, e.moveFromNotation(st12d, n));
+  const tac12d = BG.jev.computeTactics(e, st12d, e.getLegalMoves(st12d),
+    Object.keys(e.serializeForJev(st12d, st12d.turn).questions.move.criteria));
+  BG.util.assert(tac12d.vcf_win_you.length === 0 && tac12d.vcf_win_opponent.length === 0,
+    '开局无 VCF 时两字段应为空，实际：' + JSON.stringify([tac12d.vcf_win_you, tac12d.vcf_win_opponent]));
+
+  /* ⑫e rapfi-base1 g4 第 34 手（白走）实战回归：实战 E12[parry3] 没破掉黑的将死链，
+   * VCF 干预点 I14 能破杀；Jev 偏向 E12 也应被纠正到 I14。 */
+  let st12e = e.newGame();
+  for (const n of ['H8', 'G7', 'H7', 'H6', 'F8', 'G8', 'G6', 'I8', 'F7', 'H5', 'F9', 'F6', 'G5', 'G9', 'G10',
+    'E8', 'H11', 'H10', 'I12', 'J13', 'F11', 'F10', 'G12', 'G11', 'H13', 'E10', 'G14', 'J11', 'E9', 'I10',
+    'I9', 'H12', 'J14'])
+    st12e = e.applyMove(st12e, e.moveFromNotation(st12e, n));
+  BG.util.assert(st12e.turn === 'white', '应轮白走，实际：' + st12e.turn);
+  const tac12e = BG.jev.computeTactics(e, st12e, e.getLegalMoves(st12e),
+    Object.keys(e.serializeForJev(st12e, 'white').questions.move.criteria));
+  BG.util.assert(tac12e.vcf_win_opponent.indexOf('I14') >= 0,
+    'vcf_win_opponent 应含 I14，实际：' + JSON.stringify(tac12e.vcf_win_opponent));
+  const d12e = await withFetch(async () => mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
+    answers: { move: { probabilities: { E12: 0.9, I14: 0.05 } } } }),
+    () => BG.jev.decide(e, st12e, st12e.turn, { channel: 'proxy', topK: 1 }));
+  BG.util.assert(d12e.notation === 'I14' && d12e.meta.tactics === 'vcfDefense',
+    'p34 实战 E12 没破杀，应被 vcfDefense 纠正到 I14，实际：' + d12e.notation + '/' + d12e.meta.tactics);
+
+  /* ⑫f 深度不足不虚报：同 ⑫a 局面，maxPlies=1 走不完 H7→I7→H4 三步链，应判无将死 */
+  const vcfF = e.vcfWin(st12a, 'black', 1);
+  BG.util.assert(!vcfF.win, 'maxPlies=1 不应虚报将死，实际：' + JSON.stringify(vcfF));
+
+  /* ⑫g gomoku-pro（禁手模式）同局面：H7 不是禁手，真将死链不应被禁手逻辑误杀 */
+  const epro = BG.games['gomoku-pro'];
+  BG.util.assert(epro && typeof epro.vcfWin === 'function', 'gomoku-pro 应暴露 vcfWin');
+  let st12g = epro.newGame();
+  for (const n of vcfSeq) st12g = epro.applyMove(st12g, epro.moveFromNotation(st12g, n));
+  const vcfG = epro.vcfWin(st12g, 'black', 7);
+  BG.util.assert(vcfG.win && vcfG.first === 'H7',
+    'pro 模式黑也应有 VCF 将死链（首步 H7），实际：' + JSON.stringify(vcfG));
 }
 
 /* 单元：Pages Function 的 401 / 422 / 限流 / 正常转发 */

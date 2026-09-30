@@ -121,6 +121,7 @@
   const emptyTactics = () => ({
     winning_points_you: [], winning_points_opponent: [],
     chance_points_you: [], danger_points_opponent: [],
+    vcf_win_you: [], vcf_win_opponent: [],
   });
 
   const flipTurn = (st, sideId) => Object.assign({}, st, { turn: sideId });
@@ -268,12 +269,37 @@
     const res = {
       winning_points_you: win, winning_points_opponent: block,
       chance_points_you: [], danger_points_opponent: [],
+      vcf_win_you: [], vcf_win_opponent: [],
     };
     /* 2-ply 造杀：仅 1-ply 无战术时跑；引擎需声明 deepTactics（候选点须是无色差的空点集，如 gomoku） */
     if (engine.deepTactics && win.length === 0 && block.length === 0 && oppSide) {
       const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
       res.chance_points_you = threatMakers(engine, st, side, oppSide.id, candNotations, true);
       res.danger_points_opponent = threatMakers(engine, st, oppSide.id, side, candNotations, false);
+    }
+    /* VCF 威胁空间搜索：连续冲四将死链。只在 1-ply 无战术时跑；引擎需提供
+     * vcfWin（棋盘级高速版）。进攻：我方是否有强制将死链（首步即走法）；
+     * 防守：对方是否有将死链（首步为干预点，须是我方当前合法着法）。
+     * 有我方将死链时不再算对方的——将死必走，对方链条无从谈起。 */
+    const VCF_PLIES = 7;
+    if (engine.deepTactics && engine.vcfWin && win.length === 0 && block.length === 0 && oppSide) {
+      try {
+        const atk = engine.vcfWin(st, side, VCF_PLIES);
+        if (atk && atk.win && atk.first) res.vcf_win_you = [atk.first];
+      } catch (_) { /* fail-soft：VCF 异常不影响原有战术 */ }
+      if (res.vcf_win_you.length === 0) {
+        try {
+          const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, VCF_PLIES);
+          const defMove = def && def.win && def.first && engine.moveFromNotation(st, def.first);
+          if (defMove) {
+            /* 试走后复搜：对方可能有多条 VCF 根（见 ⑨e：I9/E9 双链），只有干预后
+             * 对方彻底无将死链才采用；否则留空，回落 parry/pickSafestParry 老路。 */
+            const stAfter = engine.applyMove(st, defMove);
+            const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, VCF_PLIES);
+            if (!recheck.win) res.vcf_win_opponent = [def.first];
+          }
+        } catch (_) { /* fail-soft */ }
+      }
     }
     if (tacCache && st && typeof st === 'object') tacCache.set(st, res);
     return res;
@@ -295,6 +321,8 @@
         ' The state includes a `tactics` object: if `winning_points_you` is non-empty, playing one of those points wins immediately this turn. ' +
         'If `winning_points_opponent` is non-empty, the opponent would win there next turn unless stopped, so play one of those points unless you can win immediately. ' +
         'If `chance_points_you` is non-empty, playing one creates two winning threats at once (the opponent can block at most one of them), winning within two moves — take it when there is no immediate win or block. ' +
+        'If `vcf_win_you` is non-empty, playing that point starts a forced sequence of consecutive fours leading to victory — take it when there is no immediate win, block, or double-threat above. ' +
+        'If `vcf_win_opponent` is non-empty, the opponent has such a forced sequence; playing that point disrupts it at its entry — prioritize it over quiet moves. ' +
         'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ' +
         (experience ? 'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ' : '');
     }
@@ -450,7 +478,7 @@
       let tacticUsed = null;
       let tacticBypassed = false;
       /* 战术点中文名（接管提示用） */
-      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', parry: '拆杀点', parry3: '活三/活四预挡点', parry4: '冲四预挡点' }[tacticUsed] || '战术点');
+      const tacticName = () => ({ win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点', vcfAttack: '连续冲四将死链', vcfDefense: '将死链干预点', parry: '拆杀点', parry3: '活三/活四预挡点', parry4: '冲四预挡点' }[tacticUsed] || '战术点');
       const pickAmong = (list) => {
         const inPairs = pairs.filter(([n]) => list.indexOf(n) >= 0);
         const k2 = Math.max(1, opts.topK | 0 || 1);
@@ -515,6 +543,16 @@
       } else if (tactics.chance_points_you.length) {
         notation = pickAmong(tactics.chance_points_you);
         if (notation) tacticUsed = 'threat';
+      } else if (tactics.vcf_win_you.length) {
+        /* VCF 进攻：连续冲四将死链的首步。排在 threat 之后（双杀两步胜更快）、
+         * parry 之前（将死链是强制胜，比"对方下回合可能造双杀"更紧急）。 */
+        notation = pickAmong(tactics.vcf_win_you);
+        if (notation) tacticUsed = 'vcfAttack';
+      } else if (tactics.vcf_win_opponent.length) {
+        /* VCF 防守：对方将死链的干预点（链条入口）。将死是强制输，比 parry 的
+         * "潜在双杀"更紧急，故优先。 */
+        notation = pickAmong(tactics.vcf_win_opponent);
+        if (notation) tacticUsed = 'vcfDefense';
       } else if (tactics.danger_points_opponent.length) {
         notation = pickSafestParry(tactics.danger_points_opponent);
         if (notation) tacticUsed = 'parry';

@@ -6,6 +6,29 @@
 
 ---
 
+---
+
+## 2026-09-30 · VCF 威胁空间搜索上线（Jev 战术保险第六/七层）
+
+- 新增 `vcfWin(st, attackerId, maxPlies)`（js/games/gomoku.js，gomoku/pro 共用）：
+  连续冲四将死链搜索。只走逼迫着法（落子出致胜点），2+ 致胜点即双杀判胜，
+  唯一则假定守方被迫堵后递归。默认 7 ply / 节点 4000 / 每层 ≤12 候选 /
+  只扫攻击子距离 ≤3 空点；禁手模式黑攻禁走、黑堵禁手视为堵不住、黑致胜点须
+  精确五连。**守方反击造杀属 VCT 范畴，不覆盖**。
+- jev-client.js 新增 vcfAttack / vcfDefense 层，优先级
+  win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4；
+  仅 1-ply 为空时跑，异常 fail-soft；meta.tactics 与 Jev instructions 同步语义。
+- 防守核心规则「试走后复搜」：对方可能多条 VCF 根并存（⑨e：占 I9 后黑 E9
+  照样杀），干预点试走后对方仍有 VCF 则弃用、回落 parry/pickSafestParry。
+- 验证：回归 ⑫a–⑫g 全绿；rapfi-base1 四盘复盘——12 个触发点中 3 处
+  （g3p41/g4p34/g4p36）实战着法没破杀、VCF 干预点经复搜确认破杀；
+  终局前 3-5 手双方都破不掉的 3 处属棋已输，非 VCF 能救。
+- 性能：最稠密实战中盘双向搜索 0–22ms。⑨d 复盘被 VCF 修正：
+  黑真链入口是 E6（E6→D5→D6→F6→E7 双杀 C4+H10），vcfDefense=E6 取代
+  原 parry3→E7 结论，后续黑 E7 时继续 vcfDefense=D6。
+- 定位：VCF ≠ 完整 VCT ≠ 估值引擎；Rapfi 渠道保持独立对照。
+- ADR-0007。
+
 ## 2026-09-29 · Jev vs Rapfi 实战 0-4 与 parry4 增补、gomoku-pro 禁手模式
 
 - 4 局基线（tag rapfi-base1，原生 Rapfi 250615，2 线程/每手 5s，topK=3）：Jev+战术 0-4。
