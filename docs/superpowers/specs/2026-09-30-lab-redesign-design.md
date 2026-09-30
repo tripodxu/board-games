@@ -14,6 +14,7 @@
 | R4 | 实验报告/棋谱命名鲜明（谁打谁、战术版本、Rapfi 时长） | 实验 tag 纯时间戳（js/app.js:769）；棋谱文件名 `gid-stamp.json`（server.js:328）；战绩簿行无对阵信息（js/app.js:1190-1202） |
 | R5 | 棋盘下方罗列历代战术版本供参考调用 | 无任何版本沿革展示位；棋盘下方 controls 之后为空白（index.html:50-58） |
 | R6 | 人机对局中可随时自由换边 | 「我方执子」`#side` 仅 `startGame` 开局时读取一次（js/app.js:408），对局中修改无效；且入口埋在侧栏设置页签，不可发现 |
+| R7 | 「最新决策」栏尺寸恒定，不忽大忽小 | `renderLatest`（js/app.js:1096-1132）槽位随每步数据变化：候选行 1~8 行不定、指标块 0~3 块不定、「其余 N 个候选」行 `candidates>8` 才出现、无决策时整句 `.feed-empty` → 面板高度每步跳动（用户 m00507 现场纠正：病灶是该栏目，不是棋盘） |
 
 ## 2. 已确认决策（用户 2026-09-30 拍板）
 
@@ -21,7 +22,8 @@
 2. Rapfi 思考时长**黑白各自可覆盖**，默认继承全局值。
 3. 战术版本**完全自由任选两档**对垒（不限定相邻档）。
 4. 棋谱文件名服务端**加 slug 后缀**（`server.js` 与 Pages Function 同步改）。
-5. 战术版本沿革 **8 档全保留**。
+5. 战术版本沿革**全保留**——以 git 历史 × 棋谱数据为权威来源，9 个战术版本 + 1 个无战术基线共 10 档，一版不漏（用户 m00347/m00348 权威梯；含 commit 时间戳与归档棋谱局数双锚定）。
+6. 「最新决策」候选榜改**固定槽位渲染**（新纯模块 `js/latest-board.js`）：head 恒 1 行 + 指标恒 3 槽 + 候选恒 8 槽 + 「其余候选」行恒在（空内容 `visibility:hidden` 保高度）+ 无决策走同一骨架；标题行说明文字 nowrap 省略号防折行。附带修正 `main` 网格列：侧栏列改视口定宽（切页签不影响棋盘列宽）+ `scrollbar-gutter: stable`。
 
 ## 3. 硬约束（来自 AGENTS.md / status.md，不可违背）
 
@@ -41,39 +43,49 @@
 
 ```js
 {
-  id: 'v7-vcf-sound',            // UI/meta/文件名统一用此 id
-  label: 'VCF + soundness 闸门',
+  id: 'v9-vcf-sound',              // UI/meta/文件名统一用此 id（CURRENT）
+  name: '防伪胜',
+  rank: 9,
+  commit: 'a16fdd9',               // git 锚点
+  commitAt: '2026-09-30 16:58',    // git show -s --format=%ci 实测
   date: '2026-09-30',
-  commit: 'a16fdd9',             // git 锚点
-  summary: '双杀短路前检查守方反杀，杜绝伪胜链',
-  layers: {                      // 接管链闸门（见 4.2）
-    win: true, block: true, open4: true, threat: true, parry: true,
-    parry3: true, parry4: true, vcf: true, vcfSound: true,
+  mech: {                          // 机制闸门（见 4.2）；12 键，缺一即该版本没有此机制
+    win: true, block: true, open4: true, threat: true,
+    vcfAttack: true, vcfDefense: true,
+    parry: true, parry3: true, parry4: true,
+    safeSort: true, vcfTry: true, sound: true,
   },
+  games: 0,                        // 归档棋谱归属局数（见下「棋谱归属」）
+  note: 'vcfWin soundness 修复：双杀短路前过守方反杀闸门 + 棋谱归因 meta',
 }
 ```
 
-8 档映射（全部来自 jev-client.js 真实提交史）：
+10 档映射（版本边界只认 git commit 时间；全部来自 jev-client.js 真实提交史，用户 m00347/m00348 权威梯校准，一版不漏）：
 
-| id | 来源提交 | 层级增量 |
-|---|---|---|
-| `v0-off` | – | 全 false（纯模型，对照基线） |
-| `v1-facts` | 678b701 | 事实注入 + win/block |
-| `v2-2ply` | e086742 | + threat/parry（2-ply 造杀/拆杀） |
-| `v3-parry3` | d10fd1f | + parry3 预挡层 |
-| `v4-safe-parry` | 87beda6 | + 拆杀点 3-ply 安全排序 |
-| `v5-parry4` | 15996b1→f48d052 | + criteria/活四级 + parry4 |
-| `v6-vcf` | 57a9508, 9cf4a88 | + VCF 攻防链搜索 |
-| `v7-vcf-sound`（默认） | a16fdd9 | + vcfWin soundness 闸门 |
+| id | 来源提交（北京时间，git 实测） | 接管层数 | 归档棋谱 |
+|---|---|---|---|
+| `v0-off`（对照基线） | `678b701` 之前（92e38e6→1da4d8a 区间） | 0 层（纯概率） | 0 局 |
+| `v1-facts` | 678b701（09-29 14:21） | 2 层 win>block | 0 局 |
+| `v2-open4` | 15996b1（16:08） | 3 层 +open4 | 0 局 |
+| `v3-make2` | e086742（16:39） | 5 层 +threat+parry | 0 局 |
+| `v4-parry3` | d10fd1f（17:11） | 6 层 +parry3 | 0 局 |
+| `v5-safesort` | 87beda6（17:41） | 6 层不变，parry 内部升 safeSort | 21 局 |
+| `v6-parry4` | f48d052（09-30 10:42） | 7 层 +parry4 | 0 局 |
+| `v7-vcf` | 57a9508（10:43） | 9 层 +vcfAttack+vcfDefense | 4 局 |
+| `v8-vcf-try` | 9cf4a88（11:41） | 9 层不变，vcfDefense 逐点试 | 3 局 |
+| `v9-vcf-sound`（默认/当前） | a16fdd9（16:58） | 9 层不变，引擎层修伪胜 | 0 局 |
 
-- 顺序即强度沿革；`default = 'v7-vcf-sound'`，**默认档行为必须与现状逐位一致**（回归保护）。
+**棋谱归属（勿凭文件名时间戳直读）**：棋谱 `exported` 是 UTC ISO 落库时刻，换算北京时间后对照 git 梯级定窗口；另有更强证据——棋谱 `moves[]` 自带 `tactics` 标签，实证引擎触发过哪些机制（parry3 ⇒ ≥v4，parry4 ⇒ ≥v6，vcfAttack/vcfDefense ⇒ ≥v7）。合计 28 局 = games/ 现存全部棋谱；v4 与 v5 只差 safeSort 内部排序、棋谱标签不可分，21 局按落库时间归 v5 窗口。
+
+- 顺序即强度沿革；`default = 'v9-vcf-sound'`，**默认档行为必须与现状逐位一致**（回归保护）。
 - 未知 id → 回落默认档 + `console.warn`，绝不静默改变行为。
+- 机制键 12 个（唯一来源=登记表，禁在别处散落字符串）：`win block open4 threat parry parry3 parry4 vcfAttack vcfDefense safeSort vcfTry sound`。其中 `vcfTry`（v8）是唯一有客户端行为差的闸门：VCF 防守候选 = `M.vcfTry ? [链首].concat(line) : [链首]`；`sound`（v9）是引擎侧修复（`gomoku.defenderWinsFull` 已在 a16fdd9 落库），客户端恒真，保留键位只为标明演进线。
 
 ### 4.2 decide() 的版本闸门（R3）
 
 `js/jev-client.js` `decide()` 增加 `opts.tacticsVersion`：
 
-- `computeTactics`（:239）与接管链（:488-539）逐层读闸门：`layers.win/block/open4/threat/parry/parry3/parry4/vcf/vcfSound`。
+- `computeTactics`（:239）与接管链（:548-579）逐层读闸门：`mech.win/block/open4/threat/parry/parry3/parry4/vcfAttack/vcfDefense`（`safeSort` 门控 parry 层内部的 3-ply 安全排序；`vcfTry` 门控 VCF 防守候选集）。
 - `v0-off` 时 `attachFacts` 注入空战术（照常发请求、照常 topK 采样，唯一变量是战术层开关——与 random 渠道 :454-461 的「唯一变量是概率分布」设计同构）。
 - Rapfi/mock 渠道无视战术版本（Rapfi 是完整搜索引擎，不经战术层，注释 :436-440 保持）。
 - `meta` 增 `tacticsVersion`：随 `aiMoveMeta`/`aiGameMeta`（js/board.js）进入每手棋谱与战绩/实验 payload——这是「可归因基线」的数据基础。
@@ -108,9 +120,9 @@
 
 ### 4.5 命名（R4）
 
-- **战绩簿**：`saveGameRecord`（:1139-1168）增 `name`，形如 `jev·v7 vs rapfi·3s`（人类方/随机/演示同构生成）；`renderRecords`（:1190-1202）增「对阵」列；旧记录无 name 时按 mode+棋种回退渲染。
+- **战绩簿**：`saveGameRecord`（:1139-1168）增 `name`，形如 `jev·v9 vs rapfi·3s`（人类方/随机/演示同构生成）；`renderRecords`（:1190-1202）增「对阵」列；旧记录无 name 时按 mode+棋种回退渲染。
 - **服务端 slug**：`server.js` `handleGamesPost`（:320-336）读 payload 可选 `slug`（客户端由 name 生成，`[a-z0-9-]` 小写化、截 40 字），文件名改 `gid-[slug-]stamp.json`；Pages Function（functions/）同款修改；无 slug 时保持旧格式。`NAME_RE`/`DAY_RE` 不变，slug 仅由服务端白名单字符集消毒后拼接。
-- **实验报告**：`recordExperiment`（:892-908）增 `label`（`Jev(代理)·v7 vs Rapfi·3s` 式联名）、`tacticsA/tacticsB`、`rapfiMsA/rapfiMsB`；`renderExpHistory`/`expSummary`（:801-809）展示联名与版本；`EXP_SEED` 两条历史（:833-858）由格式化函数按同规则补算 label（无 tactics 字段 → 标注「版本未记」），不改动原始棋谱文件。
+- **实验报告**：`recordExperiment`（:892-908）增 `label`（`Jev(代理)·v9 vs Rapfi·3s` 式联名）、`tacticsA/tacticsB`、`rapfiMsA/rapfiMsB`；`renderExpHistory`/`expSummary`（:801-809）展示联名与版本；`EXP_SEED` 两条历史（:833-858）由格式化函数按同规则补算 label（无 tactics 字段 → 标注「版本未记」），不改动原始棋谱文件。
 - **EXPORT 契约**：`buildGameExport`/`aiGameMeta` payload 增 `slug`/`name`/`tactics`/`rapfiThinkMs` 字段；`server.js` 的 `jev-qiguan-game/v1` 校验（:323）只新增可选字段，旧格式仍受理。
 
 ### 4.6 棋盘下方版本沿革条（R5）
@@ -118,6 +130,14 @@
 - index.html controls（:50-58）之后增 `#tacticsStrip`：横向滑动列表，每卡 = 版本 id / 日期 / 一句话要点 / 来源 commit / 「当前」徽标（默认档）。
 - `js/app.js` 从 `BG.tacticsVersions` 渲染（解耦：UI 不硬编码版本）；点击档位 = 把该版本设为下一局己方战术（与 4.3 的战术选择联动，是「调用」入口而非只读资料）。
 - 棋盘类（go/chess 等非 deepTactics 引擎）显示统一提示「该版本为五子棋战术沿革，其他棋种当前仅 win/block 级生效」。
+
+### 4.7 「最新决策」栏固定槽位（R7）
+
+- 新建 `js/latest-board.js`，挂 `BG.latest`，唯一公开函数 `boardHTML(h)` 返回 `{ note, count, html }`（纯字符串拼装，零 DOM 依赖，可被 node 单测）。
+- 恒定结构（契约）：`latest-head` 恒 1 行（无决策时骨架同构）+ `latest-bigs` 恒 3 槽（`优势/局势分/延迟`，缺指标给 `.big.is-empty` 显示 `–`）+ `rank-list` 恒 8 槽（缺候选给 `.rank-row.is-empty` 弱化虚线）+ `rank-rest` 行恒在（`candidates>8` 才有文字，否则 `.rank-rest.is-empty` + `visibility:hidden` 保高度）。
+- `js/app.js renderLatest`（:1096-1132）收缩为薄封装：只写 `#latestNote` / `#rankCount` / `#latest.innerHTML`。
+- `css/style.css:638-702` 区块补空槽样式与标题行防折行（`.panel-title .note { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }`，`h2`/`.rank-count` 不收缩）。
+- 不变量含义：**面板高度与数据无关**，只随折叠/展开变化（折叠是用户主动操作）。
 
 ## 5. 数据流
 
@@ -133,7 +153,7 @@
 
 ## 6. 兼容与回退
 
-- 默认档 v7 = 现状行为；单测加「默认档与登记表闸门全开等价」断言。
+- 默认档 `v9-vcf-sound` = 现状行为；单测加「默认档与登记表闸门全开等价」断言。
 - 旧 localStorage settings/sideConfig 缺字段 → 继承默认；旧战绩/实验记录无 name/label → 渲染层回退。
 - 旧棋谱文件（games/2026-09-2x/*.json）不动、不改名；新文件名多一段 slug，列表页按 `gid-` 前缀仍可解析。
 - 换边为当局操作：不改写历史棋谱归属；战绩簿的 `winner`/`name` 按终局实际方渲染，不追溯。
@@ -148,15 +168,15 @@
 
 ## 8. 测试策略
 
-1. **登记表单测**（test/run-tests.js）：8 档 id 唯一、layers 字段齐全、默认档存在、沿革顺序与 date 单调。
-2. **行为回归**：合成反例（沿用 .work/jev-analysis/probe-vcf.js 手法）断言 v7 与现状一致；v6→v7 差异恰好落在 soundness 闸门点；v0-off 时接管链零触发。
+1. **登记表单测**（test/run-tests.js）：10 档 id 唯一、mech 12 键齐全、默认档存在、rank 与沿革顺序单调、games 合计 = games/ 现存 28 局（防归属改错）。
+2. **行为回归**：合成反例（沿用 .work/jev-analysis/probe-vcf.js 手法）断言 v9-vcf-sound 与现状一致；v8→v9 差异恰好落在 vcfTry 候选集与引擎 soundness 闸门点；v0-off 时接管链零触发。
 3. **UI 冒烟**（离线 mock+random）：三种模式 × 双方异渠道/异版本/异时长矩阵跑通终局；**换边重开**（有历史时 → 原局记「未终局」且新局以对方执子开局、AI 先手时自动接管；终局后点 / 空局点均只开新局不产记录）；战绩与实验 label/slug 正确落 localStorage。
 4. **服务端契约**：server.js 18 项 HTTP 用例补：slug 文件名生成、非法 slug 消毒、无 slug 兼容；Pages Function 单测同补。
-5. 全绿后实跑 ≥4 局版本对垒（v7 vs v6、v7 vs random·v3）验证报告可读性与归因字段完整。
+5. 全绿后实跑 ≥4 局版本对垒（v9-vcf-sound vs v5-safesort、v9-vcf-sound vs random·v3）验证报告可读性与归因字段完整。
 
 ## 9. 文档与交付
 
-- 新增 `docs/adr/0009-tactics-versioning.md`、`docs/adr/0010-settings-drawer-side-config.md`，更新 `docs/adr/README.md` 索引。
+- 新增 `docs/adr/0009-tactics-version-registry.md`、`docs/adr/0010-settings-drawer-side-config.md`，更新 `docs/adr/README.md` 索引。
 - `docs/status.md`：已知限制更新（R1/R2 症结移入「已解决」）、版本 v0.8；`docs/memory/MEMORY.md` 顶部追加本轮条目；`docs/jev-api.md`/`docs/architecture.md` 补 decide 新 opts 与 payload 新字段。
 - `BG.codeVersion = '0.8.0'`。
 - 提交拆分（便于回溯）：① 登记表+gating+测试 ② 抽屉+常显 ③ sideConfig+对阵 UI ④ 命名/slug ⑤ 沿革条 ⑥ 文档+bump。
