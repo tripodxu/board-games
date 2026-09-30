@@ -267,6 +267,16 @@
             <option value="rapfi">Rapfi 本地引擎（首次下载模型）</option>
           </select>
         </label>
+        <label id="rapfiThinkLabel" class="hidden">Rapfi 思考时长（强度 · 越长越强）
+          <select id="rapfiThinkMs">
+            <option value="500">0.5 秒（最弱 · 最快）</option>
+            <option value="1000">1 秒</option>
+            <option value="2000">2 秒</option>
+            <option value="3000" selected>3 秒（默认）</option>
+            <option value="5000">5 秒</option>
+            <option value="10000">10 秒（最强 · 最慢）</option>
+          </select>
+        </label>
         <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
           <input type="text" id="endpoint" spellcheck="false" autocomplete="off">
         </label>

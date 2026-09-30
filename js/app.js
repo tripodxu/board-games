@@ -14,7 +14,7 @@
     mode: 'human-ai', humanSide: null,
     epoch: 0, inflight: null, paused: false,
     trendMode: 'win', aborter: null, sessionRecorded: false, sessionId: null,
-    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true },
+    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000 },
   };
 
   /* ---------- 设置 ---------- */
@@ -29,6 +29,7 @@
     $('orKey').value = S.settings.orKey || '';
     $('topK').value = String(S.settings.topK);
     $('speed').value = String(S.settings.speed);
+    $('rapfiThinkMs').value = String(S.settings.rapfiThinkMs || 3000);
     $('gameSync').checked = S.settings.gameSync !== false;
     syncChannelUI();
   }
@@ -45,6 +46,7 @@
     S.settings.orKey = $('orKey').value.trim();
     S.settings.topK = parseInt($('topK').value, 10);
     S.settings.speed = parseInt($('speed').value, 10);
+    S.settings.rapfiThinkMs = parseInt($('rapfiThinkMs').value, 10) || 3000;
     S.settings.gameSync = $('gameSync').checked;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(S.settings)); } catch (_) { /* ignore */ }
     syncChannelUI();
@@ -60,6 +62,7 @@
       ch === 'proxy' ? 'TypeSafe API Key（经代理透传，仅存本机）' : '官方 API Key（仅存本机）';
     $('orKeyLabel').classList.toggle('hidden', ch !== 'openrouter');
     $('endpointLabel').classList.toggle('hidden', ch === 'mock' || ch === 'rapfi');
+    $('rapfiThinkLabel').classList.toggle('hidden', ch !== 'rapfi');
     $('endpoint').placeholder = BG.jev.presetEndpoint(ch) || '';
     $('endpoint').value = S.settings.endpoints[ch] || '';
     $('probeRow').classList.toggle('hidden', ch === 'mock');
@@ -518,6 +521,7 @@
         endpoint: (S.settings.endpoints && S.settings.endpoints[channel]) || '',
         experience: buildExperience(S.gameId),
         topK: S.settings.topK,
+        rapfiThinkMs: S.settings.rapfiThinkMs,
         signal: S.aborter.signal,
         onRetry: (code) => toast('限流(' + code + ')，退避重试中…'),
       });

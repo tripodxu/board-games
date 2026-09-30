@@ -436,7 +436,7 @@
       if (channel === 'rapfi') {
         /* Rapfi 是完整搜索引擎（非 prompt 型），不走 Jev 战术层；
          * 与 mock 一样直接返回，保持「Rapfi vs Jev」实验变量纯净。 */
-        return BG.rapfi.decide(engine, st, side, legal, ser);
+        return BG.rapfi.decide(engine, st, side, legal, ser, { thinkMs: opts.rapfiThinkMs });
       }
 
       /* 战术事实 + 对局经验注入 state，并同步指令语义 */

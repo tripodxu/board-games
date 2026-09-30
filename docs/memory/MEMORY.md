@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-09-30 · Rapfi 思考时长（强度）可调
+
+- 用户问 Rapfi 能否调强度：可以，唯一旋钮是 Gomocup `INFO timeout_turn`（每步思考时长），
+  时间越长搜索越深越强；Rapfi 无等级档位。
+- 新增设置面板「Rapfi 思考时长」下拉（仅渠道=rapfi 时显示）：0.5/1/2/3（默认）/5/10 秒；
+  存 localStorage（`rapfiThinkMs`），经 `BG.jev.decide` opts → `BG.rapfi.decide({thinkMs})` 穿透，
+  机机/实验走同一条 decide 路径，同效。rapfi.js 内部仍钳制 500–60000ms。
+- 10 秒档注意：WASM 单线程同步搜索，UI 会冻结约 10 秒（ADR-0006 已知局限）。
+
 ## 2026-09-30 · vcfDefense 多点干预重试（exp-20260930025135 复盘补丁）
 
 - 实验 exp-20260930025135：Jev(proxy) vs Rapfi 4 局，Rapfi 4:0 全胜（黑白各两盘）。
