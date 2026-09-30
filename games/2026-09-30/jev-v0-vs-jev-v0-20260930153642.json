@@ -1,0 +1,184 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T15:36:42.932Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "人机",
+  "channel": "proxy",
+  "slug": "jev-v0-vs-jev-v0",
+  "duel": "黑 Jev·v0 vs 白 Jev·v0",
+  "blackChannel": "proxy",
+  "whiteChannel": "proxy",
+  "tacticsVersion": "v0-off",
+  "blackTactics": "v0-off",
+  "whiteTactics": "v0-off",
+  "result": "白方 获胜（五连）",
+  "notation": "H8,H7,I8,G8,H9,I6,F9,G9,G10,G11,F11,J5,J8,K4",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "H7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.26,
+        "p": 0.31,
+        "rank": 1,
+        "cands": 24,
+        "ms": 21549,
+        "tv": "v0-off"
+      }
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "I8"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "G8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.21,
+        "rank": 1,
+        "cands": 32,
+        "ms": 296,
+        "tv": "v0-off"
+      }
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H9"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "I6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.13,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 40,
+        "ms": 318,
+        "tv": "v0-off"
+      }
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "F9"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "G9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.12000000000000001,
+        "rank": 1,
+        "cands": 50,
+        "ms": 282,
+        "tv": "v0-off"
+      }
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "G10"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "G11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.1,
+        "rank": 1,
+        "cands": 53,
+        "ms": 2757,
+        "tv": "v0-off"
+      }
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "F11"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "J5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.29,
+        "p": 0.32,
+        "rank": 1,
+        "cands": 58,
+        "ms": 275,
+        "tv": "v0-off"
+      }
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "J8"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "K4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.24000000000000002,
+        "rank": 1,
+        "cands": 64,
+        "ms": 641,
+        "tv": "v0-off"
+      }
+    }
+  ],
+  "meta": {
+    "code": "0.8.0",
+    "topK": 1,
+    "seed": null,
+    "aiMoves": 7,
+    "costUsd": 0.00065,
+    "tokens": 15470,
+    "latencyMs": {
+      "avg": 3731,
+      "max": 21549
+    },
+    "conf": 0.186,
+    "tactics": {}
+  },
+  "cal": [
+    0.76,
+    0.79,
+    0.79,
+    0.76,
+    0.77,
+    0.73,
+    0.72
+  ],
+  "firstWin": false,
+  "mock": false
+}
