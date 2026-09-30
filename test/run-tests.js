@@ -194,6 +194,30 @@ try {
   results.push('✗ 最新决策固定槽位: ' + e.message);
 }
 
+/* 单元：UI 布局稳定化契约（R7 横轴版）
+ * 病灶：main 第一列 auto=剩余空间，侧栏 minmax(380px,490px) 随页签内容宽度变化
+ * → 切页签棋盘被 #board{max-width:100%} 重新缩放（宽度忽大忽小）。
+ * 契约：侧栏列只随视口变化 + 根元素预留滚动条槽。 */
+function layoutContractTests() {
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const main = css.match(/main\s*\{[^}]*\}/);
+  BG.util.assert(main, '应能抽到 main 规则块');
+  BG.util.assert(
+    /grid-template-columns:\s*minmax\(430px,\s*1fr\)\s+clamp\(380px,\s*31vw,\s*430px\)/.test(main[0]),
+    'main 应为「内容无关棋盘列 + 视口相关定宽侧栏」，实际：' + main[0].replace(/\s+/g, ' ')
+  );
+  BG.util.assert(/scrollbar-gutter:\s*stable/.test(css),
+    'html 应预留滚动条槽（滚动条出现/消失不得引起棋盘宽度跳变）');
+}
+
+try {
+  layoutContractTests();
+  results.push('✓ 布局稳定化契约（侧栏定宽 + scrollbar-gutter）');
+} catch (e) {
+  failed++;
+  results.push('✗ 布局稳定化契约: ' + e.message);
+}
+
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
 async function playOut(gid) {
   BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现
