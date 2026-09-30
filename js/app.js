@@ -77,7 +77,7 @@
       ch === 'proxy' ? 'TypeSafe API Key（经代理透传，仅存本机）' : '官方 API Key（仅存本机）';
     $('orKeyLabel').classList.toggle('hidden', ch !== 'openrouter');
     $('endpointLabel').classList.toggle('hidden', ch === 'mock' || ch === 'rapfi');
-    $('rapfiThinkLabel').classList.toggle('hidden', ch !== 'rapfi');
+    /* Rapfi 思考时长移入设置抽屉后常显（不再按渠道隐藏）：抽屉里本来就该看得见全部旋钮 */
     /* 战术版本归 Jev 三渠道与 random（random 也走 computeTactics）；
        mock 无战术层、rapfi 是本地引擎，二者不读这个档。 */
     $('tacticsVersionLabel').classList.toggle('hidden',
@@ -229,9 +229,9 @@
     });
   }
 
-  /* ---------- 侧栏页签（对局 / 数据 / 设置） ---------- */
+  /* ---------- 侧栏页签（对局 / 实验 / 数据） ---------- */
   const SIDETAB_KEY = 'jev_qiguan_sidetab_v1';
-  const SIDETAB_NAMES = ['play', 'data', 'settings'];
+  const SIDETAB_NAMES = ['play', 'exp', 'data'];
   /* runHooks：仅用户主动切换时补渲染。初始化调用必须传 false——
    * 此时 S.engine 尚未就绪（switchGame 在后面才跑），FOLD_HOOKS 里的
    * renderAnalytics → buildSeries 会直接抛 TypeError，把 DOMContentLoaded
@@ -289,6 +289,18 @@
     t.classList.remove('hidden');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.add('hidden'), isErr ? 6000 : 2600);
+  }
+
+  /* ---------- 全局设置抽屉 ---------- */
+  /* 引擎/连接/战术版本等全局旋钮从侧栏「设置」页签搬到右上角抽屉（R3）：
+     侧栏只留 对局/实验/数据 三类。开关 = 齿轮按钮 / 遮罩 / Esc。 */
+  function openDrawer() {
+    $('settingsDrawer').classList.remove('hidden');
+    $('drawerMask').classList.remove('hidden');
+  }
+  function closeDrawer() {
+    $('settingsDrawer').classList.add('hidden');
+    $('drawerMask').classList.add('hidden');
   }
 
   function sideName(id) {
@@ -1522,6 +1534,12 @@
     };
     $('duelFirstName').textContent = S.engine ? S.engine.sides[0].name + ' Jev' : '先手 Jev';
     $('duelSecondName').textContent = S.engine ? S.engine.sides[1].name + ' Jev' : '后手 Jev';
+
+    /* 设置抽屉：齿轮开 / 遮罩关 / Esc 关 */
+    $('settingsGear').addEventListener('click', openDrawer);
+    $('drawerClose').addEventListener('click', closeDrawer);
+    $('drawerMask').addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
     $('board').addEventListener('click', (e) => {
       if (!S.engine || S.inflight != null) return;

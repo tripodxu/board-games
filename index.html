@@ -21,6 +21,9 @@
     </div>
   </div>
   <div class="head-spacer"></div>
+  <button id="settingsGear" class="gear-btn" type="button" aria-haspopup="dialog" aria-controls="settingsDrawer" title="全局设置（引擎与连接 / 战术版本）">
+    <span aria-hidden="true">⚙</span><span class="gear-txt">设置</span>
+  </button>
   <span class="chip" id="backendChip" title="同源后端状态：node server.js 在线时棋谱落盘、实验归档、跨对局统计；未检测到时为静态托管或 CF Pages（棋谱同步仍会尝试）">后端 <b id="backendState">检测中</b></span>
   <span class="chip">渠道 <b id="channelChip">离线演示</b></span>
   <span class="chip">累计成本 <b id="costChip">$0.00000</b></span>
@@ -84,11 +87,11 @@
       </div>
     </section>
 
-    <!-- 侧栏页签：面板总量大，按「对局 / 数据 / 设置」分组，每屏只看一类 -->
+    <!-- 侧栏页签：面板总量大，按「对局 / 实验 / 数据」分组，每屏只看一类 -->
     <div class="side-tabs" role="tablist" aria-label="侧栏分区">
       <button type="button" data-pane="play" class="active" role="tab" aria-selected="true" aria-controls="pane-play">对局</button>
+      <button type="button" data-pane="exp" role="tab" aria-selected="false" aria-controls="pane-exp">实验</button>
       <button type="button" data-pane="data" role="tab" aria-selected="false" aria-controls="pane-data">数据</button>
-      <button type="button" data-pane="settings" role="tab" aria-selected="false" aria-controls="pane-settings">设置</button>
     </div>
 
     <div class="side-pane" id="pane-play" role="tabpanel" aria-label="对局">
@@ -176,6 +179,14 @@
     </div><!-- /pane-play -->
 
     <div class="side-pane" id="pane-data" role="tabpanel" aria-label="数据" hidden>
+    <!-- 数据存储（后端）状态：只读读数，随「数据」栏一起看 -->
+    <div class="backend-block" id="backendBlock">
+      <div class="backend-row"><span>数据存储</span><b id="backendMode">检测中…</b></div>
+      <div class="backend-row"><span>棋谱归档</span><b id="backendGames">–</b></div>
+      <div class="backend-row"><span>实验归档</span><b id="backendExps">–</b></div>
+      <div class="backend-row"><span>最近同步</span><b id="backendSync">–</b></div>
+      <div class="hint" id="backendHint">正在检测同源后端…</div>
+    </div>
     <!-- 实验报告：历史对比实验归档 -->
     <section class="panel collapsible" data-panel="expreport" aria-label="实验报告">
       <div class="panel-title">
@@ -236,11 +247,11 @@
     </section>
     </div><!-- /pane-data -->
 
-    <div class="side-pane" id="pane-settings" role="tabpanel" aria-label="设置" hidden>
+    <div class="side-pane" id="pane-exp" role="tabpanel" aria-label="实验" hidden>
     <details class="settings">
       <summary>
         <svg class="disc-chev" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        对局与 Jev 设置
+        对局设置
       </summary>
       <div class="settings-body">
         <label>模式
@@ -258,140 +269,145 @@
           <input type="range" id="speed" min="0" max="20" value="6">
           <span class="mono" id="speedVal">1.05s</span>
         </div>
-        <label>接入渠道
-          <select id="channel">
-            <option value="proxy">同源代理 /api/jev（推荐 · 转发你自己的 key）</option>
-            <option value="openrouter">OpenRouter（浏览器直连）</option>
-            <option value="official">官方 API 直连（可能被 CORS 拦截）</option>
-            <option value="mock">离线演示（无需 key）</option>
-            <option value="rapfi">Rapfi 本地引擎（首次下载模型）</option>
-          </select>
-        </label>
-        <label id="rapfiThinkLabel" class="hidden">Rapfi 思考时长（强度 · 越长越强）
-          <select id="rapfiThinkMs">
-            <option value="500">0.5 秒（最弱 · 最快）</option>
-            <option value="1000">1 秒</option>
-            <option value="2000">2 秒</option>
-            <option value="3000" selected>3 秒（默认）</option>
-            <option value="5000">5 秒</option>
-            <option value="10000">10 秒（最强 · 最慢）</option>
-          </select>
-        </label>
-        <label id="tacticsVersionLabel" class="hidden">战术版本（实验室：棋谱归因/复现的唯一凭据）
-          <select id="tacticsVersion">
-            <option value="v0-off">v0 无战术（基线）</option>
-            <option value="v1-facts">v1 胜/挡</option>
-            <option value="v2-open4">v2 活四级</option>
-            <option value="v3-make2">v3 造杀/拆杀</option>
-            <option value="v4-parry3">v4 活三预挡</option>
-            <option value="v5-safesort">v5 拆杀安全排序</option>
-            <option value="v6-parry4">v6 冲四预挡</option>
-            <option value="v7-vcf">v7 VCF 攻防</option>
-            <option value="v8-vcf-try">v8 VCF 逐点试</option>
-            <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
-          </select>
-        </label>
-        <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
-          <input type="text" id="endpoint" spellcheck="false" autocomplete="off">
-        </label>
-        <label id="apiKeyLabel" class="hidden">TypeSafe API Key（仅存本机）
-          <input type="password" id="apiKey" placeholder="apikey_..." autocomplete="off">
-        </label>
-        <label id="orKeyLabel" class="hidden">OpenRouter Key（仅存本机）
-          <input type="password" id="orKey" placeholder="sk-or-..." autocomplete="off">
-        </label>
-        <div id="probeRow">
-          <button id="probeBtn">测试连接</button>
-          <div id="probeOut" aria-live="polite"></div>
-        </div>
-        <label>走棋随机度
-          <select id="topK">
-            <option value="1">最强手（不随机）</option>
-            <option value="3" selected>温和（top-3 加权）</option>
-            <option value="5">狂野（top-5 加权）</option>
-          </select>
-        </label>
-        <label class="check-row"><input type="checkbox" id="gameSync" checked> 终局自动同步棋谱（供复盘分析）</label>
-        <div class="backend-block" id="backendBlock">
-          <div class="backend-row"><span>数据存储</span><b id="backendMode">检测中…</b></div>
-          <div class="backend-row"><span>棋谱归档</span><b id="backendGames">–</b></div>
-          <div class="backend-row"><span>实验归档</span><b id="backendExps">–</b></div>
-          <div class="backend-row"><span>最近同步</span><b id="backendSync">–</b></div>
-          <div class="hint" id="backendHint">正在检测同源后端…</div>
-        </div>
-        <div class="exp-panel">
-          <div class="exp-title">
-            <svg class="exp-glyph" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 1.5h2"/><path d="M5.2 1.5v2.7L2.7 8.3Q2.2 9.2 2.9 9.9h6.2q.7-.7.2-1.6L6.8 4.2V1.5"/><path d="M3.7 7.6h4.6"/></svg>
-            对比实验（机机自动跑）
-          </div>
-          <div class="exp-controls">
-            <label>A 方
-              <select id="expChanA">
-                <option value="proxy" selected>Jev(代理)+战术</option>
-                <option value="openrouter">Jev(OpenRouter)+战术</option>
-                <option value="official">Jev(官方)+战术</option>
-                <option value="random">纯随机+战术</option>
-                <option value="mock">离线演示</option>
-                <option value="rapfi">Rapfi 本地引擎</option>
-              </select>
-            </label>
-            <label>B 方
-              <select id="expChanB">
-                <option value="proxy">Jev(代理)+战术</option>
-                <option value="openrouter">Jev(OpenRouter)+战术</option>
-                <option value="official">Jev(官方)+战术</option>
-                <option value="random" selected>纯随机+战术</option>
-                <option value="mock">离线演示</option>
-                <option value="rapfi">Rapfi 本地引擎</option>
-              </select>
-            </label>
-            <label class="exp-tac">A 战术
-               <select id="expTacA">
-                 <option value="v0-off">v0 无战术（基线）</option>
-                 <option value="v1-facts">v1 胜/挡</option>
-                 <option value="v2-open4">v2 活四级</option>
-                 <option value="v3-make2">v3 造杀/拆杀</option>
-                 <option value="v4-parry3">v4 活三预挡</option>
-                 <option value="v5-safesort">v5 拆杀安全排序</option>
-                 <option value="v6-parry4">v6 冲四预挡</option>
-                 <option value="v7-vcf">v7 VCF 攻防</option>
-                 <option value="v8-vcf-try">v8 VCF 逐点试</option>
-                 <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
-               </select>
-             </label>
-             <label class="exp-tac">B 战术
-               <select id="expTacB">
-                 <option value="v0-off">v0 无战术（基线）</option>
-                 <option value="v1-facts">v1 胜/挡</option>
-                 <option value="v2-open4">v2 活四级</option>
-                 <option value="v3-make2">v3 造杀/拆杀</option>
-                 <option value="v4-parry3">v4 活三预挡</option>
-                 <option value="v5-safesort">v5 拆杀安全排序</option>
-                 <option value="v6-parry4">v6 冲四预挡</option>
-                 <option value="v7-vcf">v7 VCF 攻防</option>
-                 <option value="v8-vcf-try">v8 VCF 逐点试</option>
-                 <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
-               </select>
-             </label>
-             <label class="exp-games">局数
-              <input type="number" id="expGames" value="4" min="1" max="50">
-            </label>
-          </div>
-          <div class="hint">自动交替执黑白（双方各半），终局 2.5 秒后自动开下一局；每局棋谱照常同步，可复盘。</div>
-          <div class="exp-actions">
-            <button id="expStartBtn">开始实验</button>
-            <button id="expStopBtn" class="hidden">停止实验</button>
-            <span id="expStatus" class="mono"></span>
-          </div>
-          <div id="expResults"></div>
-          <div class="hint">跑完自动归档到「实验报告」面板，可回看历史战绩。</div>
-        </div>
-        <div class="hint" id="modeHint"></div>
       </div>
     </details>
-    </div><!-- /pane-settings -->
+    <div class="exp-panel">
+      <div class="exp-title">
+        <svg class="exp-glyph" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 1.5h2"/><path d="M5.2 1.5v2.7L2.7 8.3Q2.2 9.2 2.9 9.9h6.2q.7-.7.2-1.6L6.8 4.2V1.5"/><path d="M3.7 7.6h4.6"/></svg>
+        对比实验（机机自动跑）
+      </div>
+      <div class="exp-controls">
+        <label>A 方
+          <select id="expChanA">
+            <option value="proxy" selected>Jev(代理)+战术</option>
+            <option value="openrouter">Jev(OpenRouter)+战术</option>
+            <option value="official">Jev(官方)+战术</option>
+            <option value="random">纯随机+战术</option>
+            <option value="mock">离线演示</option>
+            <option value="rapfi">Rapfi 本地引擎</option>
+          </select>
+        </label>
+        <label>B 方
+          <select id="expChanB">
+            <option value="proxy">Jev(代理)+战术</option>
+            <option value="openrouter">Jev(OpenRouter)+战术</option>
+            <option value="official">Jev(官方)+战术</option>
+            <option value="random" selected>纯随机+战术</option>
+            <option value="mock">离线演示</option>
+            <option value="rapfi">Rapfi 本地引擎</option>
+          </select>
+        </label>
+        <label class="exp-tac">A 战术
+           <select id="expTacA">
+             <option value="v0-off">v0 无战术（基线）</option>
+             <option value="v1-facts">v1 胜/挡</option>
+             <option value="v2-open4">v2 活四级</option>
+             <option value="v3-make2">v3 造杀/拆杀</option>
+             <option value="v4-parry3">v4 活三预挡</option>
+             <option value="v5-safesort">v5 拆杀安全排序</option>
+             <option value="v6-parry4">v6 冲四预挡</option>
+             <option value="v7-vcf">v7 VCF 攻防</option>
+             <option value="v8-vcf-try">v8 VCF 逐点试</option>
+             <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+           </select>
+         </label>
+         <label class="exp-tac">B 战术
+           <select id="expTacB">
+             <option value="v0-off">v0 无战术（基线）</option>
+             <option value="v1-facts">v1 胜/挡</option>
+             <option value="v2-open4">v2 活四级</option>
+             <option value="v3-make2">v3 造杀/拆杀</option>
+             <option value="v4-parry3">v4 活三预挡</option>
+             <option value="v5-safesort">v5 拆杀安全排序</option>
+             <option value="v6-parry4">v6 冲四预挡</option>
+             <option value="v7-vcf">v7 VCF 攻防</option>
+             <option value="v8-vcf-try">v8 VCF 逐点试</option>
+             <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+           </select>
+         </label>
+         <label class="exp-games">局数
+          <input type="number" id="expGames" value="4" min="1" max="50">
+        </label>
+      </div>
+      <div class="hint">自动交替执黑白（双方各半），终局 2.5 秒后自动开下一局；每局棋谱照常同步，可复盘。</div>
+      <div class="exp-actions">
+        <button id="expStartBtn">开始实验</button>
+        <button id="expStopBtn" class="hidden">停止实验</button>
+        <span id="expStatus" class="mono"></span>
+      </div>
+      <div id="expResults"></div>
+      <div class="hint">跑完自动归档到「实验报告」面板，可回看历史战绩。</div>
+    </div>
+        <div class="hint" id="modeHint"></div>
+    </div><!-- /pane-exp -->
   </aside>
 </main>
+
+<div id="drawerMask" class="drawer-mask hidden" role="presentation"></div>
+<aside id="settingsDrawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <h2 id="drawerTitle">全局设置</h2>
+    <button id="drawerClose" class="mini-btn" type="button">关闭</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="drawer-sub">引擎与连接</div>
+    <label>接入渠道
+      <select id="channel">
+        <option value="proxy">同源代理 /api/jev（推荐 · 转发你自己的 key）</option>
+        <option value="openrouter">OpenRouter（浏览器直连）</option>
+        <option value="official">官方 API 直连（可能被 CORS 拦截）</option>
+        <option value="mock">离线演示（无需 key）</option>
+        <option value="rapfi">Rapfi 本地引擎（首次下载模型）</option>
+      </select>
+    </label>
+    <label id="tacticsVersionLabel" class="hidden">战术版本（实验室：棋谱归因/复现的唯一凭据）
+      <select id="tacticsVersion">
+        <option value="v0-off">v0 无战术（基线）</option>
+        <option value="v1-facts">v1 胜/挡</option>
+        <option value="v2-open4">v2 活四级</option>
+        <option value="v3-make2">v3 造杀/拆杀</option>
+        <option value="v4-parry3">v4 活三预挡</option>
+        <option value="v5-safesort">v5 拆杀安全排序</option>
+        <option value="v6-parry4">v6 冲四预挡</option>
+        <option value="v7-vcf">v7 VCF 攻防</option>
+        <option value="v8-vcf-try">v8 VCF 逐点试</option>
+        <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+      </select>
+    </label>
+    <label id="rapfiThinkLabel">Rapfi 思考时长（强度 · 越长越强）
+      <select id="rapfiThinkMs">
+        <option value="500">0.5 秒（最弱 · 最快）</option>
+        <option value="1000">1 秒</option>
+        <option value="2000">2 秒</option>
+        <option value="3000" selected>3 秒（默认）</option>
+        <option value="5000">5 秒</option>
+        <option value="10000">10 秒（最强 · 最慢）</option>
+      </select>
+    </label>
+    <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
+      <input type="text" id="endpoint" spellcheck="false" autocomplete="off">
+    </label>
+    <label id="apiKeyLabel" class="hidden">TypeSafe API Key（仅存本机）
+      <input type="password" id="apiKey" placeholder="apikey_..." autocomplete="off">
+    </label>
+    <label id="orKeyLabel" class="hidden">OpenRouter Key（仅存本机）
+      <input type="password" id="orKey" placeholder="sk-or-..." autocomplete="off">
+    </label>
+    <div id="probeRow">
+      <button id="probeBtn">测试连接</button>
+      <div id="probeOut" aria-live="polite"></div>
+    </div>
+    <label>走棋随机度
+      <select id="topK">
+        <option value="1">最强手（不随机）</option>
+        <option value="3" selected>温和（top-3 加权）</option>
+        <option value="5">狂野（top-5 加权）</option>
+      </select>
+    </label>
+    <label class="check-row"><input type="checkbox" id="gameSync" checked> 终局自动同步棋谱（供复盘分析）</label>
+    <div class="hint">设置保存在本机 localStorage；渠道/key 只进本机，不随棋谱上传。</div>
+  </div>
+</aside>
 
 <div id="toast" class="hidden" role="status"></div>
 <div id="testPanel" class="hidden"></div>

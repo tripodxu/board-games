@@ -360,6 +360,41 @@ try {
   results.push('✗ 战术档位应用层贯通: ' + e.message);
 }
 
+/* 单元：全局设置抽屉 + 侧栏三页签「对局/实验/数据」的 DOM 契约
+ * R3/R5/R6 的控件若被误删/改名，应用层会在浏览器里静默失灵（Node 测不到 DOM），
+ * 所以在这里锁 index.html 结构；#tacticsStrip / #swapBtn 由 Task 5.1 / 4.2 各自补断言。 */
+function domContractTests() {
+  const A = BG.util.assert;
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  /* id 唯一：重复 id 会让 $() 只取到第一个，另一处控件静默失效 */
+  const ids = [];
+  for (const m of html.matchAll(/\sid="([^"]+)"/g)) ids.push(m[1]);
+  const dup = ids.filter((v, i) => ids.indexOf(v) !== i);
+  A(dup.length === 0, 'index.html 存在重复 id：' + dup.join(','));
+  /* 抽屉四件套 + 齿轮 */
+  for (const id of ['settingsGear', 'settingsDrawer', 'drawerMask', 'drawerClose', 'drawerBody'])
+    A(html.indexOf('id="' + id + '"') >= 0, 'index.html 缺控件 #' + id);
+  /* 三页签契约：对局/实验/数据（实验必须独立成栏，不复刻设置嵌套） */
+  for (const p of ['play', 'exp', 'data'])
+    A(html.indexOf('data-pane="' + p + '"') >= 0, '侧栏应含页签 ' + p);
+  A(html.indexOf('id="pane-exp"') >= 0, '应有独立 pane-exp');
+  A(html.indexOf('id="pane-settings"') < 0, 'pane-settings 应改名为 pane-exp（设置已搬迁）');
+  /* Rapfi 时长控件常驻抽屉：不得再被 hidden 条件隐藏 */
+  const app = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+  const label = html.indexOf('id="rapfiThinkLabel"');
+  A(label >= 0, 'Rapfi 思考时长控件应存在');
+  A(!/rapfiThinkLabel'\)\.classList\.toggle\('hidden'/.test(app),
+    'rapfiThinkLabel 不应再按渠道隐藏（抽屉内常显）');
+  A(!/class="hidden"\s*>\s*Rapfi 思考时长/.test(html), 'rapfiThinkLabel 不应再带初始 hidden');
+}
+try {
+  domContractTests();
+  results.push('✓ DOM 契约（设置抽屉 / 三页签 / Rapfi 时长常显）');
+} catch (e) {
+  failed++;
+  results.push('✗ DOM 契约: ' + e.message);
+}
+
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
 async function playOut(gid) {
   BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现
