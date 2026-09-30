@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**v0.7**：七个棋种引擎（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋）+ 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）+ Rapfi WASM 本地引擎渠道 + VCF 将死链（九级战术保险，**已修复伪胜 soundness 缺陷**）+ **棋谱导出 meta（代码版本/采样参数/单手归因）**。
+**v0.8**：七个棋种引擎（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋）+ 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）+ Rapfi WASM 本地引擎渠道 + VCF 将死链（九级战术保险，**已修复伪胜 soundness 缺陷**）+ 棋谱导出 meta（代码版本/采样参数/单手归因）+ **战术版本实验室（十档战术梯可复现：版本闸门 + 归因 meta + 实验面板 A/B 战术档）**。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
@@ -28,7 +28,8 @@
 | 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–50 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端） |
 | 后端 | ✅ | **`server.js` 零依赖 Node 后端**（`node server.js`，默认 8788）：静态托管 + `/api/jev` 代理（BYOK，key 不落盘）+ `/api/games` 棋谱落盘（幂等原子写，文件名与 CF 端一致）+ `/api/experiments` 实验归档（`data/`，gitignore）+ `/api/stats` 跨对局聚合 + `/api/health`；18 项 HTTP 契约测试随全量自检跑。**CF Pages 侧契约对齐**（health/experiments/stats 三端点，持久化走 GitHub，≤42 子请求守免费版限额）。前端 `js/api.js` 探活：有后端则服务端样本并入校准实验室、实验双端归档；无后端（file:///纯静态）自动降级，功能不变（ADR-0005） |
 | 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ **`node server.js` 自托管**（本地/内网完整后端，棋谱落盘不依赖 GitHub token）+ dev-proxy.py 最小备用 |
-| 自检 | ✅ | `node test/run-tests.js`：七引擎 selfTest（含禁手分支）+ 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点/**vcfWin soundness：合成伪胜反例 ⑫i/⑫j + 真链不误杀**）+ 棋谱导出 meta 单测（单手归因/全局汇总/种子）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + health/experiments/stats）+ server.js 18 项 HTTP 契约测试 + Rapfi 协议层 16 项单测 |
+| 自检 | ✅ | `node test/run-tests.js`：七引擎 selfTest（含禁手分支）+ 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点/**vcfWin soundness：合成伪胜反例 ⑫i/⑫j + 真链不误杀** + **⑬ 战术版本闸门：v0-off 全空 / v2·v3 逐层解锁 / v7·v8 VCF 边界 / 缺省与未知 id 收敛当前档**）+ 战术登记表单测（十档 ANCHORED / MECHS 单调 / games 归属 / resolve·allows 闸门）+ 对阵联名与 slug 单测 + **战术档位应用层贯通单测（档位控件十档齐全 + 设置/显隐/decide 透传/实验两侧/棋谱导出版本）** + 棋谱导出 meta 单测（单手归因/全局汇总/种子）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + health/experiments/stats）+ server.js 18 项 HTTP 契约测试 + Rapfi 协议层 16 项单测 |
+| 战术版本实验室 | ✅ | 十档战术梯 v0-off→v9-vcf-sound（`js/tactics-versions.js` 登记表：rank/机制键/commitAt/实战局数）：`decide({tacticsVersion})` 按档开/关每层保险（`js/jev-client.js` 的 `resolveVersion` + `computeTactics` 五参签名 + `tacCache` 按 st×versionId 二级缓存，老战绩不受影响）；UI 三处入口——设置抽屉「战术版本」（仅 Jev 三渠道与 random 露出，mock/rapfi 不读战术层故隐藏）、实验面板「A 战术/B 战术」、实验报告与战绩簿按渠道·档位联名（`sideAttribution`，老记录无档位自动退化为纯渠道名）；**棋谱导出带 `tacticsVersion`（单边）/`blackTactics`+`whiteTactics`（实验），每手 `ai.tv` 记接手档位**——「旧代码 vs 新代码」从此有可复现凭据，不再靠嘴说 |
 
 ## 已验证（验收证据）
 
@@ -107,10 +108,12 @@ mix9svqfreestyle_bsmix.bin.lz4`）。`js/rapfi.js` 协议层 16 项单测（stub
     约 3s；后续应迁 Web Worker。另注意：Rapfi 仅支持 `gomoku`（大众模式，无禁手），
     `gomoku-pro`（禁手）会拒绝（Rapfi 是 Gomocup freestyle 引擎）；本轮 Rapfi 的懒加载与
     UI 阻塞仅在 `node` 冒烟 + 单测覆盖，**真实浏览器尚未验证**（后续待补）。
-12. **`BG.codeVersion` 是手工维护的常量**（`'0.7.0'`）：零构建、无 git 注入，浏览器拿不到
+12. **`BG.codeVersion` 是手工维护的常量**（`'0.8.0'`）：零构建、无 git 注入，浏览器拿不到
     commit sha。**改动对局行为（引擎 / jev-client / 提示词）时必须手动 bump**，否则新旧
     棋谱混在一起，事后按代码版本归因就失效了——这正是 v0.7 修的那个缺陷的教训。
     建议每次此类提交顺手改 `js/board.js` 这一行。
+    **v0.8 起归因维度升级**：`codeVersion` 之外多了 `tacticsVersion`（十档战术梯），
+    同一份代码跑不同战术档就能做逐层对照实验，两者组合才是完整的可复现凭据。
 13. **soundness 闸门可能漏判真胜（有意取舍）**：守方有即时致胜点时，攻方这一手被强制
     要求占掉它；若攻方另有一条不占该点也能成杀的真链，会被一并剪掉。生产路径上代价为零
     （`js/jev-client.js` 入口门控保证进 VCF 前双方无一步杀，闸门只在递归层起作用），
@@ -143,6 +146,10 @@ mix9svqfreestyle_bsmix.bin.lz4`）。`js/rapfi.js` 协议层 16 项单测（stub
   **对策（v0.7 起）**：凡是要长期维护的纯计算（哪怕逻辑上属于 UI），就放进
   `js/board.js` 的 `BG.util` / 引擎文件，`app.js` 只留调用——棋谱导出 meta
   （`BG.util.aiMoveMeta` / `aiGameMeta`）就是这么做的，现在有单测钉着。
+  **v0.8 补丁**：`app.js` 是 DOM 闭包、测试里加载不了，战术档位这一层的接线改用
+  **静态源码断言**（`tacticsUiTests`：控件 id、十档 value、`resolve` 归一、decide 透传、
+  实验两侧、棋谱导出版本字段——全是文本匹配）。这条路子保不住运行时行为，但能钉死
+  「接线断了」这类最常见的回归；运行时仍靠浏览器手工回归。
 - ~~`--ink-mute` 小字对比度全档未达 AA、22 处字号 <11px、5 处 `transition: width/height` 逐帧重排~~
   **已于 2026-09-29 清除**（前端打磨轮）。残留见「设计例外」。
 - ~~`.feed` 规则因选择器与 HTML 不匹配而整条失效（决策流无高度上限、无滚动条）~~

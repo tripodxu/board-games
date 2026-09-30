@@ -323,6 +323,43 @@ try {
   results.push('✗ 对阵联名与棋谱 slug: ' + e.message);
 }
 
+/* 单元：战术档位在应用层的贯通（设置抽屉 → decide → 实验两侧 → 棋谱导出）
+ * 这些断言全是静态文本：app.js 是 DOM 闭包，测试里不加载，只能锁源码结构。 */
+function tacticsUiTests() {
+  const A = BG.util.assert;
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+  const R = globalThis.BG.tacticsVersions;
+  A(R && R.VERSIONS, 'BG.tacticsVersions 应存在（需先加载 js/tactics-versions.js）');
+  /* 控件本体：缺一个就等于该层归因断链 */
+  A(html.indexOf('id="tacticsVersion"') >= 0, 'index.html 应有战术档下拉 #tacticsVersion');
+  A(html.indexOf('id="expTacA"') >= 0 && html.indexOf('id="expTacB"') >= 0,
+    '实验面板应有 A/B 战术档下拉 #expTacA/#expTacB');
+  /* 十个档位一个不能少：漏档 = 该层实验做不了（档位清单归 tactics-versions.js 管，
+     应用层只负责原样落到 index.html 的 value 上） */
+  R.VERSIONS.forEach((v) => {
+    A(html.indexOf('value="' + v.id + '"') >= 0, '战术档位 ' + v.id + ' 未出现在 index.html');
+  });
+  /* 应用层不做档位白名单，但必须经 resolve 归一：localStorage 里的脏 id 不得流进 decide */
+  A(/tacticsVersions\.resolve\(/.test(src), 'load/save 战术档应经 BG.tacticsVersions.resolve 归一');
+  /* 设置抽屉：默认值 + 读 + 写 + 显隐规则（mock/rapfi 不读战术层，必须藏） */
+  A(/tacticsVersion:\s*'v9-vcf-sound'/.test(src), 'S.settings 应带 tacticsVersion 默认当前档');
+  A(/\$\('tacticsVersion'\)\.value\s*=[\s\S]{0,80}\.resolve\(/.test(src), 'loadSettings 应回填战术档');
+  A(/S\.settings\.tacticsVersion\s*=[\s\S]{0,80}\.resolve\(/.test(src), 'saveSettings 应保存战术档');
+  A(/tacticsVersionLabel'\)\.classList\.toggle\('hidden'/.test(src), 'syncChannelUI 应控制战术档显隐');
+  /* decide 透传 + 实验两侧记录 + 棋谱导出带版本 */
+  A(/tacticsVersion:\s*effectiveTacticsVersion\(side\)/.test(src), 'decide opts 应透传本手战术档');
+  A(/S\.expTactics\s*=/.test(src), '实验应按执子侧记录战术档');
+  A(/blackTactics/.test(src) && /whiteTactics/.test(src), '棋谱导出应记双方战术档');
+}
+try {
+  tacticsUiTests();
+  results.push('✓ 战术档位应用层贯通（设置/实验/棋谱）');
+} catch (e) {
+  failed++;
+  results.push('✗ 战术档位应用层贯通: ' + e.message);
+}
+
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
 async function playOut(gid) {
   BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现

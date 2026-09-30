@@ -936,6 +936,12 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .exp-controls { display: flex; gap: 10px; }
 .exp-controls label { flex: 1; margin: 0 !important; }
 .exp-controls .exp-games { flex: 0 0 64px; }
+/* 战术档下拉：五控件同排会挤扁，A/B 战术各占两成宽，渠道与局数保主位 */
+.exp-controls label.exp-tac { flex: 1 1 20%; }
+@media (max-width: 860px) {
+  .exp-controls { flex-wrap: wrap; }
+  .exp-controls label.exp-tac { flex: 1 1 40%; }
+}
 .exp-actions { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
 #expStatus { font-size: 11px; color: var(--ink-mute); }
 #expResults { margin-top: 8px; font-size: 12px; }

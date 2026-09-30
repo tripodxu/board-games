@@ -277,6 +277,20 @@
             <option value="10000">10 秒（最强 · 最慢）</option>
           </select>
         </label>
+        <label id="tacticsVersionLabel" class="hidden">战术版本（实验室：棋谱归因/复现的唯一凭据）
+          <select id="tacticsVersion">
+            <option value="v0-off">v0 无战术（基线）</option>
+            <option value="v1-facts">v1 胜/挡</option>
+            <option value="v2-open4">v2 活四级</option>
+            <option value="v3-make2">v3 造杀/拆杀</option>
+            <option value="v4-parry3">v4 活三预挡</option>
+            <option value="v5-safesort">v5 拆杀安全排序</option>
+            <option value="v6-parry4">v6 冲四预挡</option>
+            <option value="v7-vcf">v7 VCF 攻防</option>
+            <option value="v8-vcf-try">v8 VCF 逐点试</option>
+            <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+          </select>
+        </label>
         <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
           <input type="text" id="endpoint" spellcheck="false" autocomplete="off">
         </label>
@@ -331,7 +345,35 @@
                 <option value="rapfi">Rapfi 本地引擎</option>
               </select>
             </label>
-            <label class="exp-games">局数
+            <label class="exp-tac">A 战术
+               <select id="expTacA">
+                 <option value="v0-off">v0 无战术（基线）</option>
+                 <option value="v1-facts">v1 胜/挡</option>
+                 <option value="v2-open4">v2 活四级</option>
+                 <option value="v3-make2">v3 造杀/拆杀</option>
+                 <option value="v4-parry3">v4 活三预挡</option>
+                 <option value="v5-safesort">v5 拆杀安全排序</option>
+                 <option value="v6-parry4">v6 冲四预挡</option>
+                 <option value="v7-vcf">v7 VCF 攻防</option>
+                 <option value="v8-vcf-try">v8 VCF 逐点试</option>
+                 <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+               </select>
+             </label>
+             <label class="exp-tac">B 战术
+               <select id="expTacB">
+                 <option value="v0-off">v0 无战术（基线）</option>
+                 <option value="v1-facts">v1 胜/挡</option>
+                 <option value="v2-open4">v2 活四级</option>
+                 <option value="v3-make2">v3 造杀/拆杀</option>
+                 <option value="v4-parry3">v4 活三预挡</option>
+                 <option value="v5-safesort">v5 拆杀安全排序</option>
+                 <option value="v6-parry4">v6 冲四预挡</option>
+                 <option value="v7-vcf">v7 VCF 攻防</option>
+                 <option value="v8-vcf-try">v8 VCF 逐点试</option>
+                 <option value="v9-vcf-sound" selected>v9 防伪胜（当前）</option>
+               </select>
+             </label>
+             <label class="exp-games">局数
               <input type="number" id="expGames" value="4" min="1" max="50">
             </label>
           </div>

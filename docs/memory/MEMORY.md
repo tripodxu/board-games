@@ -8,6 +8,37 @@
 
 ---
 
+## 2026-09-30 · 战术版本实验室：十档战术梯，让「哪版代码、哪层保险」第一次可复现
+
+- **动机**：Jev+战术打 Rapfi 0-4 之后，收益最大的下一件事不是加机制，而是**把十档战术
+  （v0 无战术 → v9 防伪胜）变成可复现变量**。此前强弱对比只能靠嘴：说不清一盘棋里的
+  某个决策出自哪层保险、也无法让旧版逻辑重跑一遍。用户 m00348 明确「每一版都要有，
+  不能遗漏」——于是按 git commit 时间线重建十档梯，commitAt 按 `git show %ci`（北京时间），
+  实战局数归属 games/ 棋谱（中国跳棋 cohort 21/4/3），合计 28 局。
+- **三个落点**：① `js/tactics-versions.js` 登记表（纯模块，`VERSIONS/CURRENT/MECHS/
+  resolve/allows/ids/selfTest`）；② `js/jev-client.js` 版本闸门——`computeTactics` 加
+  `versionId` 参数，`tacCache` 从 `WeakMap<st,res>` 改成 `WeakMap<st,Map<verId,res>>`
+  **二级缓存**（同一 st 不同版本各存一份，混跑实验不互染），`decide` 按 `M.*` 键逐层
+  开关，两处 meta 都写 `tacticsVersion`；③ UI——设置抽屉「战术版本」（只有 Jev 三渠道
+  与 random 露出；mock 无战术层、rapfi 不经过它，控件隐藏）+ 实验面板 A/B 战术档 +
+  棋谱导出 `tacticsVersion`/`blackTactics`/`whiteTactics` 与每手 `ai.tv`。
+- **踩的坑**：① 计划文档里写「断言 `computeTactics(...).typeE8` 验证 open4 层」——
+  **本库 computeTactics 从不产出 `type*` 字段**（`typeE8` 是引擎给 criteria 的标签，
+  在 `ser.questions.move.criteria` 里，不在 tactics 里），只能改断言**决策级行为**
+  （v1 下不得接管 open4、v2 下必须接管）。② 二级缓存必须先做，否则同 st 跨版本直接
+  串味。③ `tacCache` 的 versionId 必须取 `resolve` 收敛后的 `ver.id`，不能取原始入参，
+  否则 `''`/`'v99-nope'`/缺省会分裂成三个 key。
+- **app.js 的测试路子**：app.js 是 DOM 闭包，Node 自检加载不了，`js/latest-board.js`
+  之后的纯计算外移路线在这里到头了（都是 DOM 接线）。改用**静态源码断言**
+  （`tacticsUiTests`：控件 id、十档 value 齐全、`resolve` 归一、decide 透传、实验两侧、
+  棋谱导出版本字段）。保不住运行时行为，但「接线断了」这类回归从此有钉子。
+- **codeVersion 0.7.0 → 0.8.0**（`js/board.js:28` 手工 bump）：归因从「哪版代码」升级为
+  「哪版代码 × 哪档战术」两张维度。
+- **事故**：用 write 全量覆盖 `docs/superpowers/plans/2026-09-30-tactics-lab.md`
+  （1527 行计划文档）→ 只剩 19 行。教训写进 AGENTS 风格清单：**对超长文档只准 edit，
+  不准 write**；要重写得先 `git show HEAD:<path>` 落盘再改。恢复命令就是
+  `git checkout -- docs/superpowers/plans/2026-09-30-tactics-lab.md`。
+
 ## 2026-09-30 · vcfWin 伪胜（soundness）修复：game3 败因归因作废
 
 - **推翻两条旧结论**（都写进了代码注释与 ADR，是本缺陷能活过一整轮实战复盘的原因）：

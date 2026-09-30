@@ -14,7 +14,7 @@
     mode: 'human-ai', humanSide: null,
     epoch: 0, inflight: null, paused: false,
     trendMode: 'win', aborter: null, sessionRecorded: false, sessionId: null,
-    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000 },
+    settings: { channel: 'proxy', apiKey: '', orKey: '', topK: 3, speed: 6, endpoints: {}, gameSync: true, rapfiThinkMs: 3000, tacticsVersion: 'v9-vcf-sound' },
   };
 
   /* ---------- 设置 ---------- */
@@ -30,6 +30,8 @@
     $('topK').value = String(S.settings.topK);
     $('speed').value = String(S.settings.speed);
     $('rapfiThinkMs').value = String(S.settings.rapfiThinkMs || 3000);
+    $('tacticsVersion').value = globalThis.BG.tacticsVersions
+      .resolve(S.settings.tacticsVersion).id;
     $('gameSync').checked = S.settings.gameSync !== false;
     syncChannelUI();
   }
@@ -48,6 +50,9 @@
     S.settings.speed = parseInt($('speed').value, 10);
     S.settings.rapfiThinkMs = parseInt($('rapfiThinkMs').value, 10) || 3000;
     S.settings.gameSync = $('gameSync').checked;
+    /* 经 resolve 归一：localStorage 里的脏 id/空值收敛到当前档，绝不带进 decide */
+    S.settings.tacticsVersion = globalThis.BG.tacticsVersions
+      .resolve($('tacticsVersion').value).id;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(S.settings)); } catch (_) { /* ignore */ }
     syncChannelUI();
   }
@@ -55,6 +60,16 @@
     official: '官方 API', openrouter: 'OpenRouter', proxy: '同源代理', mock: '离线演示',
     rapfi: 'Rapfi 本地',
   };
+  /* 本手要走哪套战术版本：实验按执子侧记（S.expTactics），平时读设置抽屉。
+     mock/rapfi 不经战术层，档位传了也不被消费；但 meta.tv 仍如实留档，便于回溯。 */
+  function effectiveTacticsVersion(side) {
+    /* 设置抽屉侧已归一（saveSettings 过 resolve）；实验侧防御一下脏值 */
+    const fallback = globalThis.BG.tacticsVersions
+      .resolve(S.settings.tacticsVersion).id;
+    if (!side || !S.expTactics) return fallback;
+    const v = side === 'black' ? S.expTactics.black : S.expTactics.white;
+    return v ? globalThis.BG.tacticsVersions.resolve(v).id : fallback;
+  }
   function syncChannelUI() {
     const ch = $('channel').value;
     $('apiKeyLabel').classList.toggle('hidden', ch !== 'official' && ch !== 'proxy');
@@ -63,6 +78,10 @@
     $('orKeyLabel').classList.toggle('hidden', ch !== 'openrouter');
     $('endpointLabel').classList.toggle('hidden', ch === 'mock' || ch === 'rapfi');
     $('rapfiThinkLabel').classList.toggle('hidden', ch !== 'rapfi');
+    /* 战术版本归 Jev 三渠道与 random（random 也走 computeTactics）；
+       mock 无战术层、rapfi 是本地引擎，二者不读这个档。 */
+    $('tacticsVersionLabel').classList.toggle('hidden',
+      ch !== 'proxy' && ch !== 'openrouter' && ch !== 'official' && ch !== 'random');
     $('endpoint').placeholder = BG.jev.presetEndpoint(ch) || '';
     $('endpoint').value = S.settings.endpoints[ch] || '';
     $('probeRow').classList.toggle('hidden', ch === 'mock');
@@ -406,7 +425,7 @@
     saveSettings();
     S.mode = $('mode').value;
     S.humanSide = $('side').value;
-    if (!EXP.running) { S.expChannels = null; S.expInfo = null; } // 手动开局不清掉上次实验的渠道
+    if (!EXP.running) { S.expChannels = null; S.expInfo = null; S.expTactics = null; } // 手动开局不清掉上次实验的渠道
     S.paused = false;
     resetSession();
     const eff = effectiveChannel();
@@ -440,6 +459,8 @@
         : (g.winner === S.engine.sides[0].id ? blackChan : whiteChan);
       EXP.results.push({
         no: EXP.idx + 1, blackChan, whiteChan, winner: g.winner,
+        blackTac: S.expTactics ? S.expTactics.black : null,
+        whiteTac: S.expTactics ? S.expTactics.white : null,
         winnerChan: winnerChan === EXP.chanA ? 'A' : (winnerChan === EXP.chanB ? 'B' : null),
       });
       EXP.idx++;
@@ -522,6 +543,7 @@
         experience: buildExperience(S.gameId),
         topK: S.settings.topK,
         rapfiThinkMs: S.settings.rapfiThinkMs,
+        tacticsVersion: effectiveTacticsVersion(side),
         signal: S.aborter.signal,
         onRetry: (code) => toast('限流(' + code + ')，退避重试中…'),
       });
@@ -603,6 +625,9 @@
       whiteChannel: exp ? exp.whiteChannel : undefined,
       experiment: exp ? exp.tag : undefined,
       expGameNo: exp ? exp.gameNo : undefined,
+      tacticsVersion: exp ? exp.blackTactics : (S.settings.tacticsVersion || undefined),
+      blackTactics: exp ? exp.blackTactics : undefined,
+      whiteTactics: exp ? exp.whiteTactics : undefined,
       result: g.over
         ? (g.winner ? sideName(g.winner) + ' 获胜' : '和棋') + '（' + (g.reason || '') + '）'
         : '进行中（已 ' + S.history.length + ' 手）',
@@ -756,15 +781,24 @@
   }
 
   /* ---------- 对比实验：A渠道 vs B渠道，自动交替执黑白 ---------- */
-  const EXP = { running: false, idx: 0, total: 4, chanA: 'proxy', chanB: 'random', tag: null, results: [] };
+  const EXP = { running: false, idx: 0, total: 4, chanA: 'proxy', chanB: 'random', tacA: 'v9-vcf-sound', tacB: 'v9-vcf-sound', tag: null, results: [] };
   const CHAN_LABEL = { proxy: 'Jev(代理)', openrouter: 'Jev(OpenRouter)', official: 'Jev(官方)', random: '纯随机', mock: '离线演示', rapfi: 'Rapfi' };
   const chanLabel = (c) => CHAN_LABEL[c] || c;
+  /* 归因展示：渠道 + 战术档合成一行。老记录/未填档位时退化为纯渠道名，
+     保证 EXP_SEED 里的 2026-09-29 旧数据仍能渲染。 */
+  function sideAttribution(chan, tac) {
+    const c = chanLabel(chan);
+    return tac ? c + '·' + tac : c;
+  }
+  const tacTag = (t) => (t ? String(t) : null);
 
   function startExperiment() {
     if (EXP.running) return;
     EXP.running = true; EXP.idx = 0; EXP.results = [];
     EXP.chanA = $('expChanA').value;
     EXP.chanB = $('expChanB').value;
+    EXP.tacA = $('expTacA').value;
+    EXP.tacB = $('expTacB').value;
     EXP.total = Math.max(1, Math.min(50, parseInt($('expGames').value, 10) || 4));
     EXP.tag = 'exp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
     $('expResults').innerHTML = '';
@@ -777,9 +811,14 @@
       black: aBlack ? EXP.chanA : EXP.chanB,
       white: aBlack ? EXP.chanB : EXP.chanA,
     };
+    S.expTactics = {
+      black: aBlack ? EXP.tacA : EXP.tacB,
+      white: aBlack ? EXP.tacB : EXP.tacA,
+    };
     S.expInfo = {
       tag: EXP.tag, gameNo: EXP.idx + 1,
       blackChannel: S.expChannels.black, whiteChannel: S.expChannels.white,
+      blackTactics: S.expTactics.black, whiteTactics: S.expTactics.white,
     };
     $('mode').value = 'ai-ai';
     startGame(); // startGame 内非实验时才清 expChannels，此处 EXP.running 为 true 会保留
@@ -788,13 +827,13 @@
   }
   function stopExperiment() {
     EXP.running = false;
-    S.expChannels = null; S.expInfo = null;
+    S.expChannels = null; S.expInfo = null; S.expTactics = null;
     renderExpStatus();
     toast('实验已停止');
   }
   function finishExperiment() {
     EXP.running = false;
-    S.expChannels = null; S.expInfo = null;
+    S.expChannels = null; S.expInfo = null; S.expTactics = null;
     renderExpStatus(); renderExpResults(); recordExperiment();
     toast('实验完成：' + expSummary());
   }
@@ -805,7 +844,7 @@
       else if (r.winnerChan === 'A') a++;
       else b++;
     });
-    return `${chanLabel(EXP.chanA)} ${a}胜 · ${chanLabel(EXP.chanB)} ${b}胜 · 和棋 ${d}`;
+    return `${chanLabel(EXP.chanA)}${tacTag(EXP.tacA) ? '·' + tacTag(EXP.tacA) : ''} ${a}胜 · ${chanLabel(EXP.chanB)}${tacTag(EXP.tacB) ? '·' + tacTag(EXP.tacB) : ''} ${b}胜 · 和棋 ${d}`;
   }
   function renderExpStatus() {
     const el = $('expStatus');
@@ -821,7 +860,7 @@
     if (!el || !EXP.results.length) { if (el) el.innerHTML = ''; return; }
     const rows = EXP.results.map((r) =>
       `<div class="exp-row"><span>#${r.no}</span>` +
-      `<span>${chanLabel(r.blackChan)}(黑)</span><span>vs</span><span>${chanLabel(r.whiteChan)}(白)</span>` +
+      `<span>${sideAttribution(r.blackChan, r.blackTac)}(黑)</span><span>vs</span><span>${sideAttribution(r.whiteChan, r.whiteTac)}(白)</span>` +
       `<b>${r.winner ? '→ ' + chanLabel(r.winnerChan === 'A' ? EXP.chanA : EXP.chanB) + '胜' : '→ 和棋'}</b></div>`).join('');
     el.innerHTML = `<div class="exp-head">${expSummary()}</div>` + rows;
   }
@@ -892,9 +931,10 @@
   function recordExperiment() {
     const entry = {
       tag: EXP.tag, date: new Date().toISOString(),
-      chanA: EXP.chanA, chanB: EXP.chanB, total: EXP.total,
+      chanA: EXP.chanA, chanB: EXP.chanB, tacA: EXP.tacA, tacB: EXP.tacB, total: EXP.total,
       games: EXP.results.map((r) => ({
         no: r.no, blackChan: r.blackChan, whiteChan: r.whiteChan,
+        blackTac: r.blackTac || null, whiteTac: r.whiteTac || null,
         winnerChan: r.winner ? r.winnerChan : null,
       })),
       note: '',
@@ -934,12 +974,12 @@
           : !wchan ? '→ 和棋'
           : '→ <b>' + chanLabel(wchan) + '胜</b>';
         return `<div class="exp-row"><span class="mono">#${g.no}</span>` +
-          `<span>${chanLabel(g.blackChan)}(黑)</span><span class="dim">vs</span>` +
-          `<span>${chanLabel(g.whiteChan)}(白)</span><span>${wl}</span></div>`;
+          `<span>${sideAttribution(g.blackChan, g.blackTac)}(黑)</span><span class="dim">vs</span>` +
+          `<span>${sideAttribution(g.whiteChan, g.whiteTac)}(白)</span><span>${wl}</span></div>`;
       }).join('');
       effGames += eff;
       return `<div class="exp-card"><div class="exp-card-head">` +
-        `<b>${chanLabel(e.chanA)} <span class="mono">${a} : ${b}</span> ${chanLabel(e.chanB)}</b>` +
+        `<b>${sideAttribution(e.chanA, e.tacA)} <span class="mono">${a} : ${b}</span> ${sideAttribution(e.chanB, e.tacB)}</b>` +
         `<span class="dim">${eff} 局有效 · ${fmtExpDate(e.date)}</span></div>` +
         `<div class="exp-card-rows">${rows}</div>` +
         (e.note ? `<div class="hint">${e.note}</div>` : '') +
