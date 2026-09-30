@@ -1,0 +1,390 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T08:46:42.105Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "机机",
+  "channel": "proxy",
+  "blackChannel": "proxy",
+  "whiteChannel": "rapfi",
+  "experiment": "exp-20260930084500",
+  "expGameNo": 1,
+  "result": "白方 获胜（五连）",
+  "notation": "H8,E11,H7,B14,H6,H9,H5,H4,H10,C13,D12,I7,I8,G8,F7,G6,G7,F8,E7,D7,I9,J10,E5,F6,J8,G11,F11,L6,K8,L8,L7,I11,K9,K10,L10,J11,J12,B8,L9,K11,H11,J9,I10,M11,L11,M10,M9,O10,J7,I6,N9,O9,O8,M8,E6,E8,F9,D10,C9,D8,C8,D9,D6,D11",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "E11"
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "H7"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "B14"
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H6"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "H9"
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "H5"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "H4"
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "H10"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "C13"
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "D12",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "I7"
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "I8"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "G8"
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "F7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "G6"
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "G7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "F8"
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "E7"
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "D7"
+    },
+    {
+      "ply": 21,
+      "side": "黑方",
+      "notation": "I9"
+    },
+    {
+      "ply": 22,
+      "side": "白方",
+      "notation": "J10"
+    },
+    {
+      "ply": 23,
+      "side": "黑方",
+      "notation": "E5"
+    },
+    {
+      "ply": 24,
+      "side": "白方",
+      "notation": "F6"
+    },
+    {
+      "ply": 25,
+      "side": "黑方",
+      "notation": "J8"
+    },
+    {
+      "ply": 26,
+      "side": "白方",
+      "notation": "G11"
+    },
+    {
+      "ply": 27,
+      "side": "黑方",
+      "notation": "F11",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 28,
+      "side": "白方",
+      "notation": "L6"
+    },
+    {
+      "ply": 29,
+      "side": "黑方",
+      "notation": "K8"
+    },
+    {
+      "ply": 30,
+      "side": "白方",
+      "notation": "L8"
+    },
+    {
+      "ply": 31,
+      "side": "黑方",
+      "notation": "L7",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 32,
+      "side": "白方",
+      "notation": "I11"
+    },
+    {
+      "ply": 33,
+      "side": "黑方",
+      "notation": "K9",
+      "tactics": "vcfDefense"
+    },
+    {
+      "ply": 34,
+      "side": "白方",
+      "notation": "K10"
+    },
+    {
+      "ply": 35,
+      "side": "黑方",
+      "notation": "L10",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 36,
+      "side": "白方",
+      "notation": "J11"
+    },
+    {
+      "ply": 37,
+      "side": "黑方",
+      "notation": "J12",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 38,
+      "side": "白方",
+      "notation": "B8"
+    },
+    {
+      "ply": 39,
+      "side": "黑方",
+      "notation": "L9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 40,
+      "side": "白方",
+      "notation": "K11"
+    },
+    {
+      "ply": 41,
+      "side": "黑方",
+      "notation": "H11",
+      "tactics": "block"
+    },
+    {
+      "ply": 42,
+      "side": "白方",
+      "notation": "J9"
+    },
+    {
+      "ply": 43,
+      "side": "黑方",
+      "notation": "I10",
+      "tactics": "parry4"
+    },
+    {
+      "ply": 44,
+      "side": "白方",
+      "notation": "M11"
+    },
+    {
+      "ply": 45,
+      "side": "黑方",
+      "notation": "L11",
+      "tactics": "block"
+    },
+    {
+      "ply": 46,
+      "side": "白方",
+      "notation": "M10"
+    },
+    {
+      "ply": 47,
+      "side": "黑方",
+      "notation": "M9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 48,
+      "side": "白方",
+      "notation": "O10"
+    },
+    {
+      "ply": 49,
+      "side": "黑方",
+      "notation": "J7"
+    },
+    {
+      "ply": 50,
+      "side": "白方",
+      "notation": "I6"
+    },
+    {
+      "ply": 51,
+      "side": "黑方",
+      "notation": "N9"
+    },
+    {
+      "ply": 52,
+      "side": "白方",
+      "notation": "O9"
+    },
+    {
+      "ply": 53,
+      "side": "黑方",
+      "notation": "O8",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 54,
+      "side": "白方",
+      "notation": "M8"
+    },
+    {
+      "ply": 55,
+      "side": "黑方",
+      "notation": "E6"
+    },
+    {
+      "ply": 56,
+      "side": "白方",
+      "notation": "E8"
+    },
+    {
+      "ply": 57,
+      "side": "黑方",
+      "notation": "F9",
+      "tactics": "parry3"
+    },
+    {
+      "ply": 58,
+      "side": "白方",
+      "notation": "D10"
+    },
+    {
+      "ply": 59,
+      "side": "黑方",
+      "notation": "C9",
+      "tactics": "parry"
+    },
+    {
+      "ply": 60,
+      "side": "白方",
+      "notation": "D8"
+    },
+    {
+      "ply": 61,
+      "side": "黑方",
+      "notation": "C8",
+      "tactics": "block"
+    },
+    {
+      "ply": 62,
+      "side": "白方",
+      "notation": "D9"
+    },
+    {
+      "ply": 63,
+      "side": "黑方",
+      "notation": "D6",
+      "tactics": "block"
+    },
+    {
+      "ply": 64,
+      "side": "白方",
+      "notation": "D11"
+    }
+  ],
+  "cal": [
+    0.43,
+    0.41,
+    0.54,
+    0.56,
+    0.57,
+    0.37,
+    0.52,
+    0.52,
+    0.49,
+    0.46,
+    0.51,
+    0.49,
+    0.45,
+    0.45,
+    0.49,
+    0.44,
+    0.33,
+    0.41,
+    0.41,
+    0.4,
+    0.27,
+    0.35,
+    0.23,
+    0.34,
+    0.35,
+    0.35,
+    0.37,
+    0.37,
+    0.36,
+    0.38,
+    0.26,
+    0.25
+  ],
+  "firstWin": false,
+  "mock": false
+}
