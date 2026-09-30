@@ -12,6 +12,7 @@ globalThis.location = { search: '', origin: 'http://localhost' };
 const ROOT = path.join(__dirname, '..');
 [
   'js/board.js',
+  'js/latest-board.js',
   'js/calibration.js',
   'js/games/gomoku.js',
   'js/games/chess.js',
@@ -126,6 +127,71 @@ try {
 } catch (e) {
   failed++;
   results.push('✗ 棋谱导出 meta: ' + e.message);
+}
+
+/* 单元：最新决策候选榜的固定槽位契约（R7「最新决策忽大忽小」的唯一回归）
+ * 面板高度必须与候选数无关：恒 1 行标题 + 3 个指标槽 + 8 个候选槽 + 1 行「其余候选」。 */
+function latestBoardTests() {
+  const A = BG.util.assert;
+  A(typeof BG.latest === 'object' && BG.latest, 'BG.latest 应存在（js/latest-board.js 未加载）');
+  const m = (over) => Object.assign({
+    notation: 'H8', sideName: '黑', noul: 0.612, score: 3.4, latencyMs: 820,
+    candidates: 12, restProb: 0.18, confidence: 0.66, model: 'jev-latest',
+    top: [
+      { notation: 'H8', p: 0.18 }, { notation: 'H7', p: 0.12 }, { notation: 'I8', p: 0.08 },
+      { notation: 'J8', p: 0.05 }, { notation: 'G8', p: 0.04 }, { notation: 'G7', p: 0.03 },
+      { notation: 'I9', p: 0.02 }, { notation: 'J9', p: 0.01 },
+    ],
+  }, over);
+  const h = (over) => ({ move: { notation: m(over).notation }, ply: 42, meta: m(over) });
+
+  /* 无决策（开局前）：同一骨架，空槽填满 */
+  const none = BG.latest.boardHTML(null);
+  A(none.note.indexOf('尚无决策') === 0, '空状态标题应为「尚无决策」：' + none.note);
+  A(none.count === '', '空状态候选数徽标应为空串，实际 ' + JSON.stringify(none.count));
+
+  /* 三种样本下槽位数必须恒定 */
+  const cases = [none, BG.latest.boardHTML(h()), BG.latest.boardHTML(h({ candidates: 3, top: [{ notation: 'H7', p: 0.5 }] }))];
+  for (const c of cases) {
+    A((c.html.match(/rank-row/g) || []).length === 8, '候选槽应恒 8 个，实际 ' + (c.html.match(/rank-row/g) || []).length);
+    A((c.html.match(/class="big[" ]/g) || []).length === 3, '指标槽应恒 3 个，实际 ' + (c.html.match(/class="big[" ]/g) || []).length);
+    A((c.html.match(/rank-rest/g) || []).length === 1, '「其余候选」行应恒在，实际 ' + (c.html.match(/rank-rest/g) || []).length);
+    A((c.html.match(/latest-head/g) || []).length === 1, '标题行应恒 1 个');
+  }
+
+  /* 空槽计数：满样本 0；3 候选（榜上 1 行）7 候选+1 rest=8；无决策 8+3+1=12 */
+  const empt = (s) => (s.match(/is-empty/g) || []).length;
+  A(empt(BG.latest.boardHTML(h()).html) === 0, '满候选+全指标时不应有空槽，实际 ' + empt(BG.latest.boardHTML(h()).html));
+  A(empt(none.html) === 12, '空状态空槽应 12 个（8 候选+3 指标+1 rest），实际 ' + empt(none.html));
+  const three = BG.latest.boardHTML(h({ candidates: 3, top: [{ notation: 'H7', p: 0.5 }] }));
+  A(empt(three.html) === 8, '3 候选（榜上 1 行）空槽应为 7+1=8，实际 ' + empt(three.html));
+
+  /* 满候选时「其余候选」有字；候选少时为隐藏空槽（保留高度） */
+  const full = BG.latest.boardHTML(h());
+  A(full.count === '12 个候选', '候选数徽标不对：' + full.count);
+  A(full.html.indexOf('其余 4 个候选合计 18.0%') >= 0, '12 候选的超额部分应显示「其余 4 个候选合计 18.0%」');
+  A(three.html.indexOf('其余') < 0, '候选不足 8 时 rest 行不得出现文字');
+  A(three.html.indexOf('rank-rest is-empty') >= 0, '无超额候选时 rest 应为空槽');
+
+  /* 实走着高亮：第 1 名恰好是实走时打 is-chosen */
+  A(full.html.indexOf('is-chosen') >= 0, '实走着的行应有 is-chosen 高亮');
+  const miss = BG.latest.boardHTML(h({ notation: 'A1' }));
+  A(miss.html.indexOf('is-chosen') < 0, '实走不在榜上时不应有 is-chosen');
+
+  /* 指标缺失 → 空槽 –，且不抛错（降级响应 meta） */
+  const bare = BG.latest.boardHTML({ move: { notation: 'H8' }, ply: 7, meta: { notation: 'H8', top: [] } });
+  A(bare.html.indexOf('–') >= 0, '缺指标应显示占位 –');
+  A(bare.note.indexOf('第7手') >= 0, '标题缺字段时应降级为「第N手」：' + bare.note);
+
+  BG.latest.selfTest();
+}
+
+try {
+  latestBoardTests();
+  results.push('✓ 最新决策固定槽位渲染（恒 8/3/1）');
+} catch (e) {
+  failed++;
+  results.push('✗ 最新决策固定槽位: ' + e.message);
 }
 
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */

@@ -1095,40 +1095,10 @@
 
   function renderLatest(h) {
     const box = $('latest');
-    if (!h) {
-      box.innerHTML = '<div class="feed-empty">Jev 落下第一子后，这里展示完整的候选概率榜。</div>';
-      $('latestNote').textContent = '尚无决策';
-      $('rankCount').textContent = '';
-      return;
-    }
-    const m = h.meta;
-    $('latestNote').textContent = '第' + h.ply + '手 · ' + (m.sideName || '') +
-      (m.mock ? ' · 演示' : ' · Jev' + (m.model ? ' ' + m.model : ''));
-    $('rankCount').textContent = m.candidates ? m.candidates + ' 个候选' : '';
-
-    const head =
-      '<div class="latest-head"><span class="mv mono">' + h.move.notation + '</span>' +
-      '<span class="conf"><i style="transform:scaleX(' + (typeof m.confidence === 'number' ? Math.max(0, Math.min(1, m.confidence)) : 0).toFixed(3) + ')"></i></span>' +
-      '<span class="conf-num mono">' + (typeof m.confidence === 'number' ? (m.confidence * 100).toFixed(0) + '%' : '–') + '</span></div>';
-    const extras = [];
-    if (typeof m.noul === 'number') extras.push('<div class="big"><span class="k">' + (m.sideName || '') + '优势</span><b class="mono">' + (m.noul * 100).toFixed(0) + '%</b></div>');
-    if (typeof m.score === 'number') extras.push('<div class="big"><span class="k">局势分</span><b class="mono">' + m.score.toFixed(1) + '</b></div>');
-    if (m.latencyMs) extras.push('<div class="big"><span class="k">延迟</span><b class="mono">' + m.latencyMs + 'ms</b></div>');
-    let rank = '<div class="rank-list">';
-    (m.top || []).forEach((t, i) => {
-      rank += '<div class="rank-row' + (t.notation === h.move.notation ? ' is-chosen' : '') + '">' +
-        '<span class="no mono">' + (i + 1) + '</span>' +
-        '<span class="k mono">' + t.notation + '</span>' +
-        '<span class="bar"><i style="transform:scaleX(' + (Math.max(2, Math.round(t.p * 100)) / 100).toFixed(3) + ')"></i></span>' +
-        '<span class="p mono">' + (t.p * 100).toFixed(1) + '%</span></div>';
-    });
-    if (m.candidates && m.candidates > 8) {
-      rank += '<div class="rank-rest">其余 ' + (m.candidates - 8) + ' 个候选合计 ' +
-        ((m.restProb || 0) * 100).toFixed(1) + '%</div>';
-    }
-    rank += '</div>';
-    box.innerHTML = head +
-      '<div class="latest-bigs">' + extras.join('') + '</div>' + rank;
+    const v = BG.latest.boardHTML(h);
+    $('latestNote').textContent = v.note;
+    $('rankCount').textContent = v.count;
+    box.innerHTML = v.html;
   }
 
   /* ---------- 战绩簿（localStorage 持久化） ---------- */

@@ -701,6 +701,18 @@ button.fold svg { transition: transform .18s var(--ease); }
   text-align: center;
 }
 
+/* ---------- 固定槽位（面板高度恒定，不随每步候选数/指标数跳动） ---------- */
+.latest-bigs .big.is-empty { border-style: dashed; }
+.latest-bigs .big.is-empty b { color: var(--ink-mute); }
+.rank-row.is-empty .no,
+.rank-row.is-empty .k,
+.rank-row.is-empty .p { color: var(--line-strong); }
+.rank-row.is-empty .bar { opacity: .35; }
+.rank-rest.is-empty { visibility: hidden; }
+/* 标题行说明文字不折行：长模型名不得把标题撑成两行（保持 head 恒 1 行） */
+.panel-title .note { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-title h2, .panel-title .rank-count { flex: 0 0 auto; }
+
 /* ---------- 战绩簿 ---------- */
 
 .mini-btn {
