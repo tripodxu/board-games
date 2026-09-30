@@ -495,6 +495,39 @@ try {
   results.push('✗ 换边重开契约: ' + e.message);
 }
 
+/* 单元：战术沿革条的渲染数据（当前档唯一高亮、在用档标出、点击只改全局默认档）
+ * app.js 闭包内不可直接调用 renderTacticsStrip，这里复刻它的纯函数部分钉契约；
+ * 另外静态锁 index.html 容器与「点沿革条不得改 sideConfig」的调用顺序。 */
+function tacticsStripTests() {
+  const A = BG.util.assert;
+  const R = globalThis.BG.tacticsVersions;
+  const render = (settings, inUse) => R.VERSIONS.map((v) => ({
+    id: v.id, cur: settings.tacticsVersion === v.id, used: inUse.indexOf(v.id) >= 0,
+  }));
+  const chips = render({ tacticsVersion: 'v4-parry3' }, ['v9-vcf-sound', 'v4-parry3']);
+  A(chips.length === 10, '应渲染 10 枚（9 档战术版本 + 无战术基线），实际 ' + chips.length);
+  A(chips.filter((c) => c.cur).length === 1 && chips.find((c) => c.cur).id === 'v4-parry3', '当前档应唯一高亮');
+  A(chips.filter((c) => c.used).length === 2, '在用档应被标出');
+  /* 点击只改全局默认档，不得顺手改动双方覆盖 */
+  const next = (s, id) => Object.assign({}, s, { tacticsVersion: id });
+  const after = next({ tacticsVersion: 'v4-parry3', sideConfig: { black: { tactics: 'v1-facts' } } }, 'v6-parry4');
+  A(after.tacticsVersion === 'v6-parry4' && after.sideConfig.black.tactics === 'v1-facts', '点沿革条不得改覆盖配置');
+  /* 接线：容器存在、渲染函数存在、点击写的是 S.settings.tacticsVersion */
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  A(html.indexOf('id="tacticsStrip"') >= 0, 'index.html 缺战术沿革条容器 #tacticsStrip');
+  const app = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  A(/function renderTacticsStrip\(\)/.test(app), 'app.js 应有 renderTacticsStrip');
+  A(/S\.settings\.tacticsVersion = v\.id;/.test(app), '点沿革条应改全局默认档');
+  A(/renderTacticsStrip\(\)/.test(app) && (app.match(/renderTacticsStrip\(\)/g) || []).length >= 2, '点击后与开局后都应刷新沿革条');
+}
+try {
+  tacticsStripTests();
+  results.push('✓ 战术沿革条契约（10 枚 / 当前档唯一 / 只改默认档）');
+} catch (e) {
+  failed++;
+  results.push('✗ 战术沿革条契约: ' + e.message);
+}
+
 /* 集成：mock AI 机机对弈完整一盘；同 seed 两次结果必须完全一致 */
 async function playOut(gid) {
   BG.setSeed(42); // 每个棋种从同一 seed 起跑，保证可复现

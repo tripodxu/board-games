@@ -475,6 +475,7 @@
     }
     syncChannelUI();
     syncSwapBtn();
+    renderTacticsStrip(); // used 态随双方配置变化
     setStatus(inGameStatus(), false);
     if (isAISide(S.st.turn)) setTimeout(aiStep, aiDelayMs());
   }
@@ -900,6 +901,36 @@
     }
     saveSettings();
     syncChannelUI();
+    renderTacticsStrip(); // 覆盖变了：沿革条的 used 描边要跟着变
+  }
+
+  /* ---------- 棋盘下方：战术沿革条 ----------
+   * 9 档战术版本 + 1 无战术基线全列出来：哪一版引入了哪个机制、归了多少棋谱，
+   * hover 看 note；点击把它设为全局默认档位。只写 S.settings.tacticsVersion——
+   * 双方覆盖（sideConfig）是显式指定，不受默认档变化影响。 */
+  function renderTacticsStrip() {
+    const box = $('tacticsStrip');
+    if (!box || !globalThis.BG.tacticsVersions) return;
+    box.querySelectorAll('.tv-chip').forEach((n) => n.remove());
+    const R = globalThis.BG.tacticsVersions;
+    const inUse = [effSide('black').tactics, effSide('white').tactics];
+    for (const v of R.VERSIONS) {
+      const cur = S.settings.tacticsVersion === v.id;
+      const used = inUse.indexOf(v.id) >= 0;
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'tv-chip' + (cur ? ' cur' : '') + (used ? ' used' : '');
+      el.dataset.ver = v.id;
+      el.title = v.name + '（' + v.commit + '，' + v.date + '，归档 ' + v.games + ' 局）\n' + v.note;
+      el.textContent = v.id.replace(/^v(\d+).*/, (m, n) => 'v' + n) + (v.id === R.CURRENT ? '·今' : '');
+      el.addEventListener('click', () => {
+        S.settings.tacticsVersion = v.id;
+        saveSettings();
+        renderTacticsStrip();
+        toast('默认战术档位 → ' + v.id + ' ' + v.name);
+      });
+      box.appendChild(el);
+    }
   }
 
   /* ---------- 对比实验：A渠道 vs B渠道，自动交替执黑白 ---------- */
@@ -1751,6 +1782,7 @@
     buildTabs();
     loadSettings();
     renderSideCfg(); // 抽屉双方覆盖 + 实验 A/B 档位选项（登记表驱动）
+    renderTacticsStrip(); // 棋盘下方战术沿革条（当前档高亮）
     initFolds();
     initSideTabs();
     bind();
