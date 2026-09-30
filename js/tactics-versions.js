@@ -50,7 +50,7 @@
       note: '层数不变，vcfDefense 补丁：链首占不住时逐点试干预。exp-20260930084500（proxy vs rapfi，16:46–16:54 落库）3 局=线上旧引擎，均无 meta，反证部署版本停滞在此档。' },
     { id: 'v9-vcf-sound', name: '防伪胜（当前）', rank: 9, commit: 'a16fdd9', commitAt: '2026-09-30 16:58',
       date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 20,
-      note: 'vcfWin soundness 修复：引擎层双杀短路前过守方反杀闸门（gomoku.defenderWinsFull）+ 棋谱归因 meta（codeVersion/aiMoveMeta/aiGameMeta）。**当前档的 games 是快照**：新棋谱会持续落进本档窗口，登记表只记到改表那一刻（单测按 ≥ 兜底，见 run-tests archiveAttributionTests）；实时局数看「棋谱归档」面板。上线后（0.8 engine 上线当日）落库 20 局。' },
+      note: 'vcfWin soundness 修复：引擎层双杀短路前过守方反杀闸门（gomoku.defenderWinsFull）+ 棋谱归因 meta（codeVersion/aiMoveMeta/aiGameMeta）。**当前档的 games 是快照**：新棋谱会持续落进本档窗口，登记表只记到改表那一刻（单测按 ≥ 兜底，见 run-tests archiveAttributionTests）；实时局数看「棋谱归档」面板。**归组按时间窗、不按内容**：若部署滞后（线上仍跑旧 engine），落库棋谱仍会归进本档——线上 envmeta code=0.7.0（无 vcfTry/sound 层）的 20 局即此类，反证部署版本停滞；要判实际版本看棋谱 meta.code / 每手 ai.tv。20 局线上实测 meta.code 全为 0.7.0。' },
   ];
   const CURRENT = 'v9-vcf-sound';
   const BY_ID = {};
