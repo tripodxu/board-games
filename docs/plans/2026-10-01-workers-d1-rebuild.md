@@ -874,7 +874,7 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 | `npx tsc --noEmit` | 0 error（`erasableSyntaxOnly` 全仓通过） |
 | `npm test` | **29 文件 / 307 用例全绿**（10.7–12.1 s）：engines 121（7 局自对弈金样 1131 手 + `games/` 归档 54 局 4379 手逐手一致）+ core 6 文件 71 + worker 8 文件 + ui 12 文件 + app 3 文件 |
 | `npm run build` | client JS 175.65 kB（gzip 64.3）/ CSS 39.09 kB（gzip 7.9）/ `dist/client/index.html` 29.87 kB / worker bundle ≈173 kB |
-| `npm run check:docs` | ✓ memory 置顶、✓ 41 个 md / 249 个相对链接、✓ status 0 天内 |
+| `npm run check:docs` | ✓ memory 置顶、✓ 41 个 md / 248 个相对链接（收尾过程中 249 → 248：删掉了两条指向已删文件的链接）、✓ status 0 天内 |
 
 **上线**
 
@@ -910,7 +910,14 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 - **Cron 的落库证据要等次日**：`schedule: 17 3 * * *` 已注册，首次触发是 2026-10-02T03:17Z；
   本机此刻查 `stats_cache` 为 0 行（预期）。次日核验命令：
   `npx wrangler d1 execute jev-qiguan --remote --command "SELECT key, updated_at FROM stats_cache ORDER BY key DESC LIMIT 3"`。
-- CI（`.github/workflows/test.yml`）需在首次 push 后由 GitHub Actions 实跑确认（本地等价命令全绿）。
+- CI（`.github/workflows/test.yml`）首次 push 后实跑结果见下（`gh run watch`）：
+  - 第 1 次（提交 `89d7e44` + merge `7a1bf12`，run `36851983409`）：`✓ 类型检查`、`✓ 构建`、**`✗ 引擎 / 战术 / 金样逐手差分`**，后两步（vitest、文档）被跳过。
+    唯一红项是 `✗ 归档：版本声明只看棋谱自带的 meta.code（没声明就是未知）`：期望 `28 未知 / 20 ×0.7.0 / 6 ×0.8.0`，实测 `0.8.0` 有 7 个。
+    病因不是代码：merge 带进来的 `games/2026-10-01/mock-vs-mock-20261001100609.json`（旧站快照自动提交的第 55 局，
+    `exported 2026-10-01T10:06:09.131Z`、`mock vs mock`、10 手）把封存口径顶掉 —— 它是我自己对 `pages.dev` 跑冒烟留下的产物，D1 里没有对应行。
+    处置：**删文件而不是改期望值**（封存集必须等于 D1 的 54 局），见下一提交。
+  - **`games/` 的冻结不是物理围栏**：旧 `pages.dev` 快照仍持有 `GAMES_GITHUB_TOKEN`，理论上还能继续 commit 归档进 `games/`
+    （Git 集成虽已断）。真正的护栏是 CI 里的归档断言（任何新增/改动都会红）+ 事后删除；彻底堵死需要撤掉该 secret 或停用 Pages 项目。
 
 ---
 

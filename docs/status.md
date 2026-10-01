@@ -129,7 +129,9 @@
 3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，`docs/README.md` 的 ADR 索引已补 0008～0013；`npm run check:docs` 绿（41 个 md / 249 个链接）。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
-> 待确认（不影响功能）：Cron `17 3 * * *` 的首次落库证据要等 2026-10-02T03:17Z 之后查 `stats_cache`；CI 需首次 push 后由 GitHub Actions 实跑。
+> 待确认（不影响功能）：Cron `17 3 * * *` 的首次落库证据要等 2026-10-02T03:17Z 之后查 `stats_cache`。
+> CI 首次 push 已实跑（run `36851983409`）：类型检查与构建通过，引擎/金样步被第 55 个归档文件（旧站快照自动提交、D1 无对应）顶红一条 —— 已删该文件，归档口径恢复「等于 D1 的 54 局」。
+> 注意 `games/` 不是物理围栏：旧 `pages.dev` 快照仍持有 `GAMES_GITHUB_TOKEN`，还能往 `games/` 提交；护栏是 CI 里的归档断言（新增/改动即红）+ 事后删除。
 
 ## 路线图（候选，未承诺）
 
