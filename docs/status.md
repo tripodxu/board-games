@@ -35,7 +35,7 @@
 
 - 源归档 [games/](../games) **冻结只读**：它是金样、对账与归因用例的源数据，不再写入（说明见 [games/README.md](../games/README.md)）。
 - 迁移期导入 SQL 在 [migrations/import/](../migrations/import)（`manifest.json` + `0001_games.sql`）。
-- 一次线上导出的快照留在 [backups/export.sql](../backups/export.sql)（1.9 MB / 7 张表，含 wrangler 的 `d1_migrations` 记账表）。
+- 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物，1.9 MB / 7 张表，含 wrangler 的 `d1_migrations` 记账表；`backups/` 不入库，需要时重新导出）。
 
 ## 已验证（验收证据）
 

@@ -915,7 +915,13 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
     唯一红项是 `✗ 归档：版本声明只看棋谱自带的 meta.code（没声明就是未知）`：期望 `28 未知 / 20 ×0.7.0 / 6 ×0.8.0`，实测 `0.8.0` 有 7 个。
     病因不是代码：merge 带进来的 `games/2026-10-01/mock-vs-mock-20261001100609.json`（旧站快照自动提交的第 55 局，
     `exported 2026-10-01T10:06:09.131Z`、`mock vs mock`、10 手）把封存口径顶掉 —— 它是我自己对 `pages.dev` 跑冒烟留下的产物，D1 里没有对应行。
-    处置：**删文件而不是改期望值**（封存集必须等于 D1 的 54 局），见下一提交。
+    处置：**删文件而不是改期望值**（封存集必须等于 D1 的 54 局），见提交 `0644786`。
+  - 第 2 次（提交 `0644786`，run `36852326658`）：类型检查 ✓、构建 ✓、引擎/金样 ✓（121/121）、vitest（真 workerd + 本地 D1）✓，
+    **`✗ 文档校验`** —— `✗ docs/architecture.md 死链: ../backups/export.sql`、`✗ docs/status.md 死链: ../backups/export.sql`。
+    这是文档代理写下的两个链接指向 `npm run db:export` 的产物，而 `backups/` 在 `.gitignore` 里：**本机因为跑过一次导出所以绿，CI 里没有这个文件**。
+    处置：两处改为反引号纯文本，并**把这类坑写进检查器** —— `scripts/check-docs.mjs` 新增第 2 条规则：
+    「链接指向被 `.gitignore` 忽略的产物」也算失败（用 `git check-ignore -q` 判定，无 git 时自动跳过），
+    失败文案是「（本机存在，但 CI 与新克隆里没有）」；负向对照：临时把 `[负向对照](../backups/export.sql)` 塞回 `docs/status.md` → 该条变红且报出正确路径，恢复后 246 链接全绿。    —— 教训与 Rapfi 那条同源：**本机绿 ≠ CI 绿**，差别在于「本机有而仓库没有的东西」（这里是 `backups/export.sql`、`node_modules` 这类被忽略的产物）。
   - **`games/` 的冻结不是物理围栏**：旧 `pages.dev` 快照仍持有 `GAMES_GITHUB_TOKEN`，理论上还能继续 commit 归档进 `games/`
     （Git 集成虽已断）。真正的护栏是 CI 里的归档断言（任何新增/改动都会红）+ 事后删除；彻底堵死需要撤掉该 secret 或停用 Pages 项目。
 
@@ -983,7 +989,9 @@ node scripts/verify-parity.mjs --base <url> --candidate http://127.0.0.1:8787
 - [x] `index.html` 只剩 1 个 module 入口（`test/ui/index-shell.spec.ts` 断言恰好 1 个 `type="module"` 脚本）；
       `js/`、`functions/`、`server.js`、`dev-proxy.py`、`legacy.html`、`css/` 已删除
 - [ ] CI 两工作流绿：test（typecheck+test+build）、deploy（migrate+deploy）
-      —— **待首次 push 后由 GitHub Actions 确认**（本地等价命令 `typecheck`/`test`/`build` 全绿）
+      —— **test.yml 已实跑两次**（见 §7「仍未闭环」）：typecheck + build + engines 121/121 + vitest 全绿；
+      两次红都不是代码回归（第 55 个旧站归档、链到被忽略的 `backups/export.sql`），已分别修掉并把第二类写进 `scripts/check-docs.mjs`。
+      `deploy.yml` 是 `workflow_dispatch`，按设计不随 push 跑（本次部署走本地 `npm run deploy`）。
 - [x] `wrangler versions` 可回滚（≥4 个历史版本，含 `43038711-…`、`edccaaed-…`）；
       D1 有当日 `export` 备份（`backups/export.sql`，`verify:backup` 重建整库 54 局 / 4379 手 / payload 845578 B 逐字节一致）
 - [x] 文档全量更新，`codeVersion` 由构建注入（手工 bump 限制退役）

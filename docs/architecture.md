@@ -62,7 +62,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | [scripts/](../scripts) | 6 个零依赖脚本：文档校验、归档导入、新旧对账、备份校验、线上 HTTP 冒烟、真浏览器冒烟 |
 | [.github/workflows/](../.github/workflows) | 三条流水线：`test.yml`（CI）、`deploy.yml`（手动部署）、`backup.yml`（每日 D1 导出） |
 | [data/experiments.json](../data/experiments.json) | 旧实现的实验归档（已导入 D1），历史遗留 |
-| [backups/export.sql](../backups/export.sql) | 一次 D1 导出的快照（用于本地重放/备份校验判别力对照） |
+| `backups/export.sql`（`npm run db:export` 的产物，不入库） | 一次 D1 导出的快照（用于本地重放/备份校验判别力对照） |
 
 > 上表里没有旧实现的任何一行：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、
 > 旧测试 `test/{run-tests,server-tests,rapfi-tests}.js` 都已在 P8 删除（见 §9「旧实现已删除（P8）」），
