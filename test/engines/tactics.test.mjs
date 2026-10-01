@@ -95,14 +95,14 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（当前档已是 v10-live3，尚无归档）');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v10-live3 的实证局数看 gamesVerified）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
   eq(R.resolve('v0-off').gamesVerified, 2, 'v0 有 2 局实证');
   eq(R.resolve('v5-safesort').gamesVerified, 0, 'v5 窗口局无本档实证');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 滞后局）');
-  eq(R.resolve('v9-vcf-sound').gamesVerified, 4, 'v9 实证 4 局');
+  eq(R.resolve('v9-vcf-sound').gamesVerified, 16, 'v9 实证 16 局');
   for (const v of R.VERSIONS) {
     ok(Number.isInteger(v.gamesVerified) && v.gamesVerified >= 0, v.id + ' 必须有非负整数 gamesVerified');
     ok(Number.isInteger(v.games) && v.games >= 0, v.id + ' 必须有非负整数 games');
@@ -131,14 +131,15 @@ S.t('版本登记表：resolve 回退与 allows 闸门', () => {
 
 S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs 实证）', () => {
   /* `games` 是迁移前的冻结快照（按文件名时间窗统计），`gamesVerified` 是有元数据实证的局数。
-     两者不能互相推导 —— v7 快照 4 局 / 实证 20 局，v9 快照 26 局 / 实证 4 局。
+     两者不能互相推导 —— v7 快照 4 局 / 实证 20 局，v9 快照 26 局 / 实证 16 局。
      时间窗口径本身已退役（见 src/core/tactics-versions.ts 的「已退役」注释），这里只钉住
      这两个数字不会被顺手改掉：它们读登记表时是历史的全部依据。 */
   const snap = R.VERSIONS.reduce((s, v) => s + (v.games || 0), 0);
   eq(snap, 54, '快照合计应等于 games/ 全量 54 局');
   eq(R.resolve('v7-vcf').games, 4, 'v7 快照 4 局（窗口口径）');
   eq(R.resolve('v9-vcf-sound').games, 26, 'v9 快照 26 局（窗口口径）');
-  eq(R.resolve('v9-vcf-sound').gamesVerified, 4, 'v9 实证 4 局（每手 ai.tv）');
+  eq(R.resolve('v9-vcf-sound').gamesVerified, 16, 'v9 实证 16 局（4 局旧实证 + 2026-10-02 对照实验的 v9 臂 12 局，每手 ai.tv）');
+  eq(R.resolve('v10-live3').gamesVerified, 12, 'v10 实证 12 局（对照实验两臂 4+8，每手 ai.tv = v10-live3）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');
