@@ -32,7 +32,7 @@ export function versionTag(id?: string): string {
   return m ? 'v' + m[1] : v.id;
 }
 
-/** 展示名：'我' / '演示' / 'Jev·v9' / '随机·v4' / 'Rapfi(3s)'。 */
+/** 展示名：'我' / '演示' / 'Jev·v10' / '随机·v4' / 'Rapfi(3s)'（代理侧的短号跟登记表当前档走）。 */
 export function sideLabel(cfg: SideInput | null | undefined): string {
   const c: SideInput = cfg || {};
   if (c.human) return '我';
@@ -78,19 +78,24 @@ export function slug(black: SideInput, white: SideInput): string {
 
 export function selfTest(): void {
   const U = (c: unknown, m: string): void => { assert(c, m); };
+  /* 代理侧展示名跟着登记表当前档走（v10 起不再写死短号：档位一升，这里只断言
+     「标签与登记表一致」这条不变量，避免每次加版本都要来改一行字面量）。 */
+  const CUR = versionTag();
+  const V = 'Jev·' + CUR;
+  U(/^v\d+$/.test(CUR), '当前档短号应形如 vN，实际 ' + CUR);
   U(sideLabel({ human: true }) === '我', 'human 展示名应为 我');
   U(sideLabel({ channel: 'mock' }) === '演示', 'mock 展示名应为 演示');
-  U(sideLabel({ channel: 'proxy' }) === 'Jev·v9', 'proxy 展示名应为 Jev·v9');
+  U(sideLabel({ channel: 'proxy' }) === V, 'proxy 展示名应为 ' + V);
   U(sideLabel({ channel: 'random', tactics: 'v4-parry3' }) === '随机·v4', 'random 展示名应带版本号');
   U(sideLabel({ channel: 'rapfi', rapfiThinkMs: 3000 }) === 'Rapfi(3s)', 'rapfi 3s 展示名不对');
   U(sideLabel({ channel: 'rapfi', rapfiThinkMs: 500 }) === 'Rapfi(0.5s)', 'rapfi 0.5s 展示名不对');
-  U(duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }) === '黑 Jev·v9 vs 白 Rapfi(5s)',
+  U(duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }) === '黑 ' + V + ' vs 白 Rapfi(5s)',
     'duelLabel 不对：' + duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }));
-  U(gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }) === '五子棋 · 人机 · 黑 我 vs 白 Jev·v9',
+  U(gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }) === '五子棋 · 人机 · 黑 我 vs 白 ' + V,
     'gameLabel 不对：' + gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }));
-  U(expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4) === 'Jev·v9 vs 随机·v3 ×4局',
+  U(expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4) === V + ' vs 随机·v3 ×4局',
     'expLabel 不对');
-  U(slug({ channel: 'random', tactics: 'v3-make2' }, { channel: 'proxy' }) === 'ran-v3-vs-jev-v9',
+  U(slug({ channel: 'random', tactics: 'v3-make2' }, { channel: 'proxy' }) === 'ran-v3-vs-jev-' + CUR,
     'slug 不对：' + slug({ channel: 'random', tactics: 'v3-make2' }, { channel: 'proxy' }));
   const s2 = slug({ channel: 'random', tactics: 'v3-make2' }, { channel: 'proxy' });
   U(/^[a-z0-9_-]+$/.test(s2) && s2.length <= 24, 'slug 字符集/长度不对：' + s2);
@@ -98,7 +103,7 @@ export function selfTest(): void {
   U(evil.indexOf('/') < 0 && evil.indexOf('.') < 0, 'slug 必须滤掉路径字符，实际 ' + evil);
   U(!!slug({}, {}), '空配置也应给出非空代号');
   U(slug({ human: true }, { channel: 'proxy', tactics: 'v0-off' }) === 'me-vs-jev-v0', 'human slug 不对');
-  U(duelLabel({ human: true }, { channel: 'proxy' }) === '黑 我 vs 白 Jev·v9', 'human duelLabel 不对');
+  U(duelLabel({ human: true }, { channel: 'proxy' }) === '黑 我 vs 白 ' + V, 'human duelLabel 不对');
   U(slug({ human: true }, { human: true }) === 'me-vs-me', '双人 slug 应为 me-vs-me');
 }
 

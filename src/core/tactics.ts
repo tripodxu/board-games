@@ -4,8 +4,9 @@
  * 它可能把「一步致胜」判成 0.2；这里把「这一步直接赢」「对方下一步赢」「造双杀」
  * 「连续冲四将死链」这类**可判定事实**在引擎上穷举出来，交给 orchestrator 接管。
  *
- * 九级保险（接管顺序，见 decide）：
- *   win → block → open4 → threat → vcfAttack → vcfDefense → parry → parry3 → parry4
+ * 十一级保险（接管顺序，见 decide）：
+ *   win → block → open4 → threat → vcfAttack → vcfDefense →
+ *   live3Attack → live3Defense → parry → parry3 → parry4
  * 每一级都受**版本闸门**（tactics-versions.mech）约束：老版本没实现的层连算都不算，
  * 否则「v4 的行为」会随新代码漂移，实验就没法按版本归因。
  *
@@ -28,6 +29,12 @@ export interface TacticsReport {
   danger_points_opponent: string[];
   vcf_win_you: string[];
   vcf_win_opponent: string[];
+  /** v10：己方活三制造点（4 手内必胜威胁，覆盖跳活三 / 斜向组合）。 */
+  live3_you: string[];
+  /** v10：对手的活三制造点。 */
+  live3_opponent: string[];
+  /** v10：破活三的落点（并列最优里最先评估到的，可能为空数组）。 */
+  live3_deny_points: string[];
 }
 
 /** 对局经验（跨设备开具体验；由 /api/openings 喂）。 */
@@ -60,11 +67,11 @@ export interface DecideResult {
  * 常量与缓存
  * ------------------------------------------------------------------ */
 
-/** 12 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
+/** 14 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
 const ALL_MECH: Record<string, boolean> = {
   win: true, block: true, open4: true, threat: true,
-  vcfAttack: true, vcfDefense: true, parry: true,
-  parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true,
+  vcfAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true,
+  parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true,
 };
 
 /** VCF 搜索深度（ply）。7 是 gomoku 上「够用且不卡」的实测值。 */
@@ -82,6 +89,7 @@ export function emptyTactics(): TacticsReport {
     winning_points_you: [], winning_points_opponent: [],
     chance_points_you: [], danger_points_opponent: [],
     vcf_win_you: [], vcf_win_opponent: [],
+    live3_you: [], live3_opponent: [], live3_deny_points: [],
   };
 }
 
@@ -241,6 +249,9 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     danger_points_opponent: [],
     vcf_win_you: [],
     vcf_win_opponent: [],
+    live3_you: [],
+    live3_opponent: [],
+    live3_deny_points: [],
   };
 
   /* 2-ply 造杀/拆杀：只在「没有一步致胜」时才算（有致胜就不用看了） */
@@ -279,6 +290,24 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     } catch (_) { /* 引擎差异一律 fail-soft：战术层不能把对局打断 */ }
   }
 
+  /* 4-ply 活三（v10）：v9 之前只有「活四制造点」（2-ply），跳活三/斜向组合全靠模型自己看，
+     实测正是输给搜索算法的口子。这里用引擎的 live3Makers / live3Deny 真推演（4 手内必胜）。 */
+  if (engine.deepTactics && typeof engine.live3Makers === 'function' && win.length === 0 && block.length === 0
+      && oppSide && (M.live3Attack || M.live3Defense)) {
+    try {
+      const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
+      if (M.live3Defense) {
+        res.live3_opponent = engine.live3Makers(st, oppSide.id);
+        if (res.live3_opponent.length && typeof engine.live3Deny === 'function') {
+          const deny = engine.live3Deny(st, side, candNotations);
+          if (deny && deny.best && deny.best.length) res.live3_deny_points = deny.best;
+        }
+      }
+      /* 抢攻层留到最后算：对手已有活三时我们的活三通常来不及（守卫逻辑在 client 侧判） */
+      if (M.live3Attack) res.live3_you = engine.live3Makers(st, side);
+    } catch (_) { /* 同上：引擎差异 fail-soft */ }
+  }
+
   if (tacCache && st && typeof st === 'object') {
     let byVer = tacCache.get(st as object);
     if (!byVer) { byVer = new Map<string, TacticsReport>(); tacCache.set(st as object, byVer); }
@@ -312,6 +341,8 @@ export function attachFacts(ser: JevSerialized, tactics: TacticsReport, experien
       'If `vcf_win_you` is non-empty, playing that point starts a forced sequence of consecutive fours leading to victory — take it when there is no immediate win, block, or double-threat above. ' +
       'If `vcf_win_opponent` is non-empty, the opponent has such a forced sequence; playing that point disrupts it at its entry — prioritize it over quiet moves. ' +
       'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ' +
+      'If `live3_opponent` is non-empty, the opponent has points that would create two open-four threats at once (winning within four moves even if you block one); `live3_deny_points` lists the moves that remove that threat — play one of them unless a more urgent item above applies. ' +
+      'If `live3_you` is non-empty and the opponent has no equal or faster threat, playing one of those points creates a double open-four threat of your own, winning within four moves. ' +
       (experience ? 'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ' : '');
   }
 }

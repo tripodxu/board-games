@@ -21,3 +21,4 @@
 | [0011](0011-d1-authoritative-persistence.md) | D1 为唯一权威持久化（取代 GitHub API 落盘） | accepted |
 | [0012](0012-vite-typescript-build-chain.md) | 引入 Vite + TypeScript 构建链（部分取代 0001） | accepted |
 | [0013](0013-anonymous-device-identity-and-d1-ratelimit.md) | 匿名 deviceId 身份 + D1 原子限流（取代 isolate 内存 Map） | accepted |
+| [0014](0014-live3-real-lookahead.md) | 战术层新增「活三真推演」两级（live3Attack / live3Defense）：4 手内必胜从标签匹配升级为推演 | accepted |

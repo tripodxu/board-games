@@ -51,7 +51,7 @@
 ## 3. 调整 Jev 请求 / prompt / 采样
 
 1. 读 [../jev-api.md](../jev-api.md) §1（上游契约）与 §2（渠道）。
-2. 改 `src/core/jev/client.ts`（请求组装、退避、成本、九级战术接管）或
+2. 改 `src/core/jev/client.ts`（请求组装、退避、成本、十一级战术接管）或
    某引擎的 `serializeForJev`（state 形状、`questions`/`criteria` 标签、`board_ascii` 之类的事实注入）。
 3. **不要拆三问**：`move`(choice) + `edge`(noul) + `position`(score) 必须一次并行发出
    （[AGENTS.md](../../AGENTS.md) §2 硬性规则 6）。

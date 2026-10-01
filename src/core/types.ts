@@ -79,6 +79,13 @@ export interface VcfResult {
   line: string[];
 }
 
+/** 破活三（4-ply 威胁）扫描结果：before/after 是对手活三制造点数，best 是并列最优点。 */
+export interface Live3Deny {
+  before: number;
+  after: number;
+  best: string[];
+}
+
 /** 引擎统一接口（docs/engine-interface.md §2）。 */
 export interface Engine<S = any> {
   id: string;
@@ -107,6 +114,16 @@ export interface Engine<S = any> {
   mockPick?(st: S, moves: Move[], side: string, cfg?: PickConfig): Move | null | undefined;
   /** st.turn 须为 attackerId；无链返回 { win:false, first:null, line:[] }。 */
   vcfWin?(st: S, attackerId: string, maxPlies: number): VcfResult;
+  /**
+   * 活三制造点（L3）：落子后自己有 ≥2 个活四制造点＝4 手内必胜威胁（v10 战术层用）。
+   * 覆盖 labelPoint 的连续三模式认不出的跳活三 / 斜向组合。返回记法列表，可能为空。
+   */
+  live3Makers?(st: S, sideId: string): string[];
+  /**
+   * 破活三：在候选记法里挑出让对手 L3 点最少的点（v10 战术层用）。
+   * 对手的 L3 点本身优先试；after 为剩下多少，best 为并列最优（见实现注释）。
+   */
+  live3Deny?(st: S, sideId: string, candNotations: string[]): Live3Deny;
 
   /** 引擎私有方法（如 gomoku 的 candidates / serialize 用到的辅助）。 */
   [k: string]: unknown;

@@ -344,7 +344,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   }
   pairs.sort((a, b) => b[1] - a[1]);
 
-  /* 战术保险：九级接管——致胜点必走、对方致胜必挡、己方活四点必走（活四+对方无先手五
+  /* 战术保险：十一级接管——致胜点必走、对方致胜必挡、己方活四点必走（活四+对方无先手五
    * = 理论必胜：两处成五点防不胜防）。概率只是偏好，事实优先。
    * 活四点由引擎以 criteria 保留标签 "you:open4" 声明（engine-interface 契约）。 */
   let notation: string | null = null;
@@ -353,7 +353,8 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   /* 战术点中文名（接管提示用） */
   const tacticName = (): string => ({
     win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点',
-    vcfAttack: '连续冲四将死链', vcfDefense: '将死链干预点', parry: '拆杀点',
+    vcfAttack: '连续冲四将死链', vcfDefense: '将死链干预点',
+    live3Attack: '活三抢攻点', live3Defense: '拆活三点', parry: '拆杀点',
     parry3: '活三/活四预挡点', parry4: '冲四预挡点',
   } as Record<string, string>)[tacticUsed || ''] || '战术点';
   const pickAmong = (list: string[]): string | null => {
@@ -437,6 +438,19 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
      * 「潜在双杀」更紧急，故优先。 */
     notation = pickAmong(tactics.vcf_win_opponent);
     if (notation) tacticUsed = 'vcfDefense';
+  } else if (M.live3Attack && !tactics.danger_points_opponent.length && tactics.live3_you.length) {
+    /* v10 活三抢攻：自己的 L3（落子后 ≥2 个活四制造点）＝ 4 手内必胜。排在 vcf 之后
+     * （将死链是强制胜，更快），parry 之前（对手下回合的双杀还没成型时我们先手更划算）。
+     * danger_points_opponent 非空时让位：对手下回合就能造活四（2 手胜），我们先手 4 手剑
+     * 会输速度——那种局面交给下面的 parry 层。 */
+    notation = pickAmong(tactics.live3_you);
+    if (notation) tacticUsed = 'live3Attack';
+  } else if (M.live3Defense && !tactics.danger_points_opponent.length && tactics.live3_deny_points.length) {
+    /* v10 拆活三：对手有 L3 时走引擎算出的破点（让对手 L3 点数归零的那些点）。
+     * 排在 parry3（模型自己的 deny:live3 标签）之前：标签只认连续 XXX，跳活三/斜向组合
+     * 根本打不出标签，而实测 27 局 rapfi 归档里 14 局正是死在这种认不出的活三上。 */
+    notation = pickAmong(tactics.live3_deny_points);
+    if (notation) tacticUsed = 'live3Defense';
   } else if (M.safeSort && tactics.danger_points_opponent.length) {
     /* v5 起多 danger 并存时 3-ply 安全排序；v5 之前直接取概率最高者 */
     notation = pickSafestParry(tactics.danger_points_opponent);

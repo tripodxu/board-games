@@ -14,7 +14,7 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
-import type { Engine, GameStatus, JevSerialized, Move, PickConfig, UiState, VcfResult } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, UiState, VcfResult } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -24,6 +24,8 @@ const parseN = (n: string): { r: number; c: number } => ({ r: parseInt(n.slice(1
 
 const DIRS4: number[][] = [[0, 1], [1, 0], [1, 1], [1, -1]];
 const inB = (r: number, c: number): boolean => r >= 0 && r < N && c >= 0 && c < N;
+/** 破活三时最多评估几个候选点（每个都要重数一遍对手的 L3，故设上限保证毫秒级）。 */
+const LIVE3_DENY_EVAL_MAX = 24;
 
 /* 禁手名称（中文，用于终局 reason） */
 const FORBID_NAMES: Record<string, string> = { 'overline': '长连', 'double-four': '四四', 'double-three': '三三' };
@@ -312,6 +314,108 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     if (!line) return { win: false, first: null, line: [] };
     const toN = (rc: number[]): string => notation(rc[0]!, rc[1]!);
     return { win: true, first: toN(line[0]!), line: line.map(toN) };
+  }
+
+  /* ---------- v10 战术层：活三制造点的真推演（4-ply 威胁） ----------
+   * 与 labelPoint 的 liveThreeDir（只认连续 XXX 一种形状）互补：那里认不出的
+   * 跳活三 / 斜向组合 / 带空隙的四，这里用与 fiveCompletions 同一把尺推演：
+   *   L1 五点      ：落子即五连
+   *   L2 活四制造点：落子后 fiveCompletions ≥ 2 —— 两个成五点，对手挡不住（2 手内必胜）
+   *   L3 活三制造点：落子后存在 ≥2 个 L2 —— 对手只能挡一个（4 手内必胜）
+   * L3 点必与己方子力相邻（落子后要造四，须与己子同线且相邻），故候选集沿用
+   * 「距任意棋子切比雪夫 ≤2」的邻域空点。全程在拷贝上落子 / 撤销，不动调用方状态。
+   * 禁手模式下黑方的禁手点不算威胁（黑走不得；双三在连珠规则里本来就禁）。 */
+  function nearEmpties(board: Board): number[][] {
+    const out: number[][] = [];
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (board[r]![c] !== 0) continue;
+        let near = false;
+        for (let dr = -2; dr <= 2 && !near; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            if (inB(r + dr, c + dc) && board[r + dr]![c + dc] !== 0) { near = true; break; }
+          }
+        }
+        if (near) out.push([r, c]);
+      }
+    }
+    return out;
+  }
+  /** 落 (r,c)（调用方保证为空）后是否 ≥2 个成五点（＝对手挡不住的四）。 */
+  function openFourAfter(board: Board, p: number, r: number, c: number): boolean {
+    board[r]![c] = p;
+    const n = fiveCompletions(board, p, r, c);
+    board[r]![c] = 0;
+    return n >= 2;
+  }
+  /** 落 (r,c)（调用方保证为空）后是否形成 L3（≥2 个 L2 点）。 */
+  function live3After(board: Board, p: number, r: number, c: number, cands: number[][]): boolean {
+    board[r]![c] = p;
+    let cnt = 0;
+    for (const [qr, qc] of cands) {
+      if (board[qr]![qc] !== 0) continue;
+      if (openFourAfter(board, p, qr, qc)) { cnt++; if (cnt >= 2) break; }
+    }
+    board[r]![c] = 0;
+    return cnt >= 2;
+  }
+  /** 数 p 方当前有几个 L3 点；数到 limit 就早退（调用方用返回值的截断语义做比较）。 */
+  function live3Count(board: Board, p: number, cands: number[][], limit: number): number {
+    let cnt = 0;
+    for (const [r, c] of cands) {
+      if (board[r]![c] !== 0) continue;
+      if (live3After(board, p, r, c, cands)) { cnt++; if (cnt >= limit) break; }
+    }
+    return cnt;
+  }
+  function live3Makers(st: GomokuState, sideId: string): string[] {
+    const p = num(sideId);
+    const board = clone(st.board);
+    const cands = nearEmpties(board);
+    const out: string[] = [];
+    for (const [r, c] of cands) {
+      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+      if (live3After(board, p, r, c, cands)) out.push(notation(r, c));
+    }
+    return out;
+  }
+  /**
+   * 破活三：在候选记法里挑让对手 L3 点最少的点；对手的 L3 点本身优先试（占掉最直接）。
+   * 返回的 `best` 是并列最优里**最先评估到**的那些（一旦数到 after=0 就收工，不做全量枚举）：
+   * 决策只需要一个够好的点，全量枚举并列会多花几倍时间，而收益（让模型在等价点里挑）很小。
+   */
+  function live3Deny(st: GomokuState, sideId: string, candNotations: string[]): Live3Deny {
+    const me = num(sideId), opp = me === 1 ? 2 : 1;
+    const board = clone(st.board);
+    const cands = nearEmpties(board);
+    const before = live3Count(board, opp, cands, 999);
+    if (before === 0) return { before: 0, after: 0, best: [] };
+    const oppMakers: string[] = [];
+    for (const [r, c] of cands) if (live3After(board, opp, r, c, cands)) oppMakers.push(notation(r, c));
+    const order: string[] = [];
+    const seen: Record<string, true> = {};
+    for (const n of oppMakers.concat(candNotations)) {
+      if (!n || seen[n]) continue;
+      seen[n] = true;
+      const { r, c } = parseN(n);
+      if (!inB(r, c) || board[r]![c] !== 0) continue;
+      if (forbidden && me === 1 && isForbiddenPoint(board, r, c)) continue;
+      order.push(n);
+    }
+    /* 每评估一个点都要重数一遍对手的 L3，故用 best+1 截断早退；best===0 直接收工 */
+    let best = before;
+    let bestPoints: string[] = [];
+    for (let i = 0; i < order.length && i < LIVE3_DENY_EVAL_MAX; i++) {
+      const n = order[i]!;
+      const { r, c } = parseN(n);
+      board[r]![c] = me;
+      const cnt = live3Count(board, opp, cands, best + 1);
+      board[r]![c] = 0;
+      if (cnt < best) { best = cnt; bestPoints = [n]; }
+      else if (cnt === best) bestPoints.push(n);
+      if (best === 0) break;
+    }
+    return { before, after: best, best: bestPoints };
   }
 
   function getLegalMoves(st: GomokuState): GomokuMove[] {
@@ -725,6 +829,8 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     deepTactics: true,
     /* VCF 威胁空间搜索：连续冲四将死链（见 jev-client vcfAttack/vcfDefense） */
     vcfWin,
+    /* v10：活三制造点的真推演（4-ply 威胁，见 jev-client live3Attack/live3Defense） */
+    live3Makers, live3Deny,
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, mockPick, selfTest,
   } as Engine<GomokuState>;

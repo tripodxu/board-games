@@ -1,11 +1,12 @@
-/* test/engines/tactics.test.mjs — 战术版本登记表 + 九级保险接管链 + VCF soundness 回归
+/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v10 起十一级）+ VCF soundness 回归
  *
  * 覆盖旧 test/run-tests.cjs 中的：
- *   - tacticsRegistryTests()（十档登记表、rank/机制单调、层数对照、机制闸门 allows）
+ *   - tacticsRegistryTests()（版本登记表、rank/机制单调、层数对照、机制闸门 allows）
  *     —— 时间窗归版（versionForFileStamp）与滞后台账（DEPLOY_LAG/auditCode）已在 P7 退役，
  *     归因改由 test/core/attribution.spec.ts 对「导入后的 D1 库」断言，不放这里。
  *   - ⑥c/⑦/⑧/⑨/⑨b/⑨c/⑩/⑪/⑫a–⑫j（战术事实、接管链、经验注入、VCF 真链与伪胜）
  *   - ⑬a–⑬g（版本闸门：同一局面按档给出不同事实与接管行为）
+ *   - ⑤b（v10 活三：引擎层真推演 + 两档事实对照 + 决策级抢/拆活三 + 让位给更短的杀）
  */
 import { suite, ok, eq, deepEq, near } from './harness.mjs';
 
@@ -52,14 +53,14 @@ const VCF_SEQ = ['E7', 'D7', 'F7', 'A1', 'G7', 'A2', 'H5', 'A3', 'H6', 'B1'];
 const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
 
 /* ------------------------------------------------------------------ *
- * ① 版本登记表（git 历史 × 棋谱数据双锚定：9 个战术版本 + 1 数据驱动基线）
+ * ① 版本登记表（git 历史 × 棋谱数据双锚定：10 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v9-vcf-sound', '当前档应为 v9-vcf-sound（a16fdd9）');
+  eq(R.CURRENT, 'v10-live3', '当前档应为 v10-live3（深活三攻防）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 10, '应为 9 战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 11, '应为 10 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
@@ -74,12 +75,14 @@ S.t('版本登记表：机制集合沿梯级单调不减', () => {
   }
 });
 
-S.t('版本登记表：九级层数对照（2/3/5/6/6/7/9/9/9）', () => {
+S.t('版本登记表：十级层数对照（2/3/5/6/6/7/9/9/9/11）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
+    'v10-live3': 11,
   };
-  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vcfDefense', 'parry', 'parry3', 'parry4'];
+  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vcfDefense',
+    'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
   for (const v of R.VERSIONS) {
     const got = TIER.filter((k) => v.mech[k]).length;
     eq(got, LAYERS[v.id], v.id + ' 接管层数应为 ' + LAYERS[v.id] + '，实际 ' + got);
@@ -92,7 +95,7 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 当前档至少应登记 26 局窗口棋谱');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（当前档已是 v10-live3，尚无归档）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
@@ -119,6 +122,9 @@ S.t('版本登记表：resolve 回退与 allows 闸门', () => {
   ok(!R.allows(R.resolve('v7-vcf'), 'vcfTry'), 'v7 不应有 vcfTry');
   ok(R.allows(R.resolve('v9-vcf-sound'), 'sound'), 'sound 应仅 v9 起有');
   ok(!R.allows(R.resolve('v8-vcf-try'), 'sound'), 'v8 不应有 sound');
+  ok(R.allows(R.resolve('v10-live3'), 'live3Defense'), 'live3Defense 应仅 v10 起有');
+  ok(!R.allows(R.resolve('v9-vcf-sound'), 'live3Attack'), 'v9 不应有 live3Attack');
+  ok(R.allows(R.resolve('v10-live3'), 'sound'), 'v10 应继承 v9 的 sound 层');
   const v0 = R.VERSIONS[0];
   for (const k of R.MECHS) ok(!v0.mech[k], 'v0-off 的 ' + k + ' 应为关');
 });
@@ -241,7 +247,7 @@ S.t('VCF：开局无链时不误判', () => {
 });
 
 /* ------------------------------------------------------------------ *
- * ④ 接管链（九级）与经验/事实注入
+ * ④ 接管链（十一级）与经验/事实注入
  * ------------------------------------------------------------------ */
 S.t('接管链：第三级活四点接管（概率偏向 G6）', async () => {
   const st = play(gomoku, SWAP_SEQ);
@@ -437,6 +443,94 @@ S.t('版本闸门：决策级 v8 接管 / v7 不接管 / 缺省与未知收敛�
   const bogus = computeTactics(gomoku, stx, legal, crit, 'v99-nope');
   eq(JSON.stringify(def), JSON.stringify(cur), '缺省 tacticsVersion 必须按当前档跑（' + R.CURRENT + '）');
   eq(JSON.stringify(bogus), JSON.stringify(cur), '未知 tacticsVersion 必须按当前档跑');
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑤b v10 活三（4-ply 真推演）
+ *
+ * 定义阶梯（与 labelPoint 的 fiveCompletions 同一把尺）：
+ *   L1 五点 = 落子即五连；
+ *   L2 活四制造点 = 落子后 ≥2 个五点（2 手内必胜，= you:open4 / chance / danger）；
+ *   L3 活三制造点 = 落子后 ≥2 个 L2（4 手内必胜，对手只能挡一个）。
+ *
+ * 依据 2026-09-30 rapfi 归档 27 局复盘：27/27 局都出现对手能造活三，proxy 拆 13 漏 14；
+ * 漏的 12 局是 proxy 执白在 ply#6 放行黑方反对角线上的**带空隙的四**（F10/D12）。
+ * v9 的 parry3 靠模型返回的 deny:live3 标签，而 labelPoint 只认连续 `_XXX_`，
+ * 跳活三 / 斜线组合 / 带空隙的四一律打不出标签 —— 本层是真推演，不看标签。
+ * ------------------------------------------------------------------ */
+/* 归档 games/2026-09-30/gomoku-20260930025710.json 前 5 手，轮白 */
+const L3_SEQ = ['H8', 'H7', 'E11', 'H9', 'B14'];
+/* 同形三子换成白方（黑方四角散点，互不成线）→ 轮白抢攻 */
+const L3_ATK_SEQ = ['A1', 'H8', 'O1', 'E11', 'A15', 'B14', 'O15'];
+
+S.t('v10 活三：引擎层真推演（归档 ply#6 局面）', () => {
+  const st = play(gomoku, L3_SEQ);
+  eq(st.turn, 'white', 'ply#6 应轮白走；若这里就红了，说明夹具记法失效');
+  deepEq(gomoku.live3Makers(st, 'black'), ['F10', 'D12'],
+    '黑方活三制造点应为 F10/D12，实际：' + JSON.stringify(gomoku.live3Makers(st, 'black')));
+  deepEq(gomoku.live3Makers(st, 'white'), [], '白方此时没有活三制造点');
+  const deny = gomoku.live3Deny(st, 'white', gomoku.getLegalMoves(st).map((m) => m.notation));
+  eq(deny.before, 2, '拆之前黑方应有 2 个活三制造点');
+  eq(deny.after, 0, '拆点应把黑方活三制造点清零');
+  deepEq(deny.best, ['F10'], '并列最优点应为 F10');
+  /* v9 盲区证据：这条线上的四点一个标签都没有，parry3 因此打不出来 */
+  const crit = gomoku.serializeForJev(st, 'white').questions.move.criteria;
+  for (const n of ['C13', 'D12', 'F10', 'G9']) {
+    eq(crit[n], null, n + ' 不该有标签（v9 就靠这个标签，实际：' + crit[n] + '）');
+  }
+});
+
+S.t('v10 活三：战术事实按档给（v9 三个字段全空 / v10 报出对手点与拆点）', () => {
+  const st = play(gomoku, L3_SEQ);
+  const v9 = tacOf(gomoku, st, 'v9-vcf-sound');
+  deepEq(v9.live3_opponent, [], 'v9 不应有 4-ply 事实');
+  deepEq(v9.live3_deny_points, [], 'v9 不应有 4-ply 事实');
+  deepEq(v9.live3_you, [], 'v9 不应有 4-ply 事实');
+  const v10 = tacOf(gomoku, st, 'v10-live3');
+  deepEq(v10.live3_opponent, ['F10', 'D12'], 'v10 应报出对手活三制造点');
+  deepEq(v10.live3_deny_points, ['F10'], 'v10 应给出拆点');
+  deepEq(v10.live3_you, [], '白方自己没有活三制造点');
+  eq(v10.danger_points_opponent.length, 0, '该局面没有 2-ply danger（v9 的 parry 层因此也不触发）');
+});
+
+S.t('v10 活三：决策级拆活三（live3Defense 纠正静点偏好，v9 不接管）', async () => {
+  const st = play(gomoku, L3_SEQ);
+  const probs = { J10: 0.9, F10: 0.05 };
+  const d10 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  ok(d10.notation === 'F10' && d10.meta.tactics === 'live3Defense',
+    'v10 应被 live3Defense 接管走 F10，实际：' + d10.notation + '/' + d10.meta.tactics);
+  ok(d10.meta.tacticsVersion === 'v10-live3', 'meta.tacticsVersion 应记录 v10-live3，实际：' + d10.meta.tacticsVersion);
+  const d9 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v9-vcf-sound' }));
+  ok(d9.meta.tactics !== 'live3Defense', 'v9 不该有这一层，实际：' + d9.notation + '/' + d9.meta.tactics);
+  eq(d9.notation, 'J10', 'v9 档下应原样走模型偏好（这正是 9/30 的输法）');
+});
+
+S.t('v10 活三：决策级抢活三（live3Attack 抢占 4 手必杀点）', async () => {
+  const st = play(gomoku, L3_ATK_SEQ);
+  eq(st.turn, 'white', '抢攻夹具应轮白走');
+  deepEq(gomoku.live3Makers(st, 'white'), ['F10'],
+    '白方活三制造点应为 F10，实际：' + JSON.stringify(gomoku.live3Makers(st, 'white')));
+  const probs = { H1: 0.9 };
+  const d10 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  ok(d10.notation === 'F10' && d10.meta.tactics === 'live3Attack',
+    'v10 应被 live3Attack 接管走 F10，实际：' + d10.notation + '/' + d10.meta.tactics);
+  const d9 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v9-vcf-sound' }));
+  ok(d9.meta.tactics !== 'live3Attack' && d9.notation === 'H1',
+    'v9 不该有这一层，实际：' + d9.notation + '/' + d9.meta.tactics);
+});
+
+S.t('v10 活三：抢攻层让位给更短的杀（对手 2 手杀优先）', async () => {
+  /* 黑方散点恰好自己摆出 D1 的活四制造点：白方虽有活三制造点，但 4 手剑比对手的 2 手剑慢 */
+  const st = play(gomoku, ['A1', 'H8', 'C1', 'E11', 'E1', 'B14', 'G1']);
+  const tac = tacOf(gomoku, st, 'v10-live3');
+  ok(tac.live3_you.length > 0, '夹具前提：白方应有活三制造点，实际：' + JSON.stringify(tac.live3_you));
+  ok(tac.danger_points_opponent.length > 0,
+    '夹具前提：黑方应有 2 手杀，实际：' + JSON.stringify(tac.danger_points_opponent));
+  const d = await withFetch(repliesWith({ J10: 0.9 }), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  ok(d.meta.tactics !== 'live3Attack', '对手有 2 手杀时不该抢 4 手剑，实际：' + d.notation + '/' + d.meta.tactics);
+  eq(d.notation, 'D1', '应走 vcfDefense/parry 的 D1，实际：' + d.notation + '/' + d.meta.tactics);
 });
 
 /* ------------------------------------------------------------------ *

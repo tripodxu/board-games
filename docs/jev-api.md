@@ -124,19 +124,24 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
    与当前开局前 4 手相同的那部分，统计 `{ opening_plies, games, first_player_win_rate }`。
    样本 <2 局不注入（噪声）；离线演示局从不参与（合成数据不自证）。
 
-**战术保险（客户端九级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
-threat | vcfAttack | vcfDefense | parry | parry3 | parry4 | null`——① `win` 有致胜点必走其一；
+**战术保险（客户端十一级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
+threat | vcfAttack | vcfDefense | live3Attack | live3Defense | parry | parry3 | parry4 | null`——① `win` 有致胜点必走其一；
 ② `block` 否则有对方致胜点必挡其一；③ `open4` 否则引擎以 `criteria` 保留标签 `you:open4`
 声明的活四点必走（活四 + 对方无先手五 = 理论必胜：两处成五点防不胜防）；④ `threat` 否则抢占
 2-ply 造杀点（`chance_points_you`：走出后己方有 ≥2 个一步致胜点，带护栏）；⑤ `vcfAttack`
 否则走己方 VCF 将死链首步（连续冲四强制胜，排 threat 后因双杀两步更快、parry 前因将死是强制胜）；
 ⑥ `vcfDefense` 否则占对方将死链入口（干预点经试走复搜确认真破杀；对方多条链并存时不硬挡，
-回落 parry）；⑦ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），**多个并存时按 3-ply
+回落 parry）；⑦ `live3Attack` 否则抢己方**活三制造点**（`live3_you`：走出后己方有 ≥2 个
+活四制造点 = 4 手内必胜，对手只能挡一个）；⑧ `live3Defense` 否则走 `live3_deny_points`
+（拆掉对方全部活三制造点的那一手）；⑦⑧ 两级都是**真推演**（跳活三、斜线组合、带空隙的四
+一律认得出），且**只在对方没有 2 手杀（`danger_points_opponent` 为空）时才动**——对方有更短的剑时
+抢 4 手剑会输速度，这两级让位给后面的 `parry` / `vcfDefense`；⑨ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），**多个并存时按 3-ply
 安全性排序**——先排除「堵完对手仍有双杀制造点」的坏点（给了对手持续攻击节奏），剩余按对手逼杀
-着法数取最少；⑧ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3` 标签的点
-（对手的活三/活四制造点）；⑨ `parry4` 否则抢占带 `deny:four` 标签的点（对手的冲四制造点，
+着法数取最少；⑩ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3` 标签的点
+（对手的活三/活四制造点；只认连续 `_XXX_` 形状，跳活三由 ⑦⑧ 的真推演兜住）；⑪ `parry4` 否则抢占带 `deny:four` 标签的点（对手的冲四制造点，
 Rapfi 实战复盘增补：放任冲四制造点会被连续单杀逼迫 → 双杀收尾）。战术点在概率榜内按概率加权抽
 （尊重 topK），榜外（候选预筛遗漏）直接执行该点并在 `meta.warning` 标注「战术保险接管」。
+机制沿革与依据见 [ADR-0014](adr/0014-live3-real-lookahead.md)。
 概率只是偏好，事实优先。深度换时间的边界写死在实现里（外层 64 候选、逼杀着法只查前 8 个、
 逼杀数数到 10 即停、VCF 7 ply/4000 节点）。
 **边界声明**：VCF 只搜「连续冲四」强制链，不是完整 VCT/估值；Rapfi 实战 0-4 复盘见
@@ -179,7 +184,7 @@ Rapfi 实战复盘增补：放任冲四制造点会被连续单杀逼迫 → 双
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| 客户端 | `src/core/jev/client.ts` | 渠道解析、加鉴权头、30s 超时 + 外部 `AbortSignal` 合并、429/529 指数退避（最多 4 次）、战术注入与九级保险、top-k 采样、成本统计。**key 只在这里从 localStorage 读出来放进请求头，不发给任何本站服务端之外的第三方** |
+| 客户端 | `src/core/jev/client.ts` | 渠道解析、加鉴权头、30s 超时 + 外部 `AbortSignal` 合并、429/529 指数退避（最多 4 次）、战术注入与十一级保险、top-k 采样、成本统计。**key 只在这里从 localStorage 读出来放进请求头，不发给任何本站服务端之外的第三方** |
 | 客户端出口 | `src/core/jev/index.ts` | 装配 `decide`（注入 mock 实现）并转发 `probe` / `presetEndpoint` / `CHANNELS` |
 | Worker 路由 | `src/worker/routes/jev.ts` | `POST /api/jev`：限流（`jev` 桶 30/分/IP，D1 固定窗口）→ 校验 → 转发 → 原样透传上游响应；另注册 `OPTIONS /` 预检（在限流**之前**，不占桶、不耗上游额度） |
 | Worker 上游层 | `src/worker/lib/upstream.ts` | 上游调用细节：请求体白名单（只取 `state`/`model`/`questions`，`model` 缺省 `jev-latest`）、超时、错误映射、`toPassthroughResponse`（不读 body，流式透传） |

@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-10-02 · 战术 v10：把「活三」从形状匹配升级成真推演（v9 对带空隙的活三完全失明）
+
+- **用户要求**（逐字，m05228）：「分析第九版与搜索算法对弈的棋谱，优化，给出第十版，并做实验，与思考时间最短的搜索算法比较，看是否有进步」——复盘 27 局 `jev` vs Rapfi 归档 → 出第十版 → 与 Rapfi 最短思考档（UI 最小 = **500ms**）做 A/B 对照实验。
+- **复盘口径换过一次**：先按 VCF（7-ply 冲四链）扫 27 局，**只有 2 局**是被将死；接管层级直方图 `parry3 156 / vcfDefense 137 / block 133 / parry4 126 / vcfAttack 18 / parry 10 / open4 4 / win 4`（`threat` 一次没触发 ⇒ 全程被动防守），结果 11 黑胜 / 11 白胜 / 5 和。于是改按**活三**口径重扫（`.work/analyze-rapfi.mjs`、`.work/v9-live3-audit.mjs`）：**27/27 局**都出现过对手「能造活三」的局面，v9 实际拆掉 13 次、漏掉 14 次；漏的 12 局形态完全相同 —— **执白第 6 手放行反对角线上的活三制造点 F10/D12**。
+- **根因（走查代码坐实）**：`src/core/engines/gomoku.ts` 的 `liveThreeDir` 只认连续 `_XXX_` 一种形状（跳活三、斜线组合、带空隙的四一律认不出），`labelPoint` 的 `you:live3` / `deny:live3` 因此**恒为空**；`danger_points_opponent` 又只到 2 手（只认「一步成五」）。在归档 ply#6 那个局面上实测：C13/D12/F10/G9 **四点标签全是 `null`**、`danger_points_opponent` 为空 ⇒ 九级接管链**没有任何一层会触发**，v9 只能走无意义的静点。**教训：把深度概念（4 手内必胜）编码成形状概念（`_XXX_`）会静默失配——形状匹配的分母是「想得到的形状」，推演的分母是棋盘。**
+- **v10 机制 = 同一把尺的三级阶梯**（与 `fiveCompletions` 一致）：**L1 五点**（落子即五连）/ **L2 活四制造点**（落子后 `fiveCompletions ≥ 2`，2 手内必胜 = 既有 `you:open4`）/ **L3 活三制造点**（落子后存在 ≥2 个 L2，对手只能挡一个，4 手内必胜）。引擎新增可选方法 `live3Makers(st, sideId): string[]` 与 `live3Deny(st, sideId, candNotations): Live3Deny`（`{before, after, best}`，`best` = 并列最优里最先评估到的那批），候选集沿用「距任意棋子切比雪夫 ≤2」的邻域空点（L3 点必与己子相邻，可证），全程在 `clone(st.board)` 上落子/撤销；`live3Deny` 用「对手 L3 点优先 + `best+1` 截断 + `best===0` 即停 + 最多评 24 个点」控成本。实测该局面 `live3Makers(black)=['F10','D12']`（20ms）、`live3Deny(white)={before:2,after:0,best:['F10']}`（28ms），相对一次 Jev 调用（~1s）可忽略。
+- **战术层与接管链**：`TacticsReport` 新增 `live3_you` / `live3_opponent` / `live3_deny_points`（facts 里同时给模型英文指令）；`ALL_MECH` 与 `MECHS` 变 14 键；接管链在 `vcfDefense` 后插 `live3Attack`（抢己方 L3）/ `live3Defense`（走 `live3_deny_points`）成**十一级**，**只在 `danger_points_opponent` 为空时才动**（对手有 2 手杀时抢 4 手剑会输速度，让位给 `parry`）；登记表加第 11 行 `v10-live3`（`rank 10`、机制单调递增）且 `CURRENT` 改指它，`index.html` 三处下拉加选项。
+- **测试**：`test/engines/run.mjs` **126 例全绿**（原 121），金样逐手差分不变（自对弈 1131 手 + 归档 54 局 4379 手）；`test/engines/tactics.test.mjs` 新增⑤b 五例（引擎层推演 / 战术事实 / 决策级 `live3Defense` 接管 / 抢攻 `live3Attack` / 对手有 2 手杀时让位走 `vcfDefense`）；**顺手抓到一个写死期望**：`src/core/view/duel.ts` 的 `selfTest()` 里 `'Jev·v9'` 是硬编码的，换档就红（`?test=1` 面板 + `test/app/boot.spec.ts`）——改成从登记表派生 `versionTag()`，以后换档不会再假红。
+- **设计记录**：[ADR-0014](../adr/0014-live3-real-lookahead.md)（含明确的「不做什么」：只到 4 手、`live3Deny` 报「能清零的点」而非全局最优、不改采样、不碰 `mock`/`rapfi` 渠道）。
+
+---
+
 ## 2026-10-01 · 真跑 4 局 proxy 对比实验：自家限流把整轮顶穿，而错误文案指向别处
 
 - **用户要求**：给出 Jev API Key（`apikey_…`，96 字符，**只经环境变量 `JEV_API_KEY` 传入，绝不落盘/入库/进 URL**），并在三个选项里选了「**4 局：proxy(v9-vcf-sound) vs proxy(v8-vcf-try)**」。

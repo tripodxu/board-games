@@ -1,6 +1,6 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-01。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-02。
 
 ## 当前状态
 
@@ -86,6 +86,8 @@
 | **自家限流把整轮对比实验挡死在第 1 局**：`jev` 档 30 次/分/IP，机机对局一个 60 秒窗口打到 34 次；客户端旧写法 4 次尝试（1+2+4 秒）熬不过窗口，且**限流分支从不给 `lastErr` 赋值** → 抛出的文案是「重试次数用尽」，真实原因（被自己限流）完全看不出来；机机对局又没人点「重试」，于是整轮实验报废 | 传输层：`src/core/jev/client.ts` 的 `callWithRetry` 重写 —— 限流（429/529）独立计数 5 次、按 `Retry-After` 退避（截 20 秒）、每次都留带状态码的错误并打 `retryable` 标记（401/4xx 为 `false`）。装配层：`src/app/loop.ts` 的 `aiStep` 对 `retryable` 做自动退避重试（`AI_AUTO_RETRY_DELAYS_MS = [4000, 12000, 25000]`，期间**不暂停**），成功/手动重试/重开一局都清零额度。配置：`jev` 档改由 `vars.JEV_RATE_LIMIT_PER_MIN` 覆盖（生产 60，60×1440 ≈ 8.6 万 < 10 万行/日）。`test/core/jev-retry.spec.ts` 5 例 + `test/app/ai-auto-retry.spec.ts` 2 例；三组负向对照（不遵守 `Retry-After` / 尝试次数降回 4 / `retryable` 改 false / 关掉自动重试分支）各自红了对应用例 |
 | **实验运行脚本会自欺**（`scripts/experiment-run.mjs`）：计量器按绝对路径 `/api/jev` 匹配，而代理端点是相对串 `api/jev`（`src/core/jev/client.ts:29`）→ 永远报「上游 0 次（错 0）」，恰好藏起唯一证据；失败时台账 `history[0]` 还是上一轮的 tag → 归档核对会拿旧数据当本轮成绩；页面停在「等人工重试」时无人可点 | 计量器同时认两种写法并记录 HTTP 状态序列（心跳里直接打出来）；开跑前记台账基线，跑完**只认基线之外的新条目**，没跑满就跳过归档核对；轮询中发现 `#retryBtn` 可见就代点并计数（`report.retryClicks`）；退出码新增 `done` 条件（未跑满一律非 0） |
 
+| **v9 对「带空隙的活三」完全失明**（27 局 rapfi 复盘的真正输法）：`src/core/engines/gomoku.ts` 的 `liveThreeDir` 只认连续 `_XXX_`（`labelPoint` 打出的 `you:live3` / `deny:live3` 因此漏掉跳活三与斜线组合），`danger_points_opponent` 又只到 2 手（只认「一步成五」），于是「对手 4 手内必胜（走活三 → 下一步造活四）」这类局面**没有任何保险层会触发**，v9 只能走静点等死 | v10 新增**真推演**的两级：`live3Makers(st, sideId)`（落子后己方有 ≥2 个活四制造点 = 4 手内必胜）与 `live3Deny(st, sideId, cands)`（拆掉对手全部活三制造点的点，先试对手的 L3 点、用 `best+1` 截断、最多评 24 个点）；战术层产出 `live3_you` / `live3_opponent` / `live3_deny_points`，接管链在 `vcfDefense` 后插入 `live3Attack` / `live3Defense` 成**十一级**，且**只在 `danger_points_opponent` 为空时才动**（对手有 2 手剑时抢 4 手剑会输速度，让给 `parry`）。依据实测：27 局里只有 2 局死于 VCF，27/27 局对手都能造活三，v9 拆 13 次漏 14 次，漏掉的 12 局是执白 ply#6 放行反对角线活三 F10/D12（该局面四点 criteria 全 `null`，旧标签体系确实无可用信息）。测试：`test/engines/tactics.test.mjs` 新增⑤b 五例（引擎层 / 战术事实 / 决策级接管 / 抢攻 / 让位），`test/engines/util.test.mjs` 与 `src/core/view/duel.ts` 的联名断言改为从登记表派生（不再写死 `Jev·v9`）。机制记录 [ADR-0014](adr/0014-live3-real-lookahead.md)。 |
+
 | **`smoke:live` 把数据总量写死在断言里**：`stats.byGame === '{"五子棋":54}'`、`/api/experiments` 恰好 6 轮、写入后 `totalGames === 55` —— D1 现在是活的，真实验一多这三项就红（2026-10-01 真跑 4 局后实测 27/30） | 断言改成**相对基线**：`byGame` 只校验键都是七个中文棋种名且「五子棋」在册，轮次断言「≥ 6 且每轮有 tag」，写入后断言「跑前基线 + 1」（实测 `58 → 59`）。负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1；随后 30/30 通过 |
 
 ### 仍存在（2026-10-01 口径）
@@ -112,15 +114,16 @@
 20. **浏览器端不发送 `X-Device-Id`**：`src/core/api/client.ts` 的 `call()` 只设 `Content-Type`，所以 UI 归档的棋谱 `device_id` 为 NULL，「只看我的」（`?device=me`）只有冒烟脚本这条路走得通。写路由对 `deviceId` 缺失是容忍的（外键只在有值时成立），落库不会失败——这是**待决**而非缺陷：要么让客户端带设备头，要么承认归档是公共的并撤掉 `device=me`。
 21. **`jev` 档限流仍会挡住极端场景**：60 次/分对「机机对局 + 对比实验」够用（实测约 31 次/分），但同一出口 IP 下同时跑多个实验、或一轮里双方都用最慢思考档，仍可能触顶；触顶时的表现是自动退避重试（最多 3 次，约 41 秒窗口），再失败就交给用户。
 22. **`games.tokens_out` 是一列死数据**：一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，导出的 `meta` 里**没有**输出 token；而 `src/shared/record-map.ts:376` 读的是 `meta.usage?.output_tokens`（局级 meta 从来没这个字段）⇒ 该列恒为 NULL。实测真实验 4 局的 `tokens_in` 约 645K 全都落库，`tokens_out` 全为 0。影响仅限「输出 token 的分析口径」（计费按官方口径输出免费，成本列不受影响）；要修就是给 `AiGameMeta` 加 `tokensOut` 并在 `record-map` 里回落读取——属可选增强，未做。
+23. **`v10-live3` 的推演边界**：只算到 4 手（对手 >4 手的杀仍要靠 Rapfi 或对方失误）；`live3Deny` 报的是「能拆掉对手全部活三制造点」的点，**不是全局最优**（并列时取评估顺序里最先出现的，且最多只评 24 个候选点，候选顺序 = 对手 L3 点在前、其余按模型候选表）；`live3Makers` / `live3Deny` 在禁手档里会跳过黑方的禁手点（黑走不得，可能因此少报一个 L3）。推出的点若不在模型概率榜内会被直接执行并在 `meta.warning` 标注「战术保险接管」（与其余保险层同规则）。
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测 34 个测试文件 / 334 个用例）。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 126 个用例 + vitest 34 个测试文件 / 334 个用例）。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
 | `npm test` | `test:engines` + `test:new`（vitest 三个 project 一次跑完） | 提交前的总闸 |
-| `npm run test:engines` | 引擎自检、战术九级与 VCF、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
+| `npm run test:engines` | 引擎自检、战术十一级与 VCF、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
 | `npm run test:tactics` | 战术层独立回归（`test/tactics/run.mjs`） | 改战术层时 |
 | `npm run test:worker` | 真 workerd + 真 D1 的 HTTP 契约与维护任务 | 改 `src/worker/**`、`migrations/**` 后 |
 | `npm run test:ui` | happy-dom 下的视图层与装配层运行时断言 | 改 `src/ui/**`、`src/app/**`、`index.html` 后 |
