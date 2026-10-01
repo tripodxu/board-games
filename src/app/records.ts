@@ -54,32 +54,85 @@ function archiveGameName(g: ArchiveRow): string {
   return gid || '?';
 }
 
+/** 归档面板每页条数（服务端上限 100，这里取 50：首屏够用，且 `54 局` 这种真实数据上就能看到「加载更多」）。 */
+export const ARCHIVE_PAGE_SIZE = 50;
+
+/** 一页一页往里加的累积列表 + 服务端给的 keyset 游标。 */
+let archiveRows: ArchiveRow[] = [];
+let archiveCursor: string | null = null;
+let archiveLoading = false;
+
 /**
- * 旧 `loadGameArchive()`：把后端归档棋谱按战术版本分组。
+ * 旧 `loadGameArchive()`：把后端归档棋谱按战术版本分组（**第一页**）。
  * 只有一条数据通路（`GET /api/games`），不需要逐份抓内容。
+ * 后续页走 `loadMoreArchive()`（keyset 分页，`?cursor=`）。
  */
 export async function loadGameArchive(ctx: AppCtx): Promise<void> {
   const box = byId<HTMLElement>('archiveBody');
   if (!box) return;
+  archiveRows = [];
+  archiveCursor = null;
   box.replaceChildren(el('div', { class: 'hint' }, '读取中…'));
+  await fetchArchivePage(ctx, true);
+}
+
+/** 「加载更多」：按上一页给的游标再取一页，追加后重画（分组是重画的，所以新旧局会并到同一组）。 */
+export async function loadMoreArchive(ctx: AppCtx): Promise<void> {
+  if (archiveLoading || !archiveCursor) return;
+  const btn = byId<HTMLElement>('archiveMoreBtn') as (HTMLElement & { disabled?: boolean }) | null;
+  if (btn) {
+    btn.textContent = '读取中…';
+    btn.setAttribute('disabled', '');
+  }
+  await fetchArchivePage(ctx, false);
+}
+
+/** 取一页并入 `archiveRows`。`first` 决定失败时的降级文案（首屏给提示，追加失败只提示不改列表）。 */
+async function fetchArchivePage(ctx: AppCtx, first: boolean): Promise<void> {
+  const box = byId<HTMLElement>('archiveBody');
+  if (!box) return;
+  archiveLoading = true;
 
   let list: Awaited<ReturnType<typeof listGames>> = null;
   try {
-    list = await listGames({ limit: 100 });
+    list = await listGames({
+      limit: ARCHIVE_PAGE_SIZE,
+      ...(archiveCursor ? { cursor: archiveCursor } : {}),
+    });
   } catch (_) {
     list = null;
+  } finally {
+    archiveLoading = false;
   }
 
   if (!list || !Array.isArray(list.games)) {
-    box.replaceChildren(el('div', { class: 'hint' },
-      '棋谱归档需要同源后端（npm run dev 会同时起 Vite + Worker + 本地 D1）。离线时只能看本机「战绩簿」。'));
-    setText(byId('archiveNote'), '后端不可用');
+    if (first) {
+      box.replaceChildren(el('div', { class: 'hint' },
+        '棋谱归档需要同源后端（npm run dev 会同时起 Vite + Worker + 本地 D1）。离线时只能看本机「战绩簿」。'));
+      setText(byId('archiveNote'), '后端不可用');
+    } else {
+      setText(byId('archiveNote'), '读取下一页失败，已保留前 ' + archiveRows.length + ' 份');
+      /* 失败要能把按钮还回来（否则停在「读取中… disabled」，只能刷新整页重试） */
+      const btn = byId<HTMLElement>('archiveMoreBtn');
+      if (btn) {
+        btn.textContent = '加载更多';
+        btn.removeAttribute('disabled');
+      }
+    }
     return;
   }
 
-  const groups = new Map<string, ArchiveRow[]>();
   for (const raw of list.games as ArchiveRow[]) {
-    if (!raw || typeof raw !== 'object') continue;
+    if (raw && typeof raw === 'object') archiveRows.push(raw);
+  }
+  archiveCursor = list.nextCursor ? String(list.nextCursor) : null;
+  renderArchive(ctx, box);
+}
+
+/** 按战术版本分组重画（第一页与「加载更多」共用）。 */
+function renderArchive(ctx: AppCtx, box: HTMLElement): void {
+  const groups = new Map<string, ArchiveRow[]>();
+  for (const raw of archiveRows) {
     const vid = raw.tacticsVersion ? String(raw.tacticsVersion) : '';
     const key = vid || '__none';
     if (!groups.has(key)) groups.set(key, []);
@@ -135,7 +188,23 @@ export async function loadGameArchive(ctx: AppCtx): Promise<void> {
       ])),
     ]));
   }
+
+  /* 还有下一页时给一个「加载更多」（服务端 keyset 游标；返回 null 就没有了） */
+  if (archiveCursor) {
+    frag.appendChild(el('button', {
+      id: 'archiveMoreBtn',
+      class: 'arc-more mini-btn',
+      type: 'button',
+      title: '按游标取下一页（keyset 分页）',
+      text: '加载更多',
+      onclick: () => {
+        void loadMoreArchive(ctx);
+      },
+    }));
+  }
+
   clear(box);
   box.appendChild(frag);
-  setText(byId('archiveNote'), (list.games as unknown[]).length + ' 份 · 按战术版本分组');
+  setText(byId('archiveNote'),
+    archiveRows.length + ' 份 · 按战术版本分组' + (archiveCursor ? ' · 还有更多' : ''));
 }

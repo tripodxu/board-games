@@ -160,7 +160,7 @@ npm run verify:backup        # 校验导出备份可重建
 
 # 冒烟与文档
 npm run smoke:live       # 线上 HTTP 冒烟（默认打 https://jevqipan.logicc.top，会写一行再删）
-npm run smoke:browser    # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge；--offline 验降级）
+npm run smoke:browser    # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge；--offline 验降级，含归档分页）
 npm run check:docs       # 文档护栏：memory 置顶、相对链接、status 日期
 npm run golden           # 重新生成金样——**预期失败**：金样已冻结，生成器依赖的旧实现已删除
 ```
@@ -172,7 +172,7 @@ npm run golden           # 重新生成金样——**预期失败**：金样已�
 1. `npm run typecheck && npm test`（或让 CI 先跑 `.github/workflows/test.yml`）。
 2. 需要动 schema 时先 `npm run db:migrate:remote`（迁移是追加式的，别改已应用的 `migrations/*.sql`）。
 3. `npm run deploy`（= `npm run build` + `wrangler deploy`），需要 `CLOUDFLARE_API_TOKEN`（本地用 `wrangler login`）。
-4. 部署后自检：`npm run smoke:live`（29 项 HTTP 断言）+ `npm run smoke:browser`（9 项浏览器断言）。
+4. 部署后自检：`npm run smoke:live`（30 项 HTTP 断言）+ `npm run smoke:browser`（11 项浏览器断言，含归档分页）。
 5. 发布前后留底：`npm run db:export`；备份可信度用 `npm run verify:backup` 验。
 
 CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:new → check:docs，`REQUIRE_SQLITE=1` 强制真 SQLite）、
@@ -209,8 +209,9 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
 9. **随机度**：`topK` 滑杆控制采样（1 = 最强手，k>1 = 前 k 名概率加权随机）。
 10. **棋谱回放**：每局有永久链接 `/api/games/u/<gameUid>`，面板里可逐步回放（前进/后退/到底）。
 11. **排行榜**：`/api/leaderboard` 按设备与战术档聚合；**开具体验**：`/api/openings` 给出常见开局的先手胜率与样例局。
-12. **数据导出**：`/api/export/games` 流式 NDJSON（一行一局），走内部游标翻页，对客户端是一个连续流。
-13. **自检入口**：URL 加 `?test=1` 显示浏览器内自检面板（七个引擎逐个 `selfTest()` + 跨模块自检）。
+12. **归档分页**：归档面板首屏一页 50 份，底部「加载更多」按服务端 keyset 游标（`GET /api/games?cursor=…`）追加，翻完自动收掉按钮。
+13. **数据导出**：`/api/export/games` 流式 NDJSON（一行一局），走内部游标翻页，对客户端是一个连续流。
+14. **自检入口**：URL 加 `?test=1` 显示浏览器内自检面板（七个引擎逐个 `selfTest()` + 跨模块自检）。
 
 ## Jev 走棋原理
 

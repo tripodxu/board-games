@@ -930,6 +930,9 @@ button.fold svg { transition: transform .18s var(--ease); }
 .arc-row .arc-game { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .arc-row .arc-open { flex: 0 0 auto; font-size: 10.5px; color: var(--mo); text-decoration: none; }
 .arc-row .arc-open:hover { text-decoration: underline; }
+/* keyset 分页的「加载更多」：整行居中，读取中时按钮自身带 disabled 属性 */
+.arc-more { display: block; margin: 10px auto 2px; }
+.arc-more[disabled] { opacity: .6; cursor: default; }
 
 /* 设置 */
 

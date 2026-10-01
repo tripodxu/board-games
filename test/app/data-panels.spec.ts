@@ -221,3 +221,118 @@ describe('P7c 数据面板接线', () => {
     expect(toastNode?.classList.contains('hidden')).toBe(false);
   });
 });
+
+/* 归档面板的 keyset 分页：首屏一页 + 「加载更多」按 `?cursor=` 追加（服务端 `src/worker/routes/games.ts:138`）。 */
+describe('归档面板分页（keyset 游标）', () => {
+  /** 一行的真实形状：`GET /api/games` 的 `listItem()`（`src/worker/routes/games.ts:56-63`）。 */
+  function archiveRow(uid: string, day: string): Record<string, unknown> {
+    return {
+      gameUid: uid,
+      gameId: 'gomoku',
+      game: '五子棋',
+      slug: 'human-vs-mock',
+      name: 'human-vs-mock-' + uid.slice(0, 8) + '.json',
+      path: 'games/' + day + '/human-vs-mock-' + uid.slice(0, 8) + '.json',
+      day,
+      createdAt: day + 'T10:00:00.000Z',
+      tacticsVersion: 'v9-vcf-sound',
+      size: 2048,
+    };
+  }
+
+  const rowsIn = () => document.querySelectorAll('#archiveBody .arc-row').length;
+  const moreBtn = () => document.getElementById('archiveMoreBtn') as
+    { textContent: string | null; hasAttribute(n: string): boolean; dispatchEvent(e: Event): boolean } | null;
+
+  /** 归档面板是「展开时补渲染」（`foldHooks().archive`，见 `src/app/bindings.ts:175-177`），
+   *  测试走真实入口：点面板标题栏里的「刷新」`#archiveReload`（`src/app/bindings.ts:246-250`）。 */
+  function refreshArchive(): void {
+    const btn = document.getElementById('archiveReload');
+    if (!btn) throw new Error('缺少 #archiveReload');
+    btn.dispatchEvent(new Event('click'));
+  }
+
+  it('首屏按每页 50 取一页；有 nextCursor 就出现「加载更多」，点它带游标追加下一页', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    const calls = stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': (u: URL) => {
+        const cursor = u.searchParams.get('cursor');
+        if (cursor === null) {
+          return { ok: true, games: [archiveRow('uidp1a', '2026-08-22'), archiveRow('uidp1b', '2026-08-21')], nextCursor: 'cur-2' };
+        }
+        if (cursor === 'cur-2') {
+          return { ok: true, games: [archiveRow('uidp2a', '2026-08-20')], nextCursor: null };
+        }
+        return { ok: true, games: [], nextCursor: null };
+      },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 2, 2000, '归档首屏');
+
+    /* 首屏就是 50，且带上 limit（DATE 属于服务端契约：`limit ≤ MAX_LIST_LIMIT`） */
+    expect(calls).toContain('/api/games?limit=50');
+    expect(document.getElementById('archiveNote')?.textContent).toContain('还有更多');
+
+    const more = moreBtn();
+    expect(more).not.toBeNull();
+    expect(more?.textContent).toBe('加载更多');
+    more?.dispatchEvent(new Event('click'));
+
+    await waitUntil(() => rowsIn() === 3, 2000, '点「加载更多」后追加第二页');
+    /* 游标逐字透传（`listGames({ limit, cursor })` → `qs()` 按插入序拼串） */
+    expect(calls).toContain('/api/games?limit=50&cursor=cur-2');
+    /* 服务端说没有下一页 → 按钮收掉，且三行仍归在同一个战术版本组里 */
+    expect(document.getElementById('archiveMoreBtn')).toBeNull();
+    expect(document.getElementById('archiveNote')?.textContent).toContain('3 份');
+    expect(document.querySelectorAll('#archiveBody .arc-group').length).toBe(1);
+  });
+
+  it('单页（nextCursor 为 null）不出现「加载更多」', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': { ok: true, games: [archiveRow('uidonly', '2026-08-22')], nextCursor: null },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 1, 2000, '归档单页');
+
+    expect(document.getElementById('archiveMoreBtn')).toBeNull();
+    expect(document.getElementById('archiveNote')?.textContent).not.toContain('还有更多');
+  });
+
+  it('第二页失败：保留已载入的行，按钮恢复可点（不停在「读取中…」）', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': (u: URL) => {
+        if (u.searchParams.get('cursor') === null) {
+          return { ok: true, games: [archiveRow('uidp1a', '2026-08-22'), archiveRow('uidp1b', '2026-08-21')], nextCursor: 'cur-2' };
+        }
+        return null; /* 下一页：客户端会抛（body.ok !== true）→ 面板按失败降级 */
+      },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 2, 2000, '归档首屏');
+    moreBtn()?.dispatchEvent(new Event('click'));
+
+    await waitUntil(
+      () => (document.getElementById('archiveNote')?.textContent || '').includes('读取下一页失败'),
+      2000,
+      '第二页失败提示',
+    );
+    expect(rowsIn()).toBe(2);
+    const again = moreBtn();
+    expect(again?.textContent).toBe('加载更多');
+    expect(again?.hasAttribute('disabled')).toBe(false);
+  });
+});

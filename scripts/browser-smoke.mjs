@@ -74,7 +74,13 @@ if (!BROWSER) {
 console.log(`浏览器：${BROWSER}`);
 console.log(`目标：  ${URL_TARGET}（渠道 ${CHANNEL}${OFFLINE ? '，离线模式：所有 /api/* 请求会被掐断' : ''}）`);
 
-rmSync(PROFILE, { recursive: true, force: true });
+/* 上次跑留下的临时 profile 可能还被刚退出的 Chrome hold 着（Windows 上很常见）：
+   清不掉就复用同名目录继续，别让整次冒烟起不来。 */
+try {
+  rmSync(PROFILE, { recursive: true, force: true, maxRetries: 2 });
+} catch (err) {
+  console.log(`（提示：旧临时 profile 没清掉（${err?.code ?? err}），复用 ${PROFILE}）`);
+}
 mkdirSync(PROFILE, { recursive: true });
 
 const child = spawn(
@@ -390,6 +396,61 @@ try {
       : `hidden：${drawerState?.wasHidden} → ${drawerState?.nowHidden}，抽屉正文 ${drawerState?.bodyChildren} 个子节点，关闭后 hidden=${drawerState?.closedAgain}`,
   );
 
+  // 7.5) 归档面板的 keyset 分页（服务端 `?cursor=`；只有连着后端时才有数据，离线跳过）
+  if (!OFFLINE) {
+    const opened = await evaluate(`(() => {
+      const body = document.querySelector('#archiveBody');
+      if (!body) return { err: 'no-archiveBody' };
+      const reload = document.querySelector('#archiveReload');
+      if (reload) reload.click();
+      else {
+        const section = body.closest('section.panel');
+        const fold = section ? section.querySelector('button.fold') : null;
+        if (fold) fold.click();
+      }
+      return { ok: true };
+    })()`);
+    const firstPage = opened?.ok
+      ? await waitFor(
+        `(() => { const n = document.querySelectorAll('#archiveBody .arc-row').length;
+          if (!(n > 0)) return '';
+          return { rows: n, hasMore: !!document.querySelector('#archiveMoreBtn'),
+            note: (document.querySelector('#archiveNote')?.textContent ?? '') }; })()`,
+        { label: '归档首屏', timeout: 15000, every: 250 },
+      )
+      : null;
+
+    if (!opened?.ok || !firstPage) {
+      check('归档分页：首屏按游标取一页', false, opened?.err ? String(opened.err) : '等待 15000ms 后归档仍无行');
+    } else if (!firstPage.hasMore) {
+      check('归档分页：首屏按游标取一页', true,
+        `首屏 ${firstPage.rows} 份、无下一页（数据不足一页，未走到追加）`);
+    } else {
+      const clicked = await evaluate(`(() => {
+        const b = document.querySelector('#archiveMoreBtn');
+        if (!b) return '';
+        b.click();
+        return 'clicked';
+      })()`);
+      const secondPage = clicked
+        ? await waitFor(
+          `(() => { const n = document.querySelectorAll('#archiveBody .arc-row').length;
+            if (!(n > ${firstPage.rows})) return '';
+            return { rows: n, hasMore: !!document.querySelector('#archiveMoreBtn'),
+              note: (document.querySelector('#archiveNote')?.textContent ?? '') }; })()`,
+          { label: '归档第二页', timeout: 15000, every: 250 },
+        )
+        : null;
+      check(
+        '归档分页：「加载更多」按 ?cursor= 追加下一页',
+        Boolean(secondPage),
+        secondPage
+          ? `首屏 ${firstPage.rows} → 追加后 ${secondPage.rows} 份，按钮${secondPage.hasMore ? '仍在（还有下一页）' : '已收掉'}，note「${String(secondPage.note).trim()}」`
+          : `首屏 ${firstPage.rows} 份，点「加载更多」后等待 15000ms 行数没增加`,
+      );
+    }
+  }
+
   // 8) 全程无页面级报错
   await sleep(500);
   /* 离线模式下被掐断的请求本身会产生 `net::ERR_FAILED` 之类噪音，那不是应用缺陷；
@@ -423,9 +484,24 @@ try {
     /* 忽略 */
   }
   if (!KEEP) {
-    child.kill();
-    await sleep(300);
-    rmSync(PROFILE, { recursive: true, force: true });
+    try {
+      child.kill();
+    } catch {
+      /* 已经退了就算了 */
+    }
+    /* Windows 上 Chrome 刚被 kill 时句柄还 hold 着目录，立刻 `rmSync` 会 EPERM。
+       这一步**不能**让整次冒烟崩掉（绿跑变崩溃会掩盖真实结果），所以重试 + 兜底只提示。 */
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await sleep(attempt === 0 ? 300 : 400);
+      try {
+        rmSync(PROFILE, { recursive: true, force: true, maxRetries: 3 });
+        break;
+      } catch (err) {
+        if (attempt === 4) {
+          console.log(`（提示：临时 profile 没删掉（${err?.code ?? err}），可手动删：${PROFILE}）`);
+        }
+      }
+    }
   }
   process.exit(failed.length ? 1 : 0);
 }

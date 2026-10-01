@@ -8,6 +8,16 @@
 
 ---
 
+## 2026-10-01 · 归档面板接线 keyset 分页（目标书里「分页」那一项的收尾）
+
+- **背景**：服务端早就有 keyset 游标（`GET /api/games?cursor=…` → `src/worker/routes/games.ts:109,138` 返回 `{ ok, games, nextCursor }`），但 `src/app/records.ts` 只 `listGames({ limit: 100 })` 一次 —— 目标书「新能力（回放/**分页**/排行榜）」里的分页在 UI 侧一直没接线。
+- **改法**：`ARCHIVE_PAGE_SIZE = 50` 取首屏；`loadMoreArchive(ctx)` 带 `?cursor=` 追加下一页；`renderArchive()` 把两页合并重画（所以新旧局并进同一个战术版本组）；没有下一页时按钮收掉；下一页失败保留已载入的行并把按钮从「读取中… disabled」恢复可点。按钮 `#archiveMoreBtn`（`.arc-more mini-btn`，样式 `styles/style.css:933-935`）。
+- **关键坑（调试花掉的时间都在这）**：归档面板是**展开时补渲染**（`foldHooks().archive`，`src/app/bindings.ts:175-177`），`test/app/**` 里 `boot()` 之后不会自己取数 —— 用例必须点 `#archiveReload`（`src/app/bindings.ts:246-250`）走真实入口；第一版用例直接断言行数，三条全部 `waitUntil 超时`。
+- **证据**：`test/app/data-panels.spec.ts` +3 例（首屏 `?limit=50` → 点「加载更多」→ `?limit=50&cursor=cur-2` → 三行仍归一组、按钮消失、note 含「3 份」；单页无按钮；第二页失败降级）；**负向对照**把 cursor 参数摘掉 → 2 例红；`npm test` **29 文件 / 310 用例全绿**；生产实测 `smoke:browser` **11/11**（第 10 项：「首屏 50 → 追加后 54 份，按钮已收掉，note『54 份 · 按战术版本分组』」），`--offline` 12/12、`--channel rapfi` 11/11；`smoke:live` 30/30。
+- **顺手修掉的脚本缺陷**：`scripts/browser-smoke.mjs` 收尾的 `rmSync(PROFILE)` 在 Windows 上会因 Chrome 刚被 kill、句柄没释放而 `EPERM`，**把一次绿跑变成「无报告的崩溃 + exit 1」**（`--channel rapfi` 那次就是这样）；现在起手清旧 profile 与收尾删除都改成重试 + 兜底只提示，绝不让清理失败掩盖检查结果。线上版本 **`3a4934ee-28c5-4e7e-88c9-214da988b707`**。
+
+---
+
 ## 2026-10-01 · P8 收尾上线：删掉旧实现、Rapfi 从不走子的真缺陷、以及「端到端断言才抓得到」的教训
 
 - **收尾动作**：`git rm -r -f js functions legacy.html server.cjs dev-proxy.py test/run-tests.cjs test/server-tests.cjs test/rapfi-tests.cjs`（**注意**：仓库里旧实现的实际文件名是 `server.js`/`test/*.js`，之前那次 `→ .cjs` 只落在暂存区、没改过真实文件名，文档一律写 `.js`）；`css/style.css` → `styles/style.css`（**不拆** base/layout/panels：拆分会动层叠顺序、收益低）；`package.json` 摘掉 `test:legacy`；新建 `test/ui/index-shell.spec.ts` 守真实外壳（约 120 个必需 id、恰好 1 个 module 入口、禁旧路径与硬编码渠道名）。
