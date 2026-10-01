@@ -297,7 +297,12 @@ describe('实验报告：最新棋谱（装配层取数与整形）', () => {
     const rows = [...document.querySelectorAll('.exp-latest-row')];
     expect(rows.length).toBe(2);
     expect(rows.map((r) => (r as HTMLElement).dataset.uid)).toEqual(['uid-new', 'uid-tagged']);
-    expect(rows[0]!.querySelector('.exp-latest-when')!.textContent).toBe('10-01 18:06');
+    /* 日期取自行里的 `day` 列（`10-01`），**时分是按本地时区渲染的** —— CI 跑在 UTC、
+       本机是 UTC+8，所以这里按同一规则现算，别写死 `18:06`（那会让 CI 红）。 */
+    const dt = new Date('2026-10-01T10:06:09.131Z');
+    const p2 = (n: number): string => String(n).padStart(2, '0');
+    expect(rows[0]!.querySelector('.exp-latest-when')!.textContent)
+      .toBe('10-01 ' + p2(dt.getHours()) + ':' + p2(dt.getMinutes()));
     expect(rows[0]!.querySelector('.exp-latest-game')!.textContent).toBe('五子棋');
     expect(rows[0]!.querySelector('.exp-latest-moves')!.textContent).toBe('20 手');
     /* 走的是共用的 `sideAttribution()`：`v9-vcf-sound` 被压成注册表 id `v9` */
