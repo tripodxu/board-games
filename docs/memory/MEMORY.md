@@ -16,6 +16,7 @@
 - **证据**：`test/ui/experiment-report.spec.ts` +6 例（渲染/空态两态/无回调不出按钮/重画幂等/装配层整形/离线降级）、`test/app/latest-games.spec.ts` 3 例（boot 后按归档序三行 + `?limit=10`、点「回放」真的走 `/api/games/u/uid-new` 并让回放器显示 `0/3`、离线停在「加载中…」）；**负向对照三组都真红**——去掉 uid 过滤 → 3 行（期望 2）、渲染改 `appendChild` → 幂等例红、`null` 与 `[]` 共用文案 → 空态例红；把 boot 里的调用 `if (false)` 掉 → app 三例全红。
 - **实测**：`npx tsc --noEmit` 0；`npm test` **32 文件 / 327 用例全绿**；`npm run deploy` → 线上版本 **`128ed7db-1b9d-4b84-a3a2-6ae6c9b6a10d`**；三渠道浏览器冒烟 mock **14/14**、`--offline` **13/13**、`--channel rapfi` **14/14**，新项输出「最新 10 份（首份 09-30 23:34 · 五子棋 · 20 手 · Jev·v9(黑) → 白方 获胜（五连）），点「回放」后回放器 20 手、位置 0/20」。
 - **测试环境的坑**：happy-dom 里 `canvas.getContext('2d')` 返回 null，所以 `drawReplayPosition()` 会在建 canvas 前安静 return —— 断言只能查 `.rp-board` 宿主，不能查 `.rp-board canvas`。
+- **又一次「本机绿 ≠ CI 绿」（时间断言别写死时区）**：CI run `36863711165` 里 327 个用例只红这一条 —— `AssertionError: expected '10-01 10:06' to be '10-01 18:06'`：我把行里的 `when` 写死成本机（UTC+8）的 `18:06`，而 GitHub Actions 跑在 UTC。根因是口径本身分两截：`archiveWhen()`（`src/app/records.ts:48-58`）的**日期取自行里的 `day` 列**（时区无关），**时分来自 `new Date(iso).getHours()/getMinutes()`（本地时区）**。修法＝测试里按同一规则现算（`new Date('2026-10-01T10:06:09.131Z')` + `padStart(2,'0')`），并**用 `$env:TZ='UTC'` 在本地复现**（修前 CI 红、修后 `TZ=UTC npx vitest run --project ui test/ui/experiment-report.spec.ts` 11/11 通过）；随后 `3d80f96` → CI run `36864140364` 全绿。凡是断言格式化后的时间，都要先问「这是哪个时区的字符串」。
 
 ---
 
