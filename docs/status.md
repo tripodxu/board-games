@@ -23,15 +23,22 @@
 
 ## 数据现状
 
-线上 D1 与导入产物一致（来源：计划 P4 执行记录，以及 [migrations/import/manifest.json](../migrations/import/manifest.json)）：
+线上 D1 与导入产物一致（来源：计划 P4 执行记录，以及 [migrations/import/manifest.json](../migrations/import/manifest.json)）；
+2026-10-01 下午起 D1 里多了**真跑出来**的 4 局（见下「真实验」一行），导入基线仍是 54 局 / 4379 手：
 
 | 项 | 值 |
 | --- | --- |
-| 棋谱 | **54 局 / 4379 手**（全部为五子棋；日期 2026-09-29 与 2026-09-30） |
-| 实验轮 | 6（tag 形如 `exp-20260929105234`） |
-| payload 总量 | 845578 B（最大单局 68.7 KB，远低于 512 KB 上限） |
-| 设备 | 0（历史导入不带设备；新写入的局会带自己的匿名设备 id） |
-| 一致性 | `game_uid` 去重后 54、孤儿 `game_moves` 0 行 |
+| 棋谱 | **58 局 / 5279 手** = 导入基线 54 局 / 4379 手（全部五子棋；日期 2026-09-29 与 2026-09-30）**+ 4 局真实验**（2026-10-01，各 225 手，tag `exp-20261001132645`，54 份归档源仍是 [games/](../games) 那 54 局） |
+| 实验轮 | 7（导入 6 轮 + 2026-10-01 真跑的 `exp-20261001132645`） |
+| payload 总量 | 845578 B（54 局导入部分；最大单局 68.7 KB，远低于 512 KB 上限） |
+| 设备 | 0（历史导入与实验归档都不带设备 id；`device_id` 为 NULL） |
+| 一致性 | `game_uid` 去重后 58、孤儿 `game_moves` 0 行 |
+
+- **真实验（2026-10-01，proxy 渠道，4 局全和棋）**：`node scripts/experiment-run.mjs --games 4` 跑满
+  A=`proxy/v9-vcf-sound` vs B=`proxy/v8-vcf-try`，902 次上游调用 / 输入 2586521 token / 输出 438798 token /
+  约 $0.109 / 用时 1854 s，逐局落库 4 行（`tokens_in` 约 645K、`cost_usd` 约 $0.0272、`latency_avg_ms` 930–1056）。
+  四局**全部 225 手「和棋（棋盘已满）」**：两个战术档在这套开局下都攻不穿对方，A/B 无胜负差。
+  证据 `.work/experiment-run-2.json`（不入库）。同一批负载在旧 30/分 限流下会死在第 1 局，这次窗口峰值 34/分、**零 429**。
 
 - 源归档 [games/](../games) **冻结只读**：它是金样、对账与归因用例的源数据，不再写入（说明见 [games/README.md](../games/README.md)）。
 - 迁移期导入 SQL 在 [migrations/import/](../migrations/import)（`manifest.json` + `0001_games.sql`）。
@@ -41,6 +48,7 @@
 
 - **对新旧两套入口对账**（计划 P4 执行记录）：`node scripts/verify-parity.mjs --base https://jev-qiguan.pages.dev --candidate https://jevqipan.logicc.top` → **差值 0**（54 局 / 五子棋 54 / 胜负 18-27-9 / 校准样本 26）。旧入口的截断口径仍是 40 份、胜负 16-16-8——差值 0 说明新侧不是靠「也多读一点」蒙对的。
 - **线上 HTTP 冒烟**（计划 P4 执行记录）：`npm run smoke:live` **29 项全过**（列表不含 payload、永久链接与列表指向同一局、旧深链带/不带 `.json` 都 200、`/api/stats` 无 `truncated`、导出为 JSONL、无 key 的 `/api/jev` 401、非法设备与非法日期 400、重传归档棋谱 `dedup: true` 且写 0 手、新房写 5 手、写后总数 54 → 55）。冒烟写入的行已删除，D1 复原 54/4379/0。
+  2026-10-01 下午起该脚本改为 **30 项**，且总量断言一律**相对基线**（`stats.byGame` 只断言键是中文棋种名，`/api/experiments` 断言轮次 ≥ 6，写入后断言「基线 + 1」）——真实验一多，写死 54/6/55 就会天天空红（实测 `58 → 59` 通过；负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1）。
 - **引擎行为不变**（2026-10-01 实跑 `node test/engines/run.mjs`）：金样自对弈逐手一致 —— 五子棋 17 / 五子棋·禁手 15 / 围棋 89 / 象棋 600 / 国象 169 / 跳棋 103 / 中国跳棋 138；归档 **54 局 / 4379 手逐手一致**。唯一已知不一致是 `games/2026-09-30/jev-v9-vs-jev-v8-20260930153334.json`（归档记「黑方 获胜（认输）」，引擎判 `null`）——引擎不建模认输，属预期，只记录不阻断。
 - **文档卫生**（2026-10-01 实跑 `npm run check:docs`）：41 个 md 的相对链接全部可解析，MEMORY 置顶正确，status 日期在 30 天内。
 - 迁移各阶段的实测数字与偏差裁决见计划 P0–P8 执行记录（含本地导入 4440 changes、7 张表、线上部署版本号等）。
@@ -75,6 +83,10 @@
 | 实验报告只按「Jev 渠道 / 其他」两个桶对比：两侧都是 Jev 渠道时双方落进同一桶（报「Jev 6 胜 · 其他 0 胜」），没有胜率，和棋也没拆出来 | `src/ui/panels/experiment-report.ts` 改为按「渠道 · 战术版本 · 思考深度」分身份统计（`expSideStats()`），身份从局号奇偶推 A/B 执黑（`aIsBlack`），**得分率 =（胜 + 和 ÷ 2）÷ 局**、`dup` 局不计；累计区变成分桶表（局/胜/和/胜率条），每轮多一条 A/B 单轮得分率条。`test/ui/experiment-report.spec.ts` 5 例 + 两次负向对照（判据写反 / 和棋不算半分 → 各 2 例红） |
 | **服务端实验战报从来没并进报告面板**（生产 6 轮实验，面板永远只显示本机种子的 2 轮） | Worker 的 `GET /api/experiments` 响应体是包装对象 `{experiments:[…]}`，P6 装配时按「客户端已解包」写成 `Array.isArray(r)` 判断 → 静默返回。修法：`src/core/api/client.ts` 的 `listExperiments()` 统一解包（兼容裸数组，其余形状 null），`src/app/backend.ts` 的注释与判据同步修正；`test/app/experiments-merge.spec.ts` 3 例钉住（含「同 tag 局数变多才覆盖」与坏形状不抛），`smoke:browser` 新增在线断言（实测本机种子 2 轮 → 面板 6 轮 / 38 局有效） |
 | **报告面板只看得见早期实验**：轮次卡按 `experiment` tag 分组，而归档里最新的一批机机对局（`jev-v9-vs-jev-v9` 等）根本没挂 tag → 永远进不了卡片，6 轮实验全是 2026-09-29/30 的 | 报告面板顶部新增「最新棋谱」块：装配层取 `GET /api/games?limit=10`（`LATEST_GAMES_LIMIT`）整形为 `LatestGameRow[]`（时间/棋种/手数/双方归因/结果/可选 tag#局号，缺 `gameUid` 的行丢弃），`src/ui/panels/experiment-report.ts` 的 `renderLatestGames()` 渲染，每行「回放」直接调 `openReplayer()` 载进回放器；boot / 归档「刷新」/ 每轮实验结束三处都会重取。`test/ui/experiment-report.spec.ts` 6 例 + `test/app/latest-games.spec.ts` 3 例（含点回放真的走 `/api/games/u/:uid`），三组负向对照（去掉 uid 过滤 / 渲染改成 appendChild / null 与 `[]` 共用文案 → 各红） |
+| **自家限流把整轮对比实验挡死在第 1 局**：`jev` 档 30 次/分/IP，机机对局一个 60 秒窗口打到 34 次；客户端旧写法 4 次尝试（1+2+4 秒）熬不过窗口，且**限流分支从不给 `lastErr` 赋值** → 抛出的文案是「重试次数用尽」，真实原因（被自己限流）完全看不出来；机机对局又没人点「重试」，于是整轮实验报废 | 传输层：`src/core/jev/client.ts` 的 `callWithRetry` 重写 —— 限流（429/529）独立计数 5 次、按 `Retry-After` 退避（截 20 秒）、每次都留带状态码的错误并打 `retryable` 标记（401/4xx 为 `false`）。装配层：`src/app/loop.ts` 的 `aiStep` 对 `retryable` 做自动退避重试（`AI_AUTO_RETRY_DELAYS_MS = [4000, 12000, 25000]`，期间**不暂停**），成功/手动重试/重开一局都清零额度。配置：`jev` 档改由 `vars.JEV_RATE_LIMIT_PER_MIN` 覆盖（生产 60，60×1440 ≈ 8.6 万 < 10 万行/日）。`test/core/jev-retry.spec.ts` 5 例 + `test/app/ai-auto-retry.spec.ts` 2 例；三组负向对照（不遵守 `Retry-After` / 尝试次数降回 4 / `retryable` 改 false / 关掉自动重试分支）各自红了对应用例 |
+| **实验运行脚本会自欺**（`scripts/experiment-run.mjs`）：计量器按绝对路径 `/api/jev` 匹配，而代理端点是相对串 `api/jev`（`src/core/jev/client.ts:29`）→ 永远报「上游 0 次（错 0）」，恰好藏起唯一证据；失败时台账 `history[0]` 还是上一轮的 tag → 归档核对会拿旧数据当本轮成绩；页面停在「等人工重试」时无人可点 | 计量器同时认两种写法并记录 HTTP 状态序列（心跳里直接打出来）；开跑前记台账基线，跑完**只认基线之外的新条目**，没跑满就跳过归档核对；轮询中发现 `#retryBtn` 可见就代点并计数（`report.retryClicks`）；退出码新增 `done` 条件（未跑满一律非 0） |
+
+| **`smoke:live` 把数据总量写死在断言里**：`stats.byGame === '{"五子棋":54}'`、`/api/experiments` 恰好 6 轮、写入后 `totalGames === 55` —— D1 现在是活的，真实验一多这三项就红（2026-10-01 真跑 4 局后实测 27/30） | 断言改成**相对基线**：`byGame` 只校验键都是七个中文棋种名且「五子棋」在册，轮次断言「≥ 6 且每轮有 tag」，写入后断言「跑前基线 + 1」（实测 `58 → 59`）。负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1；随后 30/30 通过 |
 
 ### 仍存在（2026-10-01 口径）
 
@@ -97,10 +109,13 @@
 17. **`node:sqlite` 缺失时**，重放迁移的归因用例会被跳过；CI 用 `REQUIRE_SQLITE=1` 强制硬失败。
 18. **`npm run golden` 预期失败**：金样生成器 `test/parity/generate.mjs` 依赖旧实现（旧引擎自对弈），旧实现在 P8 删除后它只打印中文说明并 `exit 1`。这是**设计如此**——金样已冻结为只读文物（封条 `test/parity/frozen.json`），本来就不该再生成。
 19. **`src/ui/README.md` 的模块职责表未收录 P7c 三个面板**（`panels/replayer.ts` / `leaderboard.ts` / `openings.ts` 只在 §4.1 单独说明；`openings.ts` 的 `GAME_IDS` 属公共注册项）。
+20. **浏览器端不发送 `X-Device-Id`**：`src/core/api/client.ts` 的 `call()` 只设 `Content-Type`，所以 UI 归档的棋谱 `device_id` 为 NULL，「只看我的」（`?device=me`）只有冒烟脚本这条路走得通。写路由对 `deviceId` 缺失是容忍的（外键只在有值时成立），落库不会失败——这是**待决**而非缺陷：要么让客户端带设备头，要么承认归档是公共的并撤掉 `device=me`。
+21. **`jev` 档限流仍会挡住极端场景**：60 次/分对「机机对局 + 对比实验」够用（实测约 31 次/分），但同一出口 IP 下同时跑多个实验、或一轮里双方都用最慢思考档，仍可能触顶；触顶时的表现是自动退避重试（最多 3 次，约 41 秒窗口），再失败就交给用户。
+22. **`games.tokens_out` 是一列死数据**：一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，导出的 `meta` 里**没有**输出 token；而 `src/shared/record-map.ts:376` 读的是 `meta.usage?.output_tokens`（局级 meta 从来没这个字段）⇒ 该列恒为 NULL。实测真实验 4 局的 `tokens_in` 约 645K 全都落库，`tokens_out` 全为 0。影响仅限「输出 token 的分析口径」（计费按官方口径输出免费，成本列不受影响）；要修就是给 `AiGameMeta` 加 `tokensOut` 并在 `record-map` 里回落读取——属可选增强，未做。
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测 32 个测试文件 / 327 个用例）。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测 34 个测试文件 / 334 个用例）。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
@@ -120,6 +135,7 @@
 | `npm run db:export` | 从远程导出一份 SQL 快照到 `backups/` | 切流前、发布前后留底 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 30 项 | 部署后（**会写一行再删掉，注意线上数据**） |
 | `npm run smoke:browser` | 真浏览器（CDP）冒烟 14 项（含归档分页的游标追加、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道 | 部署后、改前端入口后 |
+| `node scripts/experiment-run.mjs --games N` | 用干净 profile 的真浏览器跑一轮 A/B 对比实验并留 JSON 证据：填渠道与 key（**只从 `JEV_API_KEY` 环境变量读**）→ 点「开始实验」→ 轮询心跳（局数、上游调用次数与 HTTP 状态序列）→ 回查 `GET /api/games?tag=` 确认每局都进了 D1；页面停在「等人工重试」时代点 `#retryBtn`（计数） | 改实验面板 / 渠道 / 重试逻辑后；**会真花上游配额**，日常不跑 |
 | `npm run check:docs` | MEMORY 置顶、所有 md 相对链接可解析、status 日期在 30 天内 | 改任何 md 后（CI 里也跑） |
 | `npm run deploy` | `vite build && wrangler deploy` | 发布（`deploy.yml` 同样只手动触发） |
 | `npm run golden` | 重新生成金样 | **预期失败，别当成坏了**：金样已冻结为只读文物（封条 `test/parity/frozen.json`），生成器依赖的旧实现 `js/**` 在 P8 删除后它只打印中文说明并 `exit 1` |

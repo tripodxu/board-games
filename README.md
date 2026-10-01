@@ -163,6 +163,10 @@ npm run smoke:live       # 线上 HTTP 冒烟（默认打 https://jevqipan.logic
 npm run smoke:browser    # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge；--offline 验降级，含归档分页、实验报告分桶与最新棋谱）
 npm run check:docs       # 文档护栏：memory 置顶、相对链接、status 日期
 npm run golden           # 重新生成金样——**预期失败**：金样已冻结，生成器依赖的旧实现已删除
+
+# 真跑一轮对比实验（真花上游配额，日常不跑）
+$env:JEV_API_KEY='apikey_…'                      # key 只进环境变量，脚本绝不打印
+node scripts/experiment-run.mjs --games 4         # 干净 profile 的 Chrome 里填配置→开跑→回查归档，证据写 .work/experiment-run.json
 ```
 
 ## 部署
@@ -216,6 +220,10 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
 14. **归档分页**：归档面板首屏一页 50 份，底部「加载更多」按服务端 keyset 游标（`GET /api/games?cursor=…`）追加，翻完自动收掉按钮。
 15. **数据导出**：`/api/export/games` 流式 NDJSON（一行一局），走内部游标翻页，对客户端是一个连续流。
 16. **自检入口**：URL 加 `?test=1` 显示浏览器内自检面板（七个引擎逐个 `selfTest()` + 跨模块自检）。
+17. **无人值守也能跑完**：Jev 调用失败分两层处理——传输层把限流/网络错误标记为「可重试」并按 `Retry-After` 退避，
+    装配层对可重试错误自动退避重试（4s / 12s / 25s 三次）且**不暂停对局**；只有 401/格式错误才交回用户。
+    机机对局与对比实验没有人在旁边点「重试」，这条路径是它们能跑完的前提。
+    （2026-10-01：一轮 4 局实验曾在第 1 局被自家 30/分 限流挡死，见 [docs/status.md](docs/status.md)。）
 
 ## Jev 走棋原理
 
@@ -261,8 +269,9 @@ VCF 将死链，见 [docs/jev-api.md](docs/jev-api.md) §2.2），五子棋另�
 象棋开局 44 着法；西洋跳棋开局 7 着法；围棋提子 / 禁自杀 / 劫 / 双停一手数子（贴 5.5）；
 中国跳棋连跳链；五子棋禁手（三三 / 四四 / 长连 / 精确五连，白方豁免）；
 以及**与旧实现逐手零差异**——7 棋种自对弈 + 54 局历史棋谱，合计 5510 手，
-金样见 [test/parity/README.md](test/parity/README.md)。线上数据核对：54 局 / 4379 手 / 6 轮实验，
-`sum(payload_bytes) = 845578`。
+金样见 [test/parity/README.md](test/parity/README.md)。线上数据核对：导入 54 局 / 4379 手 / 6 轮实验，
+`sum(payload_bytes) = 845578`；2026-10-01 又真跑了 4 局 proxy 对比实验（各 225 手，全和棋），
+D1 现为 58 局 / 5279 手 / 7 轮实验（见 [docs/status.md](docs/status.md)「数据现状」）。
 
 **已知限制**：
 

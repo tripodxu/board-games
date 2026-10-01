@@ -53,7 +53,12 @@
     "enabled": true
   },
   "vars": {
-    "APP_VERSION": "1.0.0"
+    "APP_VERSION": "1.0.0",
+    // `/api/jev` 限流（次/分/IP）。缺省 30 会被产品自带的机机对局顶穿（实测一个 60 秒
+    // 窗口 34 次），进而把整轮对比实验卡死在第一局；60 留 1.7× 余量，同时把最坏 D1 写量
+    // 压在免费额度内（60×1440 = 8.6 万 < 10 万/日）。测试里由 `test/worker/jev.spec.ts`
+    // 从响应头 `X-RateLimit-Limit` 现读，所以改这个值不会让用例变脆。
+    "JEV_RATE_LIMIT_PER_MIN": "60"
   },
   "dev": {
     "port": 8787

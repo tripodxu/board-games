@@ -104,6 +104,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 ### 3.1 开一局 → 入库
 
 1. **渠道选择**：`src/core/jev/client.ts` 的 `CHANNELS`（`official` / `openrouter` / `proxy`）+ `rapfi` + `mock` + `random`。对局循环在 `src/app/loop.ts`，模式与换边在 `src/app/modes.ts`。
+    - **失败两段式**：`client.ts` 的 `callWithRetry` 负责传输层（网络错误 4 次尝试、429/529 按 `Retry-After` 最多 5 次退避、每次失败都打上带状态码的 `retryable` 标记）；`app/loop.ts` 的 `aiStep` 只对 `retryable` 的错误做**上层自动退避重试**（4s / 12s / 25s 三次，期间**不暂停**），其余（401、422）立刻交给用户，`ai-ai` 模式则暂停等人工。两层分工的理由：传输层知道「该不该再试」，装配层知道「这局有没有人来点重试」——机机对局与对比实验都没有人。
 2. **导出契约**：终局后 `src/core/record/export.ts` 的 `buildGameExport(session, engine, opts)` 生成 `format: "jev-qiguan-game/v1"` 的 payload（旧字段逐字保留，只增不改）。
 3. **上传队列**：`src/core/record/sync.ts`。本地按 `gameUid|notation` 去重，待发队列上限 5 条，失败按 `min(60000, 1000·2^(n-1))` 退避，最多 3 次；账本存 localStorage 键 `jev_qiguan_sync_v1`。状态文案（`成功 · <文件名>` / `失败（HTTP n）` / `失败（无后端或网络异常）`）与旧实现逐字一致。
 4. **`POST /api/games`** → Worker 侧中间件链：`rateLimit('write')`（20 次/分钟）→ `deviceMiddleware`（校验 `X-Device-Id`）→ 业务处理器。
@@ -158,7 +159,8 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 ## 5. 身份与限流（ADR-0013）
 
 - **无账号体系**。浏览器生成一个匿名设备 id，以 `X-Device-Id` 头带上；格式非法直接 400。设备 id 只用于「我的局」`device=me` 与榜单分组，不是安全边界（可伪造，但数据本来就是公开的）。
-- **限流三档**（每分钟，`src/worker/middleware/ratelimit.ts`）：`jev` 30、`write` 20、`read` 120。计数键是 `桶:客户端 IP`。
+- **限流三档**（每分钟，`src/worker/middleware/ratelimit.ts` 的 `RATE_LIMITS`）：`write` 20、`read` 120、`jev` 默认 30 **可由 `vars.JEV_RATE_LIMIT_PER_MIN` 覆盖**（生产是 60）。计数键是 `桶:客户端 IP`。
+  - 为什么只有 `jev` 可配：这一档的合理值取决于**产品自带的负载**，而不是安全偏好——机机对局与对比实验每秒都能打一次上游，30/分 会在一个 60 秒窗口内被自己的功能顶穿（2026-10-01 的真实事故）。60/分 × 1440 ≈ 8.6 万次 < 10 万行/日 的写配额，所以上限就取 60；额度更紧的部署可以调小，但不要调到机机对局打不过去的水平。
 - **`/api/health` 不限流**——它是 CI 冒烟和运维探活入口。
 - 实现是 D1 里的 `rate_limits` 表 + 固定窗口，**取代了旧实现那个「进程内 Map、跨 isolate 就失效」的限流**。已知代价：每次判定都要写一行（读接口的限流也消耗当天的写配额），窗口是秒对齐的固定窗口而非滑动窗口，边界上允许 2× 突发。
 - 设备中间件**刻意不写设备行**：读接口每个 GET 都 upsert 一次会白烧 D1 的每日写配额；外键只要求「设备行先于棋谱行存在」，所以 upsert 只放在写路由。

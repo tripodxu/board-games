@@ -940,6 +940,62 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
   - **`games/` 的冻结不是物理围栏**：旧 `pages.dev` 快照仍持有 `GAMES_GITHUB_TOKEN`，理论上还能继续 commit 归档进 `games/`
     （Git 集成虽已断）。真正的护栏是 CI 里的归档断言（任何新增/改动都会红）+ 事后删除；彻底堵死需要撤掉该 secret 或停用 Pages 项目。
 
+#### 上线后真跑：4 局 proxy 对比实验与暴露的三个缺陷（2026-10-01 下午）
+
+用户给出 Jev API Key（只经环境变量传入，从不落盘）后，用新写的 `scripts/experiment-run.mjs` 真跑了一轮
+**A=`proxy/v9-vcf-sound` vs B=`proxy/v8-vcf-try`、4 局**的对比实验。第一次（13:02）**死在第 1 局**，
+第二次（13:26–13:57）跑满。结论与教训：
+
+**① 自家限流把实验顶穿，而错误文案指向别处（真缺陷，已修）**
+
+- 证据：远程 `rate_limits` 里本机 IP 的 `jev:<ip>` 桶在窗口 `1790859780` 记到 **34 次**（限额 30/分），
+  同窗口 `read:` 桶只有 2–22 次 ⇒ 是**我们 Worker 自己的 `jev` 档**挡下的，不是上游。
+- 为什么看不懂：`callWithRetry` 的 429/529 分支只 `continue`，**从不给 `lastErr` 赋值**，循环跑满 4 次后
+  抛的是 `重试次数用尽` —— 真实原因（被自己限流）完全不可见。
+- 为什么整轮报废：`src/app/loop.ts` 的 `aiStep` catch 里只 `setStatus('⚠ AI 出错：…')` + `show('retryBtn')` +
+  `setPaused(ctx, true)`，而机机对局**没有人可以点「重试」**。
+- 修法（两层）：传输层 `src/core/jev/client.ts` 重写 `callWithRetry` —— 网络 4 次不变；429/529 独立计数 5 次、
+  按 `Retry-After` 退避（截 20 秒）、每次失败都留下带状态码的错误并打 `retryable` 标记（401/其他 4xx 为 `false`）；
+  装配层 `src/app/loop.ts` 只对 `retryable` 做上层自动退避（`AI_AUTO_RETRY_DELAYS_MS = [4000, 12000, 25000]`，期间不暂停），
+  成功 / 手动重试 / 重开一局都清零额度。配置层新增 `vars.JEV_RATE_LIMIT_PER_MIN`（生产 **60**；
+  60×1440 ≈ 8.6 万 < 10 万行/日），`limitsFor(env)` 只允许覆盖 `jev` 档。
+- 测试：`test/core/jev-retry.spec.ts` 5 例（假时钟 + 请求桩：遵守 `Retry-After`、429/529 耗尽后的文案、
+  401 立刻失败且 `retryable=false`、网络错误 4 次）+ `test/app/ai-auto-retry.spec.ts` 2 例（真标记：429 → 自动重试且**不暂停**；
+  401 → 立刻失败且机机模式仍暂停）。四组负向对照各自红了对应用例（去掉 `Retry-After`、尝试次数降回 4、
+  `retryable` 改 false、关掉自动重试分支）。`test/worker/jev.spec.ts` 的限额断言改成从 `x-ratelimit-limit` 现读，
+  配置再变也不会脆。
+
+**② 实验运行脚本自己会自欺（三处，已修）**
+
+- 计量器按绝对路径 `/api/jev` 匹配，而代理端点是相对串 `api/jev`（`src/core/jev/client.ts:29`）⇒ 永远报
+  `上游 0 次（in 0 / out 0 tok，错 0）`，**恰好把唯一的证据藏起来**。改成同时认两种写法，并记录 HTTP 状态序列。
+- 失败时读 `history[0].tag` 拿到的是**上一轮**的 tag（本轮没跑完就写不进台账）⇒ 归档核对会拿旧数据当本轮成绩。
+  改成开跑前记台账基线，跑完只认新条目，没跑满就跳过归档核对。
+- 页面停在「等人工重试」时无人可点：轮询里发现 `#retryBtn` 可见就代点并计数（`report.retryClicks`），
+  退出码新增 `done` 条件（未跑满一律非 0）。
+
+**③ 冒烟脚本把数据总量写死（已修）**：`smoke:live` 断言 `byGame === '{"五子棋":54}'`、实验恰好 6 轮、
+写入后 `totalGames === 55` —— D1 变成活的以后，真实验一多就红（实测 27/30）。改成相对基线：
+键合法且「五子棋」在册、轮次 ≥ 6 且每轮有 tag、写入后「基线 + 1」（实测 `58 → 59`）。负向对照把 `+1` 改成 `+2`
+→ 恰好那一项红、退出码 1；随后 **30/30** 通过。
+
+**第二次真跑（成功）**：`node scripts/experiment-run.mjs --games 4`，13:26:19 起、13:57:40 跑满，用时 **1854 s**，
+上游 **902 次调用**（输入 2 586 521 token / 输出 438 798 token，约 **$0.109**，HTTP 错 2 次、状态 `0` 1 次，
+`retryClicks = 0`），逐局归档 4 行（tag `exp-20261001132645`）：
+
+| 局 | 黑 | 白 | 手数 | 结果 | tokens_in | cost_usd | latency_avg_ms |
+|---|---|---|---|---|---|---|---|
+| 1 | `proxy/v9-vcf-sound` | `proxy/v8-vcf-try` | 225 | 和棋（棋盘已满） | 646590 | 0.0272 | 947 |
+| 2 | `proxy/v8-vcf-try` | `proxy/v9-vcf-sound` | 225 | 和棋（棋盘已满） | 644536 | 0.0271 | 1056 |
+| 3 | `proxy/v9-vcf-sound` | `proxy/v8-vcf-try` | 225 | 和棋（棋盘已满） | 646949 | 0.0272 | 1025 |
+| 4 | `proxy/v8-vcf-try` | `proxy/v9-vcf-sound` | 225 | 和棋（棋盘已满） | 648446 | 0.0272 | 930 |
+
+- **四局全是 225 手「和棋（棋盘已满）」**：`v9-vcf-sound` 与 `v8-vcf-try` 在这套开局下谁也攻不穿谁，
+  A/B 在胜负上没有差别（要看出差别得换更弱的对手或改变开局，属后续实验设计问题，不是缺陷）。
+- 同一批负载在旧 30/分 限流下会死在第 1 局；这次窗口峰值 **34/分、零 429** —— 直接印证「改的是限流不是别处」。
+- 该轮在报告面板实测可见：`smoke:browser` 输出「7 张卡片 · 注脚 7 轮实验 · 42 局有效」。
+- `games.tokens_out` 恒为 NULL 的原因（`aiGameMeta()` 只累加输入 token）记入 `docs/status.md` 仍存在第 22 条，未修。
+
 ---
 
 ## 8. 工作量与并行编排

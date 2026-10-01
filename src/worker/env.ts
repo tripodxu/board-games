@@ -11,4 +11,10 @@ export interface Env {
   APP_VERSION: string;
   /** 站长兜底 key（访客自带 key 时不用；永不落盘、永不记日志）——ADR-0003 */
   TYPESAFE_API_KEY?: string;
+  /**
+   * `/api/jev` 的限流（次/分/IP，固定窗口）。缺省 30（`middleware/ratelimit.ts` 的 `RATE_LIMITS.jev`），
+   * 生产设 60：机机对局的自然节奏（实测一个 60 秒窗口 34 次）会顶到 30，把整轮对比实验卡死。
+   * 上限受 D1 免费额度约束——每个被计数的请求是一次写，60/分 ≈ 8.6 万写/日 < 10 万/日。
+   */
+  JEV_RATE_LIMIT_PER_MIN?: string;
 }

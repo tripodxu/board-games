@@ -62,6 +62,33 @@ function locationOrigin(): string | undefined {
  * 请求与重试
  * ------------------------------------------------------------------ */
 
+/** 传输层错误：带上状态码 / `Retry-After` / 「值不值得重试」，供重试循环与装配层共用。 */
+interface JevHttpError extends Error {
+  status?: number;
+  detail?: string;
+  /** 服务端给的 `Retry-After`（毫秒；只认整数秒写法，已限幅到 60s）。 */
+  retryAfterMs?: number;
+  /**
+   * 值不值得再试一次：限流（429/529）与网络错误为 `true`，鉴权/格式错误为 `false`。
+   * 装配层（`app/loop.ts`）据此决定「无人值守时要不要自动重试」，而不是去认文案。
+   */
+  retryable?: boolean;
+}
+
+/** `Retry-After` → 毫秒。只认「整数秒」；HTTP-date 写法与非法值一律返回 null（退回指数退避）。 */
+function retryAfterMsOf(raw: string | null): number | null {
+  if (!raw) return null;
+  const seconds = Number(raw.trim());
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return Math.min(seconds, 60) * 1000;
+}
+
+/** 给错误打上 `retryable` 标记并原样返回（调用点写成 `throw markRetryable(new Error(…), true)`）。 */
+function markRetryable<T extends Error>(err: T, retryable: boolean): T {
+  (err as JevHttpError).retryable = retryable;
+  return err;
+}
+
 /** 单次请求（含 BYOK 头、超时与外部取消合并）。 */
 async function callRaw(channel: string, body: JevSerialized, opts: DecideOpts): Promise<Record<string, unknown>> {
   const cfg = CHANNELS[channel];
@@ -89,9 +116,10 @@ async function callRaw(channel: string, body: JevSerialized, opts: DecideOpts): 
     if (!resp.ok) {
       let detail = '';
       try { detail = (await resp.text()).slice(0, 300); } catch (_) { /* ignore */ }
-      const err = new Error('HTTP ' + resp.status + (detail ? '：' + detail : '')) as Error & { status?: number; detail?: string };
+      const err = new Error('HTTP ' + resp.status + (detail ? '：' + detail : '')) as JevHttpError;
       err.status = resp.status;
       err.detail = detail;
+      err.retryAfterMs = retryAfterMsOf(resp.headers.get('Retry-After')) ?? undefined;
       throw err;
     }
     return await resp.json() as Record<string, unknown>;
@@ -100,37 +128,64 @@ async function callRaw(channel: string, body: JevSerialized, opts: DecideOpts): 
   }
 }
 
-/** 带退避重试的请求：网络错误 4 次尝试；429/529 指数退避；401 直接报鉴权失败。 */
+/** 网络错误的重试次数（与旧实现一致：4 次尝试）。 */
+const NETWORK_ATTEMPTS = 4;
+/**
+ * 限流的重试次数（429/529）。比网络错误多，理由是窗口长度：服务端限流是 60 秒固定窗口，
+ * 等一到两轮就能过，而这是**机机对局唯一的推进方式**——放弃一次就等于整局停摆。
+ */
+const RATE_LIMIT_ATTEMPTS = 5;
+/**
+ * 单次限流等待的上限。服务端可能让我们等满 60 秒，但无人值守的实验不能被一次等待卡住
+ * 太久（等待期间页面上的思考计时是停的），所以截到 20 秒，靠多试几次把窗口熬过去。
+ */
+const MAX_RATE_LIMIT_BACKOFF_MS = 20000;
+
+/**
+ * 带退避重试的请求：网络错误 4 次尝试；429/529 按 `Retry-After`（缺省指数退避）重试 5 次；
+ * 401 直接报鉴权失败。
+ *
+ * 2026-10-01 修：旧写法在 429 分支里**没有给 `lastErr` 赋值**，于是 5 次限流之后抛的是
+ * `重试次数用尽`——排障时完全看不出「被限流了」，而真实原因（每 IP 30/分）恰恰是用户
+ * 唯一能改的东西。现在每次失败都留下带状态码与等待策略的错误，并打上 `retryable`。
+ */
 async function callWithRetry(channel: string, body: JevSerialized, opts: DecideOpts): Promise<Record<string, unknown>> {
-  let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
+  let networkTries = 0;
+  let rateLimitTries = 0;
+  for (;;) {
     if (opts.signal && opts.signal.aborted) throw new Error('aborted');
-    let resp: Record<string, unknown>;
     try {
       return await callRaw(channel, body, opts);
     } catch (e) {
-      const err = e as Error & { status?: number; detail?: string };
+      const err = e as JevHttpError;
       if (opts.signal && opts.signal.aborted) throw new Error('aborted');
       if (!err.status) {
         /* 网络错误：代理与直连的成因不同，提示也不同 */
-        lastErr = new Error('网络错误：' + err.message + (channel === 'proxy'
-          ? '（同源 /api/jev 不可达：本地用 npm run dev 起 Worker，线上由 jevqipan.logicc.top 提供；接口不可用时自动退回离线演示）'
-          : '（浏览器直连受 CORS 限制：官方 API 有来源白名单，仅 typesafe.ai 自有域可用；请改用「同源代理」渠道）'));
-        await sleep(800 * (attempt + 1));
+        if (++networkTries >= NETWORK_ATTEMPTS) {
+          throw markRetryable(new Error('网络错误：' + err.message + `（已尝试 ${networkTries} 次）` + (channel === 'proxy'
+            ? '（同源 /api/jev 不可达：本地用 npm run dev 起 Worker，线上由 jevqipan.logicc.top 提供；接口不可用时自动退回离线演示）'
+            : '（浏览器直连受 CORS 限制：官方 API 有来源白名单，仅 typesafe.ai 自有域可用；请改用「同源代理」渠道）')), true);
+        }
+        await sleep(800 * networkTries);
         continue;
       }
       if (err.status === 429 || err.status === 529) {
-        if (opts.onRetry) opts.onRetry(err.status, attempt);
-        await sleep(1000 * Math.pow(2, attempt));
+        if (++rateLimitTries >= RATE_LIMIT_ATTEMPTS) {
+          throw markRetryable(new Error(`上游限流（HTTP ${err.status}）：已退避重试 ${rateLimitTries} 次仍未放行`
+            + (err.detail ? '（' + err.detail.slice(0, 120) + '）' : '')), true);
+        }
+        if (opts.onRetry) opts.onRetry(err.status, rateLimitTries - 1);
+        /* 服务端给了 `Retry-After` 就听它的（截到 20 秒）；没给才用指数退避 1/2/4/8 秒。 */
+        const waitMs = Math.min(err.retryAfterMs ?? 1000 * Math.pow(2, rateLimitTries - 1), MAX_RATE_LIMIT_BACKOFF_MS);
+        await sleep(waitMs);
         continue;
       }
       if (err.status === 401) {
-        throw new Error('API Key 无效或缺失（401）——若 key 确认无误（「测试连接」通过），可能是服务端瞬时故障，稍后点「重试」即可');
+        throw markRetryable(new Error('API Key 无效或缺失（401）——若 key 确认无误（「测试连接」通过），可能是服务端瞬时故障，稍后点「重试」即可'), false);
       }
-      throw new Error('API 错误 ' + err.status + '：' + (err.detail || ''));
+      throw markRetryable(new Error('API 错误 ' + err.status + '：' + (err.detail || '')), false);
     }
   }
-  throw lastErr || new Error('重试次数用尽');
 }
 
 /* ------------------------------------------------------------------ *

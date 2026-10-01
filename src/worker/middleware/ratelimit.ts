@@ -26,6 +26,20 @@ export const RATE_LIMITS: Record<RateLimitKind, Rule> = {
   read: { limit: 120, windowSeconds: 60 },
 };
 
+/**
+ * 生效限额。只有 `jev` 桶可被 `env.JEV_RATE_LIMIT_PER_MIN` 覆盖，其余固定。
+ *
+ * 为什么 `jev` 需要可调（2026-10-01 的真实事故）：两方都是 Jev 的机机对局是**产品自带功能**
+ * （对比实验），它的自然节奏实测能到 34 次/60 秒，正好顶穿 30——于是第 4 局还没开始就被自己的
+ * 限流挡下，而客户端的表现是「重试次数用尽」（见 `src/core/jev/client.ts` 的注释）。生产值调成
+ * 60 后仍有 1.7× 余量，同时把最坏情况的 D1 写量压在免费额度内（60/分 × 1440 = 8.6 万 < 10 万/日）。
+ */
+export function limitsFor(env: { JEV_RATE_LIMIT_PER_MIN?: string } | undefined): Record<RateLimitKind, Rule> {
+  const raw = Number(env?.JEV_RATE_LIMIT_PER_MIN);
+  if (!Number.isFinite(raw) || raw < 1) return RATE_LIMITS;
+  return { ...RATE_LIMITS, jev: { ...RATE_LIMITS.jev, limit: Math.floor(raw) } };
+}
+
 /** 清理概率：限流表只增不减，用 1% 的请求顺手删掉 1 小时前的窗口（§5.3）。 */
 const PRUNE_PROBABILITY = 0.01;
 const PRUNE_RETENTION_SECONDS = 3600;
@@ -35,8 +49,8 @@ export function clientIp(c: { req: { header: (name: string) => string | undefine
 }
 
 export function rateLimit(kind: RateLimitKind) {
-  const rule = RATE_LIMITS[kind];
   return createMiddleware<AppEnv>(async (c, next) => {
+    const rule = limitsFor(c.env)[kind];
     const key = `${kind}:${clientIp(c)}`;
     const now = Date.now();
     const result = await hitRateLimit(c.env.DB, key, rule.limit, rule.windowSeconds, now);

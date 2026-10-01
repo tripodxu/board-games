@@ -58,6 +58,13 @@ import {
 
 /* ---------- 小工具 ---------- */
 
+/**
+ * AI 走子失败后的自动重试节奏（毫秒）。三次分别等 4/12/25 秒，合计约 41 秒——
+ * 够熬过一次 30/分 限流窗口（服务端 429 会带 `Retry-After`，客户端内部还会再退避 5 次），
+ * 又不至于让用户对着「出错」看几分钟。用完三次才落回手动「重试」按钮。
+ */
+export const AI_AUTO_RETRY_DELAYS_MS: readonly number[] = [4000, 12000, 25000];
+
 /** 绘制失败只告警一次（画布环境坏了不该刷屏）。 */
 let drawFailed = false;
 
@@ -130,6 +137,7 @@ export function resetSession(ctx: AppCtx): void {
     ctx.abortController = null;
   }
   ctx.inflight = null;
+  ctx.aiAutoRetries = 0;
   stopThinkClock(ctx);
   session.paused = false;
   session.sessionRecorded = false;
@@ -297,11 +305,26 @@ export async function scheduleDecision(ctx: AppCtx): Promise<void> {
     meta.side = side;
     meta.sideName = sideNameOf(ctx, side);
     hide('retryBtn');
+    ctx.aiAutoRetries = 0;
     playMove(ctx, decision.move, meta);
   } catch (e) {
     if (myEpoch !== session.epoch) return;
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === 'aborted') return;
+    /* 可重试失败（限流/网络）自动退避重试：机机对局与对比实验都是无人值守的，
+     * 一次 429 就停摆会让整轮实验报废（真实事故：30/分 的限流把 4 局实验卡死在第 1 局）。
+     * 只对客户端打了 `retryable` 标记的错误重试，鉴权/格式错误仍然立刻交给用户。 */
+    const retryable = Boolean((e as { retryable?: boolean }).retryable);
+    if (retryable && ctx.aiAutoRetries < AI_AUTO_RETRY_DELAYS_MS.length) {
+      const delay = AI_AUTO_RETRY_DELAYS_MS[ctx.aiAutoRetries] as number;
+      ctx.aiAutoRetries += 1;
+      const left = AI_AUTO_RETRY_DELAYS_MS.length - ctx.aiAutoRetries;
+      setStatus(`⚠ AI 出错：${msg} · ${Math.round(delay / 1000)} 秒后自动重试（第 ${ctx.aiAutoRetries} 次，剩 ${left} 次）`, true);
+      toast(`Jev 调用失败：${msg} · 自动重试中…`, false);
+      show('retryBtn');
+      scheduleAIStep(ctx, () => aiStep(ctx), delay);
+      return;
+    }
     setStatus('⚠ AI 出错：' + msg, true);
     toast('Jev 调用失败：' + msg, true);
     show('retryBtn');
@@ -337,6 +360,7 @@ export function stepOnce(ctx: AppCtx): void {
 /** 旧 `#retryBtn`（js/app.js:1914-1920）：AI 出错后手动重试。 */
 export function retryAI(ctx: AppCtx): void {
   hide('retryBtn');
+  ctx.aiAutoRetries = 0; /* 手动了就重新给满自动重试额度 */
   setPaused(ctx, false);
   setStatus(inGameStatus(ctx), false);
   aiStep(ctx);

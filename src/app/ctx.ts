@@ -76,6 +76,13 @@ export interface AppCtx {
   abortController: AbortController | null;
   /** 在途决策的 epoch；非 null 即「思考中」（旧 `S.inflight`） */
   inflight: number | null;
+  /**
+   * 当前这一手已经自动重试了几次（只对**可重试**失败计数：限流/网络）。
+   * 为什么需要它：机机对局无人值守，一次限流就停摆等于整轮实验报废，
+   * 所以 `loop.aiStep` 会自己退避重试；这个计数决定什么时候放弃并交回「重试」按钮。
+   * 每次成功落子/换局都清零。
+   */
+  aiAutoRetries: number;
   /** 思考计时器（旧 `startThinkClock` 的 interval） */
   thinkTimer: TimerHandle | null;
   /** 本次思考的起始时刻（ms） */
@@ -136,6 +143,7 @@ export function createCtx(opts: CreateCtxOpts): AppCtx {
     renderer: opts.renderer ?? null,
     abortController: null,
     inflight: null,
+    aiAutoRetries: 0,
     thinkTimer: null,
     thinkStart: 0,
     probing: false,

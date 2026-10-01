@@ -5,7 +5,8 @@
  *
  * 两条「不写持久数据」的路：POST 一份**已归档**的 payload（应 dedup=true、写 0 手）；
  * 唯一会新建行的是「新房 payload」，用 `X-Device-Id = smoke-<时间戳>`，脚本退出时
- * 会打印清理 SQL —— 跑完请照着执行一次，让 D1 回到导入基线（54 局 / 4379 手 / 0 设备）。
+ * 会打印清理 SQL —— 跑完请照着执行一次，把脚本自己写的那几行删掉（数据总量会随真实验增长，
+ * 因此断言一律相对基线，不写死 54 局 / 6 轮）。
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -77,10 +78,25 @@ check('旧路径不带 .json 也 200', legacyNoJson.status === 200);
 
 const stats = await req('/api/stats');
 check('GET /api/stats 200 且无 truncated 字段', stats.status === 200 && !('truncated' in (stats.body ?? {})), `totalGames=${stats.body?.totalGames}`);
-check('stats.byGame 用中文名', JSON.stringify(stats.body?.byGame) === '{"五子棋":54}', JSON.stringify(stats.body?.byGame));
+/* byGame 只断言「键是中文棋种名」+「五子棋在册」，不锁死数字：D1 是活的，真实验会往上加。 */
+const byGame = stats.body?.byGame ?? {};
+const CHINESE_NAMES = ['五子棋', '五子棋·禁手', '围棋', '象棋', '国际象棋', '西洋跳棋', '中国跳棋'];
+const badName = Object.keys(byGame).find((k) => !CHINESE_NAMES.includes(k));
+check(
+  'stats.byGame 用中文名（键合法且五子棋在册）',
+  stats.status === 200 && !badName && (byGame['五子棋'] ?? 0) >= 1,
+  `${JSON.stringify(byGame)}${badName ? `（非法键：${badName}）` : ''}`,
+);
+/* 基线：后面的写断言一律算「基线 + 1」，避免每加一批真实数据就把冒烟跑红。 */
+const baseGames = stats.body?.totalGames ?? 0;
 
 const exp = await req('/api/experiments');
-check('GET /api/experiments 200（6 轮）', exp.status === 200 && (exp.body?.experiments?.length ?? 0) === 6, `${exp.body?.experiments?.length}`);
+const rounds = exp.body?.experiments?.length ?? 0;
+check(
+  'GET /api/experiments 200（轮次 ≥ 6 且每轮有 tag）',
+  exp.status === 200 && rounds >= 6 && (exp.body?.experiments ?? []).every((e) => !!e?.tag),
+  `${rounds} 轮`,
+);
 
 const openings = await req('/api/openings?game=gomoku&limit=5');
 check('GET /api/openings 200', openings.status === 200, `status=${openings.status} body=${JSON.stringify(openings.body).slice(0, 120)}`);
@@ -169,7 +185,11 @@ const mine = await req('/api/games?device=me&limit=5', { headers: { 'x-device-id
 check('GET /api/games?device=me 只回自己的局', mine.status === 200 && mine.body?.games?.length === 1 && mine.body.games[0].gameUid === newUid);
 
 const afterStats = await req('/api/stats');
-check('写入后 totalGames = 55', afterStats.body?.totalGames === 55, `${afterStats.body?.totalGames}`);
+check(
+  '写入后 totalGames 恰好 +1',
+  afterStats.body?.totalGames === baseGames + 1,
+  `${baseGames} → ${afterStats.body?.totalGames}`,
+);
 
 console.log(`\n结果：${pass} 项通过 / ${fails.length} 项失败${fails.length ? ' → ' + fails.join('; ') : ''}`);
 console.log(`清理命令：npx wrangler d1 execute jev-qiguan --remote --command "DELETE FROM game_moves WHERE game_id IN (SELECT id FROM games WHERE device_id='${DEVICE}'); DELETE FROM games WHERE device_id='${DEVICE}'; DELETE FROM devices WHERE device_id='${DEVICE}';"\n`);

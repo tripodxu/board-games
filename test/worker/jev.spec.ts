@@ -367,10 +367,21 @@ describe('POST /api/jev（真中间件链 + 真 D1）', () => {
     expect(((await badQuestions.json()) as { error: string }).error).toContain('questions');
   });
 
-  it('限流 30/分/IP：第 31 次 429 且带 Retry-After', async () => {
+  it('限流：桶满后 429 且带 Retry-After（限额从响应头现读）', async () => {
     /* 用「过不了形状校验」的请求体：它在调上游之前就返回 400，所以这段循环不接触网络，
-     * 但每次都会消耗桶——限流是 D1 固定窗口，挡在第 31 次（见文件头注）。 */
-    for (let i = 0; i < 30; i++) {
+     * 但每次都会消耗桶——限流是 D1 固定窗口，挡在桶满后的第一次。
+     *
+     * 限额**不写死** 30：`wrangler.jsonc` 的 `JEV_RATE_LIMIT_PER_MIN` 可调（2026-10-01 起
+     * 生产是 60，因为 30 会被产品自带的机机对局顶穿），写死数字会让这份用例随配置变脆。
+     * 读服务端自己广告的 `X-RateLimit-Limit` 才是在测「桶真的会满」这件事本身。 */
+    const first = await postJev(TICKET_ONLY);
+    expect(first.status).toBe(400);
+    const limit = Number(first.headers.get('x-ratelimit-limit'));
+    expect(Number.isInteger(limit)).toBe(true);
+    expect(limit).toBeGreaterThan(0);
+    expect(Number(first.headers.get('x-ratelimit-remaining'))).toBe(limit - 1);
+
+    for (let i = 1; i < limit; i++) {
       const res = await postJev(TICKET_ONLY);
       expect(res.status).toBe(400);
     }
@@ -379,10 +390,8 @@ describe('POST /api/jev（真中间件链 + 真 D1）', () => {
     expect(limited.status).toBe(429);
     const body = (await limited.json()) as { code: string; requestId: string | null };
     expect(body.code).toBe('rate_limited');
-    /* `requestId` 不在这里断言具体值：它由 `index.ts` 的 `/api/*` 中间件写入，而编排者还没把
-     * jevRoute 挂上时走的是本文件兜底的临时 app（没有那层中间件，字段会是 null）。挂上之后
-     * 这里会拿到真字符串——见 export.spec.ts 里 `[export] requestId=undefined` 的同类现象。 */
     expect(body.requestId === null || typeof body.requestId === 'string').toBe(true);
+    expect(Number(limited.headers.get('x-ratelimit-remaining'))).toBe(0);
 
     const retryAfter = Number(limited.headers.get('retry-after'));
     expect(Number.isInteger(retryAfter)).toBe(true);
@@ -397,8 +406,11 @@ describe('POST /api/jev（真中间件链 + 真 D1）', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('https://example.com');
     expect(res.headers.get('access-control-allow-headers')).toContain('X-Api-Key');
 
-    // 预检不该消耗限流桶：紧接着打 30 次 POST 仍然不该 429
-    for (let i = 0; i < 30; i++) {
+    // 预检不该消耗限流桶：紧接着打几次 POST 仍然不该 429（且剩余额度没有因预检减少）
+    const first = await postJev(TICKET_ONLY);
+    const limit = Number(first.headers.get('x-ratelimit-limit'));
+    expect(Number(first.headers.get('x-ratelimit-remaining'))).toBe(limit - 1);
+    for (let i = 0; i < 4; i++) {
       const post = await postJev(TICKET_ONLY);
       expect(post.status).toBe(400);
     }

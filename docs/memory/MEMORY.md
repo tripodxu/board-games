@@ -8,6 +8,22 @@
 
 ---
 
+## 2026-10-01 · 真跑 4 局 proxy 对比实验：自家限流把整轮顶穿，而错误文案指向别处
+
+- **用户要求**：给出 Jev API Key（`apikey_…`，96 字符，**只经环境变量 `JEV_API_KEY` 传入，绝不落盘/入库/进 URL**），并在三个选项里选了「**4 局：proxy(v9-vcf-sound) vs proxy(v8-vcf-try)**」。
+- **第一次真跑（13:02）死在第 1 局**：状态栏一直 `⚠ AI 出错：重试次数用尽`、脚本心跳报「上游 0 次（错 0）」。**两个假象**：①「上游 0 次」是脚本自己的 bug（见下）；②「重试次数用尽」跟真实原因无关。
+- **真根因（远程 D1 实证）**：`SELECT bucket, window_start, count FROM rate_limits …` 显示本机 IP 的 `jev:183.209.88.214` 桶在窗口 `1790859780` 记到 **34 次**（限额 30/分）、同窗口 `read:` 桶只有 2–22 次 ⇒ **是我们 Worker 自己的 `jev` 档挡下的**，不是上游。`callWithRetry` 的 429/529 分支只 `continue`、**从不给 `lastErr` 赋值**，跑满 4 次后抛「重试次数用尽」，真实原因完全不可见；而 `aiStep` 的 catch 只 `show('retryBtn')` + `setPaused`，**机机对局没人能点「重试」**⇒ 整轮报废。
+- **两层修法**：传输层 `src/core/jev/client.ts` 的 `callWithRetry` 重写 —— 网络 4 次不变；429/529 独立计数 **5** 次、按 `Retry-After` 退避（`retryAfterMsOf()` 只认整数秒、限幅 60 s，`MAX_RATE_LIMIT_BACKOFF_MS = 20000`）、失败都留带状态码的错误并打 `retryable`（401/其他 4xx 为 `false`）。装配层 `src/app/loop.ts` 只对 `retryable` 自动退避重试（`AI_AUTO_RETRY_DELAYS_MS = [4000, 12000, 25000]`，**期间不暂停**），成功 / 手动重试 / `resetSession` 三处清零 `ctx.aiAutoRetries`。配置层 `vars.JEV_RATE_LIMIT_PER_MIN`（生产 **60**；60×1440 ≈ 8.6 万 < 10 万行/日），`limitsFor(env)` 只允许覆盖 `jev` 档。
+- **测试**：`test/core/jev-retry.spec.ts` 5 例（假时钟 + 请求桩）、`test/app/ai-auto-retry.spec.ts` 2 例（真标记；**桩里回 `Retry-After: 0`** 才能让 5 次尝试毫秒级跑完）。**四组负向对照各自红对应用例**（去掉 `Retry-After` → `expected 2 to be 1`；尝试次数 5→4 → 文案不含「已退避重试 5 次」；耗尽分支 `retryable` 改 false → `expected false to be true`；关掉自动重试分支 → `Test timed out in 5000ms`）。`test/worker/jev.spec.ts` 的限额断言改成从响应头 `x-ratelimit-limit` 现读（写死 30 会随 `wrangler.jsonc` 变脆）。`npm test` → **34 文件 / 334 用例全绿**；上线版本 **`781316c8-1845-47a6-8f73-e0bf22decffb`**（绑定里首次出现 `env.JEV_RATE_LIMIT_PER_MIN ("60")`）。
+- **第二次真跑（13:26:19 → 13:57:40，成功）**：`node scripts/experiment-run.mjs --games 4`，**1854 s / 902 次上游调用 / 输入 2586521 token / 输出 438798 token ≈ $0.109**，`retryClicks = 0`，状态序列**除 1 次 `0`（fetch 被拒）全是 200、零 429**。归档 4 行 tag `exp-20261001132645`，**四局全部 225 手「和棋（棋盘已满）」**（`v9-vcf-sound` vs `v8-vcf-try` 谁也攻不穿谁，A/B 无胜负差）；逐局 `tokens_in` ~645K、`cost_usd` ~$0.0272、`latency_avg_ms` 930–1056。D1 现为 **58 局 / 5279 手 / 7 轮实验 / 0 设备**（导入基线 54/4379/6 未变）。
+- **同一批负载的对照**：旧 30/分 会死在第 1 局；这次窗口峰值 **34/分、零 429** —— 直接证明改对了地方（`SELECT max(count) FROM rate_limits WHERE bucket LIKE 'jev:%'`）。
+- **脚本三处「会自欺」（都已修）**：① 计量器按绝对路径 `/api/jev` 匹配，而 `CHANNELS.proxy.endpoint` 是相对串 `'api/jev'`（`src/core/jev/client.ts:29`）⇒ 永远报「上游 0 次」，恰好藏住唯一证据；② 失败时读 `history[0].tag` 拿到的是**上一轮** tag（本轮没跑完写不进台账）⇒ 归档核对拿旧数据当本轮成绩；③ 页面停在「等人工重试」无人可点。修法：同时认两种写法 + 记录状态序列、开跑前记台账基线只认新条目、发现 `#retryBtn` 可见就代点并计数、退出码新增 `done` 条件。
+- **`smoke:live` 把数据总量写死（已修）**：`byGame === '{"五子棋":54}'`、实验恰好 6 轮、写入后 `totalGames === 55` —— D1 是活的，真实验一多就红（实测 27/30）。改成相对基线（键合法 + 五子棋在册 / 轮次 ≥ 6 且每轮有 tag / 写入后「基线 + 1」，实测 `58 → 59`），负向对照把 `+1` 改成 `+2` → 恰好一项红、退出码 1；随后 **30/30**。
+- **副作用证据（面板可见）**：`smoke:browser` 14/14，报告面板「**7 张卡片 · 7 轮实验 · 42 局有效**」（原 6 轮 / 38 局），归档分页「首屏 50 → 追加后 59 份」。
+- **已知未修**：`games.tokens_out` 恒 NULL —— 一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，而 `src/shared/record-map.ts:376` 读 `meta.usage?.output_tokens`。计费口径输出免费，成本列不受影响；要修就是加 `AiGameMeta.tokensOut`。已记入 `docs/status.md` 仍存在第 22 条。
+
+---
+
 ## 2026-10-01 · 报告面板顶部加「最新棋谱」：归档里最新一批机机对局以前永远看不见
 
 - **用户要求**（逐字，m04005）：「就是说现在实验报告里面只有早期的机器对弈棋谱分析报告，要更新到最新」。问清后确认**范围 = 报告要显示归档棋谱里最新的那些对局**（不是「现在真跑新一轮实验」、也不是「只改排序」），渠道倾向 proxy（**Jev API Key 用户答应提供但还没给**，Worker 没有 secret、仓库无 `.dev.vars`）。
