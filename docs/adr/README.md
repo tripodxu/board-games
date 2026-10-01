@@ -8,12 +8,16 @@
 
 | 编号 | 决策 | 状态 |
 |---|---|---|
-| [0001](0001-pure-static-no-build.md) | 纯静态、零框架、零构建、零依赖 | accepted |
+| [0001](0001-pure-static-no-build.md) | 纯静态、零框架、零构建、零依赖 | **部分被 0012 取代** |
 | [0002](0002-coordinate-notation-state.md) | Jev state 用英文坐标记法 + 三问并行 | accepted |
 | [0003](0003-byok-proxy.md) | 代理只做 CORS 转发的 BYOK 设计 | accepted |
 | [0004](0004-unified-engine-interface.md) | 棋种引擎统一接口 + selfTest 自检 | accepted |
-| [0005](0005-zero-dep-node-backend.md) | 零依赖 Node 后端（server.js）：项目变为「静态前端 + 后端」 | accepted |
+| [0005](0005-zero-dep-node-backend.md) | 零依赖 Node 后端（server.js）：项目变为「静态前端 + 后端」 | **被 0010 + 0011 取代** |
 | [0006](0006-rapfi-wasm-opponent.md) | Rapfi WASM 本地引擎对手（Gomocup 协议），新增 rapfi 渠道 | accepted |
 | [0007](0007-vcf-threat-space-search.md) | VCF 威胁空间搜索（连续冲四将死链）接入 Jev 战术保险 | accepted（§1 末条勘误见 0008） |
 | [0008](0008-vcfwin-defender-counterkill-gate.md) | vcfWin 守方反杀闸门（soundness 修复）：撤回 0007 的「守方反击造杀不覆盖」论断 | accepted |
 | [0009](0009-tactics-version-registry.md) | 战术版本登记表 + 机制闸门 + 联名 slug 归档（实验设施三件套，codeVersion 0.8.0） | accepted |
+| [0010](0010-worker-static-assets-replaces-pages.md) | Cloudflare Worker + Static Assets 全面取代 Pages Functions | accepted（P1 spike 结论已补记） |
+| [0011](0011-d1-authoritative-persistence.md) | D1 为唯一权威持久化（取代 GitHub API 落盘） | accepted |
+| [0012](0012-vite-typescript-build-chain.md) | 引入 Vite + TypeScript 构建链（部分取代 0001） | accepted |
+| [0013](0013-anonymous-device-identity-and-d1-ratelimit.md) | 匿名 deviceId 身份 + D1 原子限流（取代 isolate 内存 Map） | accepted |

@@ -12,18 +12,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: 语法检查
-        run: |
-          node --check js/board.js
-          node --check js/app.js
-          node --check js/jev-client.js
-          node --check js/mock-ai.js
-          node --check js/charts.js
-          for f in js/games/*.js; do node --check "$f"; done
-          node --check test/run-tests.js
-          node --check scripts/check-docs.mjs
-      - name: 引擎自检与集成对局
-        run: npm test
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 构建（Vite 前端产物 + Worker bundle）
+        run: npm run build
+
+      - name: 引擎 / 战术 / 金样逐手差分（纯 Node，src/core；金样已冻结只读）
+        run: npm run test:engines
+
+      # REQUIRE_SQLITE=1：node:sqlite 缺失时分片导入库断言必须**硬失败**，不许静默 skip
+      # （CI 上「一条没跑」与「全部通过」在报告里长得一样，等于没有守卫）。
+      - name: Worker / core / UI 测试（vitest，真 workerd + 本地 D1）
+        run: npm run test:new
+        env:
+          REQUIRE_SQLITE: '1'
+
       - name: 文档校验
         run: npm run check:docs

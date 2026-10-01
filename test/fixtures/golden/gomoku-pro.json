@@ -1,0 +1,71 @@
+{
+  "schema": "jev-qiguan-golden/v1",
+  "engine": "gomoku-pro",
+  "engineName": "五子棋·禁手",
+  "sides": [
+    {
+      "id": "black",
+      "name": "黑方"
+    },
+    {
+      "id": "white",
+      "name": "白方"
+    }
+  ],
+  "codeVersion": "0.8.0",
+  "commit": "b9a261bfcbd314a49a758c20883e68b53bb28d22",
+  "workTreeDirty": true,
+  "seed": 42,
+  "bgFast": true,
+  "generator": "test/parity/generate.mjs",
+  "regenerate": "node test/parity/generate.mjs",
+  "rowFields": ["notation","legalCount","legalHash","stateHash","over","winner","statusHash"],
+  "fingerprint": {
+    "canonical": "递归按键名排序的 JSON（数组保序，中文按 UTF-16 码元参与哈希）",
+    "hash": "FNV-1a 64 位，16 位小写十六进制",
+    "legal": "getLegalMoves() 返回顺序的 notation 用 \\n 连接后哈希（顺序是契约的一部分）",
+    "state": "applyMove 之后完整 state 的规范串哈希",
+    "status": "getStatus() 规范串哈希（含 reason 全文）"
+  },
+  "coverage": {
+    "selfPlayGames": 1,
+    "selfPlayPlies": 15,
+    "archiveGames": 0,
+    "archivePlies": 0,
+    "totalPlies": 15
+  },
+  "selfPlay": {
+    "kind": "selfplay",
+    "channel": "mock",
+    "topK": 3,
+    "maxPlies": 600,
+    "plyLimitReached": false,
+    "plies": 15,
+    "initialStateHash": "252827452843e9fb",
+    "finalStateHash": "2a5c785e91b44a0c",
+    "finalStatus": {
+      "over": true,
+      "winner": "black",
+      "reason": "五连",
+      "hash": "31bf4a1fbee3b22f"
+    },
+    "moves": [
+      ["H8",225,"7727ad1df35481bb","4b3970defef2393f",0,"","00cb4e57df31de6e"],
+      ["H7",224,"75c821fd0f35e04b","e631270118c3c370",0,"","f4d5b2ada9a15210"],
+      ["I8",223,"3d35851eb2cfd16a","4df1fc51b571b0ae",0,"","00cb4e57df31de6e"],
+      ["H9",222,"90f0d81a1c23dc9b","106a1d99be6790df",0,"","f4d5b2ada9a15210"],
+      ["G8",221,"6134e4dbc9372d58","9483705b3c730815",0,"","00cb4e57df31de6e"],
+      ["G7",220,"d5d29560f121ab77","7d4a922dbf2aec22",0,"","f4d5b2ada9a15210"],
+      ["G9",219,"7425631f3aebe169","f23d803131434562",0,"","00cb4e57df31de6e"],
+      ["J8",218,"450e7a2a6dcb4c5d","60d4b13c4d595457",0,"","f4d5b2ada9a15210"],
+      ["I9",217,"9260f91bd52d0ddb","d84fb6bb1acde935",0,"","00cb4e57df31de6e"],
+      ["H6",216,"f5473e8623b256b1","3c652b8ca2eb9809",0,"","f4d5b2ada9a15210"],
+      ["I6",214,"25f03ce758bfd795","b84fed997f3709b1",0,"","00cb4e57df31de6e"],
+      ["F8",214,"e3e231911581b6b4","835661f6da61b02c",0,"","f4d5b2ada9a15210"],
+      ["I7",213,"cd0d7f43eaf97cd0","244997e974271ec8",0,"","00cb4e57df31de6e"],
+      ["I5",212,"c9dd4cec309c9ac6","25cfbed405790a03",0,"","f4d5b2ada9a15210"],
+      ["I10",207,"0603615ea2346a42","2a5c785e91b44a0c",1,"black","31bf4a1fbee3b22f"]
+    ]
+  },
+  "archive": []
+}

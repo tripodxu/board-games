@@ -1,14 +1,18 @@
 # Jev API 契约与接入
 
-> 动 `js/jev-client.js`、`functions/api/jev.js`、`dev-proxy.py` 或任何
-> `serializeForJev` 之前读本文。模型背景调研（性能/价格/生态）见仓库根目录之外的
-> `../jev_model_memory.md`（父目录 jev_games 的调研记忆，不随本仓库分发）。
+> 动 `src/core/jev/**`（客户端）、`src/worker/routes/jev.ts`（同源代理）、`src/worker/lib/upstream.ts`
+> （上游调用）或任何 `serializeForJev` 之前读本文。
+> 模型背景调研（性能/价格/生态）见仓库根目录之外的 `../jev_model_memory.md`
+> （父目录 jev_games 的调研记忆，不随本仓库分发）。
+>
+> §1、§2、§2.1–§2.3、§4 描述的是**上游 Jev 提供方的契约**（与谁调用它无关，跨实现稳定）；
+> §3 描述**本仓库的落地实现**（2026-10-01 迁移后：前端自带 key，Worker 只做转发与限流）。
 
-## 1. 请求契约（官方 / OpenRouter / 代理同构）
+## 1. 请求契约（官方 / OpenRouter / 同源代理同构）
 
 ```
 POST {endpoint}
-Authorization: Bearer <key>          # 代理渠道改用 X-Api-Key 头
+Authorization: Bearer <key>          # 同源代理渠道改用 X-Api-Key 头
 Content-Type: application/json
 
 body: {
@@ -33,67 +37,77 @@ resp: {
 - 三种原语：**Noul**（是/否概率）、**Choice**（≤255 选项，返回全选项概率分布+置信度）、
   **Score**（有序量表连续分）。本项目固定三问并行：`move`/`edge`/`position`。
 - 上下文窗口 32K token：state 超限必须预筛/摘要，不能截断了事。
-- 429/529 → 指数退避重试（`jev-client.js` 最多 4 次：1s/2s/4s/8s）；401 → key 无效直接报错；
-  30s 无响应判超时；外部 `AbortSignal`（切棋种/重开）立即终止。
+- 429/529 → 指数退避重试（见 §3.1：客户端最多 4 次：1s/2s/4s/8s，**服务端不重试**）；
+  401 → key 无效直接报错；30s 无响应判超时；外部 `AbortSignal`（切棋种/重开）立即终止。
 
 ## 2. 渠道（五可选 + random 基线）
+
+端点/model 预设的单一事实源是 `src/core/jev/client.ts` 的
+`export const CHANNELS: Record<string, ChannelConfig>`（`ChannelConfig = { endpoint, model, keyName }`），
+UI 占位符与真实请求共用它（`presetEndpoint(channel)`）。
 
 | channel | endpoint | model | key 放哪 | 说明 |
 |---|---|---|---|---|
 | `official` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 浏览器 localStorage | **官方 API 有 CORS 来源白名单（2026-09-29 实测：仅 typesafe.ai 自有域名放行，任意第三方 Origin 一律 400 "Disallowed CORS origin"，文档未开放配置）。浏览器直连不可行，浏览器侧走官方 key 的唯一路径是同源代理** |
-| `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，唯一可浏览器直连的渠道（需 OpenRouter key，非 TypeSafe key） |
-| `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | CF Pages Function 或 `dev-proxy.py`；**Pages 侧有每 IP 每分钟滑动窗口限流（默认 30，`RATE_LIMIT_PER_MIN` 可配），超限 429** |
+| `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，唯一可浏览器直连的渠道（需 OpenRouter key，非 TypeSafe key）；额外发 `HTTP-Referer` 头 |
+| `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | **本仓库的 Cloudflare Worker**（`src/worker/routes/jev.ts`）：只做转发与限流，不落 key，详见 §3 |
 | `rapfi` | 本地（浏览器内 WASM） | Rapfi tag 250615 | 无 | **本地搜索引擎对手**（非 prompt 型）：Gomocup 协议，首次选用懒加载约 10–40MB 模型，之后纯本地走子；仅支持 `gomoku`（大众无禁手），`gomoku-pro` 会拒绝；单线程同步搜索期间阻塞 UI 约 3s（ADR-0006）；「测试连接」= 触发懒加载 |
-| `mock` | 本地 | — | 无 | `js/mock-ai.js` 离线演示，概率为合成值 |
+| `mock` | 本地 | — | 无 | `src/core/jev/mock.ts` 离线演示，概率为合成值 |
 | `random` | 本地 | `random-baseline` | 无 | **纯随机基线，仅对比实验面板可选**（设置面板渠道下拉不含它）：均匀概率、零启发式、成本 0，但照样走完整战术管线——「随机+战术 vs Jev+战术」的唯一变量是概率分布质量。自由手真随机均匀采样（不经 topK，否则 topK=1 会坍缩成顺序走子） |
 
-默认渠道（`app.js` settings）：`proxy`。`effectiveChannel()` 在未填 key 时自动回落 `mock`，
+默认渠道（`src/core/persist.ts` 的 `loadSettings()`）：`proxy`。渠道可用性回落由
+`effectiveChannelOf(settings, channel, opts?)` 决定——未填 key 时自动回落 `mock`，
 保证无 key 完整体验；`rapfi` 是本地引擎，直接返回 `rapfi`（无需 key、无远程探测，
-「测试连接」改为触发懒加载）。
+「测试连接」改为触发懒加载）。`effectiveChannelOf` 还有一个历史遗留的 `{ isFile: true }` 选项
+（跳过代理渠道），但 `file://` 双击即玩已随旧实现退役，Vite 产物必须经 HTTP 提供
+（本地用 `npm run dev` / `npm run preview`），见 [status.md](status.md)。
 
-**自定义 Base URL**（2026-09-29 起）：设置面板对每个真实渠道提供「接口地址」输入框，
-留空 = 上表预设，填了即覆盖（`decide` 的 `opts.endpoint`，预设值经 `BG.jev.presetEndpoint(ch)` 取）。
+**自定义 Base URL**（2026-09-29 起；实现见 `src/core/persist.ts` 的 `stashEndpoint(channel, value)`
+与 `Settings.endpoints`）：设置面板对每个真实渠道提供「接口地址」输入框，
+留空 = 上表预设，填了即覆盖（`decide` 的 `opts.endpoint`，预设值经 `presetEndpoint(ch)` 取）。
 语义约定：
 
 - 自定义值按渠道各自存 localStorage（`settings.endpoints`），互不串渠道；`mock` 无此输入框。
-- 端点自定义后该渠道视为**明确可用**：`effectiveChannel()` 不再因未填 key 回落 `mock`。
+- 端点自定义后该渠道视为**明确可用**：`effectiveChannelOf()` 不再因未填 key 回落 `mock`。
 - 自定义端点**不强制 key**（自建网关可匿名）；填了 key 仍照发 `Authorization: Bearer` / `X-Api-Key`。
   预设端点行为不变（official/openrouter 无 key 直接拒绝）。
 - model 名仍取渠道预设（`jev-latest` / `typesafe/jev-1.13`），不随端点变化。
 
 ### 2.1 连通性探测（probe）
 
-设置面板「测试连接」→ `BG.jev.probe({ channel, apiKey, endpoint })`，开局前定位故障，
+设置面板「测试连接」→ `probe({ channel, apiKey, endpoint })`
+（`src/core/jev/client.ts` 导出，经 `src/core/jev/index.ts` 转发），开局前定位故障，
 **两段式**区分浏览器端无法分辨的错误：
 
 | 段 | 做法 | 区分什么 |
 |---|---|---|
 | A | `no-cors` GET（响应不可读，只看 resolve/reject） | 网络层可达 vs DNS/服务器不可达 |
-| B | 按真实契约发最小 `noul` 请求（10s 超时） | 鉴权 / 端点形状 / HTTP 错误 / CORS |
+| B | 按真实契约发最小 `noul` 请求（10s 超时，`PROBE_TIMEOUT_MS`） | 鉴权 / 端点形状 / HTTP 错误 / CORS |
 
 返回 `{ ok, kind, message, latencyMs, model?, status? }`，`kind` 判定：
 
 | kind | 含义 |
 |---|---|
 | `ok` | 联通且 key 有效（附 model 名与延迟） |
-| `network` | A 段即失败：网络不可达（代理渠道先启动 dev-proxy.py） |
-| `cors` | A 可达 + B 被 TypeError：跨域拦截，改用同源代理或服务端加 CORS 头 |
+| `network` | A 段即失败：网络不可达 |
+| `cors` | A 可达 + B 被 TypeError：跨域拦截。官方渠道无解（上游有 CORS 来源白名单），改用 `proxy` 渠道——同源 `/api/jev` 已带 `Access-Control-Allow-*` 头，不需要再改服务端 |
 | `auth` | 401/403：key 无效 |
 | `http` | 其他 HTTP 错误（422/404…，附前 200 字符）：端点路径可能不对 |
 | `shape` | 200 但响应缺 `answers`：地址不是 System One 同构端点 |
 | `mock` / `config` | 离线演示无需连接 / 未知渠道 |
 
-注：`rapfi` 渠道不走 probe 的 HTTP 判定，`app.js` 把「测试连接」复用来触发
-`BG.rapfi.ensureLoaded()` 懒加载（成功/失败即引擎就绪/不可用）。
+注：`rapfi` 渠道不走 probe 的 HTTP 判定，装配层（`src/app/modes.ts`）把「测试连接」
+复用来触发 Rapfi 懒加载（成功/失败即引擎就绪/不可用）。
 
 实现注意：探测体必须与正式请求同构（`state`+`model`+`questions` 三字段齐全）——
-漏 `model` 会被真实端点 422 拒绝（已踩过，单测有用例④钉住）。UI 直读输入框当前值，
+漏 `model` 会被真实端点 422 拒绝（已踩过，单测有用例钉住）。UI 直读输入框当前值，
 不依赖是否已保存；探测期间按钮禁用。
 
 ### 2.2 状态增强与战术保险（Jev 强度杠杆）
 
-Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态质量」。`decide()` 在发请求前
-统一做两层增强（对 `serializeForJev` 的产出做后处理，六棋种通用，mock 渠道不受影响）：
+Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态质量」。`decide()`
+（`src/core/jev/client.ts`）在发请求前统一做两层增强（对 `serializeForJev` 的产出做后处理，
+六棋种通用，mock 渠道不受影响）：
 
 1. **`state.tactics`**：用引擎自身的 `applyMove`/`getStatus` 模拟推算双方战术点——1-ply
    `{ winning_points_you: [...], winning_points_opponent: [...] }`（一步致胜点：己方 = 必走，
@@ -104,6 +118,8 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
    `vcfWin(st, attackerId, maxPlies)` 做威胁空间搜索，7 ply/4000 节点/每层≤12 候选，
    实测 0–22ms；进攻取将死链首步，防守取链条入口干预点且**试走后复搜确认破杀**）。
    指令里同步声明这些字段的语义（英文，追加在 `questions.move.instructions` 尾部）。
+   推算实现在 `src/core/tactics.ts`（`computeTactics` / `attachFacts` / `emptyTactics` /
+   `countForcingReplies` / `allowsSustainedAttack` / `resolveVersion`）。
 2. **`state.experience`**（可选，由 `opts.experience` 传入）：同一棋种、真实渠道的历史局中
    与当前开局前 4 手相同的那部分，统计 `{ opening_plies, games, first_player_win_rate }`。
    样本 <2 局不注入（噪声）；离线演示局从不参与（合成数据不自证）。
@@ -124,7 +140,7 @@ Rapfi 实战复盘增补：放任冲四制造点会被连续单杀逼迫 → 双
 概率只是偏好，事实优先。深度换时间的边界写死在实现里（外层 64 候选、逼杀着法只查前 8 个、
 逼杀数数到 10 即停、VCF 7 ply/4000 节点）。
 **边界声明**：VCF 只搜「连续冲四」强制链，不是完整 VCT/估值；Rapfi 实战 0-4 复盘见
-status.md「已知限制」第 1 条。
+[status.md](status.md)「已知限制」。
 
 **五子棋 criteria 战术标签**（引擎代读棋盘，`labelPoint` 真实推演非模式匹配）：
 `you:open4 / you:four / you:live3`（我落这造什么）、`deny:open4 / deny:four / deny:live3`
@@ -132,16 +148,15 @@ status.md「已知限制」第 1 条。
 静点为 `null` 不耗 token。活三判定沿方向精确扫描（连续三子 + 两边界空 + 延伸成活四），
 **不用窗口扫描**——窗口里无关方向的既成活四会误标（已踩过：F5 的对角窗口扫到 8 行的活四点）。
 
-实现细节：推算按 state 身份 WeakMap 缓存；`moveNum < 4` 的早期局面直接跳过；
-引擎对模拟着法的任何拒绝都降级为空战术。**`moveFromNotation(st, n)` 是双参契约**
-（漏传 st 会在 gomoku 上炸 parseN，已踩过）。
+实现细节：推算按 state 身份 WeakMap 缓存；早期局面直接跳过；引擎对模拟着法的任何拒绝都降级为空战术。
+**`moveFromNotation(st, n)` 是双参契约**（漏传 st 会在 gomoku 上炸 parseN，已踩过）。
 
 实测：黑四连局面注入 tactics 后，真实 Jev 把 G8/L8 两致胜点概率打到 0.91/0.09（合计≈1.0），
 模型确实读懂并使用了注入事实；保险层 `meta.tactics='win'` 确认无接管必要。
 
 ### 2.3 五子棋提示词工程（2026-09-29）
 
-四板斧（全部落在 `gomoku.js` 的 `serializeForJev`）：
+四板斧（全部落在 `src/core/engines/gomoku.ts` 的 `serializeForJev`）：
 
 1. **`state.board_ascii`**：裁剪到有子区域外扩 2 格的字符画棋盘（列字母表头 + 行号，X/O=黑白子，
    小写=last_move，空盘裁到天元 5×5）。模型读二维字符画远比读坐标列表准。棋子坐标列表保留作交叉核对
@@ -150,7 +165,7 @@ status.md「已知限制」第 1 条。
    己方活三活四 → 对方活三 → 多威胁点择优），要求「按顺序执行、逐格核对」。
 3. **analysis 文本问不被支持**：实测同 payload 不带 text 问 200、带上 400 `api_usage_error`（单变量
    对照）。API 契约只有 choice/noul/score。**且并行结构下 analysis 也不会反哺 move**（各问独立评估，
-   串联推理链被 ADR/规则 6 禁止）——「先写分析再选题」只能折叠进 move 指令，已按此实现。
+   串联推理链被规则禁止）——「先写分析再选题」只能折叠进 move 指令，已按此实现。
 4. **防幻觉核对**：凡声称成五/成四必须逐格报出整条线，核对不过即弃用该候选——压「看出不存在的威胁」。
 
 真实 API 验证：四连局面 G8/L8 = 0.87/0.11（保险 win）；中盘局面给出围绕战场的合理概率分布。
@@ -158,44 +173,65 @@ status.md「已知限制」第 1 条。
 另观察：上游会**阵发性误报 401**（key 有效却 authentication_error，成阵持续数十秒到几分钟），
 已把 401 文案改为提示「key 无误时可能是瞬时故障，稍后重试」。401 仍不自动重试（避免坏 key 空转）。
 
-## 3. 服务端实现（BYOK，服务端不存访客 key）
+## 3. 本仓库的实现（BYOK：Worker 转发，不存访客 key）
 
-三套实现共用同一套 URL 契约，前端无感切换（详见 ADR-0005）：
+**职责分工（2026-10-01 迁移后）**：
 
-- **`server.js`**（零依赖 Node，`node server.js`，默认 8788）：本地/自托管的完整后端。
-  静态托管 + `POST /api/jev`（TypeSafe 代理，30s 超时）+ `POST/GET /api/games`
-  （棋谱落盘 `games/<日期>/`，`flag:'wx'` 原子写幂等，文件名规则与 Pages 端一致）+
-  `POST/GET /api/experiments`（归档 `data/experiments.json`，按 tag upsert）+
-  `GET /api/stats`（跨对局聚合，`cal.records` 按局给 key=gid|着法串）+
-  `GET /api/health`。限流：jev 60 次/分、其余 120 次/分（每 IP 滑动窗口）。
-  契约测试见 `test/server-tests.js`（18 项，随 `node test/run-tests.js` 全量跑）。
-- **`functions/api/jev.js`**（Cloudflare Pages Functions）：仅做 CORS 转发，
-  key 来自访客请求头；未提供 → 401 中文提示。部署到 CF Pages 后自动获得 `/api/jev`。
-- **`functions/api/health.js` / `experiments.js` / `stats.js`**（2026-09-29 补齐，
-  与 server.js 契约对齐的三端点）：`/api/health` 探活（不发上游请求，`github`
-  字段表示 token 配没配）；`/api/experiments` 实验战报归档（读写仓库
-  `data/experiments.json`，按 tag upsert，提交信息 `exp: <tag> [skip ci]`）；
-  `/api/stats` 跨对局聚合（1 次 git trees + ≤40 份 raw 拉取 + 1 次 contents，
-  合计 ≤42 个子请求，守免费版 50 上限；截断时 `truncated: true`）。
-  三者共用 `functions/api/_github.js`（下划线前缀不对应路由的共享模块）。
-- **`functions/api/games.js`**（Cloudflare Pages Functions）：终局棋谱同步。
-  POST 收 `jev-qiguan-game/v1` payload → 用 `GAMES_GITHUB_TOKEN`（fine-grained PAT，
-  仓库 Contents 读写）经 GitHub API commit 进 `games/<日期>/`，提交信息带 `[skip ci]`
-  （不触发 Pages 构建）；GET 列最近 7 天棋谱。未配置 token → 500，客户端静默失败。
-- **`dev-proxy.py`**（本地，最小备用）：静态托管 + `/api/jev` 转发，持久 TLS 连接
-  （实测每手省 ~0.45s 握手），标准库零依赖。
-  `set TYPESAFE_API_KEY=ts-xxxx`（可选，本机兜底）。
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 客户端 | `src/core/jev/client.ts` | 渠道解析、加鉴权头、30s 超时 + 外部 `AbortSignal` 合并、429/529 指数退避（最多 4 次）、战术注入与九级保险、top-k 采样、成本统计。**key 只在这里从 localStorage 读出来放进请求头，不发给任何本站服务端之外的第三方** |
+| 客户端出口 | `src/core/jev/index.ts` | 装配 `decide`（注入 mock 实现）并转发 `probe` / `presetEndpoint` / `CHANNELS` |
+| Worker 路由 | `src/worker/routes/jev.ts` | `POST /api/jev`：限流（`jev` 桶 30/分/IP，D1 固定窗口）→ 校验 → 转发 → 原样透传上游响应；另注册 `OPTIONS /` 预检（在限流**之前**，不占桶、不耗上游额度） |
+| Worker 上游层 | `src/worker/lib/upstream.ts` | 上游调用细节：请求体白名单（只取 `state`/`model`/`questions`，`model` 缺省 `jev-latest`）、超时、错误映射、`toPassthroughResponse`（不读 body，流式透传） |
 
-**降级语义**：`/api/health` 不存在时（file:// 双击打开、纯静态托管），
-前端 `BG.api` 全部方法返回 null，`app.js` 回落到 localStorage 与本机记录——
-对局、悔棋、导出功能不受任何影响，只是数据不跨设备。
-注意 CF Pages 的 SPA 兜底：未匹配的 `/api/*` 会返回 index.html + 200，
-`BG.api` 的 JSON 解析因此抛错并被 catch 成 null，降级行为不变（已实测）。
+Worker 侧的关键事实：
+
+- **key 取值序**：请求头 `X-Api-Key` > `env.TYPESAFE_API_KEY`（站长兜底）> 请求体 `apiKey`，
+  三处都 `trim()`（顺手修掉「粘贴带换行导致 401」）。取值来源只记 `keySource`（`'header'|'env'|'body'`）。
+- **key 永不入日志、永不入 URL**：成功日志 `[jev] status=… requestId=… keySource=… ms=…`，
+  失败日志 `[jev] upstream failed requestId=… kind=… error=… keySource=… ms=…`，
+  都不含 key 值也不含请求体（请求体里有局面）。key 只出现在 `Authorization` / `X-Api-Key`
+  **请求头**里，从不进 query string，所以拿到访问日志也读不出 key。
+- **缺 key → 401**，文案 `未提供 API Key：请在页面「Jev 设置」中填写你自己的 TypeSafe key`，
+  错误体统一 `{error, code:'unauthorized', requestId}`。
+- **请求体不是合法 JSON → 400 `bad_request`**（旧实现是 422；422 现在专留给「格式对但内容不合法」
+  的 `invalid_payload`）。前端只按 `resp.ok` 分流，不受影响。
+- **上游非 2xx 原样透传**状态码与响应体（额外转发 `Retry-After`）；上游不可达/超时 → **502**
+  `upstream_error`；客户端自己 abort（切棋种/重开）→ 非标准 **499**（用真 `Response` 返回，
+  与真 502 区分）。
+- **429/529 由客户端退避，服务端不重试**——服务端重试会把一次用户点击变成 N 次上游计费（BYOK）。
+- **CORS 只在本路由**：回显 `Origin` + `Vary: Origin`、`Access-Control-Allow-Headers: Content-Type, X-Api-Key`、
+  `Max-Age: 86400`，**不回显 `Access-Control-Allow-Credentials`**（BYOK 不依赖 Cookie，开了只会放大风险面）。
+- 错误码与 HTTP 状态的映射集中在 `src/worker/lib/http.ts` 的 `statusFor()`。
+
+**上游响应里没有的东西**：429/529 的重试、退避节奏、超时都在客户端；Worker 不缓存、不排队。
+
+### 3.1 客户端重试与超时（`src/core/jev/client.ts`）
+
+- `REQUEST_TIMEOUT_MS = 30000`（决策请求）、`PROBE_TIMEOUT_MS = 10000`（探测）。
+- 网络错误（无 HTTP 状态）：重试，最多 4 次尝试，间隔 `800 * (attempt + 1)` ms；
+  提示语按渠道区分（同源代理不可达 / 浏览器直连受 CORS 限制）。
+- 429 / 529：指数退避 `1000 * 2^attempt` ms（1s/2s/4s/8s），并回调 `opts.onRetry(status, attempt)`。
+- 401：直接抛「API Key 无效或缺失（401）」，不重试。
+- 其它状态码：直接抛 `API 错误 <status>：<前 300 字符响应体>`。
+- `opts.signal`（切棋种/重开）在每次尝试前与请求期间都检查，abort 即中止。
+
+**降级语义**（D8）：探不到本站后端（例如纯静态托管 `dist/`）时，
+`src/core/api/client.ts` 的每个方法返回 `null` 而不抛——对局、悔棋、导出功能不受影响，
+只是数据不跨设备（回落 localStorage 战绩簿）。迁移后**不再保证 `file://` 双击即玩**：
+Vite 产物是 ES module + 绝对路径，本地预览用 `npm run preview`。
+
+**旧实现（2026-10-01 前）**：三套服务端（`server.js` 零依赖 Node + `functions/api/*.js`
+Pages Functions + `dev-proxy.py` 最小代理）共用同一 URL 契约；限流是 Pages Function 的
+isolate 内存 Map（多实例各算各的，等于没限）；`/api/stats` 靠 GitHub API 拉 raw 且有
+50 子请求预算截断。全部已由 Worker + D1 取代（ADR-0010 / ADR-0013），细节见
+[plans/2026-10-01-workers-d1-rebuild.md](plans/2026-10-01-workers-d1-rebuild.md) §2。
 
 ## 4. 成本模型
 
 - 官方定价：**输入 $42/百万 token，输出免费**（OpenRouter `typesafe/jev-1.13` 同价）。
-- `jev-client.decide()` 内按 `usage.input_tokens * 42 / 1e9` 累计 `costUsd`。
+- `decide()` 内按 `usage.input_tokens * 42 / 1e9` 累计 `costUsd`
+  （`src/core/jev/client.ts` 一行）。
 - 实测单步 state 约 0.5–1.5K token ≈ **$0.00005/步**，一整局 < $0.05。
 - 面板显示的 token/成本累计即来自该公式；改公式必须同步本文档与 README「成本参考」。
 
@@ -211,16 +247,21 @@ status.md「已知限制」第 1 条。
 | `candidates` | 合法候选总数；`restProb` 第 9 名以后概率合计 |
 | `noul` / `score` | 局势优劣概率 / 0–10 局势分 |
 | `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `open4`（走己方活四点）/ `threat`（抢占造杀点）/ `vcfAttack`（走己方将死链首步）/ `vcfDefense`（破对方将死链）/ `parry`（拆对手造杀点，含 3-ply 安全排序）/ `parry3`（预挡对手活三/活四制造点）/ `parry4`（预挡对手冲四制造点）/ `null` |
+| `tacticsVersion` | 本次决策用的战术档 id（`src/core/tactics-versions.ts` 的 `resolveVersion()`） |
 | `warning` | 非法响应回退等异常提示 |
 | `mock: true` | 离线演示标记（面板需显示"演示"角标） |
 
 ## 6. 采样（随机度）
 
-`opts.topK`：1 = argmax 最强手；k>1 = 前 k 名概率加权随机（`BG.util.weightedPick`）。
+`opts.topK`：1 = argmax 最强手；k>1 = 前 k 名概率加权随机（`src/core/weighted.ts` 的 `weightedPick`）。
 机机对弈必须 k>1，否则同一 seed 每盘完全一样。滑杆在 UI「Jev 设置」里。
 
 **例外——`random` 基线渠道**：自由手均匀采样，与 topK 无关（topK=1 会把均匀概率坍缩成
 「取第一顺位」，退化成顺序走子，已踩过）；战术接管不受影响，该堵的杀照堵。
 
-**可复现性**：`BG.util.rand/rnd` 支持种子（`?seed=42` 或 Node 侧 `BG.setSeed(42)`），
-仅影响 mock/演示与测试链路；真实渠道的 top-k 采样走 `weightedPick`（不经 rand），保持真随机。
+**可复现性**：`src/core/rng.ts` 的 `setSeed(seed)` / `getSeed()` / `rand(n)` / `rnd()`
+支持种子（mulberry32），只影响 mock/演示与测试链路；
+真实渠道的 top-k 采样走 `weightedPick`（不经 rand），保持真随机。
+金样 `test/fixtures/golden/*.json` 由 `seed=42` 的 mock 自对弈生成，随机流一字节不同就会全部对不上。
+**注意**：旧的 URL `?seed=42` 入口已随旧实现（`js/**`）删除，浏览器侧现在没有种子入口，
+`setSeed()` 只由测试代码调用（见 [AGENTS.md](../AGENTS.md) §5）。

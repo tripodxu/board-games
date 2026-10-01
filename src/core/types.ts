@@ -1,0 +1,113 @@
+/* types.ts — 引擎与决策的公共类型（迁移自 docs/engine-interface.md 的契约描述）
+ *
+ * 移植原则：**只加类型，不改行为**。旧实现是鸭子类型 + `BG.games[id]` 注册表，
+ * 这里把它写成泛型接口 Engine<S>，字段名与运行时完全一致（多出来的类型参数
+ * 在类型剥离后不留痕迹）。
+ *
+ * 三个刻意的宽松点，都是为了让旧实现的写法原样成立：
+ *   1. `turn` 是 string 而非联合类型——旧代码到处 `st.turn === 'black'` 比较，
+ *      也到处直接赋值 `st.turn = side`，联合类型会把等价代码变成编译错误；
+ *   2. 有索引签名——各引擎状态还带 r/c/from/to/promoted 等私有字段，
+ *      serializeForJev 注入的 tactics/experience 也走同一对象；
+ *   3. 可选方法用 `?`，因为六个引擎并非都实现 passMove/mockPick/vcfWin。
+ */
+import type { Canvas2D, Gfx } from './gfx.ts';
+
+/** 一步棋。notation 是 Jev Choice 的键：全局唯一、稳定、短。 */
+export interface Move {
+  notation: string;
+  desc?: string | null;
+  /** 引擎私有字段（r/c/from/to/captured/promoted…）。 */
+  [k: string]: unknown;
+}
+
+/** getStatus 的返回：终局判定。over:false 时至少给 turn。 */
+export interface GameStatus {
+  over: boolean;
+  turn?: string;
+  winner?: string | null;
+  reason?: string;
+  [k: string]: unknown;
+}
+
+/** 引擎给 UI 的静态元信息（画布逻辑尺寸）。 */
+export interface EngineMeta {
+  w: number;
+  h: number;
+  [k: string]: unknown;
+}
+
+/** 一方的声明（先手方 first:true）。 */
+export interface Side {
+  id: string;
+  name: string;
+  first?: boolean;
+  [k: string]: unknown;
+}
+
+/** serializeForJev 的产出：三问一次并行发出。 */
+export interface JevQuestion {
+  type: string;
+  instructions: string;
+  criteria?: unknown;
+  options?: unknown;
+  [k: string]: unknown;
+}
+
+/** Jev 请求体。state 允许是对象/字符串/数组三种形态（attachFacts 三种都处理）。 */
+export interface JevSerialized {
+  state: Record<string, unknown> | string | unknown[];
+  questions: Record<string, JevQuestion> & { move: JevQuestion };
+  options?: unknown;
+  [k: string]: unknown;
+}
+
+/** 生成引擎专用的 UI 交互态（multi-step 连跳等）；跨手保持，可放函数。 */
+export interface UiState {
+  [k: string]: unknown;
+}
+
+/** orchestrator 传给引擎的决策上下文（旧实现是 { channel: {...}, ... }）。 */
+export interface PickConfig {
+  [k: string]: unknown;
+}
+
+/** 连续冲四将死链（VCF）的搜索结果。 */
+export interface VcfResult {
+  win: boolean;
+  first: string | null;
+  line: string[];
+}
+
+/** 引擎统一接口（docs/engine-interface.md §2）。 */
+export interface Engine<S = any> {
+  id: string;
+  name: string;
+  sides: Side[];
+  meta?: EngineMeta;
+  supportsPass?: boolean;
+  supportsResign?: boolean;
+  /** 候选点是无色差空点集（如 gomoku 落子点）时声明：Jev 层可跑 2-ply 造杀扫描。 */
+  deepTactics?: boolean;
+
+  newGame(): S;
+  getLegalMoves(st: S): Move[];
+  applyMove(st: S, move: Move): S;
+  getStatus(st: S): GameStatus;
+  moveFromNotation(st: S, notation: string): Move | null;
+  serializeForJev(st: S, side: string): JevSerialized;
+  selfTest(): void;
+
+  /* 渲染与交互（调用时才会碰到 gfx；模块加载期零 DOM 访问） */
+  draw?(ctx: Canvas2D, st: S, ui: UiState): void;
+  humanClick?(st: S, ui: UiState, x: number, y: number): Move | null;
+
+  /* 可选能力 */
+  passMove?(st: S): Move | { notation: string; [k: string]: unknown };
+  mockPick?(st: S, moves: Move[], side: string, cfg?: PickConfig): Move | null | undefined;
+  /** st.turn 须为 attackerId；无链返回 { win:false, first:null, line:[] }。 */
+  vcfWin?(st: S, attackerId: string, maxPlies: number): VcfResult;
+
+  /** 引擎私有方法（如 gomoku 的 candidates / serialize 用到的辅助）。 */
+  [k: string]: unknown;
+}

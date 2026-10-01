@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jev 棋馆 · 六种棋类对弈</title>
-<meta name="description" content="TypeSafe Jev「系统一模型」驱动的六种棋类对弈：人机、机机，实时胜率与决策可视化。">
+<title>Jev 棋馆 · 七种棋类对弈</title>
+<meta name="description" content="TypeSafe Jev「系统一模型」驱动的七种棋类对弈：人机、机机，实时胜率与决策可视化。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="/styles/style.css">
 </head>
 <body>
 
@@ -24,7 +24,7 @@
   <button id="settingsGear" class="gear-btn" type="button" aria-haspopup="dialog" aria-controls="settingsDrawer" title="全局设置（引擎与连接 / 战术版本）">
     <span aria-hidden="true">⚙</span><span class="gear-txt">设置</span>
   </button>
-  <span class="chip" id="backendChip" title="同源后端状态：node server.js 在线时棋谱落盘、实验归档、跨对局统计；未检测到时为静态托管或 CF Pages（棋谱同步仍会尝试）">后端 <b id="backendState">检测中</b></span>
+  <span class="chip" id="backendChip" title="同源后端状态：Worker（同源 /api）在线时棋谱落盘、实验归档、跨对局统计；未检测到时为纯静态托管（棋谱同步仍会尝试）">后端 <b id="backendState">检测中</b></span>
   <span class="chip">渠道 <b id="channelChip">离线演示</b></span>
   <span class="chip">累计成本 <b id="costChip">$0.00000</b></span>
 </header>
@@ -152,19 +152,19 @@
       </div>
     </section>
 
-    <!-- 双方对决：两个 Jev 的实时对比 -->
-    <section class="panel collapsible" data-panel="duel" aria-label="双方 Jev 对决">
+    <!-- 双方对决：两个引擎的实时对比 -->
+    <section class="panel collapsible" data-panel="duel" aria-label="双方对决">
       <div class="panel-title">
         <button class="fold" aria-expanded="false" aria-controls="body-duel" title="收起 / 展开" aria-label="收起或展开「对决」">
           <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <h2>对决</h2>
-        <span class="note">两个 Jev 的实时手感</span>
+        <span class="note">对局双方的实时手感</span>
       </div>
       <div class="panel-body" id="body-duel">
       <div class="duel" id="duel">
         <div class="duel-col" id="duelFirst">
-          <div class="duel-name"><i class="dot mo"></i><span id="duelFirstName">黑方 Jev</span></div>
+          <div class="duel-name"><i class="dot mo"></i><span id="duelFirstName">黑方</span></div>
           <div class="duel-row"><span>均置信</span><b class="mono">–</b></div>
           <div class="duel-row"><span>均优势</span><b class="mono">–</b></div>
           <div class="duel-row"><span>决策</span><b class="mono">0</b></div>
@@ -172,7 +172,7 @@
         </div>
         <div class="duel-vs">VS</div>
         <div class="duel-col" id="duelSecond">
-          <div class="duel-name"><span id="duelSecondName">白方 Jev</span><i class="dot zhu"></i></div>
+          <div class="duel-name"><span id="duelSecondName">白方</span><i class="dot zhu"></i></div>
           <div class="duel-row"><span>均置信</span><b class="mono">–</b></div>
           <div class="duel-row"><span>均优势</span><b class="mono">–</b></div>
           <div class="duel-row"><span>决策</span><b class="mono">0</b></div>
@@ -295,6 +295,44 @@
         <div id="ledger" class="ledger"></div>
       </div>
     </section>
+
+    <!-- P7c 交付的三块数据面板：回放器 / 排行榜 / 开局库。
+         容器只给 id，内部结构、三态文案与 class（`rp` / `lb` / `op`）全部由面板自己渲染。 -->
+    <section class="panel collapsible" data-panel="replayer" aria-label="棋谱回放">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-replayer" title="收起 / 展开" aria-label="收起或展开「棋谱回放」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>棋谱回放</h2>
+      </div>
+      <div class="panel-body" id="body-replayer">
+        <div id="replayerPanel"></div>
+      </div>
+    </section>
+
+    <section class="panel collapsible" data-panel="leaderboard" aria-label="排行榜">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-leaderboard" title="收起 / 展开" aria-label="收起或展开「排行榜」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>排行榜</h2>
+      </div>
+      <div class="panel-body" id="body-leaderboard">
+        <div id="leaderboardPanel"></div>
+      </div>
+    </section>
+
+    <section class="panel collapsible" data-panel="openings" aria-label="开局库">
+      <div class="panel-title">
+        <button class="fold" aria-expanded="false" aria-controls="body-openings" title="收起 / 展开" aria-label="收起或展开「开局库」">
+          <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>开局库</h2>
+      </div>
+      <div class="panel-body" id="body-openings">
+        <div id="openingsPanel"></div>
+      </div>
+    </section>
     </div><!-- /pane-data -->
 
     <div class="side-pane" id="pane-exp" role="tabpanel" aria-label="实验" hidden>
@@ -307,7 +345,7 @@
         <label>模式
           <select id="mode">
             <option value="human-ai">人 vs Jev</option>
-            <option value="ai-ai">Jev vs Jev</option>
+            <option value="ai-ai">机 vs 机</option>
             <option value="pvp">人 vs 人</option>
           </select>
         </label>
@@ -328,7 +366,7 @@
       </div>
       <div class="mode-switch" role="group" aria-label="对局模式">
         <button type="button" data-mode="human-ai" aria-pressed="false">人 vs 机器</button>
-        <button type="button" data-mode="ai-ai" aria-pressed="false" class="active">Jev vs Jev</button>
+        <button type="button" data-mode="ai-ai" aria-pressed="false" class="active">机 vs 机</button>
         <button type="button" data-mode="pvp" aria-pressed="false">人 vs 人</button>
       </div>
       <div class="exp-sides">
@@ -511,22 +549,6 @@
 <div id="toast" class="hidden" role="status"></div>
 <div id="testPanel" class="hidden"></div>
 
-<script src="js/board.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/calibration.js"></script>
-<script src="js/games/gomoku.js"></script>
-<script src="js/games/chess.js"></script>
-<script src="js/games/xiangqi.js"></script>
-<script src="js/games/checkers.js"></script>
-<script src="js/games/chinese-checkers.js"></script>
-<script src="js/games/go.js"></script>
-<script src="js/mock-ai.js"></script>
-<script src="js/rapfi.js"></script>
-<script src="js/jev-client.js"></script>
-<script src="js/api.js"></script>
-<script src="js/latest-board.js"></script>
-<script src="js/tactics-versions.js"></script>
-<script src="js/duel.js"></script>
-<script src="js/app.js"></script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

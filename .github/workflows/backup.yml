@@ -1,0 +1,45 @@
+name: backup
+
+# 每日导出远程 D1 并验证「这份 SQL 真能重建整库」。
+# 为什么放在 CI 而不是 Worker：Worker 没有导出 D1 的能力（那是 wrangler 的活），
+# 所以 P7 的每日维护只清限流表 + 写 stats_cache，备份由本工作流承担。
+# 前置 Secrets（同 deploy.yml）：CLOUDFLARE_API_TOKEN（需 D1:Read）、CLOUDFLARE_ACCOUNT_ID。
+# 验证用 `--structural` 结构模式：线上棋谱会随时间增长，拿迁移当天的 54 局卡 CI 只会永远红；
+# 结构模式仍会硬失败的三类：孤儿明细行、手数与 move_count 不一致、
+# payload 与派生列（game/move_count/day）漂移、以及冻结期内的局对不回 games/** 源文件。
+on:
+  schedule:
+    - cron: '23 4 * * *' # UTC 04:23：错开 Worker 的每日维护（03:17）与整点调度高峰
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: 导出远程 D1 快照
+        # 注意：wrangler 不会自己建目录，`--output` 指向不存在的目录会报
+        # "The file was moved or deleted"，所以先 mkdir。
+        run: |
+          mkdir -p backups
+          npx wrangler d1 export jev-qiguan --remote --output backups/export.sql
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: 验证备份可重建（结构模式）
+        run: node scripts/verify-backup.mjs --structural
+
+      - name: 上传备份产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-export-${{ github.run_number }}
+          path: backups/export.sql
+          retention-days: 30
+          if-no-files-found: error

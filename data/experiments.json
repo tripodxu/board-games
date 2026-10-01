@@ -1,5 +1,41 @@
 [
   {
+    "tag": "exp-20260930143522",
+    "date": "2026-09-30T14:55:59.839Z",
+    "chanA": "proxy",
+    "chanB": "proxy",
+    "tacA": "v9-vcf-sound",
+    "tacB": "v8-vcf-try",
+    "thinkA": 0,
+    "thinkB": 0,
+    "total": 2,
+    "games": [
+      {
+        "no": 1,
+        "blackChan": "proxy",
+        "whiteChan": "proxy",
+        "blackTac": "v9-vcf-sound",
+        "whiteTac": "v8-vcf-try",
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": null,
+        "by": null
+      },
+      {
+        "no": 2,
+        "blackChan": "proxy",
+        "whiteChan": "proxy",
+        "blackTac": "v8-vcf-try",
+        "whiteTac": "v9-vcf-sound",
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": null,
+        "by": null
+      }
+    ],
+    "note": "Jev·v9（sound）vs Jev·v8（vcfTry）同渠道 A/B 2 局：两局都下满 225 手和棋——镜像局高度趋和，两版都没兑现杀棋，样本不足以判 soundness 修复的收益。棋谱回溯补齐。"
+  },
+  {
     "tag": "exp-20260930090336",
     "date": "2026-09-30T10:19:18.788Z",
     "chanA": "proxy",
@@ -130,6 +166,53 @@
     "note": ""
   },
   {
+    "tag": "exp-20260930084500",
+    "date": "2026-09-30T08:46:42.105Z",
+    "chanA": "proxy",
+    "chanB": "rapfi",
+    "tacA": null,
+    "tacB": null,
+    "thinkA": 0,
+    "thinkB": 0,
+    "total": 3,
+    "games": [
+      {
+        "no": 1,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "B",
+        "by": null
+      },
+      {
+        "no": 2,
+        "blackChan": "rapfi",
+        "whiteChan": "proxy",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "B",
+        "by": null
+      },
+      {
+        "no": 3,
+        "blackChan": "proxy",
+        "whiteChan": "rapfi",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": null,
+        "by": null
+      }
+    ],
+    "note": "proxy vs rapfi 3 局（线上仍跑 0.7.0，棋谱无 meta）；rapfi 2 胜 1 和。本轮此前只落了棋谱、没归档战报，2026-09-30 由棋谱回溯补齐。"
+  },
+  {
     "tag": "exp-20260930025135",
     "date": "2026-09-30T02:57:13.292Z",
     "chanA": "proxy",
@@ -162,5 +245,144 @@
       }
     ],
     "note": ""
+  },
+  {
+    "tag": "exp-20260929111222",
+    "date": "2026-09-29T11:13:52.102Z",
+    "chanA": "proxy",
+    "chanB": "random",
+    "tacA": null,
+    "tacB": null,
+    "thinkA": 0,
+    "thinkB": 0,
+    "total": 4,
+    "games": [
+      {
+        "no": 1,
+        "blackChan": "proxy",
+        "whiteChan": "random",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 2,
+        "blackChan": "random",
+        "whiteChan": "proxy",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 3,
+        "blackChan": "proxy",
+        "whiteChan": "random",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 4,
+        "blackChan": "random",
+        "whiteChan": "proxy",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": null,
+        "by": null
+      }
+    ],
+    "note": "次轮：random 渠道已修复为真随机采样。#4 下满 225 手和棋——双方 65 次战术触发全是防守，谁也没造出双杀；真随机散子起到了\"搅局\"作用。基线 4 局进攻性战术触发仍为 0。"
+  },
+  {
+    "tag": "exp-20260929105234",
+    "date": "2026-09-29T10:54:02.060Z",
+    "chanA": "proxy",
+    "chanB": "random",
+    "tacA": null,
+    "tacB": null,
+    "thinkA": 0,
+    "thinkB": 0,
+    "total": 6,
+    "games": [
+      {
+        "no": 1,
+        "blackChan": "proxy",
+        "whiteChan": "random",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 2,
+        "blackChan": "random",
+        "whiteChan": "proxy",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 3,
+        "blackChan": "proxy",
+        "whiteChan": "random",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null,
+        "dup": true
+      },
+      {
+        "no": 4,
+        "blackChan": "random",
+        "whiteChan": "proxy",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 5,
+        "blackChan": "proxy",
+        "whiteChan": "random",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      },
+      {
+        "no": 6,
+        "blackChan": "random",
+        "whiteChan": "proxy",
+        "blackTac": null,
+        "whiteTac": null,
+        "blackThink": 0,
+        "whiteThink": 0,
+        "winnerChan": "A",
+        "by": null
+      }
+    ],
+    "note": "首轮：基线因 topK=1 退化为顺序走子（A1→B1→C1…）；#1 与 #3 棋谱完全相同，记为重复局。基线 5 局进攻性战术（threat/open4/win）触发 0 次，纯被动防守。"
   }
 ]

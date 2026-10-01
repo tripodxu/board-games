@@ -1,0 +1,61 @@
+/**
+ * Cloudflare Worker 配置（ADR-0010 / ADR-0011）。
+ *
+ * 关键约定：
+ * - `main` 指向 Hono 入口；`assets` 由 Vite 产物（dist/）托管，静态资源命中时不消耗 Worker 调用；
+ * - `run_worker_first = ["/api/*"]` 保证 API 一定进 Worker（否则 SPA 兜底会把未知 /api 变成 HTML+200）；
+ * - D1 绑定名为 `DB`，迁移目录 `migrations/`；
+ * - 本地开发：`vite dev`（@cloudflare/vite-plugin 读本文件）；远程部署：`npm run deploy`。
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jev-qiguan",
+  "main": "src/worker/index.ts",
+  // 兼容日期刻意停在 2026-08-22 而不是「今天」：
+  // @cloudflare/vitest-pool-workers 0.22.0（当前最新）内嵌 miniflare 5.20260815.0-alpha
+  // 的 workerd 只认到这一天，写更新的日期会让测试运行器直接起不来
+  // （ERR_RUNTIME_FAILURE: newest date supported by this server binary is "2026-08-22"）。
+  // 取更旧的日期是保守方向：生产照旧可用，等池子升级后再往上抬，三处（dev/test/prod）保持一致。
+  "compatibility_date": "2026-08-22",
+  // 静态资产由 @cloudflare/vite-plugin 在构建时接管（输出目录由插件决定，
+  // 因此这里**不写** directory/binding，只声明行为）：
+  //  - not_found_handling：未命中的前端路由回落到 index.html（回放器/分享链接需要）
+  //  - run_worker_first：/api/* 必须进 Worker，否则会被 SPA 兜底吞成 HTML+200
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // 自定义域（2026-10-01 绑定）：本机网络无法直连 *.workers.dev（DNS 可解析但 443 超时），
+  // 因此按计划 P8 第 2 步提前绑到账号里 active 的区域 logicc.top 上做线上验证。
+  // `custom_domain: true` 会让 wrangler 自动建/改那条 proxied DNS 记录。
+  "routes": [
+    {
+      "pattern": "jevqipan.logicc.top",
+      "custom_domain": true
+    }
+  ],
+  // 每日维护（P7）：入口的 `scheduled` 会清限流表、写 stats_cache 当日汇总、打一行日志。
+  // 时间取 UTC 03:17 —— 避开整点（CF 上整点是调度高峰），本站在 UTC 白天最活跃。
+  // 注意：修改 crons 后必须重新 deploy 才会生效（wrangler 会同步触发器）。
+  "triggers": {
+    "crons": ["17 3 * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jev-qiguan",
+      // 真实 id：2026-10-01 `wrangler d1 create jev-qiguan`（账号 xd04040212@163.com，region WNAM）
+      "database_id": "f72390fe-a506-4a88-8db7-af7213657947",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "APP_VERSION": "1.0.0"
+  },
+  "dev": {
+    "port": 8787
+  }
+}

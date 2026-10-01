@@ -1,0 +1,37 @@
+{
+  "schema": "jev-qiguan-golden-freeze/v1",
+  "generatedAt": "2026-10-01T09:48:20.869Z",
+  "note": "金样已冻结（P8）：旧实现 js/** 删除后 test/parity/generate.mjs 无法再生成，test/fixtures/golden/*.json 自 2026-10-02 P8 起为只读历史文物。本文件是该目录的封条：集合必须完全一致，每个文件的 sha256 与字节数必须逐字相符。任何静默改写都会在 node test/engines/run.mjs 的「差分：金样文件集合与 frozen.json 完全一致」用例上变红。校验逻辑见 test/engines/parity.test.mjs。",
+  "algorithm": "sha256",
+  "byteUnit": "bytes",
+  "files": {
+    "test/fixtures/golden/cc.json": {
+      "sha256": "f5a17e7925891b2681592b612b8d5d07d72d2fc5c3134efe3b4edfca98e0c557",
+      "bytes": 13721
+    },
+    "test/fixtures/golden/checkers.json": {
+      "sha256": "e20cd8f8803e73867fad23c9ba28ba8448079670471e08632bc50fab558061bc",
+      "bytes": 9885
+    },
+    "test/fixtures/golden/chess.json": {
+      "sha256": "7824f94bd6e49997740918095f63129460ba60329c9eef589c8e22e3a6f33388",
+      "bytes": 15115
+    },
+    "test/fixtures/golden/go.json": {
+      "sha256": "fc38d63bac2605bd326e434f7fae8156b15ce2cb103870fccaa2fc919d7435c4",
+      "bytes": 8590
+    },
+    "test/fixtures/golden/gomoku-pro.json": {
+      "sha256": "2096bcb3bedd88aeba72c2f951edc8b74cc4ddd3af0004e054082b3f1ae621ae",
+      "bytes": 2739
+    },
+    "test/fixtures/golden/gomoku.json": {
+      "sha256": "0b588225667b6a199005c85aff71f87349cfa480ccac3d1d198b4e2f7fb94920",
+      "bytes": 392361
+    },
+    "test/fixtures/golden/xiangqi.json": {
+      "sha256": "bb0ff63608d926310df6cb99fd905549fa88854073d12feea2f657aea63a846f",
+      "bytes": 49737
+    }
+  }
+}

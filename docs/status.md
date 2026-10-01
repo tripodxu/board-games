@@ -1,182 +1,152 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-09-30。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-01。
 
 ## 当前状态
 
-**v0.8**：七个棋种引擎（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋）+ 三种对弈模式 + Jev 决策面板 + 校准实验室 + 前端打磨（可访问性与工艺底线）+ 侧栏折叠一屏化 + 棋谱自动同步归档 + 对比实验（A/B 渠道连跑 + 实验报告面板）+ 零依赖 Node 后端（server.js）+ Rapfi WASM 本地引擎渠道 + VCF 将死链（九级战术保险，**已修复伪胜 soundness 缺陷**）+ 棋谱导出 meta（代码版本/采样参数/单手归因）+ **战术版本实验室（十档战术梯可复现：版本闸门 + 归因 meta + 战术沿革竖列 + 双方自由配置 + A/B 战术实验 + 联名 slug 归档 + 换边重开 + 对局页「机器对手」直达面板 + 按版本分组的「棋谱归档」面板，见 ADR-0009）**。
+**v1.0：Cloudflare Worker + D1 已上线，前端由 Vite/TypeScript 构建。** 入口是自定义域 <https://jevqipan.logicc.top>（`*.workers.dev` 不是入口）。旧形态「纯静态站 + 三套后端（零构建、零依赖）」已被取代，正式决策见 [ADR-0010](adr/0010-worker-static-assets-replaces-pages.md)～[ADR-0013](adr/0013-anonymous-device-identity-and-d1-ratelimit.md)；架构与数据流见 [architecture.md](architecture.md)；迁移全过程见 [plans/2026-10-01-workers-d1-rebuild.md](plans/2026-10-01-workers-d1-rebuild.md)。
 
-| 模块 | 状态 | 说明 |
-|---|---|---|
-| 五子棋 gomoku | ✅ | 15×15 无禁手，候选预筛 ≤64，五连判定；criteria 战术标签、deepTactics、vcfWin（与禁手版同文件工厂，见「五子棋·禁手」行）|
-| 围棋 go | ✅ | 9×9，提子/禁自杀/劫/双停数子（贴 5.5，中国规则） |
-| 象棋 xiangqi | ✅ | 9×10 全走子规则、照面、将军/绝杀/困毙 |
-| 国际象棋 chess | ✅ | 易位/吃过路兵/升变/将杀逼和，perft(1/2/3)=20/400/8902 |
-| 西洋跳棋 checkers | ✅ | 英式 8×8，强制跳吃、连跳、升王即停 |
-| 中国跳棋 cc | ✅ | 六角星 121 格，连跳递归、先抵对营 |
-| 对弈模式 | ✅ | 人机（选执子）/ 机机（速度滑杆、暂停、单步）/ 人人 |
-| Jev 接入 | ✅ | 五渠道（official/openrouter/proxy/rapfi/mock）+ random 基线（仅实验面板）+ 各渠道可自定义 Base URL（留空用预设）+ 「测试连接」连通性探测（网络/CORS/key/端点形状六种判定；rapfi 改为触发懒加载）+ 429/529 退避 + top-k 采样 |
-| Rapfi 本地引擎 | ✅ | 新增第五渠道 `rapfi`：浏览器内 WASM 运行 Rapfi（tag 250615，单线程 SIMD128，Gomocup 协议，无禁手）；`rapfi/` 预编译产物约 10.8MB（.data 9.6MB 精简版），首次选用时懒加载，无需 key；`BG.rapfi` 协议客户端（`js/rapfi.js`，16 项单测），`decide` 不走 Jev 战术层；**设置面板「Rapfi 思考时长」可调 0.5–10 秒（默认 3 秒，Gomocup `INFO timeout_turn`，存 localStorage，机机/实验同效）**；引擎 GPLv3、权重 CC0（`rapfi/NOTICE`）；已知局限：单线程同步搜索冻结 UI 约 N 秒（N=思考时长，ADR-0006） |
-| Jev 强度 | ✅ | 战术事实注入（state.tactics：1-ply 一步致胜点 + 2-ply 造杀/拆杀点 + **VCF 将死链**）+ 战术保险（meta.tactics = win/block/open4/threat/vcfAttack/vcfDefense/parry/parry3/parry4 透出，优先级 win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4；**vcfAttack/vcfDefense = 连续冲四将死链的攻守**：引擎 `vcfWin()` 威胁空间搜索（7 ply/4000 节点/每层≤12 候选，实测 0–22ms），进攻找己方将死链首步、防守在对方将死链上逐点试干预（先链首、再链条顺序），**试走后复搜确认彻底破杀**（单点占不住就试下一点；全部失败才回落 parry）；**soundness 闸门（v0.7 修复，见 ADR-0008）**：攻方造四后守方被迫堵的那一手可能顺手给守方自己造出四 → 守方下一手直接成五，攻方后面的双杀永远兑现不了。搜索在双杀短路前检查「守方即时致胜点」，攻方这一手必须占掉它（守方活四两端 = 2 个反杀点时一步占不完，该分支直接无解）。回放 4 局 190 个决策点：伪胜 2→0，7 条有效链全部保留，耗时零增长（perCall 仍 0.38ms）；parry = 拆对手双杀制造点且多个并存时按 3-ply 安全性排序（排除给对方持续攻击节奏的点），parry3 = 抢占对手活三/活四制造点（deny:open4/deny:live3），parry4 = 抢占对手冲四制造点（deny:four，Rapfi 实战复盘增补）；**VCF 是连续冲四搜索，不是完整 VCT/估值**）+ 对局经验累计（state.experience）+ 五子棋提示词板斧（board_ascii 字符棋盘/刚性扫描清单/防幻觉核对/斜线 few-shot 具象示例）+ 五子棋 criteria 战术标签（活三/活四引擎代读，you:/deny:/block: 体系）|
-| 五子棋·禁手 | ✅ | 新增 `gomoku-pro` 引擎（与 `gomoku` 同文件工厂 `createGomoku`，`forbidden` 开关区分）：黑方三三/四四/长连禁手（落子即负），黑方仅精确五连获胜，白方无禁手、五连以上获胜；禁手点从合法着法剔除，Jev 序列化带 `forbidden_points_black`；大众无禁手模式保留不变 |
-| 决策面板 | ✅ | top-3 概率条、置信度、局势判断、延迟、token/成本累计 |
-| 校准实验室 | ✅ | Jev 胜率预测 vs 真实胜负：Brier/技巧分/ECE/过度自信 + 可靠性图（真实渠道才有数据） |
-| 可访问性 | ✅ | 见下方「设计例外」；对比度按 WCAG AA 核算，焦点环/滚动条已主题化 |
-| 侧栏一屏化 | ✅ | 面板按「对局 / 实验 / 数据」三页签分组 + 8 个分析面板可折叠（驾驶舱常开），侧栏吸附视口内、仅当前页签内容区滚动（驾驶舱与页签栏为固定区，多面板展开不挤占），页面不再被面板撑长；折叠与页签状态均持久化，切换/展开时补渲染防零宽图表；≤1080px 单列布局回归文档流 |
-| 棋谱导出 | ✅ | 棋谱面板「导出」一键下载当前对局 JSON（`jev-qiguan-game/v1`：记法序列 + 双方每手含保险标记 + 对局信息）；悔棋自动跟随，空局拦截。**v0.7 起附归因 meta**：顶层 `meta` = 代码版本 `BG.codeVersion` / topK / 种子 / AI 手数 / 成本 / token / 延迟 avg·max / 平均置信度 / 战术保险使用直方图；每个 AI 着法带 `ai = {ch, mdl, conf, p, rank, cands, ms}`（`rank` = 实走这手在模型 top-8 里的名次，1 = 模型首选，可据此区分「模型这么想的」与「保险改写的」）|
-| 棋谱自动同步 | ✅ | 终局自动 POST `/api/games` → CF Pages Function 用 GitHub API 把棋谱 commit 进仓库 `games/<日期>/`（提交信息带 `[skip ci]`，不触发 Pages 构建）；设置面板「终局自动同步棋谱」开关可关；需 Pages 环境变量 `GAMES_GITHUB_TOKEN`（PAT，仓库 Contents 读写），未配置则静默失败不影响对局 |
-| 对比实验 | ✅ | 机机面板内 A/B 渠道连跑（1–50 局）：自动交替执黑白、终局 2.5s 自动开下一局、每局棋谱照常同步；含 `random` 纯随机基线渠道（均匀概率、零启发式，但走完整战术管线，自由手真随机采样）；跑完归档到「实验报告」面板（localStorage + 内置两轮真实实验种子，缺失/过时自动合并；有后端时同步归档到服务端）。**A/B 双方可各自指定战术档与 Rapfi 思考时长**（`#expTacA/#expTacB`、`#expThinkA/#expThinkB`），跑的是哪一版战术直接写进结果联名；**面板为 A/B 并排双卡**（每方一张：渠道/战术/思考三行，`.exp-sides`；局数+开始/停止挪底部通栏 `.exp-foot`，状态独立一行），**面板顶部对局模式按钮组**（人 vs 机器 / 机器 vs 机器 / 人 vs 人，与折叠「对局设置」里的 `#mode` 同步并随全局设置持久化，实验运行中锁定为机机） |
-| 后端 | ✅ | **`server.js` 零依赖 Node 后端**（`node server.js`，默认 8788）：静态托管 + `/api/jev` 代理（BYOK，key 不落盘）+ `/api/games` 棋谱落盘（幂等原子写，文件名与 CF 端一致）+ `/api/experiments` 实验归档（`data/`，gitignore）+ `/api/stats` 跨对局聚合 + `/api/health`；19 项 HTTP 契约测试随全量自检跑。**CF Pages 侧契约对齐**（health/experiments/stats 三端点，持久化走 GitHub，≤42 子请求守免费版限额）。前端 `js/api.js` 探活：有后端则服务端样本并入校准实验室、实验双端归档；无后端（file:///纯静态）自动降级，功能不变（ADR-0005） |
-| 部署 | ✅ | **已上线 https://jev-qiguan.pages.dev**（CF Pages 项目 `jev-qiguan`，已连 GitHub：**push main 即自动部署**，构建留空/输出目录 `/`；wrangler 直传仅作备用）+ **`node server.js` 自托管**（本地/内网完整后端，棋谱落盘不依赖 GitHub token）+ dev-proxy.py 最小备用 |
-| 自检 | ✅ | `node test/run-tests.js`：七引擎 selfTest（含禁手分支）+ 校准数学自检 + jev-client 单元回归（重试/回退/topK/自定义端点/**vcfWin soundness：合成伪胜反例 ⑫i/⑫j + 真链不误杀** + **⑬ 战术版本闸门：v0-off 全空 / v2·v3 逐层解锁 / v7·v8 VCF 边界 / 缺省与未知 id 收敛当前档**）+ 战术登记表单测（十档 ANCHORED / MECHS 单调 / games 归属 / resolve·allows 闸门）+ 对阵联名与 slug 单测 + **战术档位应用层贯通单测（档位控件十档齐全 + 设置/显隐/decide 透传/实验两侧/棋谱导出版本）** + **棋谱归档归位实测（走 `games/` 真目录：每份 stamp 落进的版本窗必须与登记表登记的局数一致，边界 v1 前→v0-off / 末档后→当前档 / 无 stamp→归不到）+ DOM 契约（设置抽屉四件套 / 三页签 / Rapfi 时长常显 / 趋势芯片按 id 取值 / 沿革竖列容器 / 机器对手三控件 / 归档面板）** + 棋谱导出 meta 单测（单手归因/全局汇总/种子）+ gomoku/cc/go mock 集成对局 + Pages Function 单测（jev + health/experiments/stats）+ server.js 19 项 HTTP 契约测试 + Rapfi 协议层 16 项单测 |
-| 战术版本实验室 | ✅ | 十档战术梯 v0-off→v9-vcf-sound（`js/tactics-versions.js` 登记表：rank/机制键/commitAt/实战局数，git × 棋谱双锚定，见 ADR-0009）：`decide({tacticsVersion})` 按档开/关每层保险（`js/jev-client.js` 的 `resolveVersion` + `computeTactics` 五参签名 + `tacCache` 按 st×versionId 二级缓存，老战绩不受影响）；UI 入口——设置抽屉「战术版本」（仅 Jev 三渠道与 random 露出，mock/rapfi 不读战术层故隐藏）、**「机器对手」面板**（对局页直接改机器方：渠道 Jev 三渠道/Rapfi/随机+战术/演示、战术档、思考时长；与抽屉「双方覆盖 · 白方」同一份 `S.settings.sideConfig.white`，未改过时显示「跟随全局」并把**当前生效配置**写进 hint，选「跟随全局」即写空串清除覆盖；人 vs 人 模式下三项禁用而非隐藏）、**棋盘下方「战术沿革」竖列**（10 档普通行：当前档淡朱底、在用档 id 着朱、行内 `v5 · 拆杀安全排序 · 21 局 · 当前`，hover 看 commit/日期/机制依据，点击只改全局默认档）、**抽屉「双方覆盖」**（`S.settings.sideConfig`：黑白各自覆盖 渠道/战术/思考时长，空=继承全局；人机与实验共用一套，实验开跑借走、手动开局归还）、实验面板「A 战术/B 战术」+ A/B 思考时长；实验报告与战绩簿按渠道·档位联名（`sideAttribution`，老记录无档位自动退化为纯渠道名）；**「棋谱归档」面板**（数据页，按战术版本分组的归档棋谱列表：`versionForFileStamp` 按文件名 stamp 落进版本时间窗归组，只 `listGames(100)` 一次拉列表、不逐份抓内容；离线/无后端时给一句人话降级到本机战绩簿）；**棋谱导出带 `tacticsVersion`（单边）/`blackTactics`+`whiteTactics`+`blackThink`/`whiteThink`（实验）+ `slug`/`duel` 联名，每手 `ai.tv` 记接手档位**；服务端棋谱文件名改用 slug（`jev-v9-vs-ran-v3-<stamp>.json`，无 slug 回退 gid，脏字符消毒，旧文件名仍可 GET）——「旧代码 vs 新代码」从此有可复现凭据，不再靠嘴说 |
-| 换边重开 | ✅ | R6 语义（spec §4.3.1）：人机模式下「换边重开」按钮把原局按 `winner:null + reason:'换边中断'` 记「未终局」（照常记账/导出/同步），随后交换我方执子重开；不写 localStorage、不伪造终局；未终局的 `firstWin` 置 null，分胜负统计与校准取样一律剔除（不污染先手胜率） |
+| 面 | 状态 | 说明 |
+| --- | --- | --- |
+| 边缘后端 | ✅ 已上线 | Worker `jev-qiguan`（Hono）；8 条 API：`/api/health`、`/api/games`、`/api/stats`、`/api/experiments`、`/api/openings`、`/api/leaderboard`、`/api/jev`、`/api/export` |
+| 静态资产 | ✅ 已上线 | Workers Static Assets，Vite 产物；`/api/*` 由 `run_worker_first` 保证进 Worker，其余回落 SPA 外壳 |
+| 数据 | ✅ 已迁入 D1 | 数据库 `jev-qiguan`（WNAM），`database_id = f72390fe-a506-4a88-8db7-af7213657947`；见下「数据现状」 |
+| 定时任务 | ✅ 已挂 | Cron `17 3 * * *`（UTC），首次真实执行为 2026-10-02T03:17Z |
+| 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
+| 渠道 | ✅ 六个选项 | `official`、`openrouter`、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
+| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动） |
+| 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
+| 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
+| 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
+
+> **版本口径已统一为单一来源**：`package.json` 的 `version` 与 [wrangler.jsonc](../wrangler.jsonc) 的 `vars.APP_VERSION` 现在都是 `1.0.0`，由 `test/core/version.spec.ts` 逐字钉住；前端写进棋谱的 `codeVersion` 形如 `1.0.0+<git short sha>`（`vite.config.ts` 构建期把 `APP_VERSION` + `BUILD_SHA` 注入 [src/shared/version.ts](../src/shared/version.ts)）。旧「按文件名时间窗归因 + 手工 bump `BG.codeVersion`」已退役。
+
+## 数据现状
+
+线上 D1 与导入产物一致（来源：计划 P4 执行记录，以及 [migrations/import/manifest.json](../migrations/import/manifest.json)）：
+
+| 项 | 值 |
+| --- | --- |
+| 棋谱 | **54 局 / 4379 手**（全部为五子棋；日期 2026-09-29 与 2026-09-30） |
+| 实验轮 | 6（tag 形如 `exp-20260929105234`） |
+| payload 总量 | 845578 B（最大单局 68.7 KB，远低于 512 KB 上限） |
+| 设备 | 0（历史导入不带设备；新写入的局会带自己的匿名设备 id） |
+| 一致性 | `game_uid` 去重后 54、孤儿 `game_moves` 0 行 |
+
+- 源归档 [games/](../games) **冻结只读**：它是金样、对账与归因用例的源数据，不再写入（说明见 [games/README.md](../games/README.md)）。
+- 迁移期导入 SQL 在 [migrations/import/](../migrations/import)（`manifest.json` + `0001_games.sql`）。
+- 一次线上导出的快照留在 [backups/export.sql](../backups/export.sql)（1.9 MB / 7 张表，含 wrangler 的 `d1_migrations` 记账表）。
 
 ## 已验证（验收证据）
 
-`node test/run-tests.js` 全绿；浏览器 `index.html?test=1` 同源自检通过（含校准数学）；
-`file://` 双击直开与 `python dev-proxy.py` 两种方式均验证过。
-前端打磨轮另跑了对比度扫描（WCAG 相对亮度公式逐色核算）与 `impeccable detect` 机械体检。
-2026-09-29 接入轮：probe 六种判定单测过；真实 key 实测——官方端点直连可达（probe ok），
-经 dev-proxy 代理 probe 与真实 `decide()` 全链路通（jev-1.13.0，单步 ~0.5–2s，成本符合成本模型）。
-2026-09-29 同步/实验轮：棋谱自动同步全链路通（22 份真实对局入库 `games/2026-09-29/`）；
-两轮对比实验（Jev 代理+战术 vs 纯随机+战术）已归档实验报告面板——有效 9 局 Jev 8 胜 1 和 0 负，
-且基线 9 局进攻性战术（threat/open4/win）触发 0 次（纯被动防守）；次轮第 4 局 225 手和棋
-（双方 65 次战术触发全是防守）。
-2026-09-29 后端化轮（v0.5）：`node server.js` 实测全链路——CDP 驱动真实点击打完一局
-（mock 渠道，19 手终局），终局 0.5s 内棋谱落盘、设置面板「数据存储」显示
-`jev-qiguan-server v1.0.0 · 22 份`、「最近同步」显示落盘文件名；头部 chip「后端 已连接」。
-file:// 静态打开实测回落「无本地后端」，对局/导出/记录不受影响（降级路径即原路径）。
-CF Pages 三端点上线后实测（push main 自动部署，约 1 分钟生效）：`/api/health` 返回
-`jev-qiguan-pages v1.0.0` 且 `github:true`；`/api/stats` 聚合 21 份与本地 server.js
-逐字一致（`cal.games:0`——现存棋谱早于 cal 字段，新对局开始累积）；`/api/experiments`
-空归档正常返回。三端点的单测（pagesApiTests）随全量自检跑。
-2026-09-29 Rapfi 接入轮：真实 WASM Node 冒烟（`rapfi-single-simd128.js/wasm/data`，
-单线程 SIMD128，精简数据包 9.6MB）：`START 15`→`OK`；空盘走 H8；四连局面 2ms 内走出制胜 H7；
-白方视角返回合法着法；中盘 Eval 非零（NNUE 权重加载确认：`mix9svq nnue: load weight from
-mix9svqfreestyle_bsmix.bin.lz4`）。`js/rapfi.js` 协议层 16 项单测（stub Module）全绿，
-跑在 `node test/run-tests.js` 全量内。注意：Rapfi 懒加载与 UI 阻塞仅在真实浏览器验证，
-本轮仅 `node` 冒烟 + 单测（缺口见已知限制）。
-2026-09-30 vcfWin soundness 轮（v0.7，ADR-0008）：合成反例证伪 ADR-0007 的
-「守方反击造杀不覆盖」论断（黑 F5→白堵 F6→白自造四、唯一成五点 B6→黑 E5 双杀是假的）；
-`games/2026-09-30/gomoku-20260930025550.json` 第 36/38 手 black L14、I11 带
-`tactics=vcfAttack`，即那两条伪胜链——**此前记为「属 VCT 范畴」的归因作废**。
-修复后 4 局 190 点回放 `win=7 valid=7 FALSE=0`（原 `win=9 valid=7 FALSE=2`），
-`025710` p18 `vcfDefense=E13`、`025550` p58 `vcfDefense=D9` 未退化，perCall 0.38ms 无增长。
-反向验证：把 HEAD 版引擎覆盖回工作区重跑，新用例如期红。全量自检全绿。
-2026-09-30 战术版本实验室收尾轮（v0.8）：`games/` 下 28 份归档棋谱按文件名 stamp
-逐份归版实测——`v5-safesort` 21 局、`v7-vcf` 4 局、`v8-vcf-try` 3 局，与
-`js/tactics-versions.js` 登记表的 `games` 字段逐档吻合；相邻档时间窗首尾相接、v0 兜底、
-末档开到 infinity 三项窗口断言进 selfTest（写错 commitAt 会让棋谱归错版本，测试直接红）。
+- **对新旧两套入口对账**（计划 P4 执行记录）：`node scripts/verify-parity.mjs --base https://jev-qiguan.pages.dev --candidate https://jevqipan.logicc.top` → **差值 0**（54 局 / 五子棋 54 / 胜负 18-27-9 / 校准样本 26）。旧入口的截断口径仍是 40 份、胜负 16-16-8——差值 0 说明新侧不是靠「也多读一点」蒙对的。
+- **线上 HTTP 冒烟**（计划 P4 执行记录）：`npm run smoke:live` **29 项全过**（列表不含 payload、永久链接与列表指向同一局、旧深链带/不带 `.json` 都 200、`/api/stats` 无 `truncated`、导出为 JSONL、无 key 的 `/api/jev` 401、非法设备与非法日期 400、重传归档棋谱 `dedup: true` 且写 0 手、新房写 5 手、写后总数 54 → 55）。冒烟写入的行已删除，D1 复原 54/4379/0。
+- **引擎行为不变**（2026-10-01 实跑 `node test/engines/run.mjs`）：金样自对弈逐手一致 —— 五子棋 17 / 五子棋·禁手 15 / 围棋 89 / 象棋 600 / 国象 169 / 跳棋 103 / 中国跳棋 138；归档 **54 局 / 4379 手逐手一致**。唯一已知不一致是 `games/2026-09-30/jev-v9-vs-jev-v8-20260930153334.json`（归档记「黑方 获胜（认输）」，引擎判 `null`）——引擎不建模认输，属预期，只记录不阻断。
+- **文档卫生**（2026-10-01 实跑 `npm run check:docs`）：41 个 md 的相对链接全部可解析，MEMORY 置顶正确，status 日期在 30 天内。
+- 迁移各阶段的实测数字与偏差裁决见计划 P0–P8 执行记录（含本地导入 4440 changes、7 张表、线上部署版本号等）。
 
 ## 设计例外（有意保留，不是遗漏）
 
-三项刻意不达标，改之前先读这段：
+1. **装饰性发丝线保持低对比**：面板描边与分隔线用的 `--line` / `--line-strong` 是「月白」视觉世界的一部分，对比度低是有意的；功能性控件边界另用 `--line-ctl`（≥3:1，满足 WCAG 1.4.11）。不要为了「统一」把两者一起加深。
+2. **侧栏存在 11px / 11.5px 正文**：战绩簿 7 列表格、指标标签、棋谱流水属于密集数据面板，提到 14px 需要重排并显著降低信息密度；正文高于 11px 的部分均已达标。
+3. **`#promoBox` 用「明确边 + 中等投影」**：1px `--mo` 边（对白底 15.6:1）+ 28px 投影。自动检测器无法区分「明确边」与「发丝线」，不要按检测器的建议去改。
 
-1. **装饰性发丝线保持低对比**（`--line` / `--line-strong` 用于面板描边、分隔线）。
-   这是「月白」视觉世界的组成部分。功能性控件边界另用 `--line-ctl`（≥3:1，WCAG 1.4.11）。
-   **不要为了「统一」把装饰线一起加深**，那会毁掉体系。
-2. **侧栏存在 11px / 11.5px 正文**（战绩簿 7 列表格、指标标签、棋谱流水）。
-   侧栏是密集数据面板，提到 14px 需要重排并显著降低信息密度。高于 11px 已全部达标。
-3. **`#promoBox` 用「明确边 + 中等投影」**：1px `--mo` 边（对白底 15.6:1，是明确边界不是
-   发丝线）+ 28px 投影。检测器会把任何 1px 边 + 宽投影都报成「发丝线 + 宽阴影」签名，
-   但它无法区分「明确边」与「发丝线」。
+## 已知限制
 
-## 已知限制（按优先级）
+### 已修复（旧限制 → 现在怎么做的）
 
-1. **Jev+战术 vs Rapfi 实战 0-4（2026-09-29，原生 Rapfi 250615，2 线程/5s）**：
-   四局皆为 Rapfi 造双杀、Jev 堵一漏一。复盘结论：2-ply 保险能处理单双杀与
-   部分三层危险，但看不见冠军引擎 3-4 步的连续逼杀链（VCF）与"双双杀"局面；
-   parry4（deny:four 预挡）为针对性增补，但属安静局面的防守加强，非深算替代。
-   当前定位：Jev+战术对弱/中对手优势明显（此前 8-0-1），对强搜索引擎仍处下风。
-2. **官方 API 的浏览器直连不可行（平台侧约束，非本项目缺陷）**：2026-09-29 实测官方 API 带
-   CORS 来源白名单，仅放行 typesafe.ai 自有域名，任意第三方 Origin（含 localhost / file://）一律
-   400 "Disallowed CORS origin"，官方文档未开放配置。浏览器侧走官方 key 的唯一路径是同源代理
-   （本地 dev-proxy.py / 线上 CF Pages Function）；双击 file:// 打开时自动落离线演示。
-2. **象棋长将/长捉判负未实现**（v1 明确暂略）。
-3. **围棋仅 9 路**：13 路需要候选预筛策略（Choice ≤255，9 路不需要）；19 路不做。
-4. **国际象棋三次重复局面判和未实现**。
-5. 中国跳棋未禁止"永堵对方营地门"的变体规则；机机僵持时用悔棋/重开兜底。
-6. Jev 概率判断可能出错（「零幻觉」仅指输出结构体），胜负以棋盘为准；官方性能数字为厂商口径。
-7. 移动端触控未做专门优化（canvas 点击可用，但面板布局为桌面优先）。
-8. 棋谱同步 / 实验归档 / 跨对局统计在 CF Pages 上都依赖环境变量 `GAMES_GITHUB_TOKEN`：未配置
-   （或本地 `file://`/无 `functions/` 的静态托管）时同步静默失败（前端「数据存储」块会显示
-   token 未配置的提示），实验历史只存浏览器 localStorage，换设备看不到。**自托管
-   `node server.js` 不受此限**（棋谱落盘、实验归档均在本地，校准样本跨设备可聚合）。
-   Pages 侧 `/api/stats` 另受免费版 50 子请求/次限制，只聚合最近 40 份（`truncated` 明示）。
-9. `server.js` 与 `dev-proxy.py` 默认同为 8788 端口：同时跑会 EADDRINUSE（server.js
-   会给出换端口提示），两者是替代关系不是互补关系；持久化是 JSON 文件不是数据库，
-   规模到「每天几十份」无感，再上层需换存储（届时是新 ADR）。
-10. 本机历史遗留：曾有多個 dev-proxy.py 实例残留占用 8788（Windows SO_REUSEADDR 允许多个
-    监听共存，新连接落点不确定）。遇到端口行为异常先 `netstat -ano | findstr 8788`。
-11. **Rapfi 渠道为单线程同步搜索**：思考期间（默认 3s）主线程被 WASM 搜索阻塞，UI 会冻结
-    约 3s；后续应迁 Web Worker。另注意：Rapfi 仅支持 `gomoku`（大众模式，无禁手），
-    `gomoku-pro`（禁手）会拒绝（Rapfi 是 Gomocup freestyle 引擎）；本轮 Rapfi 的懒加载与
-    UI 阻塞仅在 `node` 冒烟 + 单测覆盖，**真实浏览器尚未验证**（后续待补）。
-12. **`BG.codeVersion` 是手工维护的常量**（`'0.8.0'`）：零构建、无 git 注入，浏览器拿不到
-    commit sha。**改动对局行为（引擎 / jev-client / 提示词）时必须手动 bump**，否则新旧
-    棋谱混在一起，事后按代码版本归因就失效了——这正是 v0.7 修的那个缺陷的教训。
-    建议每次此类提交顺手改 `js/board.js` 这一行。
-    **v0.8 起归因维度升级**：`codeVersion` 之外多了 `tacticsVersion`（十档战术梯），
-    同一份代码跑不同战术档就能做逐层对照实验，两者组合才是完整的可复现凭据。
-13. **soundness 闸门可能漏判真胜（有意取舍）**：守方有即时致胜点时，攻方这一手被强制
-    要求占掉它；若攻方另有一条不占该点也能成杀的真链，会被一并剪掉。生产路径上代价为零
-    （`js/jev-client.js` 入口门控保证进 VCF 前双方无一步杀，闸门只在递归层起作用），
-    详见 ADR-0008「代价与不做什么」。宁可少报一条链，不可错报一条。
-14. **战术版本闸门只影响 Jev 渠道与 random 渠道**：`mock` 与 `rapfi` 在 `decide()` 内
-    早退，不经过战术层（mock 是给自检/离线演示用的、rapfi 引擎自带战术）——选这两档时
-    抽屉里的「战术版本」与沿革竖列都是无意义状态，实验面板里给 mock/rapfi 配战术档
-    不会生效（联名上会退化为渠道名，不谎称版本）；「机器对手」面板选这两档时 hint
-    仍会给出当前生效渠道与档位，但战术档不起作用。
-15. **`sideConfig` 是单值不是按局持久**：刷新页面即回全局默认（走 localStorage 的
-    settings 通道，但不进战绩）。想留一次实验配置就 Import/导出棋谱里的
-    `blackTactics/whiteTactics/slug` 字段；实验中改抽屉覆盖，下一局生效、当局不回溯。
-16. **沿革竖列与抽屉改的都是「全局默认档」**：实验中改它们不影响**已开局**双方的覆盖
-    （覆盖在开局时已解析进 `effSide`），也不影响手动开局前显式指定的那一侧。
-    沿革竖列的「在用」读的是当前 `effSide` 两侧，不是历史对局用过哪些档。
-17. **棋谱归档按文件名 stamp 归版，不读文件内容**：老棋谱没有 `meta.tactics`（早于
-    v0.7），只能靠 `body.exported` 生成的文件名时间戳落进版本窗口归组；因此
-    ① 名字人工改过/不带 stamp 的棋谱归不到版本（单列「未能归版本」）；② 一局棋若
-    跨版本时间窗保存，归档归到**保存那一刻**的版本，不是每手各自的版本（每手版本
-    仍看棋谱内 `ai.tv`）；③ **部署滞后会让归组说谎**：线上还跑着旧 engine 时，新落库的
-    棋谱照样归进当前档窗口（2026-09-30 的 20 局即如此——`meta.code` 全是 `0.7.0`，
-    还没有 `vcfTry/sound` 层与逐手 `ai.tv`）。要判真实版本看棋谱 `meta.code`；
-    ④ 需要同源后端（`node server.js` 或 CF Pages）才能列目录，
-    `file://`/纯静态打开时面板降级为本机战绩簿。
-    `file://`/纯静态打开时面板降级为本机战绩簿。
+| 旧限制 | 现在的做法 |
+| --- | --- |
+| `BG.codeVersion` 是手工常量，忘记 bump 就导致归因失效 | 构建期注入：`vite.config.ts` 用 `define` 注入 `__APP_VERSION__` / `__BUILD_SHA__`，[src/shared/version.ts](../src/shared/version.ts) 组成 `CODE_VERSION` |
+| 归档按文件名 stamp + 时间窗口归版（说不准是哪版代码下的） | 归因只认数据自带的声明：`payload.meta.code` → `games.code_version`，每手 `ai.tv` → `tactics_version`；没有声明就是 `unknown`，不推断 |
+| `/api/stats` 受 50 子请求限制，只聚合最近 40 份，响应里带 `truncated` | 聚合搬到 D1 的 SQL 侧（三条 `GROUP BY`），`truncated` 字段彻底删除；冒烟第 12 项专门断言它不存在 |
+| 限流是 isolate 内存里的 Map，换个 isolate 就失效 | D1 的 `rate_limits` 表做固定窗口计数（ADR-0013） |
+| 列棋谱硬编码「最近 7 天」 | `since` 显式参数 + keyset 游标（`id < cursor`，`limit ≤ 100`），不再有隐式窗口，也不再截断 |
+| 每局一次 git commit 归档，依赖 `GAMES_GITHUB_TOKEN` | 棋谱直接落 D1；导出/备份走 `/api/export/games`（JSONL）与每日 D1 export |
+| 持久化是本地 JSON 文件，`server.js` 与 `dev-proxy.py` 还抢 8788 端口 | 本地 Node 后端已退役（ADR-0011）；`npm run dev` 起的是 Vite + 本地 workerd + 本地 D1，与线上同一套代码 |
+| 实验归档只在本机 localStorage，换台机器就看不到 | `experiments` 表 + `/api/experiments`；离线时仍退化为本机战绩簿（有意，见下） |
+| `?test=1` 校准自检夹具自相矛盾（`src/core/view/calibration.ts` 的 `selfTest` 期望值与样本对不上，面板必亮红） | 夹具按定义重算并补齐 F/G 两组：混合组期望改 `ece/mce = 0.54/0.9`、`brier = 0.306`，另加「全赢 → `skill=null` 但不许 NaN」的退化组；`test/app/boot.spec.ts` 断言 `?test=1` 面板**零失败** |
+| `#expStopBtn`（「停止实验」）与 `#speedRow`（机机速度行）永不显示 | 根因是显隐写法只有一半：`index.html` 里被运行时开关的节点分 `class="hidden"`（对局按钮）与 `hidden` 属性（P6a 侧栏面板）两种，旧实现只切 class。`src/app/panels.ts` 的 `setVisible()` 现在两种一起切，`setHidden` 的调用点全部改走它 |
+| `index.html` 外壳硬编码「黑方 Jev」，标题写「六种棋类」而实际七种 | 标题/描述改为「七种棋类对弈」；双方名改成由装配层写入的空槽（`#duelFirstName` / `#duelSecondName`，缺省文案「黑方」/「白方」），渠道名不再写进 HTML |
+| 版本双源不一致（Worker `1.0.0` vs 前端 `0.3.0+sha`） | 两源都改 `package.json` 的 `version`（现 `1.0.0`），`test/core/version.spec.ts` 逐字比对两处并钉住 `vite.config.ts` 仍从 `pkg.version` 注入 |
+| 样式表仍在 `css/`，与计划的 `styles/` 不符 | `css/style.css` → [styles/style.css](../styles/style.css)，`index.html:11` 改指 `/styles/style.css`，由 Vite 打包；`test/ui/layout-css.spec.ts` 同时探两侧，搬迁不用改测试 |
+| **Rapfi 渠道在浏览器里从不走子（mock 渠道掩盖了它）** | 两个注入点都没人接线：`src/core/jev/rapfi.ts` 的 `setLoader()`/`setGlueUrl()` 浏览器侧从未调用，`src/core/jev/client.ts` 要求的 `opts.rapfi` 也没人注入。修法：新增 `src/app/rapfi-loader.ts`（`loadRapfiModule` + `installRapfiLoader`），`src/app/boot.ts` 启动时安装，`src/core/jev/index.ts` 的 `decide()` 默认补 `rapfi: decideRapfi`；`test/app/rapfi-loader.spec.ts` 7 例钉住（含端到端 `decide()`），线上 `--channel rapfi` 浏览器冒烟 10/10 |
+
+### 仍存在（2026-10-01 口径）
+
+1. **引擎棋力**：对强搜索引擎的实战记录仍是 0-4（对弱/中对手 8-0-1）。迁移前后引擎逐手一致，这条没有变化。
+2. **规则类未实现**：象棋长将/长捉判负、国象三次重复判和、中国跳棋「永堵营地门」都未实现；围棋只有 9 路。
+3. **官方 API 浏览器直连不可行**（CORS 白名单），必须走同源 `/api/jev` 代理；未带 key 时返回 401。
+4. **Jev 的概率判断仍可能出错**：「零幻觉」只保证输出结构体，不保证棋力判断正确。
+5. **Rapfi 渠道**：单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完）；只支持五子棋；首次要下 10.7 MB 资产（`npm run smoke:browser -- --channel rapfi` 已能自动验完这条路，实测 10/10，等待窗口 90 s）。
+6. **战术档闸门**只影响 Jev 三渠道与 `random` 基线，`mock` / `rapfi` 早退不受影响。
+7. **`sideConfig` 是一份全局设置**（localStorage 键与旧实现逐字兼容），不按局快照；实验会借走并在结束后归还。
+8. **沿革竖列与设置抽屉改的是全局默认档**，不影响已经开打的那一局。
+9. **移动端触控未专门优化。**
+10. **历史归档的 `tactics_version` 恒为 NULL**：54 份归档里 54/54 都没有每手 `ai.tv` 声明，因此历史只能按 `code_version` 归因（unknown 28 / 0.7.0 20 / 0.8.0 6，且 20+6 全部落在 2026-09-30）。新写入的局才有每手 `ai.tac`。`tactics-versions.ts` 里 `VERSIONS[].games` 是迁移前的冻结快照，不是实证数字。
+11. **旧深链对历史棋谱大多无效**：54 份里有 48 份没有 `slug`，`/api/games/:day/:name` 解析不到，只能用列表返回的 `path` 或永久链接 `/api/games/u/<gameUid>`。
+12. **`*.workers.dev` 不是入口**（wrangler 默认关闭；本机网络也无法直连），唯一入口是自定义域 `jevqipan.logicc.top`。
+13. **本地无法用 `--test-scheduled` 预演 Cron**：静态资产会先接管非 `/api/*` 路径，`/__scheduled` 拿回的是 SPA 兜底 HTML（200），`stats_cache` 不会有行——这不是 cron 失败。
+14. **备份靠 CI 每日导出**（UTC 04:23，artifact 保留 30 天）；Worker 侧做不到 D1 导出。本地 `npm run db:export` 需要本机网络能连上 Cloudflare。
+15. **离线降级是有意设计**（D8）：没有后端时是离线演示（mock 渠道）+ 本机战绩簿，不是白屏也不是报错。
+16. **限流的两个已知取舍**：每次判定写一行（读接口的限流也消耗当天写配额）；固定窗口边界允许 2× 突发。
+17. **`node:sqlite` 缺失时**，重放迁移的归因用例会被跳过；CI 用 `REQUIRE_SQLITE=1` 强制硬失败。
+18. **`npm run golden` 预期失败**：金样生成器 `test/parity/generate.mjs` 依赖旧实现（旧引擎自对弈），旧实现在 P8 删除后它只打印中文说明并 `exit 1`。这是**设计如此**——金样已冻结为只读文物（封条 `test/parity/frozen.json`），本来就不该再生成。
+19. **`src/ui/README.md` 的模块职责表未收录 P7c 三个面板**（`panels/replayer.ts` / `leaderboard.ts` / `openings.ts` 只在 §4.1 单独说明；`openings.ts` 的 `GAME_IDS` 属公共注册项）。
+
+## 验收命令表
+
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测 29 个测试文件 / 307 个用例）。
+
+| 命令 | 验什么 | 什么时候跑 |
+| --- | --- | --- |
+| `npm test` | `test:engines` + `test:new`（vitest 三个 project 一次跑完） | 提交前的总闸 |
+| `npm run test:engines` | 引擎自检、战术九级与 VCF、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
+| `npm run test:tactics` | 战术层独立回归（`test/tactics/run.mjs`） | 改战术层时 |
+| `npm run test:worker` | 真 workerd + 真 D1 的 HTTP 契约与维护任务 | 改 `src/worker/**`、`migrations/**` 后 |
+| `npm run test:ui` | happy-dom 下的视图层与装配层运行时断言 | 改 `src/ui/**`、`src/app/**`、`index.html` 后 |
+| `npx vitest run --project core` | 纯 Node：字段映射、会话、战绩簿、上传队列、迁移重放归因、版本双源一致性 | 改 `src/core/**`、`src/shared/**` 后 |
+| `npm run typecheck` | TypeScript 全量类型检查（无输出） | 提交前 |
+| `npm run build` | Vite 生产构建（静态资产 + Worker 产物） | 部署前 / 排查产物问题 |
+| `npm run dev` | Vite + 本地 Worker + 本地 D1（`predev` 先迁移本地库，但**不导数据**） | 日常开发；本地库要数据需再跑 `import:archive --local` |
+| `npm run db:migrate:local` / `db:migrate:remote` | D1 迁移（本地 / 远程） | 新增 `migrations/*.sql` 后 |
+| `npm run import:archive` | 把 `games/**` 与实验归档导入 D1（`--local` / `--remote`） | 需要重建库时（幂等：用 `dedup_key` 去重） |
+| `npm run verify:parity` | 新旧两套入口按同一口径对账，差值必须为 0 | 切流前后、改聚合口径后 |
+| `npm run verify:backup` | 备份可重建（`--structural` 是定时任务用的结构模式） | 拿到 D1 导出后 / 排查数据漂移 |
+| `npm run db:export` | 从远程导出一份 SQL 快照到 `backups/` | 切流前、发布前后留底 |
+| `npm run smoke:live` | 真线上 HTTP 冒烟 30 项 | 部署后（**会写一行再删掉，注意线上数据**） |
+| `npm run smoke:browser` | 真浏览器（CDP）冒烟 10 项；`--offline` 加 2 项降级断言（共 12 项），`--channel rapfi` 验 wasm 渠道 | 部署后、改前端入口后 |
+| `npm run check:docs` | MEMORY 置顶、所有 md 相对链接可解析、status 日期在 30 天内 | 改任何 md 后（CI 里也跑） |
+| `npm run deploy` | `vite build && wrangler deploy` | 发布（`deploy.yml` 同样只手动触发） |
+| `npm run golden` | 重新生成金样 | **预期失败，别当成坏了**：金样已冻结为只读文物（封条 `test/parity/frozen.json`），生成器依赖的旧实现 `js/**` 在 P8 删除后它只打印中文说明并 `exit 1` |
+
+## 下一步 / 未完成
+
+按计划 §9（DoD）与 P8 的收尾清单，尚未完成的项：
+
+1. **归档面板**补「加载更多」分页与按 `code_version` 分组（旧深链之外的浏览路径）。
+2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
+3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，`docs/README.md` 的 ADR 索引已补 0008～0013；`npm run check:docs` 绿（41 个 md / 249 个链接）。
+
+> 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
+> 待确认（不影响功能）：Cron `17 3 * * *` 的首次落库证据要等 2026-10-02T03:17Z 之后查 `stats_cache`；CI 需首次 push 后由 GitHub Actions 实跑。
 
 ## 路线图（候选，未承诺）
 
-- [ ] 象棋长将/长捉判负（规则补全）
-- [ ] 围棋 13 路（含候选预筛策略）
-- [ ] 国际象棋三次重复判和
-- [ ] 棋谱导入（导出与自动同步已上线：`jev-qiguan-game/v1` JSON 进 `games/<日期>/`；剩余：导入回放 + PGN/中文记法转换）
-- [ ] 实验报告云端化（当前：localStorage + 服务端 `data/experiments.json` 双归档 + 内置种子；剩余：多设备统一视图）
-- [ ] 棋谱回放器（后端已能按局读取 `games/<日期>/<文件>`，前端差一个逐手重放面板）
-- [ ] 移动端响应式布局
-- [ ] Jev vs Jev 批量赛程（ overnight 挂机跑 N 盘统计胜率）
+- **回放器体验**：逐手重放之上加「跳到关键手 / 双方耗时对照」。
+- **开局库视图**：把 `/api/openings` 的聚合结果做成可浏览面板（现在只有接口）。
+- **设备身份可迁移**：设置面板显示设备短码、支持粘贴恢复（设备 id 现在只在本机 localStorage，换浏览器等于换身份）。
+- **规则补全**：象棋长将/长捉判负、国象三次重复判和、中国跳棋堵门判负、围棋 13/19 路。
+- **明确不做**（计划 §13）：账号体系、实时对战（WebSocket/DO）、运维面板、多环境 D1、额外的 R2/KV/Queues 绑定、视觉重设计、改引擎规则。
 
 ## 技术债 / 注意点
 
-- `js/app.js` 是最大的单文件（~1450 行），承担全部 UI 编排（对局循环 + 实验连跑 + 棋谱同步/导出 + 后端探活 + 实验报告归档 + 校准双源合并）；继续膨胀时应先拆
-  「记录/统计/实验/后端」与「对局循环」两个模块，拆时保持 `index.html` 加载顺序同步。
-- `test/run-tests.js` 与 `index.html` 的加载清单是两份硬编码，新增 JS 文件别忘了两处
-  （本轮 `js/api.js` 已两处同步；`server.js`/`test/server-tests.js` 是 Node 侧，由
-  run-tests.js `require`，不进浏览器加载清单）。
-- mock 与引擎启发式已全部经 `BG.util.rnd()`（可种子）；`Math.random` 仅剩 `board.js` 兜底与 `weightedPick`（真实渠道采样）两处，属预期。
-- ~~对局循环的 O(n²) 渲染与 history 全量快照~~ **已于 2026-09-29 清除**：决策流改为增量插入，
-  history 只存记法、悔棋按记法重放。悔棋回路的两处缺陷（AI 回合不续弈、终局状态残留）同批修复。
-- **UI 行为无自动化回归护栏**：`app.js` 的对局循环（悔棋/续弈/终局复位）只有 `node test/run-tests.js`
-  覆盖不到——该命令只跑引擎与 Jev 客户端。改动 `app.js` 调度逻辑时需浏览器手工回归，
-  或临时搭最小 DOM 桩（本轮用过一次性验证台，见 memory 对应条目）。
-  **对策（v0.7 起）**：凡是要长期维护的纯计算（哪怕逻辑上属于 UI），就放进
-  `js/board.js` 的 `BG.util` / 引擎文件，`app.js` 只留调用——棋谱导出 meta
-  （`BG.util.aiMoveMeta` / `aiGameMeta`）就是这么做的，现在有单测钉着。
-  **v0.8 补丁**：`app.js` 是 DOM 闭包、测试里加载不了，战术档位这一层的接线改用
-  **静态源码断言**（`tacticsUiTests`：控件 id、十档 value、`resolve` 归一、decide 透传、
-  实验两侧、棋谱导出版本字段——全是文本匹配）。这条路子保不住运行时行为，但能钉死
-  「接线断了」这类最常见的回归；运行时仍靠浏览器手工回归。
-- ~~`--ink-mute` 小字对比度全档未达 AA、22 处字号 <11px、5 处 `transition: width/height` 逐帧重排~~
-  **已于 2026-09-29 清除**（前端打磨轮）。残留见「设计例外」。
-- ~~`.feed` 规则因选择器与 HTML 不匹配而整条失效（决策流无高度上限、无滚动条）~~
-  **已于 2026-09-29 修复**：容器补上 `class="feed"`。
+1. ~~**版本口径不统一**~~ → **已修复（2026-10-01）**：`package.json` 与 `wrangler.jsonc` 的 `APP_VERSION` 都改成 `1.0.0`，`test/core/version.spec.ts` 逐字比对两处，并断言 `vite.config.ts` 仍从 `pkg.version` 注入 `__APP_VERSION__`。改版本号＝改一处（`package.json`）再改 `wrangler.jsonc`，忘了跑测试就会红。
+2. ~~**旧文案残留**~~ → **已修复**：`src/core/jev/client.ts:117` 与 `:187` 的用户可见提示已改成「本地 `npm run dev` 起 Worker，线上由 `jevqipan.logicc.top` 提供」，不再提 `dev-proxy.py` / Cloudflare Pages。
+3. **导出接口是 N+1**：每局要 2 次查询 / 2 行读取。想更省需要 `src/worker/db/games.ts` 提供一个「只取 payload」的查询。
+4. **`compatibility_date` 停在 2026-08-22**：这是测试运行器内嵌 workerd 的上限，上调会让 vitest 起不来；升级 `@cloudflare/vitest-pool-workers` 时才能跟着提。
+5. **`wrangler.jsonc` 改 `triggers.crons` 后必须重新部署**，否则线上还是旧的调度。
+6. **本地 D1 库文件名由 `database_id` 派生**：换过 id（或改了名字）就等于换了一个空库，需要重跑迁移 + 导入，否则会看到 `no such table: games`。
+7. **测试库共享**：worker 项目用 `singleWorker: true`，同一实例里的 D1 是共享状态，新用例必须自己清理数据。
+8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
+9. **文档索引过期**：[docs/README.md](README.md) 的 ADR 列表只到 0007，缺 0008～0013。

@@ -1,164 +1,274 @@
-# Jev 棋馆（board-games）
+# Jev 棋馆 · 七种棋类对弈
 
-七种棋类对弈，由 TypeSafe 的「系统一模型」**Jev** 走子：五子棋（含禁手变体）、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；另有 Rapfi WASM 本地引擎可作为对手。
+七种棋类对弈站（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
+由 TypeSafe「系统一模型」[Jev](https://typesafe.ai) 走子，另有 Rapfi WASM 本地引擎渠道。
+**浏览器端 Vite + TypeScript（零 UI 框架，无 React/Vue/Svelte）**，
+**服务端一个 Cloudflare Worker + D1**（棋谱与实验归档、跨对局统计、排行榜、开具体验、JSONL 导出）。
+无后端时自动降级：对局照常，战绩簿落 localStorage。密钥（BYOK）只存在你自己的浏览器里。
 
-支持 **人 vs Jev**、**Jev vs Jev**、**人 vs 人** 三种模式。原生 HTML/JS，无框架、无构建、无第三方依赖：双击即玩（离线演示），`node server.js` 起本地后端（棋谱落盘 + 实验归档 + 跨对局统计），也可原样部署到 Cloudflare Pages。
+迁移背景见 [docs/plans/2026-10-01-workers-d1-rebuild.md](docs/plans/2026-10-01-workers-d1-rebuild.md)
+与 [ADR-0010](docs/adr/0010-worker-static-assets-replaces-pages.md)–[ADR-0013](docs/adr/0013-anonymous-device-identity-and-d1-ratelimit.md)：
+本站原先是一个「原生 HTML/JS 零构建静态站 + 三套后端（`server.js` / Pages Functions / `dev-proxy.py`）
++ 用 GitHub 当数据库」的实现，2026-10-01 起重构为现在这套架构。
 
-## 文档导航
+## 在线地址与后端实体
 
-| 我是… | 读这里 |
+| 地址 | 说明 |
 |---|---|
-| 玩家 | 本页即可 |
-| 开发者 / Contributor | [AGENTS.md](AGENTS.md)（入口规范）→ [docs/README.md](docs/README.md)（文档地图） |
-| AI Agent（第一次进本仓库） | [AGENTS.md](AGENTS.md) 第 2–3 节：硬性规则 + 最小阅读路径，**不需要通读代码** |
-| 多 Agent 协同 / 接力任务 | [docs/agents/](docs/agents/README.md)（角色 / 阅读路径 / handoff / 并行规则 / playbooks） |
-| 想了解项目当前状态 | [docs/status.md](docs/status.md) |
-| 项目记忆（新条目在最上） | [docs/memory/MEMORY.md](docs/memory/MEMORY.md) |
+| **https://jevqipan.logicc.top** | 现行站点（Cloudflare Worker `jev-qiguan` + D1，自定义域；`*.workers.dev` **未启用**，只有这个域能访问） |
+| https://jev-qiguan.pages.dev | **迁移前的只读旧站**（Cloudflare Pages 静态托管，保留作回退；已断开 Git 集成、不再接收 push 部署、不再写入数据） |
 
-## 快速开始
+后端实体（改配置 / 排障时对照）：
 
-### 方式一：直接打开（离线演示）
+| 实体 | 值 |
+|---|---|
+| Worker | `jev-qiguan`（`wrangler.jsonc` 的 `name`；静态资产与 `/api/*` 同源同域） |
+| D1 数据库 | `jev-qiguan`，id `f72390fe-a506-4a88-8db7-af7213657947`（**唯一权威持久化**，ADR-0011） |
+| 定时任务 | cron `17 3 * * *` → `runDailyMaintenance()`：清过期限流行、聚合五张表、写 `stats_cache`（key `daily:<UTC 日>`） |
+| 版本 | `package.json` 与 `wrangler.jsonc` 的 `APP_VERSION` **必须一致**（现均 `1.0.0`，`test/core/version.spec.ts` 守）；前端 `CODE_VERSION = APP_VERSION+BUILD_SHA` 由 `vite.config.ts` 构建期注入 |
 
-双击 `index.html` 即可，未填 key / 无代理时自动进入**离线演示模式**（内置简单启发式 AI + 合成概率），完整体验三种模式与决策面板。此形态下数据只存本机浏览器（头部「后端」chip 显示无本地后端）。
+## 架构一页纸
 
-> 想接真实 Jev 不能只靠双击：官方 API 有 CORS 来源白名单（实测仅 typesafe.ai 自有域名可用），
-> 浏览器直连必被拦。浏览器侧走官方 key 的唯一路径是「同源代理」——见方式二/三。
-
-### 方式二：本地完整后端（推荐 · 棋谱落盘 + 实验归档 + 跨对局统计）
-
-```bash
-node server.js                # http://localhost:8788（PORT=9000 可换端口）
+```
+浏览器（原生 DOM + TS，零 UI 框架）
+  index.html ── 唯一 <script type="module"> → src/main.ts → boot()
+  src/ui/**   无状态面板（只吃 props，渲染时覆写 root.className）
+  src/core/** 纯逻辑：七引擎 / Jev 客户端 / 战术 / 会话 / 棋谱导出（可被纯 Node 直载）
+  src/app/**  唯一的装配层（AppCtx）
+        │  fetch /api/*（失败一律返回 null ⇒ 降级，不抛）
+        ▼
+单个 Cloudflare Worker（Hono）+ Workers Static Assets + D1
+  src/worker/routes/**   8 个路由：/health /games /stats /experiments /openings /leaderboard /jev /export
+  src/worker/middleware/ device（匿名 X-Device-Id）、ratelimit（D1 固定窗口）
+  src/worker/db/**       D1 访问层      src/worker/lib/**  校验 / 上游 / 哈希 / 记录映射
+  src/worker/maintenance.ts             cron 每日维护
+        │
+        ▼
+D1：games / game_moves / experiments / devices / rate_limits / stats_cache（+ d1_migrations）
 ```
 
-零依赖（仅 Node 内置模块，Node ≥18），一个命令同时得到：静态托管、`/api/jev` 代理
-（BYOK：请求头带 key，或 `TYPESAFE_API_KEY` 环境变量兜底）、终局棋谱落盘 `games/<日期>/`、
-对比实验归档、校准实验室的跨设备样本聚合。设置面板「数据存储」一栏实时显示后端状态。
+- 静态资产与 API **同源同域**，没有 CORS 配置负担（只有 `/api/jev` 的 BYOK 转发刻意加 CORS）。
+- 取代了旧的三套并行实现（Cloudflare Pages + Pages Functions + 本地零依赖 Node 后端），见 ADR-0010 / ADR-0011。
+- 详细拓扑、数据模型、测试金字塔见 [docs/architecture.md](docs/architecture.md)。
 
-> 与方式一并存：检测不到后端时前端自动降级，功能不减、数据回落本机（见 ADR-0005）。
+## 本地开发
 
-要接真实 Jev：右侧「Jev 设置」→ 选渠道并填 key（只存浏览器 localStorage）：
-
-| 渠道 | key | 说明 |
-|---|---|---|
-| 官方 API | [console.typesafe.ai](https://console.typesafe.ai) 的 key | **浏览器直连不可行**（官方 CORS 来源白名单实测仅放行 typesafe.ai 自有域）；请在「同源代理」渠道下使用官方 key |
-| OpenRouter | [openrouter.ai](https://openrouter.ai/settings/keys) 的 key | 与官方接口同构（`/api/v1/systemone`），允许跨域，唯一可浏览器直连的渠道（注意需要的是 OpenRouter key） |
-| 同源代理 | 无需填 | key 放服务端（见下） |
-| Rapfi 本地 | 无需 key | 浏览器内运行的 Rapfi 引擎（Gomocup 协议，无禁手五子棋）；首次使用下载约 10MB 模型，之后纯本地走子 |
-
-**自定义 Base URL**：选渠道后，「接口地址」输入框会预填该渠道的预设值——留空用预设，
-改成自己的地址即可接自建网关或任何兼容端点（自定义端点不强制 key；各渠道的地址分别记忆，互不影响）。
-填好后点「**测试连接**」：会区分网络不通 / 跨域拦截 / key 无效 / 端点不兼容，不用开局撞错。
-
-### 方式三：本地最小代理（仅绕过 CORS，无持久化）
+环境要求：**Node ≥ 22.18**（类型剥离直载 `.ts`）+ npm。
 
 ```bash
-# 可选：设置环境变量作为本机兜底 key（不设也行，访客各自填 key）
-set TYPESAFE_API_KEY=ts-xxxx     (Windows)
-export TYPESAFE_API_KEY=ts-xxxx  (macOS/Linux)
-python dev-proxy.py              # http://localhost:8788（与 server.js 同端口，二选一）
+npm ci
+npm run dev          # vite dev：单进程起 Worker + 前端 + 本地 D1 → http://localhost:8787
 ```
 
-打开后渠道选「同源代理」。仅标准库，无依赖。要棋谱落盘/实验归档请用方式二。
+- `npm run dev` 带 `predev` 钩子，自动跑 `db:migrate:local`（**只建表，不导数据**）。
+- 端口被占会自动顺延，实际端口看启动日志（`vite.config.ts` 里 `port: 8787`，`strictPort: false`）。
+- 想在本地看到那 54 局历史归档，手动跑一次 `node scripts/import-archive.mjs --local`。
+- 本地库文件由 `wrangler.jsonc` 的 `database_id` 派生
+  （`.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite`）：**换过 `database_id` 就等于换了一个空库**，
+  此时重跑 `db:migrate:local` + `import-archive.mjs --local`，并删掉旧 hash 的 `.sqlite`。
+- 「无后端降级」自测：`npm run build && npm run preview` 看纯静态产物（AI 走 mock，战绩簿落 localStorage）。
+  注意**不再支持 `file://` 双击 `index.html`**——Vite 产物是 ES module + 绝对路径，必须经 HTTP 提供。
 
-### 方式四：部署到 Cloudflare Pages（推荐 · 部署一次，「填 key 即玩」甚至「打开即玩」）
-
-1. 最省事：本目录下执行 `npx wrangler pages deploy .`（或推到 GitHub 后让 CF Pages 连仓库，无构建命令，输出目录 = 根目录）。
-2. 仓库已含 `functions/api/jev.js`（Pages Functions），线上自动获得 `/api/jev` 同源代理，**部署本身零配置**。
-3. **让访客「只填 key」**：访客打开网址 → 默认同源代理 → 在设置里填自己的 TypeSafe key（存访客本机，随 `X-Api-Key` 头透传，服务端不存）。**让访客「连 key 都不用填」**：在 CF Pages 控制台给项目设环境变量 `TYPESAFE_API_KEY=<你的key>`，之后任何人打开网址直接开局（花费走你的账户，已有每 IP 每分钟 30 次限流兜底）。
-4. 本地调试 Functions：`npx wrangler pages dev .`。
-5. **棋谱自动同步**（可选）：给项目加环境变量 `GAMES_GITHUB_TOKEN`（fine-grained PAT，只给本仓库 Contents 读写），
-   终局棋谱即自动 commit 进仓库 `games/` 目录（提交信息带 `[skip ci]`，不会触发站点重新构建）。
-   同一个 token 也驱动实验归档（`data/experiments.json`）与 `/api/stats` 聚合——配好后线上与本地后端体验一致。
-
-> 也可以删掉 `functions/` 目录：那时「同源代理」不可用，访客走 OpenRouter 渠道（同样 BYOK、浏览器直连）。
-
-## 玩法说明
-
-- **模式**：人机（选执子）、机机（带速度滑杆 / 暂停 / 单步）、人人。
-- **走棋**：点击棋盘落子/走子；西洋跳棋连跳需逐格点选；围棋有「停一手」，双方连续停一手即数子终局（中国规则，贴 5.5）；各棋均可认输、悔棋。
-- **棋谱导出**：棋谱面板「导出」一键下载当前对局 JSON（`jev-qiguan-game/v1`：记法序列 + 双方每手 + 对局信息），悔棋后导出内容自动跟随。
-- **棋谱自动同步**：终局自动把棋谱 commit 进仓库 `games/<日期>/`（经同源 `/api/games`，不触发站点构建），供复盘分析；设置面板「终局自动同步棋谱」可关。本地后端下落盘到本机 `games/`，CF Pages 上提交进仓库；设置面板「数据存储」一栏显示当前后端与归档计数。
-- **Jev 决策面板**：每步显示 top-3 候选概率条、置信度、局势判断（Noul/Score）、延迟、token 与成本累计。
-- **强度机制**：客户端把「双方一步致胜点 / 造杀拆杀点 / **VCF 将死链**」等战术事实直接算好注入 Jev 的局面（它不再需要从裸坐标里
-  自己算五连），并有九级战术保险兜底——致胜点必走、对方致胜必挡、活四必走、造杀点抢占、**己方将死链必走（VCF 进攻）**、
-  **对手将死链必破（VCF 防守，干预点经试走复搜确认真破杀）**、对手杀点拆挡（多个并存时按 3-ply
-  安全性排序，堵完对手还有杀的坏点会被排除）、预挡对手活三制造点、预挡对手冲四制造点
-  （决策流里标注「保险·致胜/拦截/活四/造杀/将死攻/将死防/拆杀/预挡」）。
-  真实渠道的对局还会累计经验：相同开局的历史先手胜率会注入后续对局，越下越有数。
-- **校准实验室**：把 Jev 说的胜率和实际胜负放在同一把尺子上量——Brier 分、技巧分、校准误差与可靠性图。
-  旁白「Jev 说 70% 的时候，真有 70% 兑现吗」。数据只统计**真实渠道**的对局；
-  离线演示的胜率是本地合成的，不参与（否则等于拿合成数据自证）。
-  有本地后端时，样本合并**全部已同步对局**（换设备、清缓存都不丢）；无后端时只有本机记录。
-- **对比实验**：机机面板里选 A/B 两个渠道（Jev 各真实渠道 / 纯随机基线 / 离线演示）+ 局数，自动交替执黑白连跑，
-  终局 2.5 秒自动开下一局，跑完归档到「实验报告」面板可回看历史战绩。
-- **随机度**：Jev 每步从概率最高的 k 个候选里加权抽签（最强手 / top-3 / top-5）。机机对弈建议「温和」，避免每盘一模一样。
-- **URL 加 `?test=1`**：右上角运行全部引擎自检。
-
-## Jev 走棋原理
-
-每一步把局面序列化成**坐标记法**的 `state`（如五子棋 `black_stones: ["H8","I9"]`，国象 `e2e4` 记法），发一次 System One 请求：
-
-- `move`：**Choice** 问题——每个合法着法是一个选项（≤255），返回各选项概率分布，按随机度采样执行；
-- `edge`：**Noul** 问题——当前是否占优；
-- `position`：**Score** 问题——0–10 局势分。
-
-三个问题对同一 state 并行评估，一次调用完成。响应结构体直接被代码消费，无文本解析。
-
-成本参考：官方定价输入 $42/百万 token（输出免费），单步约 0.5–1.5K token ≈ **$0.00005/步**，一整局不到 5 美分。
+> 旧实现（2026-10-01 前）的 `node server.js` / `python dev-proxy.py` / 双击 `index.html` 即玩
+> 三种本地起法已随 `js/`、`server.js`、`dev-proxy.py`、`functions/` 一并退役，仅存于 git 历史。
 
 ## 目录结构
 
 ```
-board-games/
-├── index.html              # 单页入口
-├── css/style.css
-├── js/
-│   ├── board.js            # 命名空间 + 绘图/工具
-│   ├── charts.js           # SVG 图表（趋势图/概率条/可靠性图）
-│   ├── calibration.js      # 校准实验室数学（纯函数，零依赖）
-│   ├── jev-client.js       # Jev API 封装（官方/OpenRouter/代理/rapfi，429/529 退避重试）
-│   ├── api.js              # 后端 API 客户端（BG.api，失败降级为 null）
-│   ├── mock-ai.js          # 离线演示 AI
-│   ├── rapfi.js            # Rapfi WASM 本地引擎客户端（BG.rapfi，懒加载，ADR-0006）
-│   ├── app.js              # 对局循环、模式、决策可视化、实验、后端探活
-│   └── games/              # 七个规则引擎（统一接口 + selfTest；gomoku.js 一文件两引擎）
-│       ├── gomoku.js  go.js  xiangqi.js
-│       └── chess.js  checkers.js  chinese-checkers.js
-├── server.js               # 零依赖 Node 后端：node server.js → 静态托管 + API + 持久化
-├── functions/api/jev.js    # CF Pages Functions 代理（可选）
-├── functions/api/games.js  # CF Pages Functions 棋谱同步（可选，需 GAMES_GITHUB_TOKEN）
-├── functions/api/          # health / experiments / stats 三端点（与 server.js 契约对齐）
-│   └── _github.js          #   Pages Functions 共享 GitHub 客户端（下划线前缀，不对应路由）
-├── games/                  # 终局同步的棋谱归档（<日期>/<gid>-<时间戳>.json）
-├── rapfi/                  # Rapfi 预编译 WASM 产物（约 10.8MB，仅 rapfi 渠道按需下载）
-├── data/                   # 后端运行时状态（experiments.json，gitignore，本机生成）
-├── dev-proxy.py            # 本地最小代理（静态 + /api/jev，可选）
-├── test/run-tests.js       # Node 自检：node test/run-tests.js
-├── test/server-tests.js    # server.js 的 HTTP 契约测试（18 项）
-├── AGENTS.md               # Agent 入口规范（硬性规则 + 最小阅读路径）
-└── docs/                   # 架构/接口/ADR/计划/多 agent 协同/记忆（见 docs/README.md）
+index.html                 唯一 HTML 入口（一个 <script type="module" src="/src/main.ts">）
+vite.config.ts             前端构建 + @cloudflare/vite-plugin（单进程起 Worker）
+wrangler.jsonc             Worker 名 / D1 绑定 / 静态资产 / cron / 自定义域
+tsconfig.json              相对路径 + 显式 .ts 扩展名（allowImportingTsExtensions）
+worker-configuration.d.ts  wrangler types 生成的环境类型
+src/
+  main.ts                  浏览器入口（注入版本号 → boot()）
+  shared/                  前后端共用：棋种 id ↔ 中文名映射、版本号
+  core/                    纯逻辑，无 DOM 依赖、可被 Node 直载
+    engines/               七个引擎：gomoku / gomoku-pro / go / xiangqi / chess / checkers / chinese-checkers
+    registry.ts            引擎注册表（games / ids / getGame / register）
+    jev/                   Jev 客户端、离线 mock、Rapfi WASM 接入
+    tactics.ts             战术推算（一步致胜 / 造杀点 / VCF）+ tactics-versions.ts 战术档
+    api/client.ts          后端客户端（探不到后端一律返回 null，即降级）
+    record/                棋谱导出 / 战绩簿 / 自动同步
+    view/                  落盘展示用的纯字符串渲染（最新一手、对比、校准）
+    persist.ts rng.ts clone.ts assert.ts weighted.ts types.ts session.ts meta.ts gfx.ts
+  ui/                      视图层（DOM/canvas）：board-render / charts / panels/*（见 src/ui/README.md）
+  app/                     对局装配：boot / loop / modes / clock / experiment / records / bindings / self-test
+  worker/                  Cloudflare Worker
+    index.ts               Hono 应用装配（requestId → 路由 → JSON 404 兜底 → onError）
+    routes/                health / games / stats / experiments / openings / leaderboard / jev / export
+    middleware/            device（X-Device-Id）、ratelimit（D1 固定窗口）
+    db/                    D1 访问层：games / experiments / devices / ratelimit / stats
+    lib/                   validate（手写校验）/ upstream（Jev 上游）/ hash / http / record-input
+    maintenance.ts         cron 每日维护（清限流行 + 写 stats_cache 汇总）
+migrations/                0001_init.sql（D1 schema）+ import/（54 局导入 SQL 与 manifest）
+public/rapfi/              Rapfi WASM 引擎资产（Static Assets 托管）
+games/                     冻结的历史归档（54 份棋谱，只读；权威数据已导入 D1）
+test/
+  engines/                 引擎自检 + 战术 + 金样差分（纯 Node，node test/engines/run.mjs）
+  tactics/                 战术层单测入口（node test/tactics/run.mjs）
+  fixtures/golden/         差分金样（7 棋种 / 5510 手，冻结只读）
+  parity/                  金样生成器、封条 frozen.json、例外登记
+  worker/                  Worker + D1（vitest + 真 workerd）
+  ui/ core/ app/           UI / 纯逻辑 / 装配层单测（vitest：ui project 收 test/ui/** 与 test/app/**，core project 收 test/core/**）
+scripts/                   import-archive / verify-parity / verify-backup / check-docs / smoke-live / browser-smoke
+docs/                      文档体系入口见 docs/README.md
+AGENTS.md                  协作 Agent 与人类 Contributor 的入口规范
 ```
 
-每个引擎实现统一接口：`newGame / getLegalMoves / applyMove / getStatus / moveFromNotation / serializeForJev / draw / humanClick`，可选 `mockPick / passMove / selfTest`。加新棋种只需新增一个引擎文件并在 `app.js` 的 `GAME_ORDER` 注册（完整清单见 [docs/engine-interface.md](docs/engine-interface.md)）。
+## 每个引擎实现统一接口
+
+契约全文见 [docs/engine-interface.md](docs/engine-interface.md)，类型定义在 `src/core/types.ts`：
+
+```ts
+newGame()                             // 新建初始局面
+getLegalMoves(st)                     // 合法着法（顺序稳定，是契约的一部分）
+applyMove(st, move)                   // 纯函数：返回新 state，不改入参
+getStatus(st)                         // { over, turn, winner?, reason? }
+moveFromNotation(st, notation)        // 记法 → move（回放/金样比对用）
+serializeForJev(st, side)             // 产出 { state, questions, options }
+selfTest()                            // 自检，抛异常即失败
+// 可选：draw / humanClick（渲染）、passMove / mockPick / vcfWin（能力）
+```
+
+## 常用命令
+
+```bash
+# 开发与构建
+npm ci                   # 按 package-lock.json 原样安装（CI 同款）
+npm run dev              # vite dev（Worker + 前端 + 本地 D1，默认 8787）
+npm run build            # vite build → dist/（静态资产 + Worker 包一起出）
+npm run preview          # 预览构建产物（无后端降级自测）
+npm run deploy           # 构建 + wrangler deploy（需 CLOUDFLARE_API_TOKEN）
+npm run typecheck        # tsc --noEmit
+
+# 测试（npm test 是最省事的总闸）
+npm test                 # test:engines + test:new（= 28 个文件 / 300 用例；**不含 test:tactics**）
+npm run test:engines     # 纯 Node：七引擎 selfTest + 战术 + 54 局金样逐手差分
+npm run test:tactics     # 战术层单测（要单独跑）
+npm run test:new         # vitest 全部 project
+npm run test:worker      # Worker/D1（真 workerd + 本地 D1；每个 spec 自己清表）
+npm run test:ui          # 视图层 / 装配层单测（happy-dom）
+
+# 数据库
+npm run db:migrate:local     # 本地 D1 应用 migrations/
+npm run db:migrate:remote    # 远程 D1 应用 migrations/
+npm run import:archive       # 导入 games/ 历史归档（--local 或 --remote）
+npm run verify:parity        # 逐手比对新旧实现（本地库，差值必须为 0）
+npm run db:export            # 远程 D1 导出 SQL 到 backups/
+npm run verify:backup        # 校验导出备份可重建
+
+# 冒烟与文档
+npm run smoke:live       # 线上 HTTP 冒烟（默认打 https://jevqipan.logicc.top，会写一行再删）
+npm run smoke:browser    # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge；--offline 验降级）
+npm run check:docs       # 文档护栏：memory 置顶、相对链接、status 日期
+npm run golden           # 重新生成金样——**预期失败**：金样已冻结，生成器依赖的旧实现已删除
+```
+
+## 部署
+
+发布只有一个手动入口，不接 push 触发（旧 Pages 站的 Git 集成已断开）：
+
+1. `npm run typecheck && npm test`（或让 CI 先跑 `.github/workflows/test.yml`）。
+2. 需要动 schema 时先 `npm run db:migrate:remote`（迁移是追加式的，别改已应用的 `migrations/*.sql`）。
+3. `npm run deploy`（= `npm run build` + `wrangler deploy`），需要 `CLOUDFLARE_API_TOKEN`（本地用 `wrangler login`）。
+4. 部署后自检：`npm run smoke:live`（29 项 HTTP 断言）+ `npm run smoke:browser`（9 项浏览器断言）。
+5. 发布前后留底：`npm run db:export`；备份可信度用 `npm run verify:backup` 验。
+
+CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:new → check:docs，`REQUIRE_SQLITE=1` 强制真 SQLite）、
+`deploy.yml`（**手动 `workflow_dispatch`**）、`backup.yml`（每日导出 D1 并校验，带 `--structural`）。
+
+发布前必须知道的两条：**`games/` 是冻结的历史归档**（2026-10-01 起只读，权威数据在 D1，别再往里写文件）；
+**旧 Pages 站只读**，别在它上面做任何"修复"。
+
+## 成本与容量护栏（D1 免费额度）
+
+- 计费口径：**写 ≈ 10 万行/日、读 ≈ 500 万行/日**（Cloudflare D1 免费档）。
+- 单局行数 = 1（`games`）+ 手数（`game_moves`），平均 ≈ 81 手 ⇒ **约 440 局/日**才碰到写上限；
+  限流判定本身每次也写一行 `rate_limits`，算在同一份写配额里。
+- 读侧很宽松：一次全量导出上限 5000 局 ≈ 1 万行（**约 0.2%** 的日读额度），列表接口默认 20 条、硬上限 100 条（`DEFAULT_LIST_LIMIT` / `MAX_LIST_LIMIT`）。
+- 单行 `payload` 上限 **512 KB**（`MAX_PAYLOAD_BYTES`，历史最大实测 68.7 KB；超了返回 **413 `payload_too_large`**）；统计聚合读 `stats_cache` 预热行，不实时扫全表。
+- 结论：**个人/小圈子用量远低于免费档**，真正的护栏是上面这几条硬上限（写在 `src/worker/lib/validate.ts` 与 `src/worker/db/games.ts` 里）。
+- Jev 侧成本另算，见下面「成本参考」（BYOK，花的是你自己的 key）。
+
+## 玩法说明
+
+1. **模式**：人机（你执黑）、机机（Jev 自对弈，看决策）、双人同屏。
+   棋种下拉含七项：五子棋、五子棋·禁手、围棋、象棋、国际象棋、西洋跳棋、中国跳棋。
+2. **走棋**：点交叉点/格子落子；`passMove` 类棋种（围棋）有「停一手」按钮。
+3. **棋谱导出**：对局结束或中途可导出 JSON（`format: jev-qiguan-game/v1`），落盘/分享皆可。
+4. **棋谱自动同步**：有后端时自动 `POST /api/games`，响应含 `gameUid` / `dedup` / `movesWritten`；
+   同一棋谱重复提交由 `dedup_key` 去重（`dedup: true`）。
+5. **决策面板**：每手显示 Jev 概率前 8 名、置信度、`edge` 胜率、`position` 局势分、
+   token 与成本、耗时；战术保险接管时标注接管原因。
+6. **强度机制（九级战术保险）**：`win > block > open4 > threat > vcfAttack > vcfDefense > parry > parry3 > parry4`，
+   详见 [docs/jev-api.md](docs/jev-api.md) §2.2。
+7. **校准实验室**：固定局面的胜率标定与复盘（`src/core/view/calibration.ts`）。
+8. **对比实验**：同一开局跑多局 A/B（渠道/战术档/思考深度可分别设），结果归档到 `/api/experiments`
+   并按 tag upsert。
+9. **随机度**：`topK` 滑杆控制采样（1 = 最强手，k>1 = 前 k 名概率加权随机）。
+10. **棋谱回放**：每局有永久链接 `/api/games/u/<gameUid>`，面板里可逐步回放（前进/后退/到底）。
+11. **排行榜**：`/api/leaderboard` 按设备与战术档聚合；**开具体验**：`/api/openings` 给出常见开局的先手胜率与样例局。
+12. **数据导出**：`/api/export/games` 流式 NDJSON（一行一局），走内部游标翻页，对客户端是一个连续流。
+13. **自检入口**：URL 加 `?test=1` 显示浏览器内自检面板（七个引擎逐个 `selfTest()` + 跨模块自检）。
+
+## Jev 走棋原理
+
+Jev 每次决策收到**一次并行三问**（不拆成串联推理链）：
+
+- `move`（Choice）——合法着法概率分布 + 置信度；
+- `edge`（Noul）——当前局面己方胜率；
+- `position`（Score）——0–10 局势分。
+
+因此 prompt 质量就是棋力上限：本站会注入真实推演出的战术事实（一步致胜点、造杀点、
+VCF 将死链，见 [docs/jev-api.md](docs/jev-api.md) §2.2），五子棋另附裁剪过的
+`state.board_ascii` 字符画棋盘（该字段名就叫 `board_ascii`）。
+
+**成本参考**：官方定价输入 $42 / 百万 token、输出免费；`costUsd = usage.input_tokens * 42 / 1e9`。
+单步 state 约 0.5–1.5K token（≈ $0.00005/步），一整局不到 5 美分。
+
+## 渠道与密钥（BYOK）
+
+| 渠道 | 说明 |
+|---|---|
+| `official` | TypeSafe 官方 API。**浏览器直连会被 CORS 白名单拦下**（2026-09-29 实测），浏览器侧需走同源代理 |
+| `openrouter` | OpenRouter 上的 `typesafe/jev-1.13`，允许 CORS，唯一可浏览器直连的远程渠道 |
+| `proxy` | 本站 Worker 的 `/api/jev`：**只做转发与限流，不落 key**；key 经 `X-Api-Key` 请求头透传（BYOK） |
+| `rapfi` | 本地 WASM 引擎（Gomocup 协议，仅五子棋/禁手） |
+| `mock` | 离线演示，无需 key |
+| `random` | 纯随机基线，仅对比实验面板可选 |
+
+- key 只存浏览器 localStorage，或经请求头一次性透传；**永不进仓库、不进服务端存储、不进日志、不进 URL**。
+- 设置面板里每个渠道可填自定义「接口地址」（留空 = 用预设）。
+- 「测试连接」做两段式连通性探测，区分网络 / CORS / 鉴权 / 端点形状四类故障。
 
 ## 开发与多 Agent 协作
 
-本项目为多 agent 协同设计，**任何 agent 都不需要全量阅读代码库**：
-
-- 入口读 [AGENTS.md](AGENTS.md)：硬性规则（零依赖/纯函数引擎/验收命令）+ 任务→最小阅读路径表。
-- 协同协议在 [docs/agents/](docs/agents/README.md)：角色分工、文件所有权（六引擎是天然并行边界）、
-  `.work/handoff.md` 接力模板、常见任务 playbook（新棋种/修 bug/改 prompt/部署）。
-- 持久记忆在 [docs/memory/MEMORY.md](docs/memory/MEMORY.md)：**新条目置顶**，与 agent 工具无关，随仓库走。
-
-```bash
-node test/run-tests.js     # 唯一验收命令：六引擎 selfTest + mock 机机集成对局 + 后端/Pages 契约测试
-```
+- 入口规范：[AGENTS.md](AGENTS.md)；协作协议：[docs/agents/README.md](docs/agents/README.md)。
+- 角色分工：[docs/agents/roles.md](docs/agents/roles.md)；任务→阅读矩阵：[docs/agents/reading-paths.md](docs/agents/reading-paths.md)；
+  playbook：[docs/agents/playbooks.md](docs/agents/playbooks.md)；并行所有权：[docs/agents/parallel-work.md](docs/agents/parallel-work.md)。
+- 完成定义 = 验收命令通过（`npm test` + `npm run check:docs`）+ 文档同步 + [docs/memory/MEMORY.md](docs/memory/MEMORY.md) 顶部追加一条。
+- 提交规范：Conventional Commits；注释、文档、commit message 用中文，代码标识符用英文。
 
 ## 已验证与已知限制
 
-- 引擎自检（`node test/run-tests.js`）：国际象棋 perft(1/2/3) = 20/400/8902；象棋开局 44 着法 + 照面/绝杀/困毙；西洋跳棋开局 7 着法、强制连跳、升王即停；围棋提子/禁自杀/劫/双停一手数子；中国跳棋连跳链与营地规则；含 mock 机机完整对局集成测试、战术保险分级回归、server.js 后端 18 项 HTTP 契约测试与 Pages Function 单测。
-- **未实现**：象棋长将/长捉判负；围棋 13 路大盘（Choice 选项 ≤255 需候选预筛，9 路不需要）；国际象棋三次重复局面判和。
-- 中国跳棋未禁止"永堵对方营地门"的变体规则；机机模式下若双方僵持可用悔棋或重开。
-- Jev 概率判断可能出错（「零幻觉」仅指输出结构），胜负以棋盘为准；官方性能数字为厂商口径。
+**已验证**（`npm run test:engines` 每次跑）：七引擎 `selfTest()`；国际象棋 `perft(1/2/3) = 20/400/8902`；
+象棋开局 44 着法；西洋跳棋开局 7 着法；围棋提子 / 禁自杀 / 劫 / 双停一手数子（贴 5.5）；
+中国跳棋连跳链；五子棋禁手（三三 / 四四 / 长连 / 精确五连，白方豁免）；
+以及**与旧实现逐手零差异**——7 棋种自对弈 + 54 局历史棋谱，合计 5510 手，
+金样见 [test/parity/README.md](test/parity/README.md)。线上数据核对：54 局 / 4379 手 / 6 轮实验，
+`sum(payload_bytes) = 845578`。
 
-> 完整状态、路线图与技术债见 [docs/status.md](docs/status.md)。
+**已知限制**：
+
+- 象棋未实现长将 / 长捉判负；围棋只有 9 路盘；国际象棋未判三次重复和棋。
+- 中国跳棋未禁止「永堵营地门」变体。
+- 引擎不建模「认输」（那是应用层裁决）：归档里 1 局记为「黑方 获胜（认输）」的历史记录与引擎判定不一致，属已知差异。
+- Jev 的概率判断仍可能出错——提示词里的「零幻觉」只承诺**输出结构**符合契约，
+  不承诺棋理正确；战术保险（九级接管）就是为了兜住这类错误。
+- 官方性能与价格数字（$42/百万输入 token 等）为厂商口径与作者实测混合，非长期承诺。
+- 匿名设备标识（`X-Device-Id`）只用于「只看我的」与限流，不是账号体系；换浏览器/清 localStorage 即丢失归属。
+- **金样与归档都已冻结**：`test/fixtures/golden/**` 与 `games/**` 只读（前者由 `test/parity/frozen.json` 的 sha256 封条守住，
+  后者 2026-10-01 起不再接收写入）。因此 **`npm run golden` 预期失败**（生成器依赖的旧实现 `js/**` 已随 P8 删除，
+  它只打印中文说明并 `exit 1`）——看到它红不是坏了。
+- 统计口径与旧站不同：`/api/stats` 现在是 SQL 侧全量聚合，**没有 `truncated` 字段**（旧 40 份口径 16/16/8 → 全量 18/27/9）。

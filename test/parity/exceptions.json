@@ -1,0 +1,19 @@
+{
+  "schema": "jev-qiguan-golden-exceptions/v1",
+  "note": "刻意行为变更登记表（ADR-0008 纪律）：空数组表示迁移必须逐手零差异；任何一条例外都必须写明理由与合成最小反例，不许静默放宽。字段要求见 test/parity/README.md「例外登记」一节。",
+  "exceptions": [],
+  "_template": {
+    "engine": "gomoku-pro",
+    "scope": "selfplay 或 archive（二选一）",
+    "ply": 12,
+    "path": "games/2026-09-29/gomoku-20260929095122.json",
+    "field": "stateHash",
+    "oldFingerprint": "把金样里那一手的旧值原样抄进来（16 位十六进制）",
+    "newFingerprint": "新 TS 实现算出来的值",
+    "reason": "至少 40 字：为什么旧行为确实错了、为什么必须现在改而不是保持兼容",
+    "counterexample": "至少 20 字：最小合成局面 + 期望值 / 旧实现实际值",
+    "adr": "ADR-0008",
+    "approvedBy": "批准人名（人类，不是 agent）",
+    "approvedAt": "YYYY-MM-DD"
+  }
+}

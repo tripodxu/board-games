@@ -8,6 +8,73 @@
 
 ---
 
+## 2026-10-01 · P8 收尾上线：删掉旧实现、Rapfi 从不走子的真缺陷、以及「端到端断言才抓得到」的教训
+
+- **收尾动作**：`git rm -r -f js functions legacy.html server.cjs dev-proxy.py test/run-tests.cjs test/server-tests.cjs test/rapfi-tests.cjs`（**注意**：仓库里旧实现的实际文件名是 `server.js`/`test/*.js`，之前那次 `→ .cjs` 只落在暂存区、没改过真实文件名，文档一律写 `.js`）；`css/style.css` → `styles/style.css`（**不拆** base/layout/panels：拆分会动层叠顺序、收益低）；`package.json` 摘掉 `test:legacy`；新建 `test/ui/index-shell.spec.ts` 守真实外壳（约 120 个必需 id、恰好 1 个 module 入口、禁旧路径与硬编码渠道名）。
+- **Rapfi 渠道在浏览器里从不走子（本轮最值钱的发现）**：mock 渠道全程掩盖它；`smoke:browser --channel rapfi` 的状态栏正常显示「对手 Rapfi(3s)」，而对手永不落子。根因是**两个注入点都没人接线**：① `src/core/jev/rapfi.ts:181-183` 在 `_loader === null` 时直接抛「当前环境不支持动态加载 Rapfi 脚本（无 document）」，而 `setLoader()`/`setGlueUrl()` 在浏览器侧从未被调用（旧实现在 `js/rapfi.js` 里把这 20 行内联了，迁移时拆成 core 的注入点，**约定没落到装配层**）；② `src/core/jev/client.ts:237-242` 要求每次调用注入 `opts.rapfi`，而 `src/core/jev/index.ts` 只注入了 mock。修法：新建 `src/app/rapfi-loader.ts`（`RAPFI_GLUE_URL='/rapfi/rapfi-single-simd128.js'`、`loadRapfiModule`、`installRapfiLoader`），`src/app/boot.ts` 启动时安装，`index.ts` 的 `decide()` 默认补 `rapfi: decideRapfi`；`test/app/rapfi-loader.spec.ts` 7 例（含端到端 `decide()`）。**负向对照**：去掉 `index.ts` 的注入后该例红，报错正是线上症状「rapfi 渠道未注入（opts.rapfi）」。
+- **教训（可复用）**：「探测按钮能加载引擎」≠「对局时对手会走子」——`src/app/modes.ts:161-166` 的探测路径自己 `await ensureLoaded()`，所以状态栏一切正常。凡是「core 提供注入点、装配层负责装」的约定，都必须有**一条走真实调用链的端到端断言**；本轮如果不是把「对手也落了子」变成 CDP 断言，这个缺陷会带着「Rapfi 已支持」的绿灯上线。
+- **最终验收数字（2026-10-01 实跑）**：`npx tsc --noEmit` 0 error；`npm test` **29 文件 / 307 用例全绿**；`npm run build` client JS 175.65 kB(gz 64.3) / CSS 39.09 kB(gz 7.9) / worker ≈173 kB；`npm run check:docs` 41 md / 249 链接全绿；`npm run smoke:live` **30/30**；`smoke:browser` **mock 10/10、rapfi 10/10、离线 12/12**；`db:export` + `verify:backup` 重建整库 54 局 / 4379 手 / payload 845 578 B 逐字节一致。
+- **上线版本**：`edccaaed-3997-4920-a862-d4a1f3fc4394`（首次全量切流）→ **`170c9d07-584b-48b4-8117-cf4ccef19cec`**（Rapfi 修复后）。回滚靠 `npx wrangler versions rollback`（已有 ≥4 个历史版本）。
+- **两件只能事后确认的事**：① Cron `17 3 * * *` 已随部署注册，首次触发 2026-10-02T03:17Z，届时查 `stats_cache` 的 `daily:<UTC 日>` 行（本地查询返回 0 行属预期，见本文件另一条的「坑 5」）；② `.github/workflows/test.yml` 要等首次 push 后由 GitHub Actions 实跑确认（本地等价命令已全绿）。
+- **浏览器冒烟脚本的两个经验（脚本自身的坑）**：① 判定「落子」不能用上墨像素**计数**（不透明棋盘从一开始就整块上墨，落子只改像素值不改计数），要用全 4 通道滚动哈希；且棋盘背景不透明 ⇒ 画布指纹必须拌 RGB。② CDP 拦网要用 `*://*/api/*` 并在 `Fetch.requestPaused` 里按 `new URL(url).pathname.startsWith('/api/')` 二次判定，否则连应用自己的 dev 源码模块 `/src/core/api/client.ts` 一起拦掉，离线测试会表现成「应用完全起不来」。③ 落子判定必须吃对象字段（`inkMove.ok`），早期把它当字符串接会让断言恒真变假绿。
+
+---
+
+## 2026-10-01 · Worker + D1 重构落地：真实数字，以及只在真机上才暴露的坑
+
+- **落点**：D1 `jev-qiguan`（`database_id = f72390fe-a506-4a88-8db7-af7213657947`，WNAM；账号 `xd04040212@163.com`）→ 建表 16 条命令，导入 **54 局 / 4379 手 / 6 轮实验 / payload 合计 845 578 B / 孤儿行 0**；远程与本地逐项一致。Worker 部署在自定义域 **`https://jevqipan.logicc.top`**（账号里唯一 active 区域 `logicc.top` 的子域），`wrangler.jsonc` 用 `routes[].custom_domain = true`。版本 `cron` 触发器 `17 3 * * *` 随部署注册（`Deployed jev-qiguan triggers`）。
+- **本机网络事实（决定了验收方式）**：`*.workers.dev` DNS 能解析但 TCP 443 连不通；`npx wrangler dev --remote` 的所有端点 25–40 s 超时（日志 `Error inside ProxyWorker … internal error`）。所以线上验证一律打自定义域，别把 workers.dev 写进文档示例。
+- **口径对账可量化「迁移修好了什么」**：`npm run verify:parity` 同时算两个基线——全集 54 份（= 旧本地 `server.cjs` 口径）与线上截断 40 份（Pages 50 子请求预算，`functions/api/stats.js` 的 `MAX_FILES=40`），candidate 默认**直连本地 D1 库文件并真执行 `src/worker/db/stats.ts`**（用 `node:sqlite` 适配成 D1 子集）。结果 diff = 0；线上截断口径少的 14 局（40/54、`{五子棋:40}`、16/16/8）正是 P-2 要修的截断问题，新 `/api/stats` 一律全量、无 `truncated`。
+- **备份必须真的能重建**：`npm run db:export` 第一版报 `The file was moved or deleted` —— 原因是 `backups/` 目录不存在（wrangler 不建目录）；`npm run verify:backup` 把导出 SQL 灌进内存 SQLite，逐局比对「payload sha1 == `games/<day>/` 里某个源文件」且 `game_moves` 行数 == `games.move_count`，通过即证明备份可完整重建。`backups/` 已进 `.gitignore`。
+- **坑 1（本地 D1 库文件名由 `database_id` 派生）**：`.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<sha256>.sqlite`，hash 来自 `database_id`。P4 把占位 UUID 换成真实 id 后，`npm run dev` 指向一个**新的空库**：`/api/health` 的 `schema: null`、`/api/games` → `{"error":"服务端异常"}`、`wrangler d1 execute --local` 报 `no such table: games`，而旧数据仍躺在旧 hash 的文件里。重跑 `db:migrate:local` + `node scripts/import-archive.mjs --local` 即恢复；旧文件要删掉，否则 `verify:parity`（自动挑 mtime 最新）可能落到旧库。已给 `npm run dev` 加 `predev` 钩子自动迁移，并写进 AGENTS.md §4。
+- **坑 2（wrangler 不递归 migrations 子目录）**：分片 SQL 放在 `migrations/import/` 是安全的——`wrangler d1 migrations list` 只列 `0001_init.sql`。这是「导入 = 生成 SQL 分片」方案能成立的前提（D1 没有本地 socket，wrangler 是唯一执行入口）。
+- **坑 3（生成 SQL 的两个真 bug）**：① `VALUES (${values.join(', ')})` 把多行元组包成了一个「行值」表达式 → 报 `54 values for 13 columns`；修法是让 valuesClause 自带行括号（多行 = `tuple.join(', ')`）。② 语句尾既在生成器又在渲染阶段加 `;` → 生成 `;;`，Python `execute()` 报 `You can only execute one statement at a time.`。定位手法值得复用：`sqlite3.complete_statement` 逐行累积切句 + `node:sqlite` 的 `DatabaseSync` 逐句 `exec` 报出具体第几条。
+- **坑 4（兜底路由拿不到 requestId）**：requestId 中间件原来注册在 `api` 子应用上，而 `/api/*` 的 JSON 404 由 **app 层**处理——一条业务子路由都没命中的请求根本不经过子应用中间件，于是响应头有 id 而体内 `requestId: null`；`jsonNotFound(c)` 还漏传了第二个参数。修法：中间件移到 app 层（`app.use('*')` 放在 `app.route('/api', api)` 之前），兜底显式传 `c.get('requestId')`；回归用例断言 `x-request-id === body.requestId`。
+- **坑 5（`/__scheduled` 被静态资产吃掉）**：开了 `assets.run_worker_first = ["/api/*"]` 后，非 `/api/*` 路径由 Workers Assets 接管，`curl '…/__scheduled?cron=*+*+*+*+*'` 返回的是 SPA 兜底 HTML（200），`stats_cache` 不会有心跳行——**别把这当成 cron 失败**。cron 的真实执行只能在部署后看（`stats_cache` 的 `daily:<日期>` 行或 `wrangler tail` 的 `[maintenance]` 日志）。
+- **坑 6（vitest pool 没有逐用例存储隔离）**：`cloudflareTest({ singleWorker: true })` 下所有 worker spec 共享同一个 D1，任何新增 spec 都必须在 `beforeEach` 里自己清表，否则会看到上一个用例的数据（第一版就因此挂了两条）。
+- **验收工具新增三件**（都零依赖）：`npm run smoke:live`（线上 HTTP 29 项，会写库，跑完要清 `smoke-%` 设备行）、`npm run verify:backup`（备份可重建性）、`npm run smoke:browser`（CDP 驱动系统 Chrome 的真浏览器端到端 9 项：页签渲染/棋盘绘制/渠道落盘/开始对局后状态栏与画布像素变化/曲线切换/设置抽屉/无未捕获异常）。**负向对照已验**：对「`src/main.ts` 仍是占位」的线上跑出 3/9，失败项正是页签未渲染与 canvas 300×150 空——说明它会真的失败而不是永远绿。
+
+---
+
+## 2026-09-30 · 「实验报告」面板要有产出：战报补齐 + 同渠道 A/B 归属修正
+
+- 诉求（用户）：「实验报告那一栏要有产出」。查下来面板本身没坏——是**数据源缺**：面板读 `data/experiments.json`（服务端 `/api/experiments`）+ localStorage + app.js 里写死的 `EXP_SEED`，而 `games/` 里带 `experiment` 标签的 **6 轮里只有 2 轮有战报**。缺的 4 轮中 2 轮（`exp-20260929105234` / `exp-20260929111222`）只靠 `EXP_SEED` 才在面板露面，另 2 轮（`exp-20260930084500` / `exp-20260930143522`）完全不显示。
+- **补齐**：`.work/exp-analysis/backfill-experiments.js` 由棋谱回溯生成 4 轮战报（A/B 按实验循环规则反推：`runExperimentGame` 里 `aBlack = (idx % 2 === 0)`，即 `expGameNo=1` 时 A 执黑），写进 `data/experiments.json` → **2 轮变 6 轮**；`EXP_SEED` 两条 note 也搬进归档（`.work/exp-analysis/migrate-seed-notes.js`），`EXP_SEED` 退回纯离线兜底。回溯时顺带按「着法串与更早一局完全相同」自动标 `dup`（`exp-20260929105234` 的 #1=#3，与 EXP_SEED 手工记的一致；不标的话面板有效局数会从 5 变 6）。
+- **缺陷：同渠道 A/B 的胜负归属按渠道名比对**。`finishGame` 原来用 `winnerChan === EXP.chanA ? 'A' : 'B'`，而 A/B 同渠道时（`Jev·v8 vs Jev·v9` 都用 `proxy`）`winnerChan` 恒等于 `chanA`，**任何胜负都会被记成 A**。正好本轮新引入的就是这种同渠道不同档位的 A/B，等于把战报写坏。改为按「胜方是黑是白」+ 局号奇偶判定（`aIsBlack`/`winnerAB`）。现有归档里这轮是两局和棋（`winnerChan=null`）所以没被写坏，但护栏已加。
+- **报告渲染**：卡片头改为 `roundSides(e)` 取 A/B 配置（轮级 `tacA/tacB` 优先，缺失时退到首局棋谱的 `blackTac/whiteTac`），并把 **tag 显示出来**（tag 是战报与 `games/` 棋谱互查的唯一锚，此前完全不显示）；胜方标签取「该局胜方所执那一侧」的实际配置，同渠道 A/B 才读得出 `Jev·v9 胜` 而不是 `Jev(代理)胜`。
+- **服务端契约补字段**：`server.js` 与 `functions/api/experiments.js` 的 POST 归一化原来只留 `tag/date/chanA/chanB/total/games/note`，**把客户端发的 `tacA/tacB/thinkA/thinkB` 直接丢掉** → 归档后的战报读不出档位。现已保留（类型守卫 + `undefined` 省略，旧客户端形状不变）。契约文档同步 `docs/jev-api.md` §3。
+- **护栏（新增自检组 `experimentArchiveTests`）**：① `games/` 里每个 `experiment` 标签都必须有战报（否则报告面板不显示它）；② `total`/`games.length` 与棋谱局数一致；③ 逐局 `winnerChan` 与「棋谱结果 + 局号奇偶」推出的一致；④ 轮级 A/B 配置等于首局棋谱；⑤ `dup` 必须标出。实测：删掉一轮战报 → 红并指名；篡改 `winnerChan` → 红并给出应为值。
+- 验证手法：`.work/exp-analysis/exp-report-smoke.js`（vm 抽 `renderExpHistory` 原文 + 真实归档数据渲染，打印面板文本；6 轮 tag 全在、档位可读、重复局标出、合成同渠道 A/B 两局都正确显示 `Jev·v9胜`）。
+- 已知小限制（未改）：累计行「Jev 渠道 X 胜 · 其他 Y 胜」对同渠道 A/B 轮无意义（两边都算 Jev），该轮的版本对照读卡片头的 `A : B` 即可。
+
+---
+
+## 2026-09-30 · pull 后全量归因盘点：窗口数会说谎，人机局被写成机机镜像局
+
+- 触发：`git pull` 带进 6 份新棋谱（`jev-v8-vs-jev-v9-*` 等 slug 命名），要求「分析所有未分析的实验报告按版本分类」。盘点脚本留在 `.work/exp-analysis/`（`inventory.js` / `attribution.js` / `rounds.js` / `final.js`，`.work/` 不入库，可重跑复现）。
+- **缺陷一：导出侧没给人类一方打 `human` 标记**。`duel.sideLabel/sideSlug` 早支持 `cfg.human`（输出「我/me」），但棋谱导出（`buildGameExport`）与战绩簿（`saveGameRecord`）都直接取 `effSide('black'|'white')`——纯渠道配置。于是 `mode=人机` 的局被写成 `jev-v0-vs-jev-v0` / `黑 Jev·v0 vs 白 Jev·v0`，**实测 3 份真棋谱**（`jev-v0-vs-jev-v0-20260930153642/153646`、`jev-v9-vs-jev-v9-20260930153451`，黑方是人类、着法无 `ai` 字段）这么撒过谎，而这批 slug 正是「按版本归因」的输入。修法：新增 `exportSideCfg(sideId)`，以 `isAISide(id)` 判定，人类侧补 `human:true`；导出与战绩簿两处共用。屏幕显示（上一条的 `sideLabelText`）早已按 `S.humanSide` 分流，**只有导出这条路径漏了**。
+- **缺陷二：`games` 口径会骗人**。登记表用「文件名 stamp 落时间窗」归组，`v9.games` 记成 20，但这 20 份 `meta.code` 全是 `0.7.0`（线上没重新部署，实为 v7 档）；反过来 `v7.games=4` 而实证有 20。现拆成两个字段：`games`（窗口归属）+ `gamesVerified`（每手 `ai.tv`/`meta.code` 实证）。真实分布：v0-off 窗口 0/实证 2、v5 21/0、v7 4/**20**、v8 3/3、v9 26/**4**。沿革条**两个数恒同时显示**（`窗口 26 · 实证 4`）——不做「相等就合并成一个」的化简，因为 v8 的窗口 3 局与实证 3 局数量相同却是两批棋，合并就看不出这件事。
+- **缺陷三：「认输」不分人判机判**。`认输` 唯一入口是人点 `#resignBtn`（`app.js`），但机机实验里这也被算成一局引擎胜负——实测 A/B 第 3 局是 181/225 手时人手认输收场，差点被当成「v9 打赢 v8」的证据。现 `st.result.by='human'`（引擎 `getStatus` 原样透传 `st.result`）→ 棋谱落 `endBy`，战绩簿与实验报告标「人判」。
+- **护栏**：新增纯函数 `BG.tacticsVersions.auditCode(entries, opts)` + `DEPLOY_LAG` 台账（`from/until` = 14 位 stamp、`games:20`、`code:'0.7.0'`）。`archiveAttributionTests` 拿真实 `games/` 跑审计：要求 0 条未登记错配 **且** 台账条数与 `DEPLOY_LAG.games` 相符。**此前当前档只断言 `games >= 登记数`，这 20 局就是这么漏过去的**；已实测「注入一份伪造滞后棋谱 → 自检立即红，删掉即全绿」。
+- **一条纠正**：登记表 v9 的 note 其实**早已写明**那 20 局是 0.7.0、反证部署滞后——文档没错，错的是 `games` 这个数字被当成「跑过这版的局数」读。修订记在 ADR-0009「修订（2026-09-30，pull 后归因校验）」。
+- 另：`js/tactics-versions.js` 里「合计应等于 games/ 全部 28 局」的注释已过期（登记表合计 48，pull 后 `games/` 实为 54），已改为双口径说明。
+- **未做的结论（留给实验设计）**：v8 vs v9 正面对照无机器判定胜负（2 局 225 手棋盘下满和棋 + 1 局人手认输），**样本不足以证明 soundness 修复带来棋力提升**；Jev vs Jev 镜像局高度趋和，要评版本差异应换 Rapfi 作锚。
+- 验证手法：`.work/exp-analysis/export-attribution-smoke.js`（vm 抽 `app.js` 函数原文 + `new Function` 注入桩，14 断言覆盖 `exportSideCfg` 四种模式与 `endBy` 透传）。`node test/run-tests.js` 全绿。
+
+---
+
+## 2026-09-30 · 双方身份显示：写死的「Jev」不认 sideConfig（用户报障修复）
+
+- 报障（m00135）：「机器对弈的时候应该要显示白棋是谁，黑棋是谁」。根因不是身份没算过，而是**五处文案写死 Jev**：对决面板 `#duelFirstName/#duelSecondName`（switchGame/bind 时写「黑方 Jev/白方 Jev」，只在切棋刷一次）、机机状态行 `'对局进行中 · Jev vs Jev'`、回合徽标 `' · 等待 Jev / 思考中'`、思考计时器、模式按钮静态 `'Jev vs Jev'`。抽屉把一侧配成 随机·v3 / Rapfi(5s) 后，这些屏全部不认账。
+- 修法（js/app.js：sideName() 后新增三函数）：`sideLabelText(sideId)`（pvp→'玩家'；human-ai 且 sideId===S.humanSide→'我'；其余→`BG.duel.sideLabel(effSide(sideIdOf(sideId)))`）+ `machinePairText()`（两方 sideLabel 联名、**不叠人称**，供模式按钮/机机状态行，描述「将要对阵什么」）+ `renderSideNames()`（对决面板写 `side名 + ' ' + sideLabelText(sd.id)`，同步 `.mode-switch button[data-mode="ai-ai"]` 与 `#mode` option[value=ai-ai] 文案）。**六处调用**：startGame/saveSideCfg/saveFoe/applyModeUI/switchGame/bind——改覆盖/改机器方/切模式/切棋立即刷，不是只开局刷一次。
+- **身份单一事实源 = effSide → duel.sideLabel**：effSide 本来就把 覆盖→全局→effectiveChannelOf 可用性回落 全串好，渲染层直接信任它，不再有第二份「我以为黑方是 Jev」的推断。附带行为（非 bug）：`effectiveChannelOf('proxy')` 无 key 仍返回 'proxy'，mock 回落只发生在 file:// 或无 key 的 official/openrouter。
+- 纯显示改动不动 `BG.codeVersion`（v0.8.0 不变）；守卫落在 `test/run-tests.js` domContractTests 静态断言：app.js 必须有三个函数、`BG.duel.sideLabel(effSide(` 形态、`renderSideNames()` ≥7 次（定义+六调用）、禁 `'Jev vs Jev'/'等待 Jev'/'· Jev 思考中'/'黑方 Jev'` 字符串字面量、index.html 无 'Jev vs Jev'（静态占位同步改「机 vs 机」）。
+- **静态断言要查单引号字符串形状，不能查裸文案**：注释里回顾这个 bug 时会写旧文案（如 app.js 状态行注释），裸正则会误报（本轮实测误报 3 次）；`'...'` 只命中代码里的字符串字面量。
+- 可复用冒烟手法：`.work/ui-side-labels-smoke.js`（临时不入库）用 vm 抽 app.js 函数**原文**（按函数名截源码 + `new Function` 注入 `S/$/location/BG/document` 桩，S 是闭包常量故用 Proxy 转发到当前场景状态），18 断言覆盖：无 key 官方回落「演示 vs 演示」、有 key「Jev·v9 vs Jev·v9」、双方覆盖「黑方 随机·v3 vs 白方 Rapfi(5s)」、人机「我 vs Rapfi(3s)」、pvp「玩家」、象棋白先面板顺序（sides[0]=白方→写进 duelFirstName）。harness 坑：`Object.assign(S, over)` 会用 over.settings 整份覆盖默认 settings 丢 channel——要只合并不带 channel 的键。
+- Open objectives: 用户浏览器人工核验对决面板/状态行/徽标三处文案（Rapfi 懒加载与 UI 阻塞 node 侧验不了真实对局，冒烟只到函数级）。
+
+---
+
 ## 2026-09-30 · UX 收尾：机器对手直达面板 / 战术沿革竖列 / 棋谱按版本归档
 
 - **用户四项诉求的落点**：① 模式按钮文案「人 vs Jev」→「人 vs 机器」；

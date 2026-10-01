@@ -1,6 +1,8 @@
 # ADR-0005：零依赖 Node 后端（server.js）——项目从纯静态站变为「静态前端 + 后端」
 
-- 状态：accepted（2026-09-29）
+- 状态：**已被 [ADR-0010](0010-worker-static-assets-replaces-pages.md) + [ADR-0011](0011-d1-authoritative-persistence.md) 取代**（2026-10-01：
+  `server.js`/`dev-proxy.py`/`functions/` 三套实现退役，持久化由 D1 承接）
+- 历史状态：accepted（2026-09-29）
 - 背景：项目此前的"后端"只有两块 CF Pages Function（`/api/jev` 代理、`/api/games`
   经 GitHub API 提交棋谱），本地开发靠 `dev-proxy.py`。三个问题越来越疼：
   ① 棋谱同步绑死 GitHub token，本地/内网环境不可用；② 实验战报只存浏览器

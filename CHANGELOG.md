@@ -1,9 +1,90 @@
 # CHANGELOG
 
-本项目可感知的变更历史。版本语义：0.x 期间 minor 反映功能交付，patch 反映修复。
+本项目可感知的变更历史。版本语义：1.0.0 起遵循语义化版本（minor 加功能、patch 修缺陷）；
+0.x 期间 minor 反映功能交付，patch 反映修复。
 日常记录另见 [docs/memory/MEMORY.md](docs/memory/MEMORY.md)（新条目置顶）。
 
-## [Unreleased]
+## [1.0.0] — 2026-10-01
+
+### Worker + D1 全面重构（架构轮，ADR-0010 ～ ADR-0013）
+
+一次性把「原生 HTML/JS + 三套后端 + GitHub 当数据库」换成
+**一个 Cloudflare Worker（Static Assets + Hono API）+ D1**。计划与逐阶段执行记录见
+[docs/plans/2026-10-01-workers-d1-rebuild.md](docs/plans/2026-10-01-workers-d1-rebuild.md)。
+
+- **后端合并**：`server.js`、`functions/api/*.js`、`dev-proxy.py` 三套实现退役，统一为
+  `src/worker/**`（8 条路由：health / games / stats / experiments / openings / leaderboard /
+  jev / export）。本地开发只剩 `npm run dev`（Vite + Worker 插件，D1 走本地 SQLite）。
+  线上入口 `https://jevqipan.logicc.top`（自定义域；`workers.dev` 未开）。
+- **持久化迁 D1**：`games` / `game_moves` / `experiments` / `devices` / `rate_limits` /
+  `stats_cache` 六张表 + `d1_migrations`。仓库里 54 份历史棋谱（4379 手、0.81 MB）
+  经 `npm run import:archive` 一次性导入，`payload` 逐字节保真（`verify:parity` 逐局 sha1 对账
+  diff = 0），此后 D1 是唯一权威，`games/` 冻结只读。
+  `games.gid` 历来是**棋种 id**（54 份全是 `gomoku`），新模型引入 `game_uid` 作对局身份，
+  `dedup_key = sha1(exported|gameUid|notation)` 保证重传幂等。
+- **统计口径修好**：旧 `/api/stats` 受 Pages 50 子请求限制只聚合最近 40 份并返回
+  `truncated`；现在全部在 SQL 侧聚合，**全量且无截断**（对账：40 份截断口径 16/16/8 vs
+  全量 18/27/9）。列棋谱不再硬编码最近 7 天（keyset 游标 + `since`/`day`/`game`/`device`/`tag` 过滤）。
+- **身份与限流**：匿名 `X-Device-Id`（无登录）落 `devices` 表，写路由先 `touchDevice` 满足外键；
+  限流从「isolate 内存 Map」（跨实例必然失效）改为 D1 固定窗口（jev 30 / 写 20 / 读 120 每分钟）。
+  每局从「一次 git commit」变成一次 `INSERT`。
+- **前端迁 Vite + TypeScript**（无 UI 框架）：`src/core`（引擎/战术/会话/持久化/归档，纯逻辑）、
+  `src/ui`（棋盘渲染、图表、13 个面板）、`src/app`（装配层：对局循环、渠道、实验编排）、
+  `src/worker`。版本号构建期注入（`package.json` version + `git rev-parse --short HEAD`），
+  归因不再靠文件名时间窗猜（那套口径会给 28 局凭空造出档位，已退役）。
+- **新增能力**：棋谱回放器（`/api/games/u/<gameUid>` 永久链接 + 分享）、排行榜
+  （`/api/leaderboard`）、开具体验（`/api/openings`）、JSONL 全量导出（`/api/export/games`）、
+  每日维护 Cron（`17 3 * * *`：清限流表 + 写 `stats_cache` 当日汇总）、
+  `/api/health` 的当日写入护栏（`today.rows` / `rowBudget`）。
+- **运维**：`.github/workflows/backup.yml` 每日 `23 4 * * *` 导出 D1 快照为 artifact（保留 30 天）
+  并用 `verify:backup` 校验可重建；`.github/workflows/test.yml` 跑 typecheck + build + 三层测试。
+  `docs/status.md`、`docs/architecture.md` 等文档全量重写。
+- **验收工具**（都可重复跑）：`npm run verify:parity`（新旧口径逐项对账）、
+  `npm run smoke:live`（线上 HTTP 30 项）、`npm run smoke:browser`（真 Chrome + CDP 9 项，
+  `--offline` 时 11 项，验无后端降级）、`npm test`（引擎自检 + 金样逐手差分 + 旧契约 + vitest）。
+- **已知行为差异**：引擎不建模「认输」，1 局归档记「黑方获胜（认输）」而引擎判 `null`（预期，
+  见 `test/parity/exceptions.json` 与 `test/engines/run.mjs` 输出）。
+
+### 实验报告面板（战报补齐 + 同渠道 A/B 归属修正）
+
+- **补齐实验战报归档**：`games/` 里带 `experiment` 标签的 6 轮实验，`data/experiments.json`
+  只归档了 2 轮——其余 4 轮只有棋谱（其中 2 轮仅靠 `app.js` 里写死的 `EXP_SEED` 才在
+  「实验报告」面板露面，另 2 轮完全不显示）。由棋谱回溯补齐 4 轮，归档 2 轮 → **6 轮**；
+  `EXP_SEED` 的两条复盘 note 一并搬进归档，`EXP_SEED` 退回纯离线兜底。
+  回溯时按「着法串与更早一局完全相同」自动标 `dup`（`exp-20260929105234` 的 #1=#3）。
+- **修复：同渠道 A/B 的胜负全被记成 A**。`finishGame` 原来按渠道名比对判定 A/B
+  （`winnerChan === EXP.chanA`），而 `Jev·v8 vs Jev·v9` 这类对照两边都是 `proxy`，
+  于是任何胜负都落入 A。改为按「胜方是黑是白」+ 局号奇偶判定（`expGameNo=1` 时 A 执黑）。
+- **报告卡片可读性**：显示轮级 A/B 档位联名与 **tag**（tag 是与 `games/` 棋谱互查的唯一锚，
+  此前不显示）；老战报缺 `tacA/tacB` 时退到首局棋谱的档位；胜方标签取「该局胜方所执那一侧」
+  的配置，同渠道 A/B 才读得出 `Jev·v9 胜` 而不是读不出胜负的 `Jev(代理)胜`。
+- **修复：服务端归档丢掉档位字段**。`server.js` 与 `functions/api/experiments.js` 的 POST
+  归一化只保留 `tag/date/chanA/chanB/total/games/note`，把客户端发的 `tacA/tacB/thinkA/thinkB`
+  丢了 → 归档后的战报读不出跑的是哪一版。现已保留（`undefined` 省略，旧客户端形状不变）。
+- **新增自检组 `experimentArchiveTests`**：每个 `experiment` 标签都必须有战报、局数一致、
+  逐局 A/B 归属与棋谱结果一致、轮级 A/B 配置等于首局棋谱、`dup` 必须标出。
+
+### 实验归因（pull 后全量盘点修正，ADR-0009 修订）
+
+- **修复：人机/双人局被写成机机镜像局**。`duel.sideLabel/sideSlug` 一直支持 `human`
+  标记（输出「我 / me」），但棋谱导出与战绩簿直接取 `effSide()`（纯渠道配置），
+  于是 `mode=人机` 的局落成 `jev-v0-vs-jev-v0` / `黑 Jev·v0 vs 白 Jev·v0`，
+  而这批 slug 正是「按战术版本归因」的输入。实测 3 份真棋谱受污染。
+  新增 `exportSideCfg(sideId)`（按 `isAISide` 判定，人类侧补 `human:true`），
+  导出与战绩簿共用；人机局现落 `me-vs-jev-v0`，双人局落 `me-vs-me`，真机机局不变。
+- **新增：`gamesVerified` 与窗口局数 `games` 双口径**。版本归组只看文件名 stamp 时间窗，
+  线上部署滞后时会说谎——20 份 `meta.code=0.7.0` 的棋谱（实为 v7 档）stamp 落在 v9 窗口，
+  导致 `v9.games=20` 被当成「v9 战绩」。现拆为 `games`（窗口归属）+
+  `gamesVerified`（每手 `ai.tv`/`meta.code` 实证）：v7 是 4/20、v9 是 26/4。
+  战术沿革条两个数恒同时显示（`窗口 26 · 实证 4`），不做「相等就合并」的化简——
+  v8 的窗口 3 局与实证 3 局数量相同却是两批棋。
+- **新增：`DEPLOY_LAG` 台账 + `auditCode()` 归因红线**。纯函数审计「窗口归属 vs 实际
+  code」，按 stamp 分流历史债与回归；`archiveAttributionTests` 对真实 `games/` 断言
+  「0 条未登记错配 + 台账条数相符」。此前当前档只断言 `games >= 登记数`，这类污染抓不到
+  （已验证：注入一份伪造滞后棋谱 → 自检红）。
+- **新增：`endBy` 终局裁决来源**。「认输」唯一入口是人点按钮，机机实验里这属于人判；
+  棋谱现落 `endBy:'human'`，战绩簿与实验报告标「人判」，不再混进引擎版本胜率。
+- 修正 `js/tactics-versions.js` 过期注释（「合计应等于 games/ 全部 28 局」；实为 54）。
 
 ### Jev 强度
 

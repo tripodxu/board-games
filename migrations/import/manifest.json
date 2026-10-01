@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-10-01T09:28:03.491Z",
+  "games": 54,
+  "moves": 4379,
+  "experiments": 6,
+  "payloadBytes": 845578,
+  "byGame": {
+    "gomoku": 54
+  },
+  "tags": [
+    "exp-20260929105234",
+    "exp-20260929111222",
+    "exp-20260930025135",
+    "exp-20260930084500",
+    "exp-20260930090336",
+    "exp-20260930143522"
+  ],
+  "shards": [
+    {
+      "file": "0001_games.sql",
+      "statements": 117,
+      "bytes": 1662608,
+      "sha256": "639782d2d2c375bdf9178440bf8b6801d55998c0c1815a2987c05f52c35cb2af"
+    }
+  ]
+}

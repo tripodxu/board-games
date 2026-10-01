@@ -1,6 +1,10 @@
 # ADR-0006：Rapfi WASM 本地引擎对手（Gomocup 协议），新增 rapfi 渠道
 
 - 状态：accepted（2026-09-29）
+- 迁移注记（2026-10-01，Worker + Vite 重构）：资产目录由 `rapfi/` 改为
+  `public/rapfi/`（Vite `publicDir`，构建时原样拷入 `dist/client/rapfi/`）；
+  浏览器侧懒加载路径不变（`/rapfi/rapfi-single-simd128.js`），三件套仍同目录。
+  见 `docs/plans/2026-10-01-workers-d1-rebuild.md` §6.6。下方正文描述的是当时的目录。
 - 背景：对比实验需要除 Jev（prompt 型）之外的强对手基线。Rapfi 是
   Gomocup 协议的传统五子棋引擎（dhbloo/rapfi），有官方 WASM 构建先例
   （gomoku-calculator），适合以「本地引擎」渠道接入：无需 key、不依赖

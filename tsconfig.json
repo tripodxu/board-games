@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    /* wrangler types 生成的 worker-configuration.d.ts 已内嵌全部 runtime 类型，
+       @cloudflare/workers-types 与之重复且会打架，故只留 vite/client。
+       `cloudflare:test` 的类型由 test/worker/env.d.ts 的三斜线引用引入。 */
+    "types": ["vite/client"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+
+    /* 让 Node（>=22.18）可以直接剥离类型运行 src/core 与 src/shared：
+       只允许「可擦除」语法（禁 enum / namespace / 构造器参数属性 / import =）。 */
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "noEmit": true
+
+    /* 刻意**不配 paths 别名**：Node 的类型剥离不解析 tsconfig paths，
+       而 src/core 必须能被 `node test/run-tests.mjs` 直接加载。
+       全仓统一用「相对路径 + 显式 .ts 扩展名」导入（allowImportingTsExtensions）。 */
+  },
+  "include": [
+    "worker-configuration.d.ts",
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "test/**/*.mjs",
+    "scripts/**/*.mjs",
+    "vite.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".wrangler"]
+}
