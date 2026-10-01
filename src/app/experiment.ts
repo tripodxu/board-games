@@ -38,6 +38,7 @@ import type { AppCtx } from './ctx.ts';
 import { startGame } from './loop.ts';
 import { borrowSideCfg, modeValue, syncFoeEnabled } from './modes.ts';
 import { setStatus, toast } from './panels.ts';
+import { loadLatestGames } from './records.ts';
 
 /** 实验推进的间隔（旧 `setTimeout(…, 2500)`，js/app.js:590）。 */
 export const EXP_NEXT_DELAY_MS = 2500;
@@ -179,5 +180,7 @@ export function recordExperimentRun(ctx: AppCtx): void {
     /* `saveExperiment` 的返回体是 `unknown | null`（client.ts:150），这里只关心 ok。 */
     const resp = r as { ok?: boolean } | null;
     if (resp && resp.ok) void refreshServerExperiments(ctx);
+    /* 这一轮的棋谱已经归档：顺手把报告顶部的「最新棋谱」也刷新一遍（离线时静默失败）。 */
+    void loadLatestGames(ctx);
   });
 }

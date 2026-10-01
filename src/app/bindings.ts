@@ -24,7 +24,7 @@ import { buildGameExport } from '../core/record/export.ts';
 import { bindTrendChips } from '../ui/panels/cockpit.ts';
 import { bindClearRecords } from '../ui/panels/record-book.ts';
 import { bindExperimentPanel, bindMatchSettings, bindModeSwitch } from '../ui/panels/experiment.ts';
-import { loadGameArchive } from './records.ts';
+import { loadGameArchive, loadLatestGames } from './records.ts';
 import {
   isTurnAI,
   passTurn,
@@ -243,9 +243,10 @@ export function bindAll(ctx: AppCtx): void {
     void runProbe(ctx);
   });
 
-  /* 归档重载（顺带刷新 P7c 的排行榜 / 开局库：三块数据面板共用这个「刷新」入口） */
+  /* 归档重载（顺带刷新 P7c 的排行榜 / 开局库与实验报告顶部的「最新棋谱」） */
   onOnce(byId('archiveReload'), 'click', () => {
     void loadGameArchive(ctx);
+    void loadLatestGames(ctx);
     refreshDataPanels(ctx);
   });
 

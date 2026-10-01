@@ -7,7 +7,7 @@
  *
  * 断言方式：渲染后查 DOM（行数、data-key、数字格、条宽、注脚文案），不做源码字符串匹配。
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   expAggregate,
   expSideStats,
@@ -15,10 +15,12 @@ import {
   gameSide,
   pct,
   renderExpHistory,
+  renderLatestGames,
   roundScore,
   type ExperimentEntry,
 } from '../../src/ui/panels/experiment-report.ts';
-import { cleanup, mount, need } from './helpers.ts';
+import { loadLatestGames } from '../../src/app/records.ts';
+import { cleanup, click, mount, need } from './helpers.ts';
 
 afterEach(cleanup);
 
@@ -133,5 +135,187 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
     expect(h.querySelectorAll('.exp-card').length).toBe(0);
     expect(h.querySelector('#expHistory')!.textContent).toContain('暂无实验记录');
     expect(need(h.querySelector('#expReportNote')).textContent).toBe('');
+  });
+});
+
+/* ── 最新棋谱（#expLatestGames）─────────────────────────────────────────────
+ * 报告面板原本只画实验轮次卡，归档里最新的一批机机对局**根本没挂 experiment tag**，
+ * 永远进不了轮次卡 —— 这些用例钉住「按归档顺序列出最新 N 份 + 一键回放」这条新入口。
+ */
+function latestHost(): HTMLElement {
+  return mount('<div id="expLatestGames"></div>');
+}
+
+/** 一行真实形状的归档条目（`src/app/records.ts` 的 `latestRow()` 吃它）。 */
+function latestRow(uid: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    gameUid: uid,
+    day: '2026-10-01',
+    createdAt: '2026-10-01T10:06:09.131Z',
+    game: '五子棋',
+    blackChannel: 'proxy',
+    whiteChannel: 'proxy',
+    blackTactics: 'v9-vcf-sound',
+    whiteTactics: 'v9-vcf-sound',
+    blackThink: 0,
+    whiteThink: 0,
+    moveCount: 20,
+    result: '黑方获胜（五连）',
+    ...over,
+  };
+}
+
+describe('实验报告：最新棋谱（渲染器）', () => {
+  it('列出每一行的时间/棋种/手数/双方归因，并带可点的「回放」', () => {
+    const h = latestHost();
+    const picked: string[] = [];
+    renderLatestGames({
+      root: h,
+      rows: [
+        {
+          gameUid: 'c926dfea294974b2',
+          when: '10-01 18:06',
+          game: '五子棋',
+          black: 'Jev(代理) v9-vcf-sound',
+          white: 'Jev(代理) v9-vcf-sound',
+          moves: 20,
+          result: '黑方获胜（五连）',
+        },
+        {
+          gameUid: 'aaaa111122223333',
+          when: '09-30 12:00',
+          game: '五子棋',
+          black: 'Rapfi(3s)',
+          white: 'Jev(代理) v8',
+          moves: 181,
+          result: '黑方获胜（认输）',
+          tag: 'exp-20260930143522',
+          no: 2,
+        },
+      ],
+      handlers: { onReplay: (uid) => picked.push(uid) },
+    });
+
+    expect(h.querySelector('.exp-latest-head')!.textContent).toContain('最新棋谱');
+    const rows = [...h.querySelectorAll('.exp-latest-row')];
+    expect(rows.length).toBe(2);
+    expect(rows.map((r) => (r as HTMLElement).dataset.uid)).toEqual(['c926dfea294974b2', 'aaaa111122223333']);
+
+    const first = need(rows[0], '第一行');
+    expect(first.querySelector('.exp-latest-when')!.textContent).toBe('10-01 18:06');
+    expect(first.querySelector('.exp-latest-game')!.textContent).toBe('五子棋');
+    expect(first.querySelector('.exp-latest-moves')!.textContent).toBe('20 手');
+    expect([...first.querySelectorAll('.exp-latest-side')].map((s) => s.textContent))
+      .toEqual(['Jev(代理) v9-vcf-sound(黑)', 'Jev(代理) v9-vcf-sound(白)']);
+    expect(first.querySelector('.exp-latest-result')!.textContent).toBe('→ 黑方获胜（五连）');
+    /* 没挂 experiment tag 的行不显示 tag 格（这正是「最新机机对局进不了轮次卡」的那批） */
+    expect(first.querySelector('.exp-latest-tag')).toBeNull();
+
+    const second = need(rows[1], '第二行');
+    expect(second.querySelector('.exp-latest-tag')!.textContent).toBe('exp-20260930143522 #2');
+    expect(second.querySelector('.exp-latest-moves')!.textContent).toBe('181 手');
+
+    const btn = need(first.querySelector('.exp-latest-open'), '回放按钮') as HTMLElement;
+    expect(btn.textContent).toBe('回放');
+    click(btn);
+    expect(picked).toEqual(['c926dfea294974b2']);
+  });
+
+  it('加载中与空归档是两种不同文案', () => {
+    const h = latestHost();
+    renderLatestGames({ root: h, rows: null });
+    expect(h.querySelector('.hint')!.textContent).toBe('加载中…');
+    expect(h.querySelectorAll('.exp-latest-row').length).toBe(0);
+
+    renderLatestGames({ root: h, rows: [] });
+    expect(h.querySelector('.hint')!.textContent).toContain('还没有棋谱');
+    expect(h.querySelector('.exp-latest-row')).toBeNull();
+  });
+
+  it('没有 onReplay 回调时不渲染按钮（避免点了没反应的按钮）', () => {
+    const h = latestHost();
+    renderLatestGames({
+      root: h,
+      rows: [{
+        gameUid: 'c926dfea294974b2',
+        when: '10-01 18:06',
+        game: '五子棋',
+        black: 'A',
+        white: 'B',
+        moves: 20,
+        result: '和棋',
+      }],
+    });
+    expect(h.querySelectorAll('.exp-latest-row').length).toBe(1);
+    expect(h.querySelector('.exp-latest-open')).toBeNull();
+  });
+
+  it('重画是幂等的：第二次渲染不会叠加上一轮的行', () => {
+    const h = latestHost();
+    const row = (uid: string) => ({
+      gameUid: uid, when: '10-01 18:06', game: '五子棋',
+      black: 'A', white: 'B', moves: 20, result: '和棋',
+    });
+    renderLatestGames({ root: h, rows: [row('u1'), row('u2')] });
+    renderLatestGames({ root: h, rows: [row('u3')] });
+    expect([...h.querySelectorAll('.exp-latest-row')].map((r) => (r as HTMLElement).dataset.uid)).toEqual(['u3']);
+  });
+});
+
+/* ── 装配层的整形（latestRow / loadLatestGames）────────────────────────────
+ * 这里不 mount 整个 app：直接用 `stubFetch` + 真实 `boot()` 太重，
+ * `loadLatestGames()` 只依赖 `byId('expLatestGames')` 与 `client.listGames()`。
+ */
+describe('实验报告：最新棋谱（装配层取数与整形）', () => {
+  it('listGames 的条目被整形为行：时间/棋种/归因/手数/tag#no，缺 uid 的行丢掉', async () => {
+    document.body.innerHTML = '<div id="expLatestGames"></div>';
+    const routes: Record<string, unknown> = {
+      '/api/games': {
+        ok: true,
+        nextCursor: 'cur-2',
+        games: [
+          latestRow('uid-new'),
+          latestRow('uid-tagged', { experimentTag: 'exp-20260930143522', expGameNo: 2, moveCount: 181 }),
+          { day: '2026-09-29', game: '五子棋' }, /* 没有 gameUid（老条目）：丢弃 */
+        ],
+      },
+    };
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      const path = String(url).replace(/^https?:\/\/[^/]+/, '');
+      seen.push(path);
+      const body = routes[path.split('?')[0]!] ?? {};
+      return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    });
+    try {
+      await loadLatestGames({} as never);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(seen).toEqual(['/api/games?limit=10']);
+    const rows = [...document.querySelectorAll('.exp-latest-row')];
+    expect(rows.length).toBe(2);
+    expect(rows.map((r) => (r as HTMLElement).dataset.uid)).toEqual(['uid-new', 'uid-tagged']);
+    expect(rows[0]!.querySelector('.exp-latest-when')!.textContent).toBe('10-01 18:06');
+    expect(rows[0]!.querySelector('.exp-latest-game')!.textContent).toBe('五子棋');
+    expect(rows[0]!.querySelector('.exp-latest-moves')!.textContent).toBe('20 手');
+    /* 走的是共用的 `sideAttribution()`：`v9-vcf-sound` 被压成注册表 id `v9` */
+    expect(rows[0]!.querySelector('.exp-latest-side')!.textContent).toBe('Jev·v9(黑)');
+    expect(rows[1]!.querySelector('.exp-latest-tag')!.textContent).toBe('exp-20260930143522 #2');
+  });
+
+  it('后端不可用时给「加载中…」而不是崩掉（离线降级路径）', async () => {
+    document.body.innerHTML = '<div id="expLatestGames"></div>';
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('offline');
+    });
+    try {
+      await loadLatestGames({} as never);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(document.querySelector('.hint')!.textContent).toBe('加载中…');
+    expect(document.querySelector('.exp-latest-row')).toBeNull();
   });
 });

@@ -1409,3 +1409,39 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   .lb-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px 38px 40px; gap: 4px; }
   .op-row { grid-template-columns: minmax(0, 1fr) 42px 50px 44px; gap: 5px; }
 }
+
+/* ---------- 实验报告：归档里最新的对局 ----------
+ * 两行一行：上行「时间 · 棋种 · 手数 · 实验 tag」，下行「黑 vs 白 → 结果」；
+ * 右列是「回放」按钮，跨两行垂直居中。行内文本全部单行省略，title 里看全。 */
+.exp-latest { margin: 0 0 10px; }
+.exp-latest-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  margin: 0 0 2px; font-size: 12px; color: var(--ink);
+}
+.exp-latest-head .dim { font-size: 11px; }
+.exp-latest-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 2px 8px;
+  padding: 5px 6px;
+  border-top: 1px dashed var(--line);
+  border-radius: 8px;
+  font-size: 11.5px; color: var(--ink-dim);
+}
+.exp-latest-row:hover { background: var(--bg2); }
+.exp-latest-top, .exp-latest-main {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0;
+}
+.exp-latest-main { gap: 4px 6px; }
+.exp-latest-when { color: var(--ink-mute); font-size: 11px; white-space: nowrap; }
+.exp-latest-game { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.exp-latest-moves { color: var(--ink-mute); white-space: nowrap; }
+/* tag 是 `exp-20260930143522 #2` 这种长串，让它自己占满余宽时省略 */
+.exp-latest-tag { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 两方归因串可能很长（渠道 + 战术版本），各占一半、溢出省略 */
+.exp-latest-side { min-width: 0; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-latest-result { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-latest-open { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+
+@media (max-width: 560px) {
+  .exp-latest-side { max-width: 100%; }
+}

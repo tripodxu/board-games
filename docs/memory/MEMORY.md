@@ -8,6 +8,17 @@
 
 ---
 
+## 2026-10-01 · 报告面板顶部加「最新棋谱」：归档里最新一批机机对局以前永远看不见
+
+- **用户要求**（逐字，m04005）：「就是说现在实验报告里面只有早期的机器对弈棋谱分析报告，要更新到最新」。问清后确认**范围 = 报告要显示归档棋谱里最新的那些对局**（不是「现在真跑新一轮实验」、也不是「只改排序」），渠道倾向 proxy（**Jev API Key 用户答应提供但还没给**，Worker 没有 secret、仓库无 `.dev.vars`）。
+- **为什么面板停在早期**：轮次卡按 `games.experiment_tag` 分组，而归档里最新的一批机机对局**根本没挂 tag** —— 生产 D1 的 `id 54 jev-v9-vs-jev-v9`（20 手）、`id 53 jev-v9-vs-jev-v8`（181 手，黑方认输）、`id 50/49 jev-v0-vs-jev-v0`（13/14 手）全未挂 tag，而 6 轮实验的 tag 全是 2026-09-29/30 的。**列名坑**：查询得用 `experiment_tag`（`experiment` 不是列名，会报 `no such column`），`tactics_version` 在归档行里恒为 NULL（版本号在 `black_tactics`/`white_tactics`）。
+- **做法**：`src/ui/panels/experiment-report.ts` 新增 `renderLatestGames({ root, rows, handlers })`（`rows === null` → 「加载中…」，`[]` → 「归档里还没有棋谱。」）+ `.exp-latest*` 样式；`src/app/records.ts` 新增 `LATEST_GAMES_LIMIT = 10`、`latestRow()`（缺 `gameUid` 的行**丢弃**，因为回放要 uid；`when`/`game` 复用 `archiveWhen()`/`archiveGameName()`；归因走共用的 `sideAttribution()`）与 `loadLatestGames(ctx)`（`listGames({ limit: 10 })`，异常 → `null`）；挂载点 `#expLatestGames` 在 `index.html` 的 `#body-expreport` 里、`#expHistory` 之**前**（面板覆写 `root.className`，所以只能用 id 定位）；三处接线 = boot、`#archiveReload`、每轮实验 `saveExperiment().then`（**注意 `experiment.ts` 需要新 import**，漏了会 `TS2304`）。
+- **证据**：`test/ui/experiment-report.spec.ts` +6 例（渲染/空态两态/无回调不出按钮/重画幂等/装配层整形/离线降级）、`test/app/latest-games.spec.ts` 3 例（boot 后按归档序三行 + `?limit=10`、点「回放」真的走 `/api/games/u/uid-new` 并让回放器显示 `0/3`、离线停在「加载中…」）；**负向对照三组都真红**——去掉 uid 过滤 → 3 行（期望 2）、渲染改 `appendChild` → 幂等例红、`null` 与 `[]` 共用文案 → 空态例红；把 boot 里的调用 `if (false)` 掉 → app 三例全红。
+- **实测**：`npx tsc --noEmit` 0；`npm test` **32 文件 / 327 用例全绿**；`npm run deploy` → 线上版本 **`128ed7db-1b9d-4b84-a3a2-6ae6c9b6a10d`**；三渠道浏览器冒烟 mock **14/14**、`--offline` **13/13**、`--channel rapfi` **14/14**，新项输出「最新 10 份（首份 09-30 23:34 · 五子棋 · 20 手 · Jev·v9(黑) → 白方 获胜（五连）），点「回放」后回放器 20 手、位置 0/20」。
+- **测试环境的坑**：happy-dom 里 `canvas.getContext('2d')` 返回 null，所以 `drawReplayPosition()` 会在建 canvas 前安静 return —— 断言只能查 `.rp-board` 宿主，不能查 `.rp-board canvas`。
+
+---
+
 ## 2026-10-01 · 实验报告改成「按渠道 · 战术版本」分桶，并顺手抓出「服务端战报从来没并进面板」
 
 - **用户要求**（逐字，m03647「优化实验报告栏目」）：给的 5 个选项里只选了「按渠道/战术版本的分组统计 + 胜率」。所以只做口径；视觉分级 / note 折叠 / 窄屏 / 「查看该轮棋谱」联动都**没做**（别以为漏了）。

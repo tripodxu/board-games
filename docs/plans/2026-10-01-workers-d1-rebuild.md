@@ -764,7 +764,7 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 | 归档分页查询 | 归档面板「加载更多」+ 按棋种/渠道/战术档/标签筛选 | **分页已验（2026-10-01）**：首屏 50 → 「加载更多」追加到 54，按钮收掉；筛选控件仍未做（服务端 `?game=`/`?tag=`/`?since=` 已支持） |
 | **棋谱回放器**（路线图项） | `/api/games/u/:uid` + 逐手重放面板（进度条/单步/自动播） | 打开任意历史局可逐手重放 |
 | 开具体验 SQL 化 | `state.experience` 改吃 `/api/openings`（跨设备、非本机） | 同一开局 ≥2 局后注入生效 |
-| 排行榜 | 渠道 × 战术档 × 对阵胜率（含「人判」单列） | 与实验报告口径一致（**2026-10-01 已对齐**：实验报告也改成按「渠道 · 战术版本 · 思考深度」分身份统计、得分率和棋半分） |
+| 排行榜 | 渠道 × 战术档 × 对阵胜率（含「人判」单列） | 与实验报告口径一致（**2026-10-01 已对齐**：实验报告也改成按「渠道 · 战术版本 · 思考深度」分身份统计、得分率和棋半分；报告顶部另加「最新棋谱」列出归档最新 10 局并可一键回放，见下方执行记录④） |
 | 版本归因修正 | 用 `code_version`/`tactics_version` 列替代文件名时间窗归版 | ✅ 已完成（2026-10-01）：`DEPLOY_LAG` 台账与 `versionForFileStamp` 已退役，见下方执行记录① |
 | 批量导出 | `/api/export/games?format=jsonl` + `wrangler d1 export` 双备份 | 导出后可完整重建库（**已验：2026-10-01 `npm run db:export` + `verify:backup` → 54 局 / 4379 手 / 6 轮、payload 逐字节一致，不一致 0 处**） |
 
@@ -797,17 +797,23 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 - **开具体验 SQL 化**：`/api/openings` → `src/ui/panels/openings.ts` + `loadOpeningsPanel()`（带 `game` 与 `limit`）。
 - **归档分页「加载更多」已接线**（2026-10-01，收尾后补做）：`src/app/records.ts` 的 `ARCHIVE_PAGE_SIZE = 50` + `loadMoreArchive()` 走 `GET /api/games?cursor=…`；按 `code_version` 分组**仍未做**（现在按 `tactics_version` 分组）。
 
+**④ 实验报告顶部「最新棋谱」+ 一键回放（2026-10-01，用户追加需求）**
+
+- 起因（用户原话）：「现在实验报告里面只有早期的机器对弈棋谱分析报告，要更新到最新」——轮次卡按 `experiment_tag` 分组，而归档最新的几局（`jev-v9-vs-jev-v9` 20 手、`jev-v9-vs-jev-v8` 181 手、`jev-v0-vs-jev-v0` 13/14 手）**根本没挂 tag**，永远进不了卡片。
+- 做法：`renderLatestGames()`（`src/ui/panels/experiment-report.ts`）+ `loadLatestGames()`/`latestRow()`（`src/app/records.ts`，`LATEST_GAMES_LIMIT = 10`，缺 `gameUid` 的行丢弃）→ 挂载点 `#expLatestGames`（`index.html` 的 `#body-expreport` 里、`#expHistory` 之前）；boot / `#archiveReload` / 每轮实验结束三处重取；每行「回放」调 `openReplayer()`。
+- 验收：`test/ui/experiment-report.spec.ts` +6、`test/app/latest-games.spec.ts` +3（点回放真走 `/api/games/u/:uid`、回放器显示 `0/3`）；三组负向对照全红；`smoke:browser` 新增在线断言（实测「最新 10 份 … 点「回放」后回放器 20 手、位置 0/20」）。
+
 ### P8 · 切流、清理与文档收尾（1 天）
 
 1. ~~部署 Worker 到 `*.workers.dev`，跑 `verify-parity` 对远程~~ **已完成（2026-10-01）**：
    部署 + 自定义域 + 线上对账 `diff = 0` + 29 项 HTTP 冒烟全过，见「P4 远程执行记录」；
    剩余的是**浏览器全流程回归**（Rapfi 渠道实跑一局、面板交互），入口 `https://jevqipan.logicc.top`。
    浏览器这一项已工具化：`npm run smoke:browser`（`scripts/browser-smoke.mjs`，CDP + 系统 Chrome，
-   零 npm 依赖，**现为 13 项断言**：页签渲染 / 棋盘初始绘制 / 渠道落盘 / 开始对局后状态栏与棋盘像素变化 /
+   零 npm 依赖，**现为 14 项断言**：页签渲染 / 棋盘初始绘制 / 渠道落盘 / 开始对局后状态栏与棋盘像素变化 /
    人类真落子 / 「对手」也落子（AI 走子链路，Rapfi 给 90 s 窗口）/ 曲线切换 / 设置抽屉 /
    归档分页「加载更多」（首屏 50 → 追加到 54）/ 实验报告按「渠道 · 战术版本」分桶的胜率表 /
-   服务端战报并入（面板轮次多于本机种子两轮）/ 全程无未捕获异常）。
-   三种渠道实测各 13/13（mock / `--offline` / `--channel rapfi`）。**负向对照已验**：对当前线上（`src/main.ts` 仍是占位）跑
+   最新棋谱列出归档最新对局并可一键回放 / 服务端战报并入（面板轮次多于本机种子两轮）/ 全程无未捕获异常）。
+   三种渠道实测 mock 与 `--channel rapfi` 各 14/14、`--offline` 13/13（离线时三项在线断言让位给 2 项降级断言）。**负向对照已验**：对当前线上（`src/main.ts` 仍是占位）跑
    得 3/9，失败项正是「页签未渲染、canvas 300×150 空、点开始无反应」——说明它真的会失败而不是永远绿。
 2. 自定义域**已绑** `jevqipan.logicc.top`（2026-10-01）；`pages.dev` 断开 Git 集成 **已完成（2026-10-01）**。
    执行方式：CF API `PATCH /accounts/<id>/pages/projects/jev-qiguan`（OAuth token 取自 wrangler 凭据文件，
@@ -875,14 +881,15 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 | 命令 | 结果 |
 |---|---|
 | `npx tsc --noEmit` | 0 error（`erasableSyntaxOnly` 全仓通过） |
-| `npm test` | **31 文件 / 318 用例全绿**（19.2 s）= engines 121（7 局自对弈金样 1131 手 + `games/` 归档 54 局 4379 手逐手一致）+ vitest 三 project：core 6 文件 71 / worker 7 文件 101 / ui 18 文件 146（其中 `test/app/**` 4 文件；本轮的归档分页 3 例、实验报告分桶 5 例、服务端战报并入 3 例在内） |
+| `npm test` | **32 文件 / 327 用例全绿** = engines 121（7 局自对弈金样 1131 手 + `games/` 归档 54 局 4379 手逐手一致）+ vitest 三 project：core 6 文件 71 / worker 7 文件 101 / ui 19 文件 155（其中 `test/app/**` 5 文件；归档分页 3 例、实验报告分桶 5 例、服务端战报并入 3 例、最新棋谱 9 例都在内） |
 | `npm run build` | client JS 182.11 kB（gzip 66.61）/ CSS 40.20 kB（gzip 8.09）/ `dist/client/index.html` 29.87 kB / worker bundle ≈173 kB |
 | `npm run check:docs` | ✓ memory 置顶、✓ 41 个 md / 246 个相对链接（收尾过程中 249 → 248 → 246：删掉指向已删文件的链接，并按新规则把指向被 `.gitignore` 忽略产物的链接改成纯文本）、✓ status 0 天内 |
 
 **上线**
 
 - `npm run deploy` → 版本 `edccaaed-3997-4920-a862-d4a1f3fc4394`（首次），修复 Rapfi 后 → `170c9d07-584b-48b4-8117-cf4ccef19cec`，
-  收尾后补归档分页再发一版 → **`3a4934ee-28c5-4e7e-88c9-214da988b707`**（当前）。绑定 `env.DB (jev-qiguan)` + `env.APP_VERSION ("1.0.0")`，
+  收尾后陆续补归档分页（`3a4934ee-28c5-4e7e-88c9-214da988b707`）、实验报告分桶（`29788ef6-747a-4b08-9f0e-4aaea906ee36`）、
+  服务端战报并入（`18b2fcad-39f8-4974-8e83-952076d83fa8`）、报告顶部「最新棋谱」（**`128ed7db-1b9d-4b84-a3a2-6ae6c9b6a10d`**，当前）。绑定 `env.DB (jev-qiguan)` + `env.APP_VERSION ("1.0.0")`，
   触发 `jevqipan.logicc.top (custom domain)` + `schedule: 17 3 * * *`；`npx wrangler versions list` 有 ≥4 个历史版本可回滚。
 - 生产入口 **https://jevqipan.logicc.top**（`*.workers.dev` 从本机不可达，未启用）。
 - `npm run smoke:live` → **30 项通过 / 0 失败**：health `d1=true schema=0001_init.sql` + `today` 护栏、`/api/games` 无 payload 无截断、
@@ -894,6 +901,7 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
   （离线含「掐断 3 次」与「功能不残」两条附加断言）。断言集本轮从 9 项扩到 11 项：新增
   **「「对手」也落了子（AI 走子链路）」**（人类落子后等画布指纹或流水区再次变化，Rapfi 窗口 90 s）与
   **「归档分页：『加载更多』按 `?cursor=` 追加下一页」**（实测首屏 50 → 追加后 54 份、按钮收掉）。
+  （此后当天又扩到 13 项、再扩到 14 项＝加上「最新棋谱一键回放」，见 P7 执行记录④与验收命令表。）
 - `npm run db:export` + `npm run verify:backup` → 备份可完整重建整库：**54 局 / 4379 手 / 6 轮实验 / payload 845578 B 逐字节一致**。
 
 **本轮由端到端断言抓出的真缺陷（新断言的价值证明）**

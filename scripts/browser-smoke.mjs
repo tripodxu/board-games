@@ -475,6 +475,42 @@ try {
       : '等待 15000ms 后 #expHistory 里没有 .exp-agg-row',
   );
 
+  // 7.7) 实验报告顶部的「最新棋谱」：归档里最新的对局（含没挂 experiment tag 的机机局），
+  //      顺带点一次「回放」验证它真的把棋谱载进了回放器面板。
+  if (!OFFLINE) {
+    const latest = await waitFor(
+      `(() => { const rows = document.querySelectorAll('#expLatestGames .exp-latest-row');
+        if (!(rows.length > 0)) return '';
+        const r = rows[0];
+        return { n: rows.length,
+          when: (r.querySelector('.exp-latest-when')?.textContent ?? ''),
+          game: (r.querySelector('.exp-latest-game')?.textContent ?? ''),
+          moves: (r.querySelector('.exp-latest-moves')?.textContent ?? ''),
+          black: (r.querySelector('.exp-latest-side')?.textContent ?? ''),
+          result: (r.querySelector('.exp-latest-result')?.textContent ?? ''),
+          btn: !!r.querySelector('.exp-latest-open') }; })()`,
+      { label: '最新棋谱', timeout: 15000, every: 250 },
+    );
+    let replay = null;
+    if (latest && latest.btn) {
+      await evaluate(`(() => { document.querySelector('#expLatestGames .exp-latest-open')?.click(); })()`);
+      replay = await waitFor(
+        `(() => { const pos = (document.querySelector('#replayerPanel .rp-pos')?.textContent ?? '');
+          if (!/^0\\/[1-9]/.test(pos)) return '';
+          return { pos: pos, moves: document.querySelectorAll('#replayerPanel .rp-move').length }; })()`,
+        { label: '最新棋谱→回放器', timeout: 15000, every: 250 },
+      );
+    }
+    check(
+      '实验报告：最新棋谱列出归档最新对局（并可一键回放）',
+      Boolean(latest) && Boolean(latest.moves) && Boolean(latest.btn) && Boolean(replay),
+      latest
+        ? `最新 ${latest.n} 份（首份 ${String(latest.when).trim()} · ${String(latest.game).trim()} · ${String(latest.moves).trim()} · ${String(latest.black).trim()} ${String(latest.result).trim()}）` +
+          (replay ? `，点「回放」后回放器 ${replay.moves} 手、位置 ${replay.pos}` : '，但点「回放」后回放器仍停在 0/0')
+        : '等待 15000ms 后 #expLatestGames 里没有 .exp-latest-row',
+    );
+  }
+
   /* 服务端战报真的并进来了吗？——本机种子只有 2 轮，合并成功后面板上的轮次必然更多。
      这一条专抓「客户端没解包 {experiments:[…]}」那类契约漂移（P6 起服务端战报曾静默丢失）。 */
   if (!OFFLINE) {

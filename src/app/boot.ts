@@ -29,6 +29,7 @@ import { createSideTabStore, initSideTabs } from '../ui/panels/tabs.ts';
 import { byId } from '../ui/dom.ts';
 import { initBackend } from './backend.ts';
 import { bindAll, foldHooks } from './bindings.ts';
+import { loadLatestGames } from './records.ts';
 import { installRapfiLoader } from './rapfi-loader.ts';
 import type { AppCtx } from './ctx.ts';
 import { createCtx } from './ctx.ts';
@@ -188,6 +189,8 @@ export function boot(opts: BootOptions = {}): AppCtx | null {
     /* 排行榜 / 开局库取数（离线时客户端返回 null → 面板停在「加载中…」，不报错）。 */
     void loadLeaderboardPanel(ctx);
     void loadOpeningsPanel(ctx);
+    /* 实验报告顶部的「最新棋谱」：归档最新一页（离线时同上下载失败 → 「加载中…」）。 */
+    void loadLatestGames(ctx);
   }).catch((e: unknown) => {
     console.warn('[jev-qiguan] 后端探活失败（按离线降级继续）', e);
   });

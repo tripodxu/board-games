@@ -160,7 +160,7 @@ npm run verify:backup        # 校验导出备份可重建
 
 # 冒烟与文档
 npm run smoke:live       # 线上 HTTP 冒烟（默认打 https://jevqipan.logicc.top，会写一行再删）
-npm run smoke:browser    # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge；--offline 验降级，含归档分页与实验报告分桶）
+npm run smoke:browser    # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge；--offline 验降级，含归档分页、实验报告分桶与最新棋谱）
 npm run check:docs       # 文档护栏：memory 置顶、相对链接、status 日期
 npm run golden           # 重新生成金样——**预期失败**：金样已冻结，生成器依赖的旧实现已删除
 ```
@@ -172,7 +172,7 @@ npm run golden           # 重新生成金样——**预期失败**：金样已�
 1. `npm run typecheck && npm test`（或让 CI 先跑 `.github/workflows/test.yml`）。
 2. 需要动 schema 时先 `npm run db:migrate:remote`（迁移是追加式的，别改已应用的 `migrations/*.sql`）。
 3. `npm run deploy`（= `npm run build` + `wrangler deploy`），需要 `CLOUDFLARE_API_TOKEN`（本地用 `wrangler login`）。
-4. 部署后自检：`npm run smoke:live`（30 项 HTTP 断言）+ `npm run smoke:browser`（13 项浏览器断言：页签/棋盘/渠道/落子/AI 走子/曲线/抽屉/归档分页/实验报告分桶与服务端战报并入/无异常）。
+4. 部署后自检：`npm run smoke:live`（30 项 HTTP 断言）+ `npm run smoke:browser`（14 项浏览器断言：页签/棋盘/渠道/落子/AI 走子/曲线/抽屉/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入/无异常）。
 5. 发布前后留底：`npm run db:export`；备份可信度用 `npm run verify:backup` 验。
 
 CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:new → check:docs，`REQUIRE_SQLITE=1` 强制真 SQLite）、
@@ -208,12 +208,14 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
    并按 tag upsert。
 9. **实验报告的分桶对比**：按「渠道 · 战术版本 · 思考深度」拆成独立身份统计局/胜/和/得分率
    （和棋按半分），两侧同渠道时不再并成一桶；每轮另给 A/B 单轮得分率条。
-10. **随机度**：`topK` 滑杆控制采样（1 = 最强手，k>1 = 前 k 名概率加权随机）。
-11. **棋谱回放**：每局有永久链接 `/api/games/u/<gameUid>`，面板里可逐步回放（前进/后退/到底）。
-12. **排行榜**：`/api/leaderboard` 按设备与战术档聚合；**开具体验**：`/api/openings` 给出常见开局的先手胜率与样例局。
-13. **归档分页**：归档面板首屏一页 50 份，底部「加载更多」按服务端 keyset 游标（`GET /api/games?cursor=…`）追加，翻完自动收掉按钮。
-14. **数据导出**：`/api/export/games` 流式 NDJSON（一行一局），走内部游标翻页，对客户端是一个连续流。
-15. **自检入口**：URL 加 `?test=1` 显示浏览器内自检面板（七个引擎逐个 `selfTest()` + 跨模块自检）。
+10. **最新棋谱**：实验报告顶部列出归档里最新的 10 局（新 → 旧，含**没挂实验 tag 的机机对局**——
+   以前这些局永远进不了轮次卡），每行带时间/棋种/手数/双方归因与结果，一键送进回放器。
+11. **随机度**：`topK` 滑杆控制采样（1 = 最强手，k>1 = 前 k 名概率加权随机）。
+12. **棋谱回放**：每局有永久链接 `/api/games/u/<gameUid>`，面板里可逐步回放（前进/后退/到底）。
+13. **排行榜**：`/api/leaderboard` 按设备与战术档聚合；**开具体验**：`/api/openings` 给出常见开局的先手胜率与样例局。
+14. **归档分页**：归档面板首屏一页 50 份，底部「加载更多」按服务端 keyset 游标（`GET /api/games?cursor=…`）追加，翻完自动收掉按钮。
+15. **数据导出**：`/api/export/games` 流式 NDJSON（一行一局），走内部游标翻页，对客户端是一个连续流。
+16. **自检入口**：URL 加 `?test=1` 显示浏览器内自检面板（七个引擎逐个 `selfTest()` + 跨模块自检）。
 
 ## Jev 走棋原理
 

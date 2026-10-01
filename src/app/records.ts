@@ -14,6 +14,8 @@ import { listGames, gameUrl } from '../core/api/client.ts';
 import { getGame } from '../core/registry.ts';
 import { VERSIONS, resolve } from '../core/tactics-versions.ts';
 import { byId, el, setText, clear } from '../ui/dom.ts';
+import { renderLatestGames, type LatestGameRow } from '../ui/panels/experiment-report.ts';
+import { sideAttribution } from '../ui/panels/options.ts';
 import type { AppCtx } from './ctx.ts';
 import { openReplayer } from './panels.ts';
 
@@ -29,6 +31,16 @@ interface ArchiveRow {
   rowAt?: string;
   tacticsVersion?: string | null;
   codeVersion?: string | null;
+  blackChannel?: string | null;
+  whiteChannel?: string | null;
+  blackTactics?: string | null;
+  whiteTactics?: string | null;
+  blackThink?: number | null;
+  whiteThink?: number | null;
+  moveCount?: number | null;
+  result?: string | null;
+  experimentTag?: string | null;
+  expGameNo?: number | null;
   [k: string]: unknown;
 }
 
@@ -207,4 +219,56 @@ function renderArchive(ctx: AppCtx, box: HTMLElement): void {
   box.appendChild(frag);
   setText(byId('archiveNote'),
     archiveRows.length + ' 份 · 按战术版本分组' + (archiveCursor ? ' · 还有更多' : ''));
+}
+
+/* ---------- 「最新棋谱」：实验报告面板顶部的归档最新对局 ----------
+ * 报告面板原本只画**实验轮次卡**（`#expHistory`），而归档里最新的一批机机对局有的
+ * 根本没挂 `experiment` tag（如 `jev-v9-vs-jev-v9`），永远进不了轮次卡 —— 面板看上去
+ * 停在早期实验上。这里单独取一页归档、只留最新 N 份渲染到 `#expLatestGames`。
+ */
+
+/** 「最新棋谱」显示条数（归档面板首屏是 50 份，这里只要一眼能看到的最新几局）。 */
+export const LATEST_GAMES_LIMIT = 10;
+
+/** 归档行 → 报告里的「最新棋谱」行（缺 `game_uid` 的行直接丢掉：回放需要 uid）。 */
+function latestRow(raw: ArchiveRow): LatestGameRow | null {
+  const gameUid = raw.gameUid ? String(raw.gameUid) : '';
+  if (!gameUid) return null;
+  return {
+    gameUid,
+    when: archiveWhen(raw),
+    game: archiveGameName(raw),
+    black: sideAttribution(raw.blackChannel, raw.blackTactics, raw.blackThink),
+    white: sideAttribution(raw.whiteChannel, raw.whiteTactics, raw.whiteThink),
+    moves: Number(raw.moveCount) || 0,
+    result: String(raw.result || ''),
+    ...(raw.experimentTag
+      ? { tag: String(raw.experimentTag), ...(raw.expGameNo == null ? {} : { no: Number(raw.expGameNo) }) }
+      : {}),
+  };
+}
+
+/** 取最新一页归档并重画「最新棋谱」（离线 / 后端不可用时给 `null`，面板显「加载中…」）。 */
+export async function loadLatestGames(ctx: AppCtx): Promise<void> {
+  const box = byId<HTMLElement>('expLatestGames');
+  if (!box) return;
+  let list: Awaited<ReturnType<typeof listGames>> = null;
+  try {
+    list = await listGames({ limit: LATEST_GAMES_LIMIT });
+  } catch (_) {
+    list = null;
+  }
+  const raw = list && Array.isArray(list.games) ? (list.games as ArchiveRow[]) : null;
+  const rows = raw
+    ? raw.map(latestRow).filter((r): r is LatestGameRow => r !== null)
+    : null;
+  renderLatestGames({
+    root: box,
+    rows,
+    handlers: {
+      onReplay: (gameUid) => {
+        void openReplayer(ctx, gameUid);
+      },
+    },
+  });
 }

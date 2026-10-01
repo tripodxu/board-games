@@ -464,6 +464,84 @@ export function renderExpHistory(list: readonly ExperimentEntry[], root?: UiRoot
   setText(qs(r, '#expReportNote'), `${list.length} 轮实验 · ${t.effective} 局有效`);
 }
 
+/* ── 最新棋谱：归档里最新的对局 ─────────────────────────────────────────────
+ * 需求（2026-10-01）：报告里只有 2026-09-29/30 那 6 轮实验卡片，而归档里最新的一批
+ * 对局（`jev-v9-vs-jev-v9`、`rapfi vs proxy` 这种机机归档）**有的根本没挂 experiment
+ * tag**，永远进不了轮次卡 —— 报告看上去停在早期实验上。这里按 `GET /api/games` 的
+ * 返回顺序（服务端按 id 倒序，最新在前）列出最新 N 份，每行给「回放」直达回放器。
+ */
+
+/** 一行「最新棋谱」（装配层把 `GET /api/games` 的条目整形到这里）。 */
+export interface LatestGameRow {
+  gameUid: string;
+  /** `MM-DD HH:MM`（行里没有时间戳时给空串） */
+  when: string;
+  /** 棋种中文名 */
+  game: string;
+  /** 黑方归因（`sideAttribution()` 口径，如 `Jev(代理) v9-vcf-sound`） */
+  black: string;
+  white: string;
+  moves: number;
+  result: string;
+  /** 属于某轮实验时给出 tag 与局号（没挂 tag 的机机对局留空） */
+  tag?: string;
+  no?: number;
+}
+
+export interface LatestGamesProps {
+  root: HTMLElement;
+  /** `null` = 加载中（离线也走这条，与排行榜 / 开局库同一约定） */
+  rows: LatestGameRow[] | null;
+  handlers?: { onReplay?: (gameUid: string) => void };
+}
+
+/** 重画「最新棋谱」块（`root` 由装配层给出，见 `#expLatestGames`）。 */
+export function renderLatestGames(props: LatestGamesProps): void {
+  const { root, rows } = props;
+  const onReplay = props.handlers?.onReplay;
+  const head = el('div', { class: 'exp-latest-head' }, [
+    el('b', { text: '最新棋谱' }),
+    el('span', { class: 'dim', text: '归档里最新的对局（新 → 旧）' }),
+  ]);
+
+  if (rows === null || !rows.length) {
+    replaceChildren(root, [
+      el('div', { class: 'exp-latest' }, [
+        head,
+        el('div', { class: 'hint', text: rows === null ? '加载中…' : '归档里还没有棋谱。' }),
+      ]),
+    ]);
+    return;
+  }
+
+  const rowEls = rows.map((r) =>
+    el('div', { class: 'exp-latest-row', dataset: { uid: r.gameUid } }, [
+      el('div', { class: 'exp-latest-top' }, [
+        el('span', { class: 'mono exp-latest-when', text: r.when }),
+        el('span', { class: 'exp-latest-game', text: r.game }),
+        el('span', { class: 'mono exp-latest-moves', text: r.moves + ' 手' }),
+        r.tag ? el('span', { class: 'mono dim exp-latest-tag', text: r.tag + (r.no ? ' #' + r.no : '') }) : null,
+      ]),
+      el('div', { class: 'exp-latest-main' }, [
+        el('span', { class: 'exp-latest-side', title: r.black, text: r.black + '(黑)' }),
+        el('span', { class: 'dim', text: 'vs' }),
+        el('span', { class: 'exp-latest-side', title: r.white, text: r.white + '(白)' }),
+        el('span', { class: 'exp-latest-result', text: '→ ' + r.result }),
+      ]),
+      onReplay && r.gameUid
+        ? el('button', {
+          class: 'exp-latest-open mini-btn',
+          type: 'button',
+          title: '载入「棋谱回放」面板逐手重放',
+          text: '回放',
+          onclick: () => onReplay(r.gameUid),
+        })
+        : null,
+    ]),
+  );
+
+  replaceChildren(root, [el('div', { class: 'exp-latest' }, [head, ...rowEls])]);
+}
 /** 旧 `recordExperiment()` 的 entry 组装（js/app.js:1307-1319，note 恒为空串）。 */
 export function newEntryFromRun(state: ExperimentState, date: string = new Date().toISOString()): ExperimentEntry {
   return {
