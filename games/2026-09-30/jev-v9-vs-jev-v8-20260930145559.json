@@ -1,0 +1,3733 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T14:55:59.839Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "机机",
+  "channel": "proxy",
+  "slug": "jev-v9-vs-jev-v8",
+  "duel": "黑 Jev·v9 vs 白 Jev·v8",
+  "blackChannel": "proxy",
+  "whiteChannel": "proxy",
+  "experiment": "exp-20260930143522",
+  "expGameNo": 1,
+  "tacticsVersion": "v9-vcf-sound",
+  "blackTactics": "v9-vcf-sound",
+  "whiteTactics": "v8-vcf-try",
+  "result": "和棋（棋盘已满）",
+  "notation": "H8,H7,H6,H5,H9,H10,H11,I11,G9,I9,I10,I7,G7,G8,I6,I5,G5,G6,I8,G10,G11,G12,I4,I12,H12,I13,I14,H14,J12,H13,J13,J11,K10,K12,G14,G13,F12,F13,E13,K13,K11,L11,J10,L10,L12,M12,M11,N11,N10,M10,L9,J9,N9,K9,L13,J14,K14,J8,K7,K8,J7,K6,F8,E9,F9,F7,E8,F10,E10,D10,C10,C9,M9,L8,M8,N7,N8,O8,M7,L6,M6,M5,M4,E5,F5,F6,F11,E11,B8,D8,D9,C8,E7,D6,C6,D7,F4,B11,C7,E3,E4,D5,D4,C4,E6,H4,G3,G4,J4,K4,K5,J5,J6,D11,C11,D12,D14,C15,C13,C12,D13,M13,E12,E14,E15,B12,B10,B9,L14,F14,B13,A13,N13,C14,M14,N12,O12,L15,K15,J15,I15,H15,G15,F15,N14,O14,O13,M15,D15,B14,A14,B15,N15,O15,A15,C5,B5,B4,C3,D3,F3,F2,F1,A1,B3,B2,B1,C1,D1,D2,C2,E2,G2,G1,E1,H1,H2,H3,I3,J3,I2,J2,J1,I1,K3,L3,M2,M3,N3,O3,K1,L1,M1,N1,O1,A2,A3,A4,A5,L5,L4,N4,O4,O5,N5,N6,L7,L2,K2,N2,O2,B6,B7,A6,O6,A7,O7,A8,A9,O9,A10,O10,A11,O11,A12",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 1,
+        "p": 1,
+        "rank": 1,
+        "cands": 1,
+        "ms": 3088,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "H7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.31,
+        "p": 0.35000000000000003,
+        "rank": 1,
+        "cands": 24,
+        "ms": 443,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "H6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.29,
+        "p": 0.32,
+        "rank": 1,
+        "cands": 28,
+        "ms": 1124,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "H5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.23,
+        "p": 0.26,
+        "rank": 1,
+        "cands": 32,
+        "ms": 462,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.23,
+        "p": 0.26,
+        "rank": 1,
+        "cands": 36,
+        "ms": 540,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "H10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.27,
+        "p": 0.3,
+        "rank": 1,
+        "cands": 40,
+        "ms": 509,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "H11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.31,
+        "p": 0.34,
+        "rank": 1,
+        "cands": 44,
+        "ms": 573,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "I11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.3,
+        "p": 0.32,
+        "rank": 1,
+        "cands": 48,
+        "ms": 544,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "G9",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.06,
+        "rank": 6,
+        "cands": 52,
+        "ms": 569,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "I9",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.13,
+        "p": 0.15000000000000002,
+        "rank": 1,
+        "cands": 56,
+        "ms": 554,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "I10",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.17,
+        "rank": 1,
+        "cands": 57,
+        "ms": 1174,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "I7",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.07,
+        "rank": 4,
+        "cands": 56,
+        "ms": 1114,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "G7",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.12,
+        "rank": 2,
+        "cands": 57,
+        "ms": 2825,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "G8",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.08,
+        "rank": 3,
+        "cands": 58,
+        "ms": 526,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "I6",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.07,
+        "rank": 5,
+        "cands": 57,
+        "ms": 549,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "I5",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 57,
+        "ms": 515,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "G5",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.06,
+        "rank": 3,
+        "cands": 57,
+        "ms": 1603,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "G6",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.16999999999999998,
+        "rank": 1,
+        "cands": 58,
+        "ms": 546,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "I8",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.13,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 57,
+        "ms": 551,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "G10",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.08,
+        "rank": 2,
+        "cands": 56,
+        "ms": 482,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 21,
+      "side": "黑方",
+      "notation": "G11",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.15,
+        "rank": 1,
+        "cands": 56,
+        "ms": 467,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 22,
+      "side": "白方",
+      "notation": "G12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.17,
+        "p": 0.16999999999999998,
+        "rank": 1,
+        "cands": 56,
+        "ms": 527,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 23,
+      "side": "黑方",
+      "notation": "I4",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.09000000000000001,
+        "rank": 2,
+        "cands": 60,
+        "ms": 487,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 24,
+      "side": "白方",
+      "notation": "I12",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 64,
+        "ms": 564,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 25,
+      "side": "黑方",
+      "notation": "H12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.29,
+        "p": 0.31,
+        "rank": 1,
+        "cands": 64,
+        "ms": 509,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 26,
+      "side": "白方",
+      "notation": "I13",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.08,
+        "rank": 2,
+        "cands": 64,
+        "ms": 513,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 27,
+      "side": "黑方",
+      "notation": "I14",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.19,
+        "rank": 2,
+        "cands": 64,
+        "ms": 523,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 28,
+      "side": "白方",
+      "notation": "H14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.23,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1578,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 29,
+      "side": "黑方",
+      "notation": "J12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.08,
+        "rank": 2,
+        "cands": 64,
+        "ms": 512,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 30,
+      "side": "白方",
+      "notation": "H13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.12,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1511,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 31,
+      "side": "黑方",
+      "notation": "J13",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 495,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 32,
+      "side": "白方",
+      "notation": "J11",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.22,
+        "rank": 1,
+        "cands": 64,
+        "ms": 484,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 33,
+      "side": "黑方",
+      "notation": "K10",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.88,
+        "p": 0.89,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1006,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 34,
+      "side": "白方",
+      "notation": "K12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.04,
+        "rank": 5,
+        "cands": 64,
+        "ms": 994,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 35,
+      "side": "黑方",
+      "notation": "G14",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.08,
+        "rank": 2,
+        "cands": 64,
+        "ms": 491,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 36,
+      "side": "白方",
+      "notation": "G13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 9273,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 37,
+      "side": "黑方",
+      "notation": "F12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.049999999999999996,
+        "rank": 2,
+        "cands": 64,
+        "ms": 1035,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 38,
+      "side": "白方",
+      "notation": "F13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.17,
+        "p": 0.16999999999999998,
+        "rank": 1,
+        "cands": 64,
+        "ms": 725,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 39,
+      "side": "黑方",
+      "notation": "E13",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.97,
+        "p": 0.98,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1168,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 40,
+      "side": "白方",
+      "notation": "K13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.18,
+        "p": 0.2,
+        "rank": 1,
+        "cands": 64,
+        "ms": 750,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 41,
+      "side": "黑方",
+      "notation": "K11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1855,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 42,
+      "side": "白方",
+      "notation": "L11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 64,
+        "ms": 521,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 43,
+      "side": "黑方",
+      "notation": "J10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 502,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 44,
+      "side": "白方",
+      "notation": "L10",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.15,
+        "rank": 1,
+        "cands": 64,
+        "ms": 595,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 45,
+      "side": "黑方",
+      "notation": "L12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 538,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 46,
+      "side": "白方",
+      "notation": "M12",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.09999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1088,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 47,
+      "side": "黑方",
+      "notation": "M11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.23,
+        "rank": 1,
+        "cands": 64,
+        "ms": 555,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 48,
+      "side": "白方",
+      "notation": "N11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.26,
+        "p": 0.28,
+        "rank": 1,
+        "cands": 64,
+        "ms": 539,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 49,
+      "side": "黑方",
+      "notation": "N10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.12000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 518,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 50,
+      "side": "白方",
+      "notation": "M10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.12000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 559,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 51,
+      "side": "黑方",
+      "notation": "L9",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.05,
+        "rank": 2,
+        "cands": 64,
+        "ms": 570,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 52,
+      "side": "白方",
+      "notation": "J9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.05,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1057,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 53,
+      "side": "黑方",
+      "notation": "N9",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.049999999999999996,
+        "rank": 2,
+        "cands": 64,
+        "ms": 583,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 54,
+      "side": "白方",
+      "notation": "K9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 64,
+        "ms": 825,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 55,
+      "side": "黑方",
+      "notation": "L13",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.1,
+        "rank": 1,
+        "cands": 64,
+        "ms": 532,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 56,
+      "side": "白方",
+      "notation": "J14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.1,
+        "rank": 1,
+        "cands": 64,
+        "ms": 4484,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 57,
+      "side": "黑方",
+      "notation": "K14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.17,
+        "rank": 1,
+        "cands": 64,
+        "ms": 593,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 58,
+      "side": "白方",
+      "notation": "J8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.06,
+        "rank": 1,
+        "cands": 64,
+        "ms": 2098,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 59,
+      "side": "黑方",
+      "notation": "K7",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.88,
+        "p": 0.89,
+        "rank": 1,
+        "cands": 64,
+        "ms": 576,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 60,
+      "side": "白方",
+      "notation": "K8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 64,
+        "ms": 588,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 61,
+      "side": "黑方",
+      "notation": "J7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 566,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 62,
+      "side": "白方",
+      "notation": "K6",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1236,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 63,
+      "side": "黑方",
+      "notation": "F8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.04,
+        "p": 0.05,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1909,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 64,
+      "side": "白方",
+      "notation": "E9",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.86,
+        "p": 0.87,
+        "rank": 1,
+        "cands": 64,
+        "ms": 595,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 65,
+      "side": "黑方",
+      "notation": "F9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 554,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 66,
+      "side": "白方",
+      "notation": "F7",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.17,
+        "p": 0.07,
+        "rank": 2,
+        "cands": 64,
+        "ms": 35291,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 67,
+      "side": "黑方",
+      "notation": "E8",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.13999999999999999,
+        "rank": 2,
+        "cands": 64,
+        "ms": 651,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 68,
+      "side": "白方",
+      "notation": "F10",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 594,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 69,
+      "side": "黑方",
+      "notation": "E10",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 64,
+        "ms": 596,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 70,
+      "side": "白方",
+      "notation": "D10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 613,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 71,
+      "side": "黑方",
+      "notation": "C10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.04,
+        "p": 0.049999999999999996,
+        "rank": 1,
+        "cands": 64,
+        "ms": 595,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 72,
+      "side": "白方",
+      "notation": "C9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 557,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 73,
+      "side": "黑方",
+      "notation": "M9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.060000000000000005,
+        "rank": 1,
+        "cands": 64,
+        "ms": 3300,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 74,
+      "side": "白方",
+      "notation": "L8",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.94,
+        "p": 0.95,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1261,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 75,
+      "side": "黑方",
+      "notation": "M8",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.16,
+        "rank": 1,
+        "cands": 64,
+        "ms": 540,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 76,
+      "side": "白方",
+      "notation": "N7",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.13,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 64,
+        "ms": 586,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 77,
+      "side": "黑方",
+      "notation": "N8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1151,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 78,
+      "side": "白方",
+      "notation": "O8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 679,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 79,
+      "side": "黑方",
+      "notation": "M7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.09,
+        "rank": 1,
+        "cands": 64,
+        "ms": 580,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 80,
+      "side": "白方",
+      "notation": "L6",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.2,
+        "p": 0.04,
+        "rank": 2,
+        "cands": 64,
+        "ms": 1175,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 81,
+      "side": "黑方",
+      "notation": "M6",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.22,
+        "rank": 1,
+        "cands": 64,
+        "ms": 506,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 82,
+      "side": "白方",
+      "notation": "M5",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.95,
+        "p": 0.96,
+        "rank": 1,
+        "cands": 64,
+        "ms": 470,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 83,
+      "side": "黑方",
+      "notation": "M4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 528,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 84,
+      "side": "白方",
+      "notation": "E5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.060000000000000005,
+        "rank": 1,
+        "cands": 64,
+        "ms": 513,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 85,
+      "side": "黑方",
+      "notation": "F5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.04,
+        "p": 0.04,
+        "rank": 1,
+        "cands": 64,
+        "ms": 502,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 86,
+      "side": "白方",
+      "notation": "F6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.09999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 535,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 87,
+      "side": "黑方",
+      "notation": "F11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 502,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 88,
+      "side": "白方",
+      "notation": "E11",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.22,
+        "rank": 1,
+        "cands": 64,
+        "ms": 509,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 89,
+      "side": "黑方",
+      "notation": "B8",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.060000000000000005,
+        "rank": 1,
+        "cands": 64,
+        "ms": 3778,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 90,
+      "side": "白方",
+      "notation": "D8",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 64,
+        "ms": 468,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 91,
+      "side": "黑方",
+      "notation": "D9",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.04,
+        "rank": 3,
+        "cands": 64,
+        "ms": 474,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 92,
+      "side": "白方",
+      "notation": "C8",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.13,
+        "p": 0.04,
+        "rank": 3,
+        "cands": 64,
+        "ms": 1159,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 93,
+      "side": "黑方",
+      "notation": "E7",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 456,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 94,
+      "side": "白方",
+      "notation": "D6",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.09000000000000001,
+        "rank": 2,
+        "cands": 64,
+        "ms": 496,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 95,
+      "side": "黑方",
+      "notation": "C6",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.85,
+        "p": 0.87,
+        "rank": 1,
+        "cands": 64,
+        "ms": 497,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 96,
+      "side": "白方",
+      "notation": "D7",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.06,
+        "rank": 3,
+        "cands": 64,
+        "ms": 481,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 97,
+      "side": "黑方",
+      "notation": "F4",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 531,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 98,
+      "side": "白方",
+      "notation": "B11",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 464,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 99,
+      "side": "黑方",
+      "notation": "C7",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 495,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 100,
+      "side": "白方",
+      "notation": "E3",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.02,
+        "rank": 8,
+        "cands": 64,
+        "ms": 485,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 101,
+      "side": "黑方",
+      "notation": "E4",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.049999999999999996,
+        "rank": 2,
+        "cands": 64,
+        "ms": 484,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 102,
+      "side": "白方",
+      "notation": "D5",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 64,
+        "ms": 459,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 103,
+      "side": "黑方",
+      "notation": "D4",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.89,
+        "p": 0.91,
+        "rank": 1,
+        "cands": 64,
+        "ms": 484,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 104,
+      "side": "白方",
+      "notation": "C4",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.82,
+        "p": 0.83,
+        "rank": 1,
+        "cands": 64,
+        "ms": 468,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 105,
+      "side": "黑方",
+      "notation": "E6",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.92,
+        "p": 0.93,
+        "rank": 1,
+        "cands": 64,
+        "ms": 437,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 106,
+      "side": "白方",
+      "notation": "H4",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1500,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 107,
+      "side": "黑方",
+      "notation": "G3",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 491,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 108,
+      "side": "白方",
+      "notation": "G4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.12,
+        "rank": 1,
+        "cands": 64,
+        "ms": 444,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 109,
+      "side": "黑方",
+      "notation": "J4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 465,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 110,
+      "side": "白方",
+      "notation": "K4",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 64,
+        "ms": 977,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 111,
+      "side": "黑方",
+      "notation": "K5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 64,
+        "ms": 456,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 112,
+      "side": "白方",
+      "notation": "J5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.21000000000000002,
+        "rank": 1,
+        "cands": 64,
+        "ms": 461,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 113,
+      "side": "黑方",
+      "notation": "J6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.41,
+        "p": 0.42,
+        "rank": 1,
+        "cands": 64,
+        "ms": 541,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 114,
+      "side": "白方",
+      "notation": "D11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 64,
+        "ms": 457,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 115,
+      "side": "黑方",
+      "notation": "C11",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.27,
+        "p": 0.27,
+        "rank": 1,
+        "cands": 64,
+        "ms": 971,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 116,
+      "side": "白方",
+      "notation": "D12",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.11,
+        "rank": 2,
+        "cands": 64,
+        "ms": 500,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 117,
+      "side": "黑方",
+      "notation": "D14",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.39,
+        "p": 0.41000000000000003,
+        "rank": 1,
+        "cands": 64,
+        "ms": 468,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 118,
+      "side": "白方",
+      "notation": "C15",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.28,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 432,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 119,
+      "side": "黑方",
+      "notation": "C13",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.08,
+        "rank": 2,
+        "cands": 64,
+        "ms": 4978,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 120,
+      "side": "白方",
+      "notation": "C12",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.19999999999999998,
+        "rank": 1,
+        "cands": 64,
+        "ms": 388,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 121,
+      "side": "黑方",
+      "notation": "D13",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.25,
+        "p": 0.13,
+        "rank": 2,
+        "cands": 64,
+        "ms": 376,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 122,
+      "side": "白方",
+      "notation": "M13",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.41,
+        "p": 0.43,
+        "rank": 1,
+        "cands": 64,
+        "ms": 406,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 123,
+      "side": "黑方",
+      "notation": "E12",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.12,
+        "rank": 1,
+        "cands": 64,
+        "ms": 2358,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 124,
+      "side": "白方",
+      "notation": "E14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.049999999999999996,
+        "rank": 1,
+        "cands": 64,
+        "ms": 399,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 125,
+      "side": "黑方",
+      "notation": "E15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 64,
+        "ms": 391,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 126,
+      "side": "白方",
+      "notation": "B12",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.03,
+        "rank": 8,
+        "cands": 64,
+        "ms": 337,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 127,
+      "side": "黑方",
+      "notation": "B10",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 334,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 128,
+      "side": "白方",
+      "notation": "B9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 64,
+        "ms": 746,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 129,
+      "side": "黑方",
+      "notation": "L14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.06999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 792,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 130,
+      "side": "白方",
+      "notation": "F14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.2,
+        "p": 0.19999999999999998,
+        "rank": 1,
+        "cands": 64,
+        "ms": 320,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 131,
+      "side": "黑方",
+      "notation": "B13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.31,
+        "p": 0.33,
+        "rank": 1,
+        "cands": 64,
+        "ms": 364,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 132,
+      "side": "白方",
+      "notation": "A13",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.17,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 294,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 133,
+      "side": "黑方",
+      "notation": "N13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 64,
+        "ms": 328,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 134,
+      "side": "白方",
+      "notation": "C14",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.2,
+        "p": 0.21,
+        "rank": 1,
+        "cands": 64,
+        "ms": 336,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 135,
+      "side": "黑方",
+      "notation": "M14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.23,
+        "rank": 1,
+        "cands": 64,
+        "ms": 351,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 136,
+      "side": "白方",
+      "notation": "N12",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.14,
+        "rank": 1,
+        "cands": 64,
+        "ms": 371,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 137,
+      "side": "黑方",
+      "notation": "O12",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.1,
+        "rank": 1,
+        "cands": 64,
+        "ms": 356,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 138,
+      "side": "白方",
+      "notation": "L15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.04,
+        "p": 0.05,
+        "rank": 1,
+        "cands": 64,
+        "ms": 342,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 139,
+      "side": "黑方",
+      "notation": "K15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.14,
+        "rank": 1,
+        "cands": 64,
+        "ms": 313,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 140,
+      "side": "白方",
+      "notation": "J15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 368,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 141,
+      "side": "黑方",
+      "notation": "I15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.23,
+        "p": 0.24,
+        "rank": 1,
+        "cands": 64,
+        "ms": 371,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 142,
+      "side": "白方",
+      "notation": "H15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.2,
+        "p": 0.19999999999999998,
+        "rank": 1,
+        "cands": 64,
+        "ms": 330,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 143,
+      "side": "黑方",
+      "notation": "G15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.22,
+        "rank": 1,
+        "cands": 64,
+        "ms": 741,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 144,
+      "side": "白方",
+      "notation": "F15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.21,
+        "rank": 1,
+        "cands": 64,
+        "ms": 394,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 145,
+      "side": "黑方",
+      "notation": "N14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.22999999999999998,
+        "rank": 1,
+        "cands": 64,
+        "ms": 736,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 146,
+      "side": "白方",
+      "notation": "O14",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.34,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 348,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 147,
+      "side": "黑方",
+      "notation": "O13",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.22,
+        "p": 0.24000000000000002,
+        "rank": 1,
+        "cands": 64,
+        "ms": 325,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 148,
+      "side": "白方",
+      "notation": "M15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.12000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 372,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 149,
+      "side": "黑方",
+      "notation": "D15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.15,
+        "rank": 1,
+        "cands": 64,
+        "ms": 336,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 150,
+      "side": "白方",
+      "notation": "B14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 319,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 151,
+      "side": "黑方",
+      "notation": "A14",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.13999999999999999,
+        "rank": 1,
+        "cands": 64,
+        "ms": 324,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 152,
+      "side": "白方",
+      "notation": "B15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.060000000000000005,
+        "rank": 1,
+        "cands": 64,
+        "ms": 346,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 153,
+      "side": "黑方",
+      "notation": "N15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.15,
+        "rank": 1,
+        "cands": 64,
+        "ms": 1478,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 154,
+      "side": "白方",
+      "notation": "O15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.24,
+        "p": 0.24,
+        "rank": 1,
+        "cands": 64,
+        "ms": 340,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 155,
+      "side": "黑方",
+      "notation": "A15",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.2,
+        "p": 0.19999999999999998,
+        "rank": 1,
+        "cands": 63,
+        "ms": 603,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 156,
+      "side": "白方",
+      "notation": "C5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 62,
+        "ms": 366,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 157,
+      "side": "黑方",
+      "notation": "B5",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 61,
+        "ms": 369,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 158,
+      "side": "白方",
+      "notation": "B4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.15,
+        "rank": 1,
+        "cands": 60,
+        "ms": 377,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 159,
+      "side": "黑方",
+      "notation": "C3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.1,
+        "rank": 1,
+        "cands": 59,
+        "ms": 2631,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 160,
+      "side": "白方",
+      "notation": "D3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.18000000000000002,
+        "rank": 1,
+        "cands": 60,
+        "ms": 399,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 161,
+      "side": "黑方",
+      "notation": "F3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.15,
+        "rank": 1,
+        "cands": 59,
+        "ms": 609,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 162,
+      "side": "白方",
+      "notation": "F2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.07,
+        "rank": 1,
+        "cands": 58,
+        "ms": 356,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 163,
+      "side": "黑方",
+      "notation": "F1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 57,
+        "ms": 336,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 164,
+      "side": "白方",
+      "notation": "A1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.05,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 56,
+        "ms": 976,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 165,
+      "side": "黑方",
+      "notation": "B3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 55,
+        "ms": 320,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 166,
+      "side": "白方",
+      "notation": "B2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 54,
+        "ms": 783,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 167,
+      "side": "黑方",
+      "notation": "B1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.04,
+        "p": 0.06,
+        "rank": 1,
+        "cands": 53,
+        "ms": 318,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 168,
+      "side": "白方",
+      "notation": "C1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 52,
+        "ms": 280,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 169,
+      "side": "黑方",
+      "notation": "D1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.12,
+        "rank": 1,
+        "cands": 51,
+        "ms": 311,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 170,
+      "side": "白方",
+      "notation": "D2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 50,
+        "ms": 625,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 171,
+      "side": "黑方",
+      "notation": "C2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.12000000000000001,
+        "rank": 1,
+        "cands": 49,
+        "ms": 988,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 172,
+      "side": "白方",
+      "notation": "E2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.04,
+        "p": 0.06,
+        "rank": 1,
+        "cands": 48,
+        "ms": 369,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 173,
+      "side": "黑方",
+      "notation": "G2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 47,
+        "ms": 1377,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 174,
+      "side": "白方",
+      "notation": "G1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.12,
+        "rank": 1,
+        "cands": 46,
+        "ms": 819,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 175,
+      "side": "黑方",
+      "notation": "E1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 45,
+        "ms": 1327,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 176,
+      "side": "白方",
+      "notation": "H1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.27,
+        "p": 0.27999999999999997,
+        "rank": 1,
+        "cands": 44,
+        "ms": 777,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 177,
+      "side": "黑方",
+      "notation": "H2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.17,
+        "rank": 1,
+        "cands": 44,
+        "ms": 339,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 178,
+      "side": "白方",
+      "notation": "H3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.27,
+        "p": 0.27,
+        "rank": 1,
+        "cands": 43,
+        "ms": 328,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 179,
+      "side": "黑方",
+      "notation": "I3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.22,
+        "rank": 1,
+        "cands": 42,
+        "ms": 335,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 180,
+      "side": "白方",
+      "notation": "J3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.24,
+        "p": 0.25,
+        "rank": 1,
+        "cands": 42,
+        "ms": 669,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 181,
+      "side": "黑方",
+      "notation": "I2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.13,
+        "rank": 1,
+        "cands": 42,
+        "ms": 283,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 182,
+      "side": "白方",
+      "notation": "J2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.19,
+        "p": 0.19999999999999998,
+        "rank": 1,
+        "cands": 41,
+        "ms": 378,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 183,
+      "side": "黑方",
+      "notation": "J1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.17,
+        "p": 0.18,
+        "rank": 1,
+        "cands": 40,
+        "ms": 293,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 184,
+      "side": "白方",
+      "notation": "I1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.28,
+        "p": 0.29,
+        "rank": 1,
+        "cands": 39,
+        "ms": 873,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 185,
+      "side": "黑方",
+      "notation": "K3",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.12,
+        "p": 0.08,
+        "rank": 2,
+        "cands": 38,
+        "ms": 282,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 186,
+      "side": "白方",
+      "notation": "L3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.24,
+        "p": 0.25,
+        "rank": 1,
+        "cands": 38,
+        "ms": 891,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 187,
+      "side": "黑方",
+      "notation": "M2",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.05,
+        "rank": 5,
+        "cands": 38,
+        "ms": 528,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 188,
+      "side": "白方",
+      "notation": "M3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 38,
+        "ms": 316,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 189,
+      "side": "黑方",
+      "notation": "N3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.09000000000000001,
+        "rank": 1,
+        "cands": 37,
+        "ms": 361,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 190,
+      "side": "白方",
+      "notation": "O3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.08,
+        "rank": 1,
+        "cands": 36,
+        "ms": 351,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 191,
+      "side": "黑方",
+      "notation": "K1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.07,
+        "p": 0.09999999999999999,
+        "rank": 1,
+        "cands": 35,
+        "ms": 592,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 192,
+      "side": "白方",
+      "notation": "L1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.24,
+        "p": 0.25,
+        "rank": 1,
+        "cands": 34,
+        "ms": 860,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 193,
+      "side": "黑方",
+      "notation": "M1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.2,
+        "p": 0.22,
+        "rank": 1,
+        "cands": 33,
+        "ms": 498,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 194,
+      "side": "白方",
+      "notation": "N1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.35,
+        "p": 0.37,
+        "rank": 1,
+        "cands": 32,
+        "ms": 347,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 195,
+      "side": "黑方",
+      "notation": "O1",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.26,
+        "p": 0.27999999999999997,
+        "rank": 1,
+        "cands": 31,
+        "ms": 931,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 196,
+      "side": "白方",
+      "notation": "A2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.16,
+        "rank": 1,
+        "cands": 30,
+        "ms": 491,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 197,
+      "side": "黑方",
+      "notation": "A3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.15000000000000002,
+        "rank": 1,
+        "cands": 29,
+        "ms": 902,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 198,
+      "side": "白方",
+      "notation": "A4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.12000000000000001,
+        "rank": 1,
+        "cands": 28,
+        "ms": 318,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 199,
+      "side": "黑方",
+      "notation": "A5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.08,
+        "p": 0.11,
+        "rank": 1,
+        "cands": 27,
+        "ms": 487,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 200,
+      "side": "白方",
+      "notation": "L5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.15000000000000002,
+        "rank": 1,
+        "cands": 26,
+        "ms": 1360,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 201,
+      "side": "黑方",
+      "notation": "L4",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.97,
+        "p": 0.98,
+        "rank": 1,
+        "cands": 25,
+        "ms": 282,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 202,
+      "side": "白方",
+      "notation": "N4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.15,
+        "p": 0.18,
+        "rank": 1,
+        "cands": 24,
+        "ms": 318,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 203,
+      "side": "黑方",
+      "notation": "O4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.16,
+        "p": 0.19,
+        "rank": 1,
+        "cands": 23,
+        "ms": 313,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 204,
+      "side": "白方",
+      "notation": "O5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.09,
+        "p": 0.14,
+        "rank": 1,
+        "cands": 22,
+        "ms": 287,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 205,
+      "side": "黑方",
+      "notation": "N5",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.24,
+        "rank": 1,
+        "cands": 21,
+        "ms": 692,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 206,
+      "side": "白方",
+      "notation": "N6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.14,
+        "p": 0.16999999999999998,
+        "rank": 1,
+        "cands": 20,
+        "ms": 644,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 207,
+      "side": "黑方",
+      "notation": "L7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.16,
+        "rank": 1,
+        "cands": 19,
+        "ms": 1012,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 208,
+      "side": "白方",
+      "notation": "L2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.1,
+        "p": 0.16,
+        "rank": 1,
+        "cands": 18,
+        "ms": 2340,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 209,
+      "side": "黑方",
+      "notation": "K2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.5,
+        "p": 0.54,
+        "rank": 1,
+        "cands": 17,
+        "ms": 952,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 210,
+      "side": "白方",
+      "notation": "N2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.4,
+        "p": 0.43,
+        "rank": 1,
+        "cands": 16,
+        "ms": 301,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 211,
+      "side": "黑方",
+      "notation": "O2",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.46,
+        "p": 0.51,
+        "rank": 1,
+        "cands": 15,
+        "ms": 1317,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 212,
+      "side": "白方",
+      "notation": "B6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.21,
+        "p": 0.26,
+        "rank": 1,
+        "cands": 14,
+        "ms": 292,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 213,
+      "side": "黑方",
+      "notation": "B7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.32,
+        "p": 0.38,
+        "rank": 1,
+        "cands": 13,
+        "ms": 842,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 214,
+      "side": "白方",
+      "notation": "A6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.33,
+        "p": 0.38,
+        "rank": 1,
+        "cands": 12,
+        "ms": 288,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 215,
+      "side": "黑方",
+      "notation": "O6",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.41,
+        "p": 0.45999999999999996,
+        "rank": 1,
+        "cands": 11,
+        "ms": 489,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 216,
+      "side": "白方",
+      "notation": "A7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.38,
+        "p": 0.44,
+        "rank": 1,
+        "cands": 10,
+        "ms": 301,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 217,
+      "side": "黑方",
+      "notation": "O7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.29,
+        "p": 0.37,
+        "rank": 1,
+        "cands": 9,
+        "ms": 815,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 218,
+      "side": "白方",
+      "notation": "A8",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.31,
+        "p": 0.39,
+        "rank": 1,
+        "cands": 8,
+        "ms": 310,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 219,
+      "side": "黑方",
+      "notation": "A9",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.4,
+        "p": 0.49,
+        "rank": 1,
+        "cands": 7,
+        "ms": 996,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 220,
+      "side": "白方",
+      "notation": "O9",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.36,
+        "p": 0.47,
+        "rank": 1,
+        "cands": 6,
+        "ms": 499,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 221,
+      "side": "黑方",
+      "notation": "A10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.23,
+        "p": 0.38,
+        "rank": 1,
+        "cands": 5,
+        "ms": 304,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 222,
+      "side": "白方",
+      "notation": "O10",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.33,
+        "p": 0.49,
+        "rank": 1,
+        "cands": 4,
+        "ms": 1081,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 223,
+      "side": "黑方",
+      "notation": "A11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.3,
+        "p": 0.53,
+        "rank": 1,
+        "cands": 3,
+        "ms": 348,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 224,
+      "side": "白方",
+      "notation": "O11",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.55,
+        "rank": 1,
+        "cands": 2,
+        "ms": 294,
+        "tv": "v8-vcf-try"
+      }
+    },
+    {
+      "ply": 225,
+      "side": "黑方",
+      "notation": "A12",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 1,
+        "p": 1,
+        "rank": 1,
+        "cands": 1,
+        "ms": 523,
+        "tv": "v9-vcf-sound"
+      }
+    }
+  ],
+  "meta": {
+    "code": "0.8.0",
+    "topK": 1,
+    "seed": null,
+    "aiMoves": 225,
+    "costUsd": 0.027117,
+    "tokens": 645651,
+    "latencyMs": {
+      "avg": 909,
+      "max": 35291
+    },
+    "conf": 0.201,
+    "tactics": {
+      "parry3": 36,
+      "parry4": 39,
+      "vcfDefense": 7,
+      "block": 7
+    }
+  },
+  "cal": [
+    0.47,
+    0.78,
+    0.39,
+    0.76,
+    0.31,
+    0.74,
+    0.36,
+    0.74,
+    0.43,
+    0.75,
+    0.4,
+    0.71,
+    0.39,
+    0.71,
+    0.38,
+    0.72,
+    0.38,
+    0.7,
+    0.37,
+    0.72,
+    0.37,
+    0.73,
+    0.36,
+    0.67,
+    0.35,
+    0.71,
+    0.36,
+    0.69,
+    0.36,
+    0.7,
+    0.36,
+    0.7,
+    0.37,
+    0.68,
+    0.36,
+    0.69,
+    0.33,
+    0.66,
+    0.27,
+    0.66,
+    0.31,
+    0.67,
+    0.33,
+    0.69,
+    0.34,
+    0.7,
+    0.34,
+    0.7,
+    0.34,
+    0.69,
+    0.32,
+    0.68,
+    0.33,
+    0.71,
+    0.3,
+    0.69,
+    0.34,
+    0.7,
+    0.29,
+    0.7,
+    0.33,
+    0.72,
+    0.32,
+    0.71,
+    0.3,
+    0.7,
+    0.31,
+    0.7,
+    0.31,
+    0.7,
+    0.33,
+    0.7,
+    0.33,
+    0.7,
+    0.33,
+    0.7,
+    0.33,
+    0.73,
+    0.33,
+    0.71,
+    0.33,
+    0.78,
+    0.33,
+    0.71,
+    0.33,
+    0.7,
+    0.32,
+    0.73,
+    0.32,
+    0.71,
+    0.33,
+    0.73,
+    0.32,
+    0.72,
+    0.27,
+    0.73,
+    0.33,
+    0.73,
+    0.29,
+    0.75,
+    0.33,
+    0.73,
+    0.26,
+    0.69,
+    0.26,
+    0.72,
+    0.33,
+    0.72,
+    0.33,
+    0.73,
+    0.3,
+    0.74,
+    0.31,
+    0.74,
+    0.31,
+    0.74,
+    0.3,
+    0.79,
+    0.31,
+    0.74,
+    0.32,
+    0.74,
+    0.3,
+    0.74,
+    0.3,
+    0.75,
+    0.32,
+    0.73,
+    0.31,
+    0.74,
+    0.32,
+    0.8,
+    0.32,
+    0.74,
+    0.31,
+    0.74,
+    0.3,
+    0.73,
+    0.3,
+    0.75,
+    0.3,
+    0.74,
+    0.3,
+    0.76,
+    0.29,
+    0.76,
+    0.3,
+    0.76,
+    0.29,
+    0.74,
+    0.3,
+    0.74,
+    0.29,
+    0.77,
+    0.29,
+    0.75,
+    0.29,
+    0.75,
+    0.31,
+    0.75,
+    0.3,
+    0.76,
+    0.31,
+    0.76,
+    0.3,
+    0.76,
+    0.31,
+    0.75,
+    0.3,
+    0.77,
+    0.3,
+    0.76,
+    0.3,
+    0.75,
+    0.29,
+    0.75,
+    0.29,
+    0.76,
+    0.31,
+    0.77,
+    0.29,
+    0.77,
+    0.29,
+    0.75,
+    0.27,
+    0.76,
+    0.31,
+    0.77,
+    0.3,
+    0.76,
+    0.31,
+    0.76,
+    0.28,
+    0.77,
+    0.28,
+    0.76,
+    0.3,
+    0.74,
+    0.28,
+    0.76,
+    0.34,
+    0.77,
+    0.31,
+    0.75,
+    0.3,
+    0.77,
+    0.28,
+    0.76,
+    0.29,
+    0.76,
+    0.31,
+    0.76,
+    0.28,
+    0.77,
+    0.28,
+    0.77,
+    0.3,
+    0.77,
+    0.31,
+    0.76,
+    0.3,
+    0.75,
+    0.29,
+    0.75,
+    0.27
+  ],
+  "firstWin": null,
+  "mock": false
+}

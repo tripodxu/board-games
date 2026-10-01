@@ -1,0 +1,263 @@
+{
+  "format": "jev-qiguan-game/v1",
+  "exported": "2026-09-30T15:34:51.446Z",
+  "game": "五子棋",
+  "gid": "gomoku",
+  "mode": "人机",
+  "channel": "proxy",
+  "slug": "jev-v9-vs-jev-v9",
+  "duel": "黑 Jev·v9 vs 白 Jev·v9",
+  "blackChannel": "proxy",
+  "whiteChannel": "proxy",
+  "tacticsVersion": "v9-vcf-sound",
+  "blackTactics": "v9-vcf-sound",
+  "whiteTactics": "v9-vcf-sound",
+  "result": "白方 获胜（五连）",
+  "notation": "H8,H7,I8,G8,H9,J7,G10,F11,H10,I10,H11,H12,I12,F9,J13,K14,J12,I6,J11,J5",
+  "moves": [
+    {
+      "ply": 1,
+      "side": "黑方",
+      "notation": "H8"
+    },
+    {
+      "ply": 2,
+      "side": "白方",
+      "notation": "H7",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.28,
+        "p": 0.32,
+        "rank": 1,
+        "cands": 24,
+        "ms": 22364,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 3,
+      "side": "黑方",
+      "notation": "I8"
+    },
+    {
+      "ply": 4,
+      "side": "白方",
+      "notation": "G8",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.23,
+        "p": 0.24,
+        "rank": 1,
+        "cands": 32,
+        "ms": 3256,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 5,
+      "side": "黑方",
+      "notation": "H9"
+    },
+    {
+      "ply": 6,
+      "side": "白方",
+      "notation": "J7",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.11,
+        "p": 0.05,
+        "rank": 7,
+        "cands": 40,
+        "ms": 435,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 7,
+      "side": "黑方",
+      "notation": "G10"
+    },
+    {
+      "ply": 8,
+      "side": "白方",
+      "notation": "F11",
+      "tactics": "parry4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.06,
+        "p": 0.05,
+        "rank": 8,
+        "cands": 50,
+        "ms": 449,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 9,
+      "side": "黑方",
+      "notation": "H10"
+    },
+    {
+      "ply": 10,
+      "side": "白方",
+      "notation": "I10",
+      "tactics": "parry3",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.18,
+        "p": 0.09999999999999999,
+        "rank": 2,
+        "cands": 58,
+        "ms": 952,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 11,
+      "side": "黑方",
+      "notation": "H11"
+    },
+    {
+      "ply": 12,
+      "side": "白方",
+      "notation": "H12",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.99,
+        "p": 1,
+        "rank": 1,
+        "cands": 60,
+        "ms": 401,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 13,
+      "side": "黑方",
+      "notation": "I12"
+    },
+    {
+      "ply": 14,
+      "side": "白方",
+      "notation": "F9",
+      "tactics": "vcfDefense",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.81,
+        "p": 0.8200000000000001,
+        "rank": 1,
+        "cands": 64,
+        "ms": 480,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 15,
+      "side": "黑方",
+      "notation": "J13"
+    },
+    {
+      "ply": 16,
+      "side": "白方",
+      "notation": "K14",
+      "tactics": "block",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.13,
+        "p": null,
+        "rank": null,
+        "cands": 64,
+        "ms": 808,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 17,
+      "side": "黑方",
+      "notation": "J12"
+    },
+    {
+      "ply": 18,
+      "side": "白方",
+      "notation": "I6",
+      "tactics": "open4",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.69,
+        "p": 0.7,
+        "rank": 1,
+        "cands": 64,
+        "ms": 487,
+        "tv": "v9-vcf-sound"
+      }
+    },
+    {
+      "ply": 19,
+      "side": "黑方",
+      "notation": "J11"
+    },
+    {
+      "ply": 20,
+      "side": "白方",
+      "notation": "J5",
+      "tactics": "win",
+      "ai": {
+        "ch": "proxy",
+        "mdl": "jev-1.13.0",
+        "conf": 0.77,
+        "p": 0.79,
+        "rank": 1,
+        "cands": 64,
+        "ms": 416,
+        "tv": "v9-vcf-sound"
+      }
+    }
+  ],
+  "meta": {
+    "code": "0.8.0",
+    "topK": 1,
+    "seed": null,
+    "aiMoves": 10,
+    "costUsd": 0.00095,
+    "tokens": 22620,
+    "latencyMs": {
+      "avg": 3005,
+      "max": 22364
+    },
+    "conf": 0.425,
+    "tactics": {
+      "parry3": 3,
+      "parry4": 1,
+      "block": 2,
+      "vcfDefense": 1,
+      "open4": 1,
+      "win": 1
+    }
+  },
+  "cal": [
+    0.76,
+    0.79,
+    0.76,
+    0.72,
+    0.8,
+    0.79,
+    0.69,
+    0.79,
+    0.32,
+    0.34
+  ],
+  "firstWin": false,
+  "mock": false
+}
