@@ -125,6 +125,8 @@
 22. **`games.tokens_out` 是一列死数据**：一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，导出的 `meta` 里**没有**输出 token；而 `src/shared/record-map.ts:376` 读的是 `meta.usage?.output_tokens`（局级 meta 从来没这个字段）⇒ 该列恒为 NULL。实测真实验 4 局的 `tokens_in` 约 645K 全都落库，`tokens_out` 全为 0。影响仅限「输出 token 的分析口径」（计费按官方口径输出免费，成本列不受影响）；要修就是给 `AiGameMeta` 加 `tokensOut` 并在 `record-map` 里回落读取——属可选增强，未做。
 23. **`v10-live3` 的推演边界**：只算到 4 手（对手 >4 手的杀仍要靠 Rapfi 或对方失误）；`live3Deny` 报的是「能拆掉对手全部活三制造点」的点，**不是全局最优**（并列时取评估顺序里最先出现的，且最多只评 24 个候选点，候选顺序 = 对手 L3 点在前、其余按模型候选表）；`live3Makers` / `live3Deny` 在禁手档里会跳过黑方的禁手点（黑走不得，可能因此少报一个 L3）。推出的点若不在模型概率榜内会被直接执行并在 `meta.warning` 标注「战术保险接管」（与其余保险层同规则）。对照实验暴露的两个边界：**和棋多**（12 局里 4 局 225 手满盘和棋、全是 v10 执白 ⇒ 守得住但滚不起胜势）、**攻击层接管偏多**（`live3Attack` 12 局 120 手，闸门只检查「对手没有 2 手剑」，未比较 L3 点与模型首选的价值差）。
 
+24. **A/B 局的「记录级 `tacticsVersion`」只反映黑方档位**：`src/core/record/export.ts:207` 写的是 `tacticsVersion: bCfg.tactics`，所以两臂用不同档位时（例如 2026-10-02 的 v10 实验：rapfi 执黑、proxy 执白），归档记录的顶层版本是**黑方**的，`games.tactics_version` 与「棋谱归档」面板的分组键也跟着走 —— 8 局 v10 臂里有 4 局被分到 `v9-vcf-sound` 组。权威字段是 `blackTactics` / `whiteTactics` 与每手 `ai.tv`（本次结论全部按这两个口径取），修法要么让客户端在混合档位时写「双方档位」要么让面板改按 `blackTactics`+`whiteTactics` 分组——属待决，未做。
+
 ## 验收命令表
 
 命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 126 个用例 + vitest 34 个测试文件 / 334 个用例）。
@@ -158,11 +160,12 @@
 
 1. **归档面板**已补「加载更多」分页（keyset 游标，首屏 50 份）；仍缺按 `code_version` 分组（现在按 `tactics_version` 分组，历史归档全是「未标注」）与按棋种/渠道/标签筛选（服务端 `?game=`/`?tag=`/`?since=` 都已支持，只是面板没给控件）。
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
-3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，`docs/README.md` 的 ADR 索引已补 0008～0013；`npm run check:docs` 绿（41 个 md / 246 个链接）。
+3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0014；`npm run check:docs` 绿（43 个 md / 260 个链接）。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
 > 待确认（不影响功能）：Cron `17 3 * * *` 的首次落库证据要等 2026-10-02T03:17Z 之后查 `stats_cache`。
-> 已完成（2026-10-01 下午，目标书「新能力」收尾）：归档面板 keyset 分页（版本 `3a4934ee-28c5-4e7e-88c9-214da988b707`）、实验报告分桶对比口径（`29788ef6-747a-4b08-9f0e-4aaea906ee36`）、服务端实验战报并入修复（`18b2fcad-39f8-4974-8e83-952076d83fa8`）、报告顶部「最新棋谱」+ 一键回放（`128ed7db-1b9d-4b84-a3a2-6ae6c9b6a10d`，当前线上）；三渠道浏览器冒烟 mock/rapfi 各 14/14、离线 13/13。
+> 已完成（2026-10-01 下午，目标书「新能力」收尾）：归档面板 keyset 分页（版本 `3a4934ee-28c5-4e7e-88c9-214da988b707`）、实验报告分桶对比口径（`29788ef6-747a-4b08-9f0e-4aaea906ee36`）、服务端实验战报并入修复（`18b2fcad-39f8-4974-8e83-952076d83fa8`）、报告顶部「最新棋谱」+ 一键回放（`128ed7db-1b9d-4b84-a3a2-6ae6c9b6a10d`）；三渠道浏览器冒烟 mock/rapfi 各 14/14、离线 13/13。
+> 已完成（2026-10-02 凌晨）：限流可重试标记 + 装配层自动退避（`781316c8-1845-47a6-8f73-e0bf22decffb`）、战术 v10 `v10-live3`（`a8a9130f-f5d8-4ee7-94eb-62e6dfdab86a`，**当前线上**）与它的对照实验回填（提交 `8751070` / `c5762d2`）。
 > CI 已闭环：`test.yml` 提交 `88d7a9f`（run `36852997058`）五步全绿 —— 类型检查 / 构建 / 引擎与金样逐手差分（121 用例）/ vitest（真 workerd + 本地 D1）/ 文档校验。
 > 前两次红都不是代码回归：第 55 个归档文件（旧站快照自动提交、D1 无对应，已删，归档口径恢复「等于 D1 的 54 局」）、以及两处链到被 `.gitignore` 忽略的 `backups/export.sql`（已改文本，并把「不许链到被忽略的产物」写进 `scripts/check-docs.mjs`）。
 > 注意 `games/` 不是物理围栏：旧 `pages.dev` 快照仍持有 `GAMES_GITHUB_TOKEN`，还能往 `games/` 提交；护栏是 CI 里的归档断言（新增/改动即红）+ 事后删除。
@@ -185,4 +188,4 @@
 6. **本地 D1 库文件名由 `database_id` 派生**：换过 id（或改了名字）就等于换了一个空库，需要重跑迁移 + 导入，否则会看到 `no such table: games`。
 7. **测试库共享**：worker 项目用 `singleWorker: true`，同一实例里的 D1 是共享状态，新用例必须自己清理数据。
 8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
-9. **文档索引过期**：[docs/README.md](README.md) 的 ADR 列表只到 0007，缺 0008～0013。
+9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0014，`npm run check:docs` 绿（43 个 md / 260 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。

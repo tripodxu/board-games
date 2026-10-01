@@ -19,6 +19,7 @@
 - **设计记录**：[ADR-0014](../adr/0014-live3-real-lookahead.md)（含明确的「不做什么」：只到 4 手、`live3Deny` 报「能清零的点」而非全局最优、不改采样、不碰 `mock`/`rapfi` 渠道）。
 - **对照实验（2026-10-02，`rapfi@500ms`，两臂各 12 局，黑白交替，串行）**：`v10-live3` **6 胜 4 和 2 负**（得分率 67%，执黑 4-2 / 执白 2 胜 4 和 0 负）vs `v9-vcf-sound` **3 胜 9 负**（25%）。**4 局探路会骗人**：先跑的 4 局是 v9 2 胜 2 负、v10 3 胜 1 负，看着「差不多」；补到 8 局后 v9 掉到 1 胜 7 负。逐手接管直方图（`.work/arm-stats.mjs`）给出独立的机制证据：v10 的 live3 两层 12 局共接管 **168 手**（`live3Attack` 120 / `live3Defense` 48），v9 同批对手 **0 次**；平均手数 55 → 98。**但 4 局 225 手满盘和棋全在 v10 执白时出现 ⇒ 防守补上了、胜势还没转成胜**（v11 的入口）。上线版本 `a8a9130f-f5d8-4ee7-94eb-62e6dfdab86a`；D1 现为 **82 局 / 7110 手 / 11 轮实验**，`game_moves` 里 `v10-live3` 586 手（= 两臂 v10 局的 proxy 手数合计，与脚本统计交叉一致）。
 - **登记表回填**：`v10-live3.gamesVerified = 12`（`commit` 从占位改成 `8751070`、`commitAt` `2026-10-02 01:40`），`v9-vcf-sound.gamesVerified` **4 → 16**（新增的 12 局 v9 臂每手 `ai.tv = v9-vcf-sound`）——`games` 快照口径不动（v10 仍是 0，它是已退役的迁移前口径）。
+- **顺带记档的语义坑**：记录级 `tacticsVersion` 写的是 `bCfg.tactics`（`src/core/record/export.ts:207`）⇒ **只反映黑方档位**；A/B 局里 rapfi 执黑的 4 局因此在 `games.tactics_version` 与「棋谱归档」面板里都算成 `v9-vcf-sound`。分析混合档位对局必须看 `blackTactics` / `whiteTactics` 与每手 `ai.tv`（rapfi 侧是 `rapfi/null`——它不走战术层，是既有决定）。已记入 `docs/status.md` 仍存在第 24 条，未修。
 
 ---
 
