@@ -764,7 +764,7 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 | 归档分页查询 | 归档面板「加载更多」+ 按棋种/渠道/战术档/标签筛选 | **分页已验（2026-10-01）**：首屏 50 → 「加载更多」追加到 54，按钮收掉；筛选控件仍未做（服务端 `?game=`/`?tag=`/`?since=` 已支持） |
 | **棋谱回放器**（路线图项） | `/api/games/u/:uid` + 逐手重放面板（进度条/单步/自动播） | 打开任意历史局可逐手重放 |
 | 开具体验 SQL 化 | `state.experience` 改吃 `/api/openings`（跨设备、非本机） | 同一开局 ≥2 局后注入生效 |
-| 排行榜 | 渠道 × 战术档 × 对阵胜率（含「人判」单列） | 与实验报告口径一致 |
+| 排行榜 | 渠道 × 战术档 × 对阵胜率（含「人判」单列） | 与实验报告口径一致（**2026-10-01 已对齐**：实验报告也改成按「渠道 · 战术版本 · 思考深度」分身份统计、得分率和棋半分） |
 | 版本归因修正 | 用 `code_version`/`tactics_version` 列替代文件名时间窗归版 | ✅ 已完成（2026-10-01）：`DEPLOY_LAG` 台账与 `versionForFileStamp` 已退役，见下方执行记录① |
 | 批量导出 | `/api/export/games?format=jsonl` + `wrangler d1 export` 双备份 | 导出后可完整重建库（**已验：2026-10-01 `npm run db:export` + `verify:backup` → 54 局 / 4379 手 / 6 轮、payload 逐字节一致，不一致 0 处**） |
 
@@ -803,9 +803,11 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
    部署 + 自定义域 + 线上对账 `diff = 0` + 29 项 HTTP 冒烟全过，见「P4 远程执行记录」；
    剩余的是**浏览器全流程回归**（Rapfi 渠道实跑一局、面板交互），入口 `https://jevqipan.logicc.top`。
    浏览器这一项已工具化：`npm run smoke:browser`（`scripts/browser-smoke.mjs`，CDP + 系统 Chrome，
-   零 npm 依赖，**现为 11 项断言**：页签渲染 / 棋盘初始绘制 / 渠道落盘 / 开始对局后状态栏与棋盘像素变化 /
+   零 npm 依赖，**现为 13 项断言**：页签渲染 / 棋盘初始绘制 / 渠道落盘 / 开始对局后状态栏与棋盘像素变化 /
    人类真落子 / 「对手」也落子（AI 走子链路，Rapfi 给 90 s 窗口）/ 曲线切换 / 设置抽屉 /
-   归档分页「加载更多」（首屏 50 → 追加到 54）/ 全程无未捕获异常）。**负向对照已验**：对当前线上（`src/main.ts` 仍是占位）跑
+   归档分页「加载更多」（首屏 50 → 追加到 54）/ 实验报告按「渠道 · 战术版本」分桶的胜率表 /
+   服务端战报并入（面板轮次多于本机种子两轮）/ 全程无未捕获异常）。
+   三种渠道实测各 13/13（mock / `--offline` / `--channel rapfi`）。**负向对照已验**：对当前线上（`src/main.ts` 仍是占位）跑
    得 3/9，失败项正是「页签未渲染、canvas 300×150 空、点开始无反应」——说明它真的会失败而不是永远绿。
 2. 自定义域**已绑** `jevqipan.logicc.top`（2026-10-01）；`pages.dev` 断开 Git 集成 **已完成（2026-10-01）**。
    执行方式：CF API `PATCH /accounts/<id>/pages/projects/jev-qiguan`（OAuth token 取自 wrangler 凭据文件，
@@ -873,8 +875,8 @@ HTTP 契约全通过；`npx vitest run --project worker` → 3 项在真 workerd
 | 命令 | 结果 |
 |---|---|
 | `npx tsc --noEmit` | 0 error（`erasableSyntaxOnly` 全仓通过） |
-| `npm test` | **29 文件 / 310 用例全绿**（10.4–12.1 s）：engines 121（7 局自对弈金样 1131 手 + `games/` 归档 54 局 4379 手逐手一致）+ core 6 文件 71 + worker 8 文件 + ui 12 文件 + app 3 文件（收尾后补的归档分页 3 例在内） |
-| `npm run build` | client JS 175.65 kB（gzip 64.3）/ CSS 39.09 kB（gzip 7.9）/ `dist/client/index.html` 29.87 kB / worker bundle ≈173 kB |
+| `npm test` | **31 文件 / 318 用例全绿**（19.2 s）= engines 121（7 局自对弈金样 1131 手 + `games/` 归档 54 局 4379 手逐手一致）+ vitest 三 project：core 6 文件 71 / worker 7 文件 101 / ui 18 文件 146（其中 `test/app/**` 4 文件；本轮的归档分页 3 例、实验报告分桶 5 例、服务端战报并入 3 例在内） |
+| `npm run build` | client JS 182.11 kB（gzip 66.61）/ CSS 40.20 kB（gzip 8.09）/ `dist/client/index.html` 29.87 kB / worker bundle ≈173 kB |
 | `npm run check:docs` | ✓ memory 置顶、✓ 41 个 md / 246 个相对链接（收尾过程中 249 → 248 → 246：删掉指向已删文件的链接，并按新规则把指向被 `.gitignore` 忽略产物的链接改成纯文本）、✓ status 0 天内 |
 
 **上线**

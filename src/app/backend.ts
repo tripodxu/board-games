@@ -106,9 +106,12 @@ interface ExpEntryLike {
  * 旧 `refreshServerExperiments()`（js/app.js:904-920）：服务端战报并入本地缓存
  * （按 tag 合并：缺失或局数变多则更新），再重画报告面板。
  *
- * 注意 `api.listExperiments()` 返回的是裸数组（Worker 的旧响应体 `{experiments:[...]}` 已由
- * 客户端解包），与旧 `BG.api.listExperiments()` 返回 `{experiments}` 不同——这是装配层要
- * 自己记住的契约差异，故此处不写 `r.experiments`。
+ * 注意 `api.listExperiments()` 这里返回的是**解包后的数组**（Worker 响应体是
+ * `{experiments:[…]}`，`core/api/client.ts` 的 `listExperiments()` 负责拆包装；旧
+ * `BG.api.listExperiments()` 把包装体原样交给调用方，是装配层自己读的 `r.experiments`）。
+ * 2026-10-01 修：此前这里按「客户端已解包」写成 `Array.isArray(r)`，而当时客户端并没有解包，
+ * 于是服务端战报静默丢失（生产 6 轮实验在面板里永远看不到）——现在两端口径一致，且
+ * `test/app/experiments-merge.spec.ts` 钉住「服务端轮次真的并进了本机归档」。
  */
 export async function refreshServerExperiments(ctx: AppCtx): Promise<void> {
   const r = await listExperiments();

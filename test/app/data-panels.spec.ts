@@ -17,28 +17,9 @@ import {
   seedStorage,
   settingsJson,
   storageOf,
+  stubFetch,
   waitUntil,
 } from './fixture.ts';
-
-/**
- * 路由式 `fetch` 桩：按 pathname 命中；值是对象就直接当 JSON 返回，是函数就按 URL 现算。
- * 返回**每次请求的 path+search 列表**（断言「带没带 ?game= / ?limit=」用）。
- */
-function stubFetch(routes: Record<string, unknown>): string[] {
-  const calls: string[] = [];
-  vi.stubGlobal('fetch', (input: unknown): Promise<Response> => {
-    const url = new URL(String(input), 'http://127.0.0.1/');
-    calls.push(url.pathname + url.search);
-    const hit = routes[url.pathname];
-    if (hit === undefined) return Promise.resolve(new Response('{}', { status: 404 }));
-    const body = typeof hit === 'function' ? (hit as (u: URL) => unknown)(url) : hit;
-    return Promise.resolve(new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }));
-  });
-  return calls;
-}
 
 /** 一份最简 export payload（两段记法 + 逐手 ai 元数据）。 */
 function payloadOf(): Record<string, unknown> {

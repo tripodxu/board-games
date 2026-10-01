@@ -173,7 +173,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | `npx vitest run --project core` | 纯 node：字段映射、会话、战绩簿、上传队列，以及用 `node:sqlite` 重放 `migrations/**` 的归因用例 | 解析口径与导入脚本不一致。本地没有 `node:sqlite` 时该用例可跳过，CI 用 `REQUIRE_SQLITE=1` 强制硬失败 |
 | `npm run test:tactics` | 战术层的独立回归（`test/tactics/run.mjs`） | 战术层改动未同步该套件 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 29 项（列表、详情、旧深链、聚合、导出、401/400、去重与写入） | 契约漂移、D1 未绑定、限流误伤 |
-| `npm run smoke:browser` | 真浏览器（CDP + 系统 Chrome）冒烟：页签渲染、棋盘初始绘制、渠道切换、开局后状态栏与像素变化、曲线切换、设置抽屉、全程无未捕获异常；`--offline` 再加 2 项验「无后端时降级为离线演示而不是白屏」 | SPA 兜底吞掉 API、canvas 未绘制、启动期抛异常 |
+| `npm run smoke:browser` | 真浏览器（CDP + 系统 Chrome）冒烟 **13 项**：页签渲染、棋盘初始绘制、渠道切换、开局后状态栏与像素变化、**对手真的接着走子**、曲线切换、设置抽屉、**归档分页游标追加**、**实验报告分桶表**、**服务端战报并入**、全程无未捕获异常；`--offline` 下最后两项让位给 2 项降级断言（验「无后端时降级为离线演示而不是白屏」，共 13 项） | SPA 兜底吞掉 API、canvas 未绘制、启动期抛异常、注入点没人接线（Rapfi 那次）、跨层契约漂移（包装体没解包） |
 | `npm run verify:parity` | 新旧两套入口的对账（`--base` 旧 / `--candidate` 新），差值必须为 0 | 聚合口径或截断行为出现差异 |
 | `npm run verify:backup` | 备份能否重建出可信的库；定时任务用 `--structural` 档（绝对计数不判失败，但孤儿行、手数与 `move_count` 不符、payload 与派生列漂移、冻结期内对不回 `games/**` 源文件这四类永远硬失败） | 迁移漏行、payload 被改写、冻结期数据被篡改 |
 

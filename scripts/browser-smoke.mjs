@@ -451,6 +451,48 @@ try {
     }
   }
 
+  // 7.6) 实验报告：按「渠道 · 战术版本」分桶的对比表（本机归档 + 服务端合并后渲染）
+  const expReport = await waitFor(
+    `(() => { const rows = document.querySelectorAll('#expHistory .exp-agg-row');
+      if (!(rows.length > 0)) return '';
+      const r = rows[0];
+      const num = [...r.querySelectorAll('.exp-agg-num')].map((n) => n.textContent).join('/');
+      const w = r.querySelector('.exp-agg-bar i');
+      return { n: rows.length,
+        label: (r.querySelector('.exp-agg-side')?.textContent ?? ''),
+        num: num,
+        width: w ? w.style.width : '',
+        note: (document.querySelector('#expReportNote')?.textContent ?? ''),
+        cards: document.querySelectorAll('#expHistory .exp-card').length,
+        bars: document.querySelectorAll('#expHistory .exp-bar-row').length }; })()`,
+    { label: '实验报告分桶表', timeout: 15000, every: 250 },
+  );
+  check(
+    '实验报告：按「渠道 · 战术版本」分桶的胜率表',
+    Boolean(expReport) && expReport.num.split('/').length === 3 && Boolean(expReport.width) && !/Jev 渠道/.test(expReport.note),
+    expReport
+      ? `${expReport.n} 个配置（首个「${expReport.label}」局/胜/和 ${expReport.num}、胜率条 ${expReport.width}）· ${expReport.cards} 张卡片 / ${expReport.bars} 条单轮得分率 · 注脚「${String(expReport.note).trim()}」`
+      : '等待 15000ms 后 #expHistory 里没有 .exp-agg-row',
+  );
+
+  /* 服务端战报真的并进来了吗？——本机种子只有 2 轮，合并成功后面板上的轮次必然更多。
+     这一条专抓「客户端没解包 {experiments:[…]}」那类契约漂移（P6 起服务端战报曾静默丢失）。 */
+  if (!OFFLINE) {
+    const merged = await waitFor(
+      `(() => { const cards = document.querySelectorAll('#expHistory .exp-card').length;
+        if (!(cards > 2)) return '';
+        return { cards: cards, note: (document.querySelector('#expReportNote')?.textContent ?? '').trim() }; })()`,
+      { label: '服务端战报并入', timeout: 10000, every: 250 },
+    );
+    check(
+      '实验报告：服务端战报并入本机归档（轮次多于种子两轮）',
+      Boolean(merged),
+      merged
+        ? `本机种子 2 轮 → 面板 ${merged.cards} 轮，注脚「${merged.note}」`
+        : '等待 10000ms 后面板仍只有种子两轮（服务端战报没并进来）',
+    );
+  }
+
   // 8) 全程无页面级报错
   await sleep(500);
   /* 离线模式下被掐断的请求本身会产生 `net::ERR_FAILED` 之类噪音，那不是应用缺陷；

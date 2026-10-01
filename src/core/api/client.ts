@@ -149,8 +149,18 @@ export const gameUrl = (path: string | null | undefined): string => '/api/games/
 /** 实验轮次归档（按 tag upsert）。 */
 export const saveExperiment = (entry: unknown): Promise<unknown | null> => post('/api/experiments', entry);
 
-/** 实验台账（支持 device 过滤）。 */
-export const listExperiments = (query?: Query): Promise<unknown[] | null> => call<unknown[]>('/api/experiments', { query });
+/** 实验台账（支持 device 过滤）。
+ *
+ * 响应体是**包装对象** `{experiments:[…]}`（Worker 侧契约，旧 `js/api.js` 的调用方也是按
+ * `r.experiments` 读的），这里统一解包成数组，让调用方直接吃数组——P6 装配时误以为
+ * 客户端已经解包，写成 `Array.isArray(r)` 判断，导致服务端战报**从来没并进报告面板**。
+ * 兼容裸数组（便于测试桩与将来可能的契约变化），其余形状一律 null。 */
+export const listExperiments = async (query?: Query): Promise<unknown[] | null> => {
+  const r = await call<unknown[] | { experiments?: unknown }>('/api/experiments', { query });
+  if (Array.isArray(r)) return r;
+  const inner = r && (r as { experiments?: unknown }).experiments;
+  return Array.isArray(inner) ? inner : null;
+};
 
 /** 统计（scope=global|device、game、since；**无 truncated 字段**）。 */
 export const stats = (query?: Query): Promise<StatsResult | null> => call<StatsResult>('/api/stats', { query });

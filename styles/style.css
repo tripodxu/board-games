@@ -1059,6 +1059,36 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .exp-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; margin-bottom: 6px; }
 .exp-card-head .dim { font-size: 11px; }
 .exp-card-rows { font-size: 12px; }
+/* 实验报告：对比口径（按「渠道 · 战术版本」分桶的战绩表 + 单轮得分率条） */
+.exp-agg { margin-bottom: 12px; }
+.exp-agg-head, .exp-agg-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px 30px 92px;
+  align-items: center;
+  gap: 6px;
+}
+.exp-agg-head {
+  font-size: 10.5px;
+  color: var(--ink-mute);
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+}
+.exp-agg-head span:not(:first-child) { text-align: right; }
+.exp-agg-row {
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(31, 36, 44, .06);
+}
+.exp-agg-side { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-agg-num { text-align: right; color: var(--ink-mute); }
+.exp-agg-rate { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.exp-agg-rate b { font-size: 11px; }
+.exp-agg-bar, .exp-bar { flex: 0 0 auto; height: 6px; border-radius: 999px; background: var(--bg3); overflow: hidden; }
+.exp-agg-bar i, .exp-bar i { display: block; height: 100%; border-radius: 999px; background: var(--mo); }
+.exp-agg-bar { width: 46px; }
+.exp-bar-row { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; }
+.exp-bar-row .exp-bar { flex: 1 1 auto; }
+.exp-bar-side { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-mute); }
 /* 窄屏：A/B 双卡上下堆叠，局数与按钮换行，避免被挤扁 */
 @media (max-width: 560px) {
   .exp-sides { grid-template-columns: 1fr; }

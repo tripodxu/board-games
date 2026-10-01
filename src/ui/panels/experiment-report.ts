@@ -20,6 +20,11 @@
  *     `.exp-card-head` / `.exp-card-rows` / `.exp-row` / `.dim` / `.hint` / `.mono`）逐字保留。
  *  4. `games[].no` 缺省按 1 处理（旧实现直接 `(g.no - 1)`，缺字段会算出 NaN 分支）；
  *     `winnerChan` 出现在 entry 里但局内无胜方时按和棋处理，与旧实现一致。
+ *  5. **对比口径重做**（本次）：旧 `expTotals()` 只分「Jev 渠道 / 其他」，两侧同为 Jev 渠道时
+ *     （`jev-v8 vs jev-v9`，实验真正要回答的问题）双方落进同一桶、报出无信息量的合计。
+ *     新增 `expSideStats()` 按「渠道 · 战术版本 · 思考时长」分桶出「局/胜/和/胜率」，
+ *     `roundScore()` 给单轮 A/B 得分率，面板顶部渲染分桶表（`expAggregate()`）。
+ *     `expTotals()` 保留但只再用于「有效局数」这一个数字。
  */
 import type { StorageLike } from '../../core/persist.ts';
 import { el, qs, replaceChildren, setText, type UiRoot } from '../dom.ts';
@@ -216,6 +221,169 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
   return { jevWins, otherWins, draws, effective };
 }
 
+/* ── 对比口径：按「渠道 · 战术版本」分桶 ────────────────────────────────────
+ * 旧 `expTotals()` 只分「Jev 渠道 / 其他」两桶：两侧都是 Jev 时（`jev-v8 vs jev-v9` 这种真正
+ * 要比较的场景）双方落进同一桶，报出「Jev 6 胜 · 其他 0 胜」——没有信息量。这里按每一侧的
+ * **身份**（渠道 + 战术版本 + 思考时长）分桶，和棋按半分计入得分率，重复局仍不计。
+ */
+
+/** 一侧在一局里的身份。 */
+export interface SideIdentity {
+  channel: string;
+  tactics: string | null;
+  thinkMs: number;
+  /** 聚合键（身份三元组）：`Rapfi(3s)` 与 `Rapfi(5s)` 算两个身份 */
+  key: string;
+  /** 展示名（与 `sideAttribution()` 同一口径） */
+  label: string;
+}
+
+/** 取一局里某一侧的归属：局内字段优先，缺了退到轮级字段（旧 `resultCell` 的口径）。 */
+export function gameSide(e: ExperimentEntry, g: ExpHistoryGame, side: 'black' | 'white'): SideIdentity {
+  const chan = (side === 'black' ? g.blackChan : g.whiteChan) || (side === 'black' ? e.chanA : e.chanB) || '';
+  const tac = (side === 'black' ? g.blackTac : g.whiteTac) || (side === 'black' ? e.tacA : e.tacB) || null;
+  const think = (side === 'black' ? g.blackThink : g.whiteThink) || (side === 'black' ? e.thinkA : e.thinkB) || 0;
+  return {
+    channel: chan,
+    tactics: tac,
+    thinkMs: think,
+    key: chan + '|' + (tac ?? '') + '|' + think,
+    label: sideAttribution(chan, tac, think),
+  };
+}
+
+/** 一个身份在全部实验里的战绩。 */
+export interface SideStat extends SideIdentity {
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  /** 得分率 =（胜 + 和 ÷ 2）÷ 局 */
+  rate: number;
+}
+
+/** 按身份聚合出战绩表：局数降序 → 得分率降序 → 名称。`dup` 局不计（与 `expTotals()` 一致）。 */
+export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
+  const map = new Map<string, SideStat>();
+  const bucket = (id: SideIdentity): SideStat => {
+    let s = map.get(id.key);
+    if (!s) {
+      s = { ...id, games: 0, wins: 0, draws: 0, losses: 0, rate: 0 };
+      map.set(id.key, s);
+    }
+    return s;
+  };
+  list.forEach((e) => {
+    (e.games || []).forEach((g) => {
+      if (g.dup) return;
+      const black = bucket(gameSide(e, g, 'black'));
+      const white = bucket(gameSide(e, g, 'white'));
+      black.games++;
+      white.games++;
+      if (!g.winnerChan) {
+        black.draws++;
+        white.draws++;
+        return;
+      }
+      /* A/B → 黑白：A 在奇数局执黑（与 resultCell 同一条判据，不按渠道名比对） */
+      const aIsBlack = ((g.no || 1) - 1) % 2 === 0;
+      const winnerIsBlack = g.winnerChan === 'A' ? aIsBlack : !aIsBlack;
+      if (winnerIsBlack) {
+        black.wins++;
+        white.losses++;
+      } else {
+        white.wins++;
+        black.losses++;
+      }
+    });
+  });
+  const rows = [...map.values()];
+  rows.forEach((s) => {
+    s.rate = s.games ? (s.wins + s.draws / 2) / s.games : 0;
+  });
+  rows.sort((x, y) => y.games - x.games || y.rate - x.rate || x.label.localeCompare(y.label));
+  return rows;
+}
+
+/** 单轮比分（A/B 各自的胜局与得分率）。 */
+export interface RoundScore {
+  a: number;
+  b: number;
+  draws: number;
+  effective: number;
+  aRate: number;
+  bRate: number;
+}
+
+/** 一轮里 A/B 的比分：A 的胜局按 `winnerChan === 'A'` 数，和棋对两边各记半分。 */
+export function roundScore(e: ExperimentEntry): RoundScore {
+  let a = 0;
+  let b = 0;
+  let draws = 0;
+  let effective = 0;
+  (e.games || []).forEach((g) => {
+    if (g.dup) return;
+    effective++;
+    if (!g.winnerChan) draws++;
+    else if (g.winnerChan === 'A') a++;
+    else b++;
+  });
+  const aRate = effective ? (a + draws / 2) / effective : 0;
+  return { a, b, draws, effective, aRate, bRate: effective ? 1 - aRate : 0 };
+}
+
+/** `0.5` → `50%`；`0.6667` → `66.7%`。 */
+export function pct(rate: number): string {
+  const v = Math.round(rate * 1000) / 10;
+  return (Number.isInteger(v) ? String(v) : v.toFixed(1)) + '%';
+}
+
+/** 一条轨道 + 填充（与排行榜 `.lb-bar` 同构，类名分开以免互相牵连）。 */
+function rateBar(rate: number, label: string, cls: string): HTMLElement {
+  return el('span', { class: cls, role: 'img', 'aria-label': label + ' ' + pct(rate) }, [
+    el('i', { style: { width: pct(rate) } }),
+  ]);
+}
+
+/** 面板顶部的「累计 + 按身份战绩表」（旧实现只有一行 `累计：Jev 渠道 …`）。 */
+export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
+  const t = expTotals(list);
+  const rows = expSideStats(list);
+  const chans = new Set(rows.map((r) => r.channel).filter(Boolean));
+  const tacs = new Set(rows.map((r) => r.tactics).filter((x): x is string => !!x));
+  const total = el('div', { class: 'exp-total' }, [
+    `累计 ${list.length} 轮 · ${t.effective} 局有效对局`,
+    t.draws ? ` · 和棋 ${t.draws}` : null,
+    ` · 渠道 ${chans.size} 个`,
+    tacs.size ? ` · 战术版本 ${tacs.size} 档` : null,
+  ]);
+  const head = el('div', { class: 'exp-agg-head' }, [
+    el('span', { text: '渠道 · 战术' }),
+    el('span', { text: '局' }),
+    el('span', { text: '胜' }),
+    el('span', { text: '和' }),
+    el('span', { text: '胜率' }),
+  ]);
+  const rowEls = rows.map((r) =>
+    el('div', { class: 'exp-agg-row', dataset: { key: r.key } }, [
+      el('span', { class: 'exp-agg-side', title: r.label, text: r.label }),
+      el('span', { class: 'mono exp-agg-num', text: String(r.games) }),
+      el('span', { class: 'mono exp-agg-num', text: String(r.wins) }),
+      el('span', { class: 'mono exp-agg-num', text: String(r.draws) }),
+      el('span', { class: 'exp-agg-rate' }, [
+        rateBar(r.rate, r.label + ' 得分率', 'exp-agg-bar'),
+        el('b', { class: 'mono', text: pct(r.rate) }),
+      ]),
+    ]),
+  );
+  return el('div', { class: 'exp-agg' }, [
+    total,
+    head,
+    rowEls,
+    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。' }),
+  ]);
+}
+
 /** 局行的结果格（旧 `wl`，js/app.js:1369-1371）。 */
 function resultCell(e: ExperimentEntry, g: ExpHistoryGame, wchan: string | null): HTMLElement {
   if (g.dup) return el('span', { class: 'dim', text: '重复局（与 #1 相同）' });
@@ -238,17 +406,10 @@ function resultCell(e: ExperimentEntry, g: ExpHistoryGame, wchan: string | null)
 
 /** 一张战报卡（旧 `.exp-card`，js/app.js:1372-1385）。 */
 export function expCard(e: ExperimentEntry): HTMLElement {
-  let a = 0;
-  let b = 0;
-  let eff = 0;
+  const s = roundScore(e);
   const rows = (e.games || []).map((g) => {
     const wside = g.dup ? null : g.winnerChan ?? null;
     const wchan = wside ? (wside === 'A' ? e.chanA : e.chanB) : null;
-    if (!g.dup) {
-      eff++;
-      if (wside === 'A') a++;
-      else if (wside === 'B') b++;
-    }
     return el('div', { class: 'exp-row' }, [
       el('span', { class: 'mono', text: '#' + g.no }),
       el('span', { text: sideAttribution(g.blackChan, g.blackTac, g.blackThink) + '(黑)' }),
@@ -262,15 +423,23 @@ export function expCard(e: ExperimentEntry): HTMLElement {
     el('div', { class: 'exp-card-head' }, [
       el('b', {}, [
         sideAttribution(sides.a.channel, sides.a.tactics, sides.a.rapfiThinkMs) + ' ',
-        el('span', { class: 'mono', text: a + ' : ' + b }),
+        el('span', { class: 'mono', text: s.a + ' : ' + s.b }),
         ' ' + sideAttribution(sides.b.channel, sides.b.tactics, sides.b.rapfiThinkMs),
       ]),
       el('span', { class: 'dim' }, [
-        `${eff} 局有效 · ${fmtExpDate(e.date)}`,
+        `${s.effective} 局有效${s.draws ? ' · 和 ' + s.draws : ''} · ${fmtExpDate(e.date)}`,
         e.tag ? ' · ' : null,
         e.tag ? el('span', { class: 'mono', text: e.tag }) : null,
       ]),
     ]),
+    /* 单轮得分率：A 侧一条，B 侧是它的补数（和棋各记半分，所以两边不一定 0/100） */
+    s.effective
+      ? el('div', { class: 'exp-bar-row' }, [
+          el('span', { class: 'mono exp-bar-side', text: 'A ' + pct(s.aRate) }),
+          rateBar(s.aRate, 'A 侧得分率', 'exp-bar'),
+          el('span', { class: 'mono exp-bar-side', text: 'B ' + pct(s.bRate) }),
+        ])
+      : null,
     el('div', { class: 'exp-card-rows' }, rows),
     e.note ? el('div', { class: 'hint', text: e.note }) : null,
   ]);
@@ -289,18 +458,10 @@ export function renderExpHistory(list: readonly ExperimentEntry[], root?: UiRoot
     return;
   }
   const t = expTotals(list);
-  const total = el('div', { class: 'exp-total' }, [
-    '累计：Jev 渠道 ',
-    el('b', { class: 'mono', text: String(t.jevWins) }),
-    ' 胜 · 其他 ',
-    el('b', { class: 'mono', text: String(t.otherWins) }),
-    ' 胜',
-    t.draws ? ' · 和棋 ' : null,
-    t.draws ? el('b', { class: 'mono', text: String(t.draws) }) : null,
-    `（${t.effective} 局有效对局）`,
-  ]);
-  replaceChildren(box, [total, ...list.map((e) => expCard(e))]);
-  setText(qs(r, '#expReportNote'), `${list.length} 轮实验 · Jev ${t.jevWins}:${t.otherWins}`);
+  replaceChildren(box, [expAggregate(list), ...list.map((e) => expCard(e))]);
+  /* 面板标题栏的注脚：只报规模与有效局数 —— 旧文案「N 轮实验 · Jev X:Y」把两侧同渠道的
+     实验（v8 vs v9）都算进「Jev」，是会误导人的口径，已由 .exp-agg 的分桶表取代。 */
+  setText(qs(r, '#expReportNote'), `${list.length} 轮实验 · ${t.effective} 局有效`);
 }
 
 /** 旧 `recordExperiment()` 的 entry 组装（js/app.js:1307-1319，note 恒为空串）。 */
