@@ -170,11 +170,13 @@
 
 24. **A/B 局的「记录级 `tacticsVersion`」只反映黑方档位**：`src/core/record/export.ts:207` 写的是 `tacticsVersion: bCfg.tactics`，所以两臂用不同档位时（例如 2026-10-02 的 v10 实验：rapfi 执黑、proxy 执白），归档记录的顶层版本是**黑方**的，`games.tactics_version` 与「棋谱归档」面板的分组键也跟着走 —— 8 局 v10 臂里有 4 局被分到 `v9-vcf-sound` 组。权威字段是 `blackTactics` / `whiteTactics` 与每手 `ai.tv`（本次结论全部按这两个口径取），修法要么让客户端在混合档位时写「双方档位」要么让面板改按 `blackTactics`+`whiteTactics` 分组——属待决，未做。
 
-25. **`v11-vct` 的推演边界**：搜索宽度写死（`VCT_PLIES = 9` = 5 手攻方着法、每层最多 `VCT_MOVES_MAX = 10` 个攻击方着法、`VCT_NODE_LIMIT = 3000` 节点、守方应手多于 `VCT_DEFUSERS_MAX = 6` 就不当作逼迫手）⇒ 更长的混合链（>5 手）看不见，应手极多的活三会被保守跳过（宁可漏判也不谎报必胜）；三个上限由 586 个真实回合标定，`10/3000/6` 与初版 `14/6000/∞` 看见同样 55 手必胜链，平均 607→422ms、p90 2430→1636ms、最坏 8837→4506ms（换缺省常量后复测）（[ADR-0015](adr/0015-vct-continuous-threats.md)「代价与不做什么」）；**最坏 4.6s 的重推演是同步阻塞**（发生在少数深局面，中位仅 13ms；12 局实战里单回合最坏 2623–2830ms），尚未做时间预算以外的异步化；**不做**独立的「双活三 / 双威胁」层（24 局 914 个 proxy 回合实测真双威胁 **0 次**，做了是死代码）；`vctWin` 仍**不建模认输与禁手判负以外的规则**（与其余层同）。**连同 v10 遗留的两条**（为保持 A/B 单变量本轮不动）：`live3After` 判的是「盘面上存在 ≥2 个活四制造点」而非「本手新造」（密集局面 `live3_you` 可达 123 点，`pickAmong` 退化成取模型全局首选），提示词里 `live3_you … winning within four moves` 的措辞只对「两个活四制造点互相独立」成立——见 [ADR-0015](adr/0015-vct-continuous-threats.md) 背景与「代价与不做什么」。
+25. **`v11-vct` 的推演边界**：搜索宽度写死（`VCT_PLIES = 9` = 5 手攻方着法、每层最多 `VCT_MOVES_MAX = 10` 个攻击方着法、`VCT_NODE_LIMIT = 3000` 节点、守方应手多于 `VCT_DEFUSERS_MAX = 6` 就不当作逼迫手）⇒ 更长的混合链（>5 手）看不见，应手极多的活三会被保守跳过（宁可漏判也不谎报必胜）；三个上限由 586 个真实回合标定，`10/3000/6` 与初版 `14/6000/∞` 看见同样 55 手必胜链，平均 607→422ms、p90 2430→1636ms、最坏 8837→4506ms（换缺省常量后复测）（[ADR-0015](adr/0015-vct-continuous-threats.md)「代价与不做什么」）；**最坏 4.6s 的重推演是同步阻塞**（发生在少数深局面，中位仅 13ms；实战单回合最坏：第一轮 2623–2830ms、计时轮引擎侧 3458ms / 整层 `tac_ms` 4474ms），尚未做时间预算以外的异步化；**不做**独立的「双活三 / 双威胁」层（24 局 914 个 proxy 回合实测真双威胁 **0 次**，做了是死代码）；`vctWin` 仍**不建模认输与禁手判负以外的规则**（与其余层同）。**连同 v10 遗留的两条**（为保持 A/B 单变量本轮不动）：`live3After` 判的是「盘面上存在 ≥2 个活四制造点」而非「本手新造」（密集局面 `live3_you` 可达 123 点，`pickAmong` 退化成取模型全局首选），提示词里 `live3_you … winning within four moves` 的措辞只对「两个活四制造点互相独立」成立——见 [ADR-0015](adr/0015-vct-continuous-threats.md) 背景与「代价与不做什么」。
+
+26. **每日备份的 CI 工作流从来没有真正跑通过**（2026-10-02 首次触发即失败，见下）：`.github/workflows/backup.yml`（UTC 04:23 导出 + `verify:backup --structural`）与 `deploy.yml` 的 `workflow_dispatch` 都需要仓库 Secrets `CLOUDFLARE_API_TOKEN`（D1:Read）与 `CLOUDFLARE_ACCOUNT_ID`，而 `gh secret list` 是**空的** ⇒ wrangler 在非交互环境直接报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable`、步骤 exit 1。当前**没有任何自动备份在跑**（手动 `npm run db:export` 仍可用，本机走的是 OAuth）。修法：项目所有者去 Cloudflare 建一个有 D1:Read（部署另需 Workers Scripts:Edit）的 API Token，再 `gh secret set`；在补上之前，第 14 条「备份靠 CI 每日导出」**只是设计意图、不是现状**。
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 130 个用例 + vitest 34 个测试文件 / 334 个用例）。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 130 个用例 + vitest 34 个测试文件 / 337 个用例）。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

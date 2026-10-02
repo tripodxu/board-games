@@ -84,6 +84,26 @@ if (!BROWSER) {
 console.log(`浏览器：${BROWSER}`);
 console.log(`目标：  ${URL_TARGET}（渠道 ${CHANNEL}${OFFLINE ? '，离线模式：所有 /api/* 请求会被掐断' : ''}）`);
 
+/* 目标自证：缺省目标 `http://localhost:8787/` 是历史端口，本机那一端口可能被**别的**服务占着
+   （2026-10-02 实测指向了无关应用：页签一个都查不到，14 项里 12 项红得莫名其妙）。
+   开跑前先问一句 `/api/health`，service 不符就直接退出 —— 别把「打开错了服务」误读成产品回归。 */
+if (!OFFLINE) {
+  try {
+    const res = await fetch(new URL('api/health', URL_TARGET), { signal: AbortSignal.timeout(5000) });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || body?.service !== 'jev-qiguan-worker') {
+      console.error(`✗ 目标不是 Jev 棋馆 Worker：${URL_TARGET}api/health → ${res.status} ${JSON.stringify(body)?.slice(0, 120)}`);
+      console.error('  用 --url 指到正确的部署（例如 --url https://jevqipan.logicc.top）。');
+      process.exit(1);
+    }
+    console.log(`目标自证：${body.service} ${body.version} · schema ${body.schema}`);
+  } catch (err) {
+    console.error(`✗ 目标不可达：${URL_TARGET}api/health → ${err?.message ?? err}`);
+    console.error('  本地先 npm run dev（本机 8787 被占时用 8788），或用 --url 指到线上。');
+    process.exit(1);
+  }
+}
+
 /* 上次跑留下的临时 profile 可能还被刚退出的 Chrome hold 着（Windows 上很常见）：
    清不掉就复用同名目录继续，别让整次冒烟起不来。 */
 try {
@@ -504,17 +524,23 @@ try {
       return { n: rows.length,
         label: (r.querySelector('.exp-agg-side')?.textContent ?? ''),
         num: num,
+        labels: [...document.querySelectorAll('#expHistory .exp-agg-row .exp-agg-side')].map((x) => x.textContent ?? ''),
         width: w ? w.style.width : '',
         note: (document.querySelector('#expReportNote')?.textContent ?? ''),
         cards: document.querySelectorAll('#expHistory .exp-card').length,
         bars: document.querySelectorAll('#expHistory .exp-bar-row').length }; })()`,
     { label: '实验报告分桶表', timeout: 15000, every: 250 },
   );
+  /* 每行是「局 / 胜 / 和 / 战术」（2026-10-02 起多了战术层平均耗时那一格，Rapfi 侧显示 —），
+     所以数格子要 `>= 3` 而不是 `=== 3`；同时要求表里至少有一个 Jev 身份行 ——
+     否则「只剩 Rapfi 一行」这种坏口径也会被判成通过。 */
+  const nums = expReport ? expReport.num.split('/') : [];
   check(
     '实验报告：按「渠道 · 战术版本」分桶的胜率表',
-    Boolean(expReport) && expReport.num.split('/').length === 3 && Boolean(expReport.width) && !/Jev 渠道/.test(expReport.note),
+    Boolean(expReport) && nums.length >= 3 && Boolean(expReport.width)
+      && expReport.labels.some((l) => /Jev/.test(l)) && !/Jev 渠道/.test(expReport.note),
     expReport
-      ? `${expReport.n} 个配置（首个「${expReport.label}」局/胜/和 ${expReport.num}、胜率条 ${expReport.width}）· ${expReport.cards} 张卡片 / ${expReport.bars} 条单轮得分率 · 注脚「${String(expReport.note).trim()}」`
+      ? `${expReport.n} 个配置（首个「${expReport.label}」局/胜/和/战术 ${expReport.num}、胜率条 ${expReport.width}）· ${expReport.cards} 张卡片 / ${expReport.bars} 条单轮得分率 · 注脚「${String(expReport.note).trim()}」`
       : '等待 15000ms 后 #expHistory 里没有 .exp-agg-row',
   );
 

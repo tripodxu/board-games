@@ -19,6 +19,17 @@
 
 ---
 
+## 2026-10-02 · 两个「静默失败」的教训：定时工作流从没跑通过、冒烟脚本会打错靶
+
+- **每日备份的 CI 工作流从来没有跑通过**（`.github/workflows/backup.yml`，cron `23 4 * * *`）。2026-10-02 顺手 `gh run list --workflow=backup` 才发现只有一条记录：`36996349153` **failure**（33 s），报
+  `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable for wrangler to work.`
+  根因：**`gh secret list` 是空的** —— `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 从未配置，`deploy.yml` 的 `workflow_dispatch` 同样认证不了。
+  **可迁移判据：定时任务失败是静默的**——没人点的那条流水线，没人会看它的红灯。凡「靠 CI 兜底」的承诺（备份、导出、巡检）都要在落地当天用 `gh run list --workflow=<name>` 看过一次真绿，才算成立；否则它只是设计意图。已记入 `docs/status.md`「仍存在」第 26 条（修法：建 D1:Read 的 API Token 再 `gh secret set`）。
+- **`smoke:browser` 默认目标会打错靶**：缺省 `http://localhost:8787/` 在本机被**别的**应用占着，脚本照样开页面、标题断言还能过，页签一个都查不到 ⇒ **2/13**，失败项全是 `no-*` 标识，看起来像产品回归。
+  **可迁移判据：会「打开一个页面」的冒烟脚本必须先自证目标**。已在 `scripts/browser-smoke.mjs` 加前置断言：`fetch(new URL('api/health', URL_TARGET))` 必须返回 `service === 'jev-qiguan-worker'`，否则 `exit 1` 并提示 `--url`；同时修掉「分桶表按 `=== 3` 数格子」的过时断言（`tac_ms` 上线后每行多一格战术，共 4 格）并要求表里至少有一个 Jev 身份行。修后线上 **14/14**。
+
+
+
 ## 2026-10-02 · v11 计时轮：9 胜 0 和 3 负，战术层 402 ms ≈ 单步墙钟的 4.6%（外加 Rapfi 侧惰性档位标签的幻影身份）
 
 - **为什么再打一轮**：上一轮（tag `exp-20261002055817`，83%）跑在 `tac_ms` 上线之前，`tac_ms` 全 NULL ⇒ 答不了「战术层到底占多少成本」。本轮与 C 臂**同对手同口径**（`v11-vct` vs `rapfi@500ms`，12 局黑白交替），唯一差别是带上了计时，命令 `node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v11-vct --chanB rapfi --thinkB 500`（tag `exp-20261002094817`，用时 1966 s，上游 213 次调用 / in 471,834 / out 94,723 tok，38 次状态 0 的传输错误全被 `callWithRetry` 重试成 200，零 429）。

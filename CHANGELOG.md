@@ -89,6 +89,14 @@
 
 ### 修复
 
+- **`smoke:browser` 会「打错靶」且分桶表断言过时**（2026-10-02 实战踩到）：缺省目标 `http://localhost:8787/`
+  在本机被**别的应用**占着，脚本照样开页面、拿标题断言通过，其余页签全查不到 ⇒ **2/13**，失败项全是 `no-*`
+  标识，极易被误读成产品回归。另：`tac_ms` 上线后分桶表每行多了「战术」格（Rapfi 侧显示 `—`，共 4 格），
+  而断言仍按 `=== 3` 数格子 ⇒ 线上真跑时红一项。修法（只动工具链）：①开跑前**目标自证** ——
+  `fetch(new URL('api/health', URL_TARGET))` 必须返回 `service === 'jev-qiguan-worker'`，否则直接 `exit 1`
+  并提示用 `--url` 指到正确部署；②断言改 `nums.length >= 3`，且要求表里**至少有一个 Jev 身份行**
+  （防止「只剩 Rapfi 一行」被判通过），行标签一并收进返回值。修后 `--url https://jevqipan.logicc.top` **14/14**
+  （首行输出 `目标自证：jev-qiguan-worker 1.0.0 · schema 0002_tactics_timing.sql`）。
 - **归档给「不过战术层的渠道」也写了战术档标签**（计时轮暴露，与下一条同源但更深一层）：
   Rapfi / mock / 人类侧压根不进 `computeTactics`（`src/core/jev/client.ts` 在 `channel === 'rapfi'` 处短路），
   归档里的 `black_tactics` / `white_tactics` 却照抄 A/B 配置 ⇒ `black_channel='rapfi'` 的行带着
