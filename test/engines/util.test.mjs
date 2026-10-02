@@ -339,20 +339,20 @@ S.t('calibration：fromRecords 计数（和棋丢样本、演示局单列）', (
 S.t('duel：展示名（人/演示/代理/随机/rapfi 时长）', () => {
   eq(D.sideLabel({ human: true }), '我', 'human 展示名应为 我');
   eq(D.sideLabel({ channel: 'mock' }), '演示', 'mock 展示名应为 演示');
-  eq(D.sideLabel({ channel: 'proxy' }), 'Jev·v12', 'proxy 展示名应跟登记表末档（Jev·v12）');
+  eq(D.sideLabel({ channel: 'proxy' }), 'Jev·v13', 'proxy 展示名应跟登记表末档（Jev·v13）');
   eq(D.sideLabel({ channel: 'random', tactics: 'v4-parry3' }), '随机·v4', '随机渠道也应带版本');
   eq(D.sideLabel({ channel: 'rapfi', rapfiThinkMs: 3000 }), 'Rapfi(3s)', 'Rapfi 应带思考时长');
   eq(D.sideLabel({ channel: 'rapfi', rapfiThinkMs: 500 }), 'Rapfi(0.5s)', '0.5s 档应显示 0.5s');
 });
 
 S.t('duel：联名 / 战绩簿 / 实验标签', () => {
-  eq(D.duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }), '黑 Jev·v12 vs 白 Rapfi(5s)',
+  eq(D.duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }), '黑 Jev·v13 vs 白 Rapfi(5s)',
     '联名格式不对：' + D.duelLabel({ channel: 'proxy' }, { channel: 'rapfi', rapfiThinkMs: 5000 }));
-  eq(D.gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }), '五子棋 · 人机 · 黑 我 vs 白 Jev·v12',
+  eq(D.gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }), '五子棋 · 人机 · 黑 我 vs 白 Jev·v13',
     '战绩簿名不对：' + D.gameLabel('五子棋', 'human', { human: true }, { channel: 'proxy' }));
-  eq(D.expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4), 'Jev·v12 vs 随机·v3 ×4局',
+  eq(D.expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4), 'Jev·v13 vs 随机·v3 ×4局',
     '实验标签不对：' + D.expLabel({ channel: 'proxy' }, { channel: 'random', tactics: 'v3-make2' }, 4));
-  eq(D.gameLabel('围棋', 'ai-ai', { channel: 'proxy' }, { channel: 'mock' }), '围棋 · 机机 · 黑 Jev·v12 vs 白 演示',
+  eq(D.gameLabel('围棋', 'ai-ai', { channel: 'proxy' }, { channel: 'mock' }), '围棋 · 机机 · 黑 Jev·v13 vs 白 演示',
     '机机模式文案不对');
   eq(D.gameLabel('象棋', 'pvp', { human: true }, { human: true }), '象棋 · 双人 · 黑 我 vs 白 我',
     '双人模式文案不对');
@@ -360,14 +360,14 @@ S.t('duel：联名 / 战绩簿 / 实验标签', () => {
 
 S.t('duel：slug 字符集/长度/路径注入防御', () => {
   const s = D.slug({ channel: 'random', tactics: 'v3-make2' }, { channel: 'proxy' });
-  eq(s, 'ran-v3-vs-jev-v12', 'slug 不对：' + s);
+  eq(s, 'ran-v3-vs-jev-v13', 'slug 不对：' + s);
   ok(!/[^a-z0-9_-]/.test(s) && s.length <= 24, 'slug 必须只含安全字符且 ≤24：' + s);
   const inject = D.slug({ channel: 'proxy', tactics: '../../etc/pa' }, { channel: 'mock' });
   ok(inject.indexOf('/') < 0 && inject.indexOf('.') < 0, '路径注入必须被清掉：' + inject);
   ok(D.slug({}, {}).length > 0, '空配置也应有兜底 slug');
   eq(D.slug({ human: true }, { channel: 'proxy', tactics: 'v0-off' }), 'me-vs-jev-v0',
     '人机局 slug 应为 me-vs-jev-v0');
-  eq(D.duelLabel({ human: true }, { channel: 'proxy' }), '黑 我 vs 白 Jev·v12', '人机局联名应标「我」');
+  eq(D.duelLabel({ human: true }, { channel: 'proxy' }), '黑 我 vs 白 Jev·v13', '人机局联名应标「我」');
   eq(D.slug({ human: true }, { human: true }), 'me-vs-me', '双人局 slug 应为 me-vs-me');
   eq(D.sideSlug({ channel: 'rapfi', rapfiThinkMs: 2500 }), 'rapfi-2.5s', 'rapfi slug 应带时长');
 });

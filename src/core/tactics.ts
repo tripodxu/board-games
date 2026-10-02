@@ -10,6 +10,11 @@
  * 每一级都受**版本闸门**（tactics-versions.mech）约束：老版本没实现的层连算都不算，
  * 否则「v4 的行为」会随新代码漂移，实验就没法按版本归因。
  *
+ * v13 的压力闸门（`pressureGate`）在 live3Attack **之前**插一层：对手的做四手数
+ * （pressure_opponent）压过我们（pressure_you）时先走 `pressure_cut_points`（1-ply 模拟里
+ * 让对手做四手数最小的点，削掉他的网），没有削点时才照旧抢活三——理由见 gomoku.ts 的
+ * v13 注释与 ADR-0017。
+ *
  * 纯逻辑：只依赖 engine 接口 + 版本登记表；无 DOM、无网络。异步仅出现在 callRaw 一侧。
  */
 import { weightedPick } from './weighted.ts';
@@ -41,6 +46,12 @@ export interface TacticsReport {
   live3_opponent: string[];
   /** v10：破活三的落点（并列最优里最先评估到的，可能为空数组）。 */
   live3_deny_points: string[];
+  /** v13：己方做四手数（邻域内落子即成冲四的空点数）——2 手的取势指标，不是必胜事实。 */
+  pressure_you: number;
+  /** v13：对手做四手数；大于 pressure_you 时压力闸门开火（先削点，不抢活三）。 */
+  pressure_opponent: number;
+  /** v13：削点（落子后对手做四手数最小的点，并列里自己做四手数更大者优先）。空 = 没得削。 */
+  pressure_cut_points: string[];
 }
 
 /** 对局经验（跨设备开具体验；由 /api/openings 喂）。 */
@@ -73,10 +84,11 @@ export interface DecideResult {
  * 常量与缓存
  * ------------------------------------------------------------------ */
 
-/** 16 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
+/** 17 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
 const ALL_MECH: Record<string, boolean> = {
   win: true, block: true, open4: true, threat: true,
-  vcfAttack: true, vcfDefense: true, vctAttack: true, vctDefense: true, live3Attack: true, live3Defense: true,
+  vcfAttack: true, vcfDefense: true, vctAttack: true, vctDefense: true, pressureGate: true,
+  live3Attack: true, live3Defense: true,
   parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true,
 };
 
@@ -100,6 +112,7 @@ export function emptyTactics(): TacticsReport {
     vcf_win_you: [], vcf_win_opponent: [],
     vct_win_you: [], vct_win_opponent: [], vct_chain_opponent: [],
     live3_you: [], live3_opponent: [], live3_deny_points: [],
+    pressure_you: 0, pressure_opponent: 0, pressure_cut_points: [],
   };
 }
 
@@ -265,6 +278,9 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     live3_you: [],
     live3_opponent: [],
     live3_deny_points: [],
+    pressure_you: 0,
+    pressure_opponent: 0,
+    pressure_cut_points: [],
   };
 
   /* 2-ply 造杀/拆杀：只在「没有一步致胜」时才算（有致胜就不用看了） */
@@ -332,6 +348,24 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
   }
 
+  /* 压力（v13）：两侧的「做四手数」。不是必胜事实，而是取势对照——对手做四点比我们多时，
+     我们先抢活三大概率只是送一个逼手，下一步就被他的网罩住（六轮 39 个这样的回合里，
+     实走之后对手仍握双四威胁的有 37 个；改走削点，双四威胁降到 7 个）。闸门开火时才算削点：
+     1-ply 模拟里挑「对手做四手数最小」的点，一个都削不动就返回空数组（client 侧不开火）。 */
+  if (engine.deepTactics && typeof engine.fourPressure === 'function' && win.length === 0 && block.length === 0
+      && oppSide && M.pressureGate) {
+    try {
+      res.pressure_you = engine.fourPressure(st, side);
+      res.pressure_opponent = engine.fourPressure(st, oppSide.id);
+      if (res.pressure_opponent > res.pressure_you && typeof engine.pressureCut === 'function') {
+        /* 只把**模型候选**当前置优先序；不能像别处那样退回「全部合法着法」——那等于按行序盲试，
+         * 会把真正有效的削点挤出候选上限（实测 `1be84659` ply24 的 C8 就在第 40 个之后）。 */
+        const cut = engine.pressureCut(st, side, { cands: (cands && cands.length) ? cands : [] });
+        if (cut && cut.points.length) res.pressure_cut_points = cut.points;
+      }
+    } catch (_) { /* 同上：引擎差异 fail-soft */ }
+  }
+
   /* 4-ply 活三（v10）：v9 之前只有「活四制造点」（2-ply），跳活三/斜向组合全靠模型自己看，
      实测正是输给搜索算法的口子。这里用引擎的 live3Makers / live3Deny 真推演（4 手内必胜）。 */
   if (engine.deepTactics && typeof engine.live3Makers === 'function' && win.length === 0 && block.length === 0
@@ -387,6 +421,9 @@ export function attachFacts(ser: JevSerialized, tactics: TacticsReport, experien
       'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ' +
       'If `live3_opponent` is non-empty, the opponent has points that would create two open-four threats at once (winning within four moves even if you block one); `live3_deny_points` lists the moves that remove that threat — play one of them unless a more urgent item above applies. ' +
       'If `live3_you` is non-empty and the opponent has no equal or faster threat, playing one of those points creates a double open-four threat of your own, winning within four moves. ' +
+      (tactics.pressure_you || tactics.pressure_opponent
+        ? '`pressure_you` and `pressure_opponent` count how many points would immediately create a four for each side; when `pressure_opponent` is greater than `pressure_you`, the opponent is already weaving a net of fours while your own open-three attack would only be a forcing move — play `pressure_cut_points` instead (the point that leaves the opponent with the fewest four-making points), not `live3_you`. '
+        : '') +
       (experience ? 'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ' : '');
   }
 }

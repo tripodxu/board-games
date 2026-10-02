@@ -14,7 +14,7 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
-import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, UiState, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -763,6 +763,104 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     return { kind, chain, points: hits.map((h) => h.n), tried };
   }
 
+  /* ---------- v13 战术层：压力闸门（对手做四手数压过我们时先削点，不抢活三） ----------
+   * 证据（六轮 rapfi 对照 / 1787 个 Jev 回合 / 205 手实走 live3Attack，探针 `.work/v13-pressure-probe.mjs`）：
+   * 其中 39 手（19.0%，占全部回合 2.2%）在落子前对手的「做四手数」就已经超过我们，而实走之后
+   * 对手仍握有 ≥2 个做四点（双四威胁，2 手胜）的有 37 手；把这 39 手改走「拆对手的活三点」，
+   * 37 手能把对手做四手数压得更低（平均 −1.87 个）、0 手更差，双四威胁从 37 手降到 7 手。
+   * 语义：活三本身不是杀（ADR-0015 已修正：两个 L2 点互斥，v10 的「4 手内必胜」不成立），
+   * 它只是逼手；对手做四点密集时才真正危险。所以「我们落后于对手的造四点能力」时，
+   * 先削（1-ply 模拟里挑对手做四手数最小者）比先抢划算——真正的强制胜早已被 vcfAttack /
+   * vctAttack 接管，且削点为空时本层不开火，行为与 v12 一致。 */
+  /** p 方在 st 局面下的「做四手数」（车氏邻域内落子即成冲四的空点数）。默认不早退：
+   * 闸门要精确比较两侧数量，早退会让两侧同时触顶而误判为「不落后」。 */
+  function fourPressure(st: GomokuState, sideId: string, limit?: number): number {
+    return fourMakeCount(clone(st.board), num(sideId), limit && limit > 0 ? limit : 99);
+  }
+
+  const PRESSURE_CUT_MAX = 120;
+  const PRESSURE_CUT_KEEP = 3;
+  /** 削点搜索：候选顺序 = 模型候选点 → 「对手做四点」的车氏 ≤2 邻域（按距离升序）→ 其余邻近空点，
+   *  上限 PRESSURE_CUT_MAX。每个候选做 1-ply 模拟，度量「落子后对手的做四手数」（越小越好），
+   *  并列时取自己做四手数更大者（主动权留在自己手上）。
+   *  只有严格优于落子前的对手手数才算「削点」；一个都没有就返回空（调用方不动）。
+   *  候选顺序很关键：按行序盲试会漏掉有效点（实测 `1be84659` ply24 的 C8 就在第 40 个之后），
+   *  而「贴着对手做四点削」既便宜又准（对手的做四点就是他那张网的节点）。 */
+  function pressureCut(st: GomokuState, sideId: string, opts?: PressureCutOptions): PressureCutResult {
+    const D = num(sideId), A = D === 1 ? 2 : 1;
+    const board = clone(st.board);
+    const beforeYou = fourMakeCount(board, D, 99);
+    const beforeOpponent = fourMakeCount(board, A, 99);
+    /* 对手的做四点（一次扫描，供候选排序用） */
+    const oppPts: number[][] = [];
+    for (const [r, c] of nearEmpties(board)) {
+      if (forbidden && A === 1 && isForbiddenPoint(board, r, c)) continue;
+      board[r]![c] = A;
+      const wins = winPointsAfter(board, A, r!, c!, 1).length;
+      board[r]![c] = 0;
+      if (wins > 0) oppPts.push([r!, c!]);
+    }
+    const distToOpp = (r: number, c: number): number => {
+      let d = 99;
+      for (const p of oppPts) { const dd = Math.max(Math.abs(r - p[0]!), Math.abs(c - p[1]!)); if (dd < d) d = dd; }
+      return d;
+    };
+    const order: number[] = [];
+    const seen: Record<number, true> = {};
+    const push = (r: number, c: number): void => {
+      if (!inB(r, c)) return;
+      const key = r * N + c;
+      if (seen[key] || board[r]![c] !== 0) return;
+      if (forbidden && D === 1 && isForbiddenPoint(board, r, c)) return;   /* 己方禁手点走不得 */
+      seen[key] = true;
+      order.push(key);
+    };
+    for (const n of opts?.cands ?? []) {
+      if (typeof n !== 'string' || !n) continue;
+      const { r, c } = parseN(n);
+      push(r, c);
+    }
+    for (const [r, c] of nearEmpties(board)) {
+      if (distToOpp(r!, c!) <= 2) push(r!, c!);
+    }
+    for (const [r, c] of nearEmpties(board)) push(r!, c!);
+
+    const maxTry = opts?.maxTry && opts.maxTry > 0 ? opts.maxTry : PRESSURE_CUT_MAX;
+    let tried = 0;
+    let best = beforeOpponent;
+    const first: Array<{ r: number; c: number; opp: number }> = [];
+    for (const key of order) {
+      if (tried >= maxTry) break;
+      const r = (key / N) | 0, c = key % N;
+      tried++;
+      board[r]![c] = D;
+      const opp = fourMakeCount(board, A, 99);
+      board[r]![c] = 0;
+      if (opp < best) { best = opp; first.length = 0; first.push({ r, c, opp }); }
+      else if (opp === best && opp < beforeOpponent) first.push({ r, c, opp });
+    }
+    if (first.length === 0) {
+      return { points: [], before: { you: beforeYou, opponent: beforeOpponent }, after: { you: beforeYou, opponent: beforeOpponent }, tried };
+    }
+    /* 并列里再比「自己的做四手数」（越多越好）：主动权留在自己手上 */
+    let bestYou = -1;
+    const hits: Array<{ n: string; opp: number; you: number }> = [];
+    for (const h of first) {
+      board[h.r]![h.c] = D;
+      const you = fourMakeCount(board, D, 99);
+      board[h.r]![h.c] = 0;
+      const n = notation(h.r, h.c);
+      if (you > bestYou) { bestYou = you; hits.length = 0; hits.push({ n, opp: h.opp, you }); }
+      else if (you === bestYou) hits.push({ n, opp: h.opp, you });
+    }
+    return {
+      points: hits.slice(0, PRESSURE_CUT_KEEP).map((h) => h.n),
+      before: { you: beforeYou, opponent: beforeOpponent },
+      after: { you: bestYou, opponent: best },
+      tried,
+    };
+  }
+
   function getLegalMoves(st: GomokuState): GomokuMove[] {
     const ms: GomokuMove[] = [];
     const ban = forbidden && st.turn === 'black';
@@ -1180,6 +1278,9 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     vctWin,
     /* v12：对手连续威胁链的防守（拆链 + 取势排序，见 jev-client vctDefense） */
     vctDefense,
+    /* v13：做四手数 + 削点搜索（压力闸门：对手压过我们时先削点，见 jev-client 的 pressureGate） */
+    fourPressure,
+    pressureCut,
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, mockPick, selfTest,
   } as Engine<GomokuState>;

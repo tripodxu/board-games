@@ -215,12 +215,14 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
    同一棋谱重复提交由 `dedup_key` 去重（`dedup: true`）。
 5. **决策面板**：每手显示 Jev 概率前 8 名、置信度、`edge` 胜率、`position` 局势分、
    token 与成本、耗时；战术保险接管时标注接管原因。
-6. **强度机制（十三级战术保险）**：`win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > vctDefense > live3Attack > live3Defense > parry > parry3 > parry4`，
+6. **强度机制（十四级战术保险）**：`win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > vctDefense > pressureGate > live3Attack > live3Defense > parry > parry3 > parry4`，
    其中 `vctAttack` 是**冲四链 + 活三逼迫**的连续威胁搜索（纯冲四看不见的杀由它兜住），
    `vctDefense` 是它的防守对偶（**对手的混合链**也要拆：判据是拆完对手连冲四链和混合链都没有），
+   `pressureGate` 是**压力闸门**（对手的「做四点」数压过我们时先削点，而不是抢自己的活三），
    `live3*` 两级是 4 手内必胜的**真推演**（跳活三/斜线组合同样认得出），
    详见 [docs/jev-api.md](docs/jev-api.md) §2.2、[ADR-0014](docs/adr/0014-live3-real-lookahead.md)、
-   [ADR-0015](docs/adr/0015-vct-continuous-threats.md) 与 [ADR-0016](docs/adr/0016-vct-defense.md)。
+   [ADR-0015](docs/adr/0015-vct-continuous-threats.md)、[ADR-0016](docs/adr/0016-vct-defense.md) 与
+   [ADR-0017](docs/adr/0017-pressure-gate.md)。
 7. **校准实验室**：固定局面的胜率标定与复盘（`src/core/view/calibration.ts`）。
 8. **对比实验**：同一开局跑多局 A/B（渠道/战术档/思考深度可分别设），结果归档到 `/api/experiments`
    并按 tag upsert。
@@ -296,8 +298,9 @@ D1 现为 154 局 / 10656 手 / 17 轮实验（见 [docs/status.md](docs/status.
 - 中国跳棋未禁止「永堵营地门」变体。
 - 引擎不建模「认输」（那是应用层裁决）：归档里 1 局记为「黑方 获胜（认输）」的历史记录与引擎判定不一致，属已知差异。
 - Jev 的概率判断仍可能出错——提示词里的「零幻觉」只承诺**输出结构**符合契约，
-  不承诺棋理正确；战术保险（十三级接管）就是为了兜住这类错误。但它只兜得住
-  「已经能算清的局面」（`vctAttack` / `vctDefense` 到 5 手攻方着法内的强制胜链、4 手内的活三威胁与拆杀）；
+  不承诺棋理正确；战术保险（十四级接管）就是为了兜住这类错误。但它只兜得住
+  「已经能算清的局面」（`vctAttack` / `vctDefense` 到 5 手攻方着法内的强制胜链、4 手内的活三威胁与拆杀、
+  `pressureGate` 到 1 手的做四点削减）；
   更长的织网与全局估值仍可能被对手做出来。
 - 官方性能与价格数字（$42/百万输入 token 等）为厂商口径与作者实测混合，非长期承诺。
 - 匿名设备标识（`X-Device-Id`）只用于「只看我的」与限流，不是账号体系；换浏览器/清 localStorage 即丢失归属。

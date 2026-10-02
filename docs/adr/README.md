@@ -24,3 +24,4 @@
 | [0014](0014-live3-real-lookahead.md) | 战术层新增「活三真推演」两级（live3Attack / live3Defense）：4 手内必胜从标签匹配升级为推演 | accepted |
 | [0015](0015-vct-continuous-threats.md) | 战术层新增「连续威胁搜索」（VCT：冲四链 + 活三逼迫，`vctAttack`）：补上纯 VCF 看不见的 20 手杀 | accepted |
 | [0016](0016-vct-defense.md) | 战术层新增「连续威胁防守」（`vctDefense`）：拆掉对手的混合链，排在 `vcfDefense` 之后 | accepted |
+| [0017](0017-pressure-gate.md) | 战术层新增「压力闸门」（`pressureGate`：对手做四点压过我们时先削点，排在 `vctDefense` 之后） | accepted |

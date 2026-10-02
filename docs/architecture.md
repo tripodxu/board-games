@@ -93,7 +93,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | --- | --- |
 | `src/core/engines/{gomoku,go,xiangqi,chess,checkers,chinese-checkers}.ts` | 七种棋（五子棋两档：`gomoku` / `gomoku-pro`）的规则与搜索，注册顺序即 [registry.ts](../src/core/registry.ts) 里的键顺序 |
 | `src/core/jev/{client,rapfi,mock,index}.ts` | 渠道实现：官方 API / OpenRouter / 同源代理（`client.ts` 里的 `CHANNELS`）、Rapfi wasm、离线 mock，外加 `random` 基线 |
-| `src/core/tactics*.ts` | 战术层（十三级保险、VCF + VCT 攻防）与版本闸门 |
+| `src/core/tactics*.ts` | 战术层（十四级保险、VCF + VCT 攻防 + 压力闸门削点）与版本闸门 |
 | `src/core/record/{export,sync,book}.ts` | 导出契约（`buildGameExport`）、上传队列（去重 + 退避）、本机战绩簿 |
 | `src/core/api/client.ts` | 所有后端调用的唯一出口；无后端时全部返回 `null` 由装配层降级 |
 | `src/ui/panels/*.ts` | 面板模块（驾驶舱、决策流、战绩簿、校准、战术沿革、设置抽屉、回放器、排行榜、开具体验） |
@@ -173,7 +173,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 
 | 命令 | 验什么 | 失败的典型原因 |
 | --- | --- | --- |
-| `npm run test:engines`（`node test/engines/run.mjs`） | 纯 Node：七个引擎的 `selfTest`、战术十三级与 VCF/VCT 攻防 soundness、**金样逐手差分**、54 局归档逐手重放 | 引擎规则被改动、战术层行为漂移、金样被改写（`test/parity/frozen.json` 是封条：集合 + 每个文件的 sha256 + 字节数，任何静默改写都会红） |
+| `npm run test:engines`（`node test/engines/run.mjs`） | 纯 Node：七个引擎的 `selfTest`、战术十四级与 VCF/VCT 攻防 soundness、**金样逐手差分**、54 局归档逐手重放 | 引擎规则被改动、战术层行为漂移、金样被改写（`test/parity/frozen.json` 是封条：集合 + 每个文件的 sha256 + 字节数，任何静默改写都会红） |
 | `npx vitest run --project worker` | 真 workerd + 真 D1 跑 HTTP 契约、聚合与维护任务（迁移以绑定注入，`test/worker/setup.ts` 里 `applyD1Migrations`） | SQL 或响应契约写错；`singleWorker: true` ⇒ 所有用例共享同一个 D1 实例，**用例不自己清库就会互相污染** |
 | `npx vitest run --project ui` | happy-dom 里的运行时断言（`test/ui/**` 视图层 + `test/app/**` 装配层） | DOM 契约漂移、装配层降级路径断。这一层**不做源码字符串匹配**——要断言真实运行行为 |
 | `npx vitest run --project core` | 纯 node：字段映射、会话、战绩簿、上传队列，以及用 `node:sqlite` 重放 `migrations/**` 的归因用例 | 解析口径与导入脚本不一致。本地没有 `node:sqlite` 时该用例可跳过，CI 用 `REQUIRE_SQLITE=1` 强制硬失败 |

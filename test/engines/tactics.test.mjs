@@ -1,4 +1,4 @@
-/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v12 起十三级）+ VCF soundness 回归
+/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v12 起十三级，v13 起十四级）+ VCF soundness 回归
  *
  * 覆盖旧 test/run-tests.cjs 中的：
  *   - tacticsRegistryTests()（版本登记表、rank/机制单调、层数对照、机制闸门 allows）
@@ -9,6 +9,7 @@
  *   - ⑤b（v10 活三：引擎层真推演 + 两档事实对照 + 决策级抢/拆活三 + 让位给更短的杀）
  *   - ⑤c（v11 VCT：引擎层连续威胁搜索 + 与纯 VCF 的可见性对照 + 决策级抢链首）
  *   - ⑤d（v12 拆连续威胁链：引擎层 vctDefense + 与 vcfDefense 的可见性对照 + 决策级拆链）
+ *   - ⑤e（v13 压力闸门：引擎层 pressureCut + 落后才开火 + 按档事实对照 + 决策级削点）
  */
 import { suite, ok, eq, deepEq, near } from './harness.mjs';
 
@@ -58,11 +59,11 @@ const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
  * ① 版本登记表（git 历史 × 棋谱数据双锚定：12 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v12-vct-def', '当前档应为 v12-vct-def（连续威胁防守）');
+  eq(R.CURRENT, 'v13-pressure-gate', '当前档应为 v13-pressure-gate（压力闸门 / 削对手做四点）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 13, '应为 12 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 14, '应为 13 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
@@ -77,14 +78,14 @@ S.t('版本登记表：机制集合沿梯级单调不减', () => {
   }
 });
 
-S.t('版本登记表：十二级层数对照（2/3/5/6/6/7/9/9/9/11/12/13）', () => {
+S.t('版本登记表：十四级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
-    'v10-live3': 11, 'v11-vct': 12, 'v12-vct-def': 13,
+    'v10-live3': 11, 'v11-vct': 12, 'v12-vct-def': 13, 'v13-pressure-gate': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
-    'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
+    'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
   for (const v of R.VERSIONS) {
     const got = TIER.filter((k) => v.mech[k]).length;
     eq(got, LAYERS[v.id], v.id + ' 接管层数应为 ' + LAYERS[v.id] + '，实际 ' + got);
@@ -97,7 +98,7 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v12-vct-def 的实证局数看 gamesVerified）');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v13-pressure-gate 的实证局数看 gamesVerified）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
@@ -391,8 +392,8 @@ S.t('版本闸门：v0-off 全空（含 win/block），且缓存按版本分键'
   const v9 = tacOf(gomoku, stx);
   ok(v9.winning_points_you.length > 0, '当前档应有致胜点（前置条件）');
   const v0 = tacOf(gomoku, stx, 'v0-off');
-  ok(Object.keys(v0).every((k) => Array.isArray(v0[k]) && v0[k].length === 0),
-    'v0-off 应无任何战术（含 win/block），实际：' + JSON.stringify(v0));
+  ok(Object.keys(v0).every((k) => (Array.isArray(v0[k]) ? v0[k].length === 0 : v0[k] === 0)),
+    'v0-off 应无任何战术（含 win/block 与 v13 的压力计数），实际：' + JSON.stringify(v0));
 });
 
 S.t('版本闸门：v2 无 2-ply、v3 有造杀点', () => {
@@ -685,7 +686,7 @@ S.t('v12 拆链：战术事实按档给（v11 只有 parry 层的拆杀点，v12
 S.t('v12 拆链：决策级接管（v11 走链首 I11/parry，v12 走真拆点 K9/vctDefense）', async () => {
   const st = play(gomoku, DEF_SEQ);
   const probs = { I11: 0.6, K9: 0.05 };   /* 模型偏好正是实走的那手 I11 */
-  const d12 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d12 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v12-vct-def' }));
   ok(d12.notation === 'K9' && d12.meta.tactics === 'vctDefense',
     'v12 应被 vctDefense 接管走 K9，实际：' + d12.notation + '/' + d12.meta.tactics);
   eq(d12.meta.tacticsVersion, 'v12-vct-def', 'meta.tacticsVersion 应记录 v12-vct-def');
@@ -701,6 +702,74 @@ S.t('v12 拆链：我方有必胜链时不进防守层（闸门：先赢再说�
   ok(t.vcf_win_you.length >= 1, '该局面我方应有 VCF 必胜链（夹具前提）');
   deepEq(t.vct_win_opponent, [], '我方有必胜链时不该再去算对手的链（白算一遍的成本）');
   deepEq(t.vct_chain_opponent, [], '同上：链也不该报');
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑤e v13 压力闸门（`pressureGate`：对手的做四点已经超过我们时，先削掉他的做四点）
+ *
+ * 依据（六轮 rapfi 对照共 1787 个 Jev 回合逐手离线复算）：`live3Attack` 实走 205 手（11.5%），
+ *   其中 39 手落子前对手「做四手数」已超过我们；改用「贴着对手做四点削」的点集，
+ *   37/39 能把对手做四手数压低（平均 −1.87 个），双四威胁 37 手 → 7 手，0 手更差。
+ *   语义依据：ADR-0015 已修正「活三＝4 手内必胜」的旧口径（活三只是逼手），真强制胜由
+ *   vcf/vct 层先接管 ⇒ 让位给削点漏杀风险为零。
+ *
+ * 夹具 = 归档局 e3e417e6-1f3c-4f52-baa3-3234ddd0159c（v12 单臂 tag exp-20261002115126，
+ *   rapfi 执黑 vs proxy/v12 执白，白方五连胜）前 7 手，轮白走：第 8 手实走 E9/live3Attack，
+ *   当时对手（黑）已有 2 个做四点、我们 0 个；v13 改走 D12（把对手压到 0）。
+ *   ⚠️ 这是**有代价**的一手：走 E9 我们自己的做四手数是 4，走 D12 是 0 —— 用攻势换安全，
+ *   实测代价见 plan v13 §6 与 ADR-0017 的「代价」条目。
+ * ------------------------------------------------------------------ */
+const P13_SEQ = ['H8', 'G7', 'E11', 'G11', 'B14', 'F10', 'A15'];
+
+S.t('v13 削点：引擎层 pressureCut（贴着对手做四点找点，且走后对手手数真的降）', () => {
+  const st = play(gomoku, P13_SEQ);
+  eq(st.turn, 'white', '夹具应轮白走；若这里就红了，说明夹具记法失效');
+  eq(gomoku.fourPressure(st, 'white'), 0, '夹具前提：我们（白）当下没有做四点');
+  eq(gomoku.fourPressure(st, 'black'), 2, '夹具前提：对手（黑）当下有 2 个做四点');
+  const cut = gomoku.pressureCut(st, 'white', { cands: [] });
+  ok(cut.points.indexOf('D12') >= 0, '削点应含 D12，实际：' + JSON.stringify(cut.points));
+  eq(cut.before.opponent, 2, '落子前对手做四手数应为 2');
+  eq(cut.after.opponent, 0, '削点走后对手做四手数应降到 0');
+  const after = gomoku.applyMove(st, gomoku.moveFromNotation(st, cut.points[0]));
+  eq(gomoku.fourPressure(after, 'black'), cut.after.opponent, 'after.opponent 必须与真落子后的对手手数一致');
+  ok(cut.tried <= 120, '候选上限 120（PRESSURE_CUT_MAX），实际试了 ' + cut.tried);
+  /* 反例：实走的那一手 E9 没削到对手（对手仍是 2），反而是自己涨到 4 —— 这正是闸门存在的理由 */
+  const stE9 = gomoku.applyMove(st, gomoku.moveFromNotation(st, 'E9'));
+  eq(gomoku.fourPressure(stE9, 'black'), 2, '实走 E9 之后对手做四手数不变（没削到）');
+});
+
+S.t('v13 削点：不是压力落后就不给削点（闸门只在落后时开火）', () => {
+  /* 同一局面换到前 6 手（轮黑）：黑 2 个做四点、白 0 个 ⇒ 对黑而言「不落后」，不该报削点 */
+  const st = play(gomoku, P13_SEQ.slice(0, 6));
+  eq(st.turn, 'black', '前 6 手后应轮黑走');
+  const t = tacOf(gomoku, st, 'v13-pressure-gate');
+  ok(t.pressure_you >= t.pressure_opponent, '夹具前提：黑（走子方）当下不落后，实际 ' + t.pressure_you + '/' + t.pressure_opponent);
+  deepEq(t.pressure_cut_points, [], '不落后时不该算削点（省成本，也避免无谓让攻势）');
+});
+
+S.t('v13 削点：战术事实按档给（v12 只会抢活三，v13 报出削点）', () => {
+  const st = play(gomoku, P13_SEQ);
+  const v12 = tacOf(gomoku, st, 'v12-vct-def');
+  deepEq(v12.pressure_cut_points, [], 'v12 不该有 pressureGate 层');
+  ok(v12.live3_you.length >= 1, 'v12 在该局面本来要抢活三，实际：' + JSON.stringify(v12.live3_you));
+  const v13 = tacOf(gomoku, st, 'v13-pressure-gate');
+  eq(v13.pressure_you, 0, 'v13 应报出我方做四手数 0');
+  eq(v13.pressure_opponent, 2, 'v13 应报出对手做四手数 2');
+  deepEq(v13.pressure_cut_points, ['D12', 'C13'], 'v13 应报出削点 D12/C13');
+  deepEq(v13.live3_you, v12.live3_you, 'v13 仍保留 v10/v11 的全部事实（机制单调不减）');
+});
+
+S.t('v13 削点：决策级接管（v12 走活三 E9/live3Attack，v13 走削点 D12/pressureGate）', async () => {
+  const st = play(gomoku, P13_SEQ);
+  const probs = { E9: 0.6, H12: 0.2, D12: 0.05 };   /* 模型偏好正是实走的 E9 */
+  const d13 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  ok(d13.notation === 'D12' && d13.meta.tactics === 'pressureGate',
+    'v13 应被 pressureGate 接管走 D12，实际：' + d13.notation + '/' + d13.meta.tactics);
+  eq(d13.meta.tacticsVersion, 'v13-pressure-gate', 'meta.tacticsVersion 应记录 v13-pressure-gate');
+  const d12 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v12-vct-def' }));
+  ok(d12.notation === 'E9' && d12.meta.tactics === 'live3Attack',
+    'v12 档应照旧抢活三 E9，实际：' + d12.notation + '/' + d12.meta.tactics);
 });
 
 /* ------------------------------------------------------------------ *

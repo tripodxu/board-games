@@ -115,6 +115,22 @@ export interface VctDefenseOptions {
   maxTry?: number;
 }
 
+/** 削点搜索（v13）的结果：points 是「落子后对手做四手数最小」的点（并列取前几个）；
+ *  before/after 是双方做四手数的对照（after 是走 points[0] 之后的盘面），tried 是实际试过的候选数。
+ *  points 为空 = 没有一个候选能把对手的做四手数压低（此时行为与 v12 完全一致）。 */
+export interface PressureCutResult {
+  points: string[];
+  before: { you: number; opponent: number };
+  after: { you: number; opponent: number };
+  tried: number;
+}
+
+/** 削点搜索的输入：cands 是模型候选点（先试），maxTry 是候选点数上限（默认 40）。 */
+export interface PressureCutOptions {
+  cands?: string[];
+  maxTry?: number;
+}
+
 /** 引擎统一接口（docs/engine-interface.md §2）。 */
 export interface Engine<S = any> {
   id: string;
@@ -167,6 +183,20 @@ export interface Engine<S = any> {
    * 返回 points 是能拆的落点（模型候选优先、对手压力小者优先），空 = 拆不掉。
    */
   vctDefense?(st: S, defenderId: string, maxPlies?: number, opts?: VctDefenseOptions): VctDefenseResult;
+
+  /**
+   * 某一方当前的「做四手数」（v13 压力闸门用）：车氏邻域内落子即成冲四的空点数量。
+   * 高 = 该方造四点的手段多（网正在织）。闸门比较两侧数量，对手更多时先拆不抢。
+   * 默认不早退（limit 省略 = 精确计数），因为早退会让两侧同时触顶而误判成「不落后」。
+   */
+  fourPressure?(st: S, sideId: string, limit?: number): number;
+
+  /**
+   * 削点搜索（v13 压力闸门用）：在候选点上做 1-ply 模拟，找「落子后对手做四手数最小」的点
+   * （并列时取自己做四手数更大者，让出主动权最少）。只在对手压力压过我们时才调用。
+   * 返回 points 为空 = 没有候选能压低对手的做四手数 ⇒ 调用方保持原行为（最小回归面）。
+   */
+  pressureCut?(st: S, sideId: string, opts?: PressureCutOptions): PressureCutResult;
 
   /** 引擎私有方法（如 gomoku 的 candidates / serialize 用到的辅助）。 */
   [k: string]: unknown;
