@@ -19,6 +19,20 @@
 
 ---
 
+## 2026-10-02 · 战术层耗时单独记账：`tac_ms`（口径、NULL 的两种含义、两处真缺陷）
+
+- **用户要求**（逐字，m07650）：「跑实验的时候，要是jev+战术，之后的实验里，我还要统计一个战术层花费的平均时间」⇒ 「战术层平均耗时」进入**每轮 Jev 实验的必报口径**（与胜/和/负、不败率、逐手接管统计并列）。
+- **为什么要新开一列**：`game_moves.ms` 记的是「**战术 + 上游**」总耗时——`src/core/jev/client.ts` 的 `t0` 在 `computeTactics` 之前、`latencyMs = Date.now() - t0` 在其后。上游一次调用约 1 s，战术层正常只有几毫秒到几十毫秒 ⇒ 用现成列永远答不出「这层保险贵不贵」，必须单独累加。
+- **计两个点、相加即本手战术层耗时**：① `computeTactics(...)`（VCF / VCT / 活三事实）；② `pickSafestParry` 的 3-ply 安全排序（`allowsSustainedAttack` + `countForcingReplies`，多危险点时是本层最大的一块）。链路：源 meta `tacticsMs` → 归档短键 `ai.tacMs` → `game_moves.tac_ms` → 每局 `games.tac_avg_ms` / `tac_max_ms`。
+- **Rapfi / mock 记 `null` 而不是 `0`**（刻意的）：这两个渠道**不过战术层**（`decide()` 在 `src/core/jev/client.ts` 里只对 Jev 渠道算战术，`random` 渠道走；Rapfi 是完整搜索引擎，短路是为了让「Rapfi vs Jev」的单变量对比干净）。记 0 会把混合对局（Jev vs Rapfi）的均值拉低、看起来像战术层变快了；记 null 后 `AVG(tac_ms)` 自动把它们排除在样本外，而 `COUNT(tac_ms)` 与 `COUNT(*)` 的差又能说明覆盖了多少手。数据侧三列都可为 NULL ⇒ **NULL 有两种含义：历史棋谱没有这个字段（12 轮旧实验全是这种），或该手不过战术层**。
+- **迁移必须追加**：`migrations/0001_init.sql` 已上过 remote，不得修改 ⇒ 新列走 [`migrations/0002_tactics_timing.sql`](../../migrations/0002_tactics_timing.sql)（两条 `ALTER TABLE`），本地与远程都已应用。写入侧只是追加 `?43/?44` 与 `game_moves` 的 `?14`（**列追加在末尾**，既有占位符编号不动）。
+- **真缺陷 1（往返一致性）**：`aiMoveMeta` / `aiGameMeta` 最初恒写 `tacMs: null` / `tacticsMs: null`，而历史归档没有这两个键 ⇒ `test/core/record.spec.ts` 的往返用例 6 例红（导出 → 反推 → 再导出不再逐字段一致）。修法：**只在有样本时才写这个键**（两个字段都改成可选），Rapfi/mock 与老棋谱都不写出，双路径自然落 NULL。
+- **真缺陷 2（幻影身份）**：`src/ui/panels/experiment-report.ts` 的 `gameSide()` 在局内字段缺失时一律用轮级 `tacA` 兜底黑方，而 **A 只在奇数局执黑** ⇒ B 执黑的那些局会给 B 侧（例如 Rapfi）安上 A 的战术版本，分桶表冒出 `rapfi|v11-vct|0` 这种并不存在的身份，把本该并成一行的手数拆成两行。修法：按局号奇偶算 `aIsBlack` 再取 `chan / tac / think` 兜底；新用例断言「只出现两个身份」（修前红在均值被拆成 50ms）。
+- **写用例时踩到的老坑（复现路径）**：给报告写 fixture 要同时给**局内** `blackTac/whiteTac` 与轮级 `tacA/tacB`，否则会撞上兜底路径 —— 这次正是靠它才把上面那个幻影身份挖出来。
+- **判据**：以后要看「战术层贵不贵」，用 `SELECT COUNT(*) 局数, ROUND(AVG(tac_avg_ms)) 均值, MAX(tac_max_ms) 最坏 FROM games WHERE experiment_tag='<tag>'`；拆到每侧用 playbooks §7 第 6 条的 JOIN 版。**已跑过的 12 轮实验没有这一列**（实测值缺失 ≠ 0）。
+
+---
+
 ## 2026-10-02 · 长跑实验的隐形杀手：Rapfi 的 10 MB 权重走慢链路（脚本改由本地供给资产）
 
 - **症状**：12 局对照实验卡在第 1 局 **0/12** 原地不动 486 s（脚本按「8 分钟无进展」判据中止），报告里 `meter.calls = 1`（只有第一步 Jev 决策成功）、`pageErrors = ['未捕获异常：TypeError: network error']`；同一时间 `browser-smoke --channel rapfi` 也卡在「对手也落了子」的 90 s 等待上（13/14）。**主线程没被阻塞**（CDP 心跳每 30 s 都答得上）⇒ 不是 VCT 长算把页面冻住，而是 AI 循环停在了自己身上。

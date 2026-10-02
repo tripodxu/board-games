@@ -39,6 +39,8 @@ export interface GameMoveInput {
   prob?: number | null;
   rank?: number | null;
   ms?: number | null;
+  /** 战术层耗时（ms）；Rapfi/mock 不过战术层 ⇒ null（`0002_tactics_timing.sql`） */
+  tacMs?: number | null;
   cands?: number | null;
 }
 
@@ -82,6 +84,9 @@ export interface GameInput {
   tokensOut?: number | null;
   latencyAvgMs?: number | null;
   latencyMaxMs?: number | null;
+  /** 战术层耗时汇总（只统计真过了战术层的手），见 `0002_tactics_timing.sql` */
+  tacAvgMs?: number | null;
+  tacMaxMs?: number | null;
   avgConf?: number | null;
   tacticsHist?: string | null;
   /** SQLite 没有布尔类型，落库时转 0/1。 */
@@ -130,6 +135,8 @@ export interface GameRow {
   tokensOut: number | null;
   latencyAvgMs: number | null;
   latencyMaxMs: number | null;
+  tacAvgMs: number | null;
+  tacMaxMs: number | null;
   avgConf: number | null;
   tacticsHist: string | null;
   mock: number;
@@ -165,6 +172,7 @@ export interface GameMove {
   prob: number | null;
   rank: number | null;
   ms: number | null;
+  tacMs: number | null;
   cands: number | null;
 }
 
@@ -209,16 +217,17 @@ const GAME_COLUMNS = `id, game_uid AS gameUid, created_at AS createdAt, day, gam
   experiment_tag AS experimentTag, exp_game_no AS expGameNo,
   code_version AS codeVersion, tactics_version AS tacticsVersion, top_k AS topK, seed,
   cost_usd AS costUsd, tokens_in AS tokensIn, tokens_out AS tokensOut,
-  latency_avg_ms AS latencyAvgMs, latency_max_ms AS latencyMaxMs, avg_conf AS avgConf,
+  latency_avg_ms AS latencyAvgMs, latency_max_ms AS latencyMaxMs,
+  tac_avg_ms AS tacAvgMs, tac_max_ms AS tacMaxMs, avg_conf AS avgConf,
   tactics_hist AS tacticsHist, mock, first_win AS firstWin,
   device_id AS deviceId, source, payload_bytes AS payloadBytes, row_at AS rowAt`;
 
 const GAME_MOVE_COLUMNS = `ply, side, notation, tactics, tactics_version AS tacticsVersion,
-  channel, model, confidence, prob, rank, ms, cands`;
+  channel, model, confidence, prob, rank, ms, tac_ms AS tacMs, cands`;
 
 const GAME_MOVE_INSERT = `INSERT INTO game_moves
-  (game_id, ply, side, notation, tactics, tactics_version, channel, model, confidence, prob, rank, ms, cands)
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`;
+  (game_id, ply, side, notation, tactics, tactics_version, channel, model, confidence, prob, rank, ms, cands, tac_ms)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`;
 
 const GAME_INSERT = `INSERT INTO games
   (game_uid, dedup_key, created_at, day, game, game_id, mode, result, winner, end_reason, end_by,
@@ -226,11 +235,13 @@ const GAME_INSERT = `INSERT INTO games
    black_tactics, white_tactics, black_think, white_think, experiment_tag, exp_game_no,
    code_version, tactics_version, top_k, seed, cost_usd, tokens_in, tokens_out,
    latency_avg_ms, latency_max_ms, avg_conf, tactics_hist, mock, first_win, cal_json,
-   device_id, source, payload, payload_bytes)
+   device_id, source, payload, payload_bytes,
+   -- 0002 追加列：ALTER TABLE 只能把列加在末尾，SQL 里也就放末尾，两边顺序好对照
+   tac_avg_ms, tac_max_ms)
   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
    ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24,
    ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38,
-   ?39, ?40, ?41, ?42)
+   ?39, ?40, ?41, ?42, ?43, ?44)
   ON CONFLICT DO NOTHING
   RETURNING id`;
 
@@ -305,6 +316,7 @@ function moveStatement(db: D1Database, gameId: number, ply: number, move: GameMo
       move.rank ?? null,
       move.ms ?? null,
       move.cands ?? null,
+      move.tacMs ?? null,
     );
 }
 
@@ -393,6 +405,8 @@ export async function insertGame(db: D1Database, input: GameInput): Promise<Inse
       input.source ?? 'worker',
       payload,
       payloadBytes,
+      input.tacAvgMs ?? null,
+      input.tacMaxMs ?? null,
     )
     .first<{ id: number }>();
 

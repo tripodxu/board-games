@@ -54,7 +54,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | `src/shared/**` | 前后端共享契约：[record-map.ts](../src/shared/record-map.ts)（旧棋谱字段解析口径）、[version.ts](../src/shared/version.ts)（版本串） |
 | [src/main.ts](../src/main.ts) | 浏览器唯一入口：写 `data-code-version` → `boot()` → 兜住启动期异常（绝不白屏） |
 | [index.html](../index.html) | 页面外壳：棋盘画布、页签容器、三个侧栏页签、唯一一个 `<script type="module">` |
-| [migrations/](../migrations) | [0001_init.sql](../migrations/0001_init.sql)（六张业务表 + 索引）与 `import/*.sql`（历史 54 局 + 6 轮实验的导入产物） |
+| [migrations/](../migrations) | [0001_init.sql](../migrations/0001_init.sql)（六张业务表 + 索引）、[0002_tactics_timing.sql](../migrations/0002_tactics_timing.sql)（战术层耗时三列）与 `import/*.sql`（历史 54 局 + 6 轮实验的导入产物） |
 | [test/](../test) | 四层测试：引擎（纯 Node）、core/worker/ui/app（vitest 三个 project）、[fixtures/golden/](../test/fixtures/golden)（冻结金样） |
 | [public/rapfi/](../public/rapfi) | Rapfi 引擎的 wasm 资产（`rapfi-single-simd128.js/.wasm/.data` + `COPYING.txt`/`NOTICE`）。Vite 的 `publicDir` 直出到 `dist/client/rapfi/*` |
 | [styles/style.css](../styles/style.css) | 全站样式（月白/玄墨/朱砂）。唯一一份样式表，由 `index.html:11` 的 `<link rel="stylesheet" href="/styles/style.css">` 引入，经 Vite 打包进 `dist/client/assets/` |
@@ -141,7 +141,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 
 ## 4. 数据模型
 
-**详细 DDL 见 [migrations/0001_init.sql](../migrations/0001_init.sql) 与[重构计划](plans/2026-10-01-workers-d1-rebuild.md)的 §4，本节只给用途与不变量。**
+**详细 DDL 见 [migrations/0001_init.sql](../migrations/0001_init.sql)（与追加迁移 [0002_tactics_timing.sql](../migrations/0002_tactics_timing.sql)）与[重构计划](plans/2026-10-01-workers-d1-rebuild.md)的 §4，本节只给用途与不变量。**
 
 六张业务表（`backups/export.sql` 里还能看到第 7 张 `d1_migrations`，那是 wrangler 的迁移记账表，不是业务数据）：
 
@@ -154,7 +154,9 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | `rate_limits` | 限流计数：每个（桶，窗口起点）一行 | 主键 `(bucket, window_start)`，`WITHOUT ROWID` |
 | `stats_cache` | 每日维护写进去的汇总与心跳（`daily:<YYYY-MM-DD>`） | 主键 `key` |
 
-> 两个容易踩的点：① `migrations/0001_init.sql` **一旦应用到 remote 就不得修改**，只能追加 `0002_*.sql`；② 单行 payload 上限 512 KB（应用层校验），**历史归档实测最大只有 68.7 KB**。
+> 两个容易踩的点：① `migrations/0001_init.sql` **一旦应用到 remote 就不得修改**，只能追加 `0002_*.sql`（0002 就是这么加的）；② 单行 payload 上限 512 KB（应用层校验），**历史归档实测最大只有 68.7 KB**。
+>
+> **战术层耗时列（0002 追加）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms` 记的是**战术层单独耗时**（`computeTactics` + `pickSafestParry`），与 `latency_avg_ms` / 每手 `ms`（那是「战术 + 上游」总耗时）不是一个口径。三列都可为 NULL，NULL 有两种含义：**历史棋谱没有这个字段**，或**该手不过战术层**（Rapfi / mock 渠道刻意短路）——所以 `AVG(tac_ms)` 自动只统计 Jev 渠道，`COUNT(tac_ms)` vs `COUNT(*)` 才能看出覆盖面。
 
 ## 5. 身份与限流（ADR-0013）
 
@@ -200,7 +202,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 2. 写路由必须先 `touchDevice`——`games.device_id` 有外键。
 3. `/api/*` 未命中的兜底必须返回 **JSON 404**，不能落到 SPA 兜底。
 4. `/api/games/u/:gameUid` 必须注册在 `/:day/:name` 之前。
-5. `migrations/0001_init.sql` 上过 remote 后不得修改，只能追加新文件。
+5. `migrations/0001_init.sql` 上过 remote 后不得修改，只能追加新文件（现有 `0002_tactics_timing.sql` 同理）。
 6. 导出契约**只增不改**：新字段可以加，旧字段与旧文案逐字保留（旧消费方要能容忍缺省）。
 7. `test/fixtures/golden/**` 只读；`test/parity/frozen.json` 是封条。
 8. `src/core/**` 只用可擦除的 TypeScript 语法（禁 `enum` / `namespace`），且不依赖 DOM——引擎自检是 Node 直接加载它跑的。

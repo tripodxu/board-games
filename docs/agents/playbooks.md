@@ -146,5 +146,11 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v11-vct \
 5. 跑完三件事：`--out` 的 JSON（逐局结果 + 上游计量 + 页面错误）、`GET /api/games?tag=<tag>&limit=100`
    （确认每局都归档）、逐手证据用
    `npx wrangler d1 execute jev-qiguan --remote --command "SELECT side, tactics, COUNT(*) FROM game_moves WHERE game_id IN (SELECT game_id FROM games WHERE experiment_tag='<tag>') GROUP BY side, tactics"`。
-6. 结果写进 [../status.md](../status.md)「数据现状」与对应 plan/ADR，**同时报胜 / 和 / 负与不败率**，
+6. **战术层耗时是必报项**（只要那一臂是 `proxy` 渠道）：
+   `SELECT COUNT(*) AS 局数, ROUND(AVG(tac_avg_ms)) AS 战术层均值, MAX(tac_max_ms) AS 战术层最坏 FROM games WHERE experiment_tag='<tag>'`；
+   拆到每一侧用
+   `SELECT mv.side, mv.tactics_version, COUNT(mv.tac_ms) AS 有样本手, COUNT(*) AS 总手, ROUND(AVG(mv.tac_ms)) AS 本手均值 FROM game_moves mv JOIN games g ON g.game_id = mv.game_id WHERE g.experiment_tag='<tag>' GROUP BY mv.side, mv.tactics_version`。
+   **`tac_ms` 为 NULL 不是 0**：Rapfi / mock 侧刻意不过战术层，所以 `AVG` 的样本天然只剩 Jev 侧；
+   要判断覆盖面就看「有样本手」与「总手」的差。列与口径见 [../architecture.md](../architecture.md) §4。
+7. 结果写进 [../status.md](../status.md)「数据现状」与对应 plan/ADR，**同时报胜 / 和 / 负与不败率**，
    并单独交代败局是怎么输的（§0 的两条筛子）。

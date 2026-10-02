@@ -48,6 +48,7 @@ export function moveRowToInput(move: MoveRow): GameMoveInput {
     prob: move.prob,
     rank: move.rank,
     ms: move.ms,
+    tacMs: move.tac_ms,
     cands: move.cands,
   };
 }
@@ -122,6 +123,8 @@ function gameRowToInput(row: MappedGameRow): Omit<GameInput, 'payload' | 'moves'
     tokensOut: row.tokens_out,
     latencyAvgMs: row.latency_avg_ms,
     latencyMaxMs: row.latency_max_ms,
+    tacAvgMs: row.tac_avg_ms,
+    tacMaxMs: row.tac_max_ms,
     avgConf: row.avg_conf,
     tacticsHist: row.tactics_hist,
     mock: row.mock !== 0,

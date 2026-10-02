@@ -50,6 +50,9 @@ export interface RapfiDecision {
     channel: 'rapfi';
     engine: 'Rapfi';
     thinkMs: number;
+    /** 恒 null：Rapfi 是完整搜索引擎，刻意不过 Jev 战术层（保证「Rapfi vs Jev」变量纯净）。
+     *  记 null 而不是 0，统计战术层平均耗时时才能自动把它排除在样本外。 */
+    tacticsMs: null;
     xy: string;
   };
 }
@@ -265,6 +268,7 @@ export async function decide(
       channel: 'rapfi',
       engine: 'Rapfi',
       thinkMs: thinkMs,
+      tacticsMs: null,
       xy: moveXY.x + ',' + moveXY.y,
     },
   };

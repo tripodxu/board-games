@@ -70,6 +70,12 @@ export interface ExpResult {
   winnerChan: 'A' | 'B' | null;
   /** 'human' = 该局由人手认输收场 */
   by: string | null;
+  /** 该局黑/白方的**战术层平均耗时**（ms）与样本手数：只统计真过了战术层的手，
+   *  Rapfi/mock 侧不过战术层 ⇒ 记 null（不是 0），聚合时自动落进样本外。 */
+  blackTacMs?: number | null;
+  whiteTacMs?: number | null;
+  blackTacN?: number;
+  whiteTacN?: number;
 }
 
 /** 旧 `EXP` 全量（js/app.js:1139）。 */

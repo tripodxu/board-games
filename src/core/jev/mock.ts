@@ -66,6 +66,7 @@ export async function decide(engine: Engine, st: unknown, side: string, legal: M
     meta: {
       channel: 'mock',
       latencyMs: 0,
+      tacticsMs: null, /* mock 直接返回、不过战术层（client.ts 的渠道短路）⇒ 记 null 而不是 0 */
       usage: { input_tokens: JSON.stringify(ser.state).length, output_tokens: 0 },
       costUsd: 0,
       confidence: Math.min(0.97, chosenP + 0.05),

@@ -48,6 +48,9 @@ export interface SessionMeta {
   channel?: string;
   model?: string | null;
   latencyMs?: number;
+  /** 战术层耗时（ms，与 latencyMs 分开记账：latencyMs = 战术 + 上游）。
+   *  Rapfi/mock 渠道不过战术层，记 null（不是 0）——统计平均时自动落进样本外；老棋谱没有这个字段。 */
+  tacticsMs?: number | null;
   confidence?: number | null;
   candidates?: number;
   restProb?: number;

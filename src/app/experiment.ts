@@ -13,6 +13,7 @@
  * js/app.js:572-574）：A/B 同渠道时（Jev·v8 vs Jev·v9）按渠道比会把战报写坏。
  */
 import { saveExperiment } from '../core/api/client.ts';
+import { aiGameMeta } from '../core/meta.ts';
 import { sideAttribution } from '../ui/panels/options.ts';
 import {
   beginRun,
@@ -139,6 +140,26 @@ export function cancelExpTimer(ctx: AppCtx): void {
 }
 
 /**
+ * 逐侧的**战术层平均耗时**（ms）与样本手数（m07650 的新口径）。
+ *
+ * 口径与归档里的 `meta.tacticsMs` 完全一致（同一个 `aiGameMeta()`）：只统计 `meta.tacticsMs`
+ * 有值的手 —— Rapfi/mock 渠道刻意不过战术层（`core/jev/client.ts` 的渠道短路），它们记 null
+ * 而不是 0，于是「Jev vs Rapfi」这类混合对局的均值不会被 Rapfi 侧拉低。
+ */
+function sideTactics(ctx: AppCtx): {
+  black: { avg: number | null; n: number };
+  white: { avg: number | null; n: number };
+} {
+  const firstId = ctx.engine.sides[0]?.id ?? 'black';
+  const pick = (isBlack: boolean) => {
+    const mine = ctx.session.history.filter((h) => ((h.meta?.side ?? h.side) === firstId) === isBlack);
+    const t = aiGameMeta(mine).tacticsMs;
+    return { avg: t ? t.avg : null, n: t ? t.n : 0 };
+  };
+  return { black: pick(true), white: pick(false) };
+}
+
+/**
  * 终局钩子（旧 `finishGame()` 里的 `if (EXP.running) {…}`，js/app.js:568-591）。
  * 由 `loop.finishGame()` 经 `ctx.onGameEnd` 调用。
  */
@@ -148,6 +169,7 @@ export function onExperimentGameEnd(ctx: AppCtx, g: GameStatus): void {
   const info = ctx.session.expInfo;
   /* A/B 归属必须在 pushResult()（会自增 idx）之前算：它依赖当前局号 */
   const winnerChan = winnerSideOf(state.idx + 1, g.winner ?? null, ctx.engine.sides[0].id);
+  const tac = sideTactics(ctx);
   pushResult(state, {
     blackChan: info ? info.blackChannel : '',
     whiteChan: info ? info.whiteChannel : '',
@@ -159,6 +181,11 @@ export function onExperimentGameEnd(ctx: AppCtx, g: GameStatus): void {
     winnerChan,
     /* 人判认输：这一分不是引擎打出来的，实验报告要能标出来 */
     by: g.by == null ? null : String(g.by),
+    /* 战术层耗时：报告里按身份报「战术层均值」用（m07650） */
+    blackTacMs: tac.black.avg,
+    whiteTacMs: tac.white.avg,
+    blackTacN: tac.black.n,
+    whiteTacN: tac.white.n,
   });
   renderExpStatus(state);
   renderExpResults(state);

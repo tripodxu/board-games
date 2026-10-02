@@ -8,6 +8,19 @@
 
 ### 新增
 
+- **战术层耗时单独记账（`tac_ms` / `tac_avg_ms` / `tac_max_ms`）**：`game_moves.ms` 记的是
+  **「战术 + 上游」总耗时**（`src/core/jev/client.ts` 的 `t0` 在 `computeTactics` 之前），
+  所以「这层保险到底贵不贵」在此之前**没有数据可答**。现在把两个计时点单独累加成本手战术层耗时：
+  `computeTactics(...)`（VCF / VCT / 活三事实）与 `pickSafestParry` 的 3-ply 安全排序
+  （`allowsSustainedAttack` + `countForcingReplies`，多危险点时是本层最大一块）。
+  链路：源 meta `tacticsMs` → 归档短键 `ai.tacMs` → 每手 `game_moves.tac_ms`
+  → 每局 `games.tac_avg_ms` / `tac_max_ms`（`aiGameMeta().tacticsMs = {avg,max,n}`，只统计有值的手）。
+  **Rapfi / mock 记 null 而不是 0**：这两个渠道刻意不过战术层（保持「Rapfi vs Jev」变量纯净），
+  记 0 会把混合对局的平均值拉低、看起来像战术层变快了；记 null 后 `AVG(tac_ms)` 自动把它们排除在样本外，
+  而 `COUNT(tac_ms)` 与 `COUNT(*)` 的差又能看出覆盖了多少手。实验报告面板据此多一列「战术」
+  （按手加权、无样本显示 `—`），轮次注脚写「战术层均值 Xms」，决策卡与趋势图也显示本手战术耗时。
+  迁移是**追加**的 [`migrations/0002_tactics_timing.sql`](migrations/0002_tactics_timing.sql)
+  （0001 已上 remote 不得改），三列都可为 NULL，历史棋谱与 Rapfi/mock 侧保持 NULL。
 - **战术 v11 `v11-vct`「连续威胁搜索」（十二级保险）**：把「活三」从**启发式落点**升级为**逼迫手搜索**。
   v10 的 `live3Attack` 只看「落子后盘面上有 ≥2 个活四制造点」，既不区分这些点是不是本手新造的、
   也不追问这一手是否已经进了一条强制胜链。拿 v10 臂 12 局逐手离线复算（独立实现交叉核对）得到的口径是：
@@ -64,6 +77,13 @@
 
 ### 修复
 
+- **实验报告把 B 侧的战术档安到 A 侧身上**（写战术层耗时用例时才暴露）：`src/ui/panels/experiment-report.ts`
+  的 `gameSide()` 在局内字段缺失时一律用轮级 `tacA` 兜底黑方，而 **A 只在奇数局执黑** ——
+  于是 B 执黑的那些局（例如 A=Jev、B=Rapfi）会给 Rapfi 安上 A 的战术版本，分桶表里冒出
+  `rapfi|v11-vct|0` 这种并不存在的身份，把本来该并成一行的手数拆成两行。
+  修法：先按局号奇偶算 `const aIsBlack = ((g.no || 1) - 1) % 2 === 0; const isA = (side === 'black') === aIsBlack;`
+  再按 `isA` 取 `chan / tac / think` 兜底；`test/ui/experiment-report.spec.ts` 的战术层用例
+  断言「只出现两个身份」把它钉住（修前该用例红在均值被拆成 50ms）。
 - **战术层看不见「带空隙的活三」**（根因与修法见上条 v10）：`labelPoint` 打出的 `you:live3` / `deny:live3`
   只覆盖连续 `_XXX_`，于是 `parry3` 层对跳活三、斜线组合与带空隙的四从不触发，`danger_points_opponent`
   又只到 2 手——对手「活三 → 活四」的 4 手杀路上没有任何保险层。现在由 `live3Attack` / `live3Defense`

@@ -72,7 +72,7 @@
 | 改 Jev 调用 / prompt / 渠道 | jev-api.md | `src/core/jev/client.ts` + `src/worker/routes/jev.ts`（BYOK 转发） |
 | 改 UI / 交互 / 决策面板 | architecture.md §2.3 | `src/app/bindings.ts` + `src/ui/panels/**` + `src/ui/dom.ts` |
 | 改后端 / API / 持久化 | ADR-0011 + architecture.md §3–§4 | `src/worker/routes/**` + `src/worker/db/**` + `migrations/**`（动契约要同步 `src/core/types.ts` 与 `src/shared/record-map.ts`） |
-| 改数据模型 / 归档字段 | migrations/0001_init.sql + architecture.md §4 | `src/shared/record-map.ts` + `src/worker/lib/record-input.ts`（**两处口径必须一致**） |
+| 改数据模型 / 归档字段 | migrations/（`0001_init.sql` + 追加迁移，如 `0002_tactics_timing.sql`）+ architecture.md §4 | `src/shared/record-map.ts` + `src/worker/lib/record-input.ts`（**两处口径必须一致**） |
 | 改样式 / 页面外壳 | architecture.md §2.1 | `index.html` + `styles/style.css` |
 | 改部署 / 代理 / 定时任务 | architecture.md §7 + wrangler.jsonc | `.github/workflows/**` + `src/worker/maintenance.ts` |
 | 改测试 | architecture.md §6 + test/parity/README.md | 各 `test/**` 分层（引擎纯 Node / worker 真 D1 / ui+app happy-dom） |

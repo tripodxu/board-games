@@ -52,6 +52,11 @@ export interface ExpHistoryGame {
   by?: string | null;
   /** 与 #1 完全同谱的重复局（首轮归档的人工标注） */
   dup?: boolean;
+  /** 该局黑/白方的战术层平均耗时（ms）与样本手数；Rapfi/mock 侧为 null（不过战术层） */
+  blackTacMs?: number | null;
+  whiteTacMs?: number | null;
+  blackTacN?: number;
+  whiteTacN?: number;
 }
 
 /** 一轮实验的战报（旧 entry，js/app.js:1307-1319）。 */
@@ -197,6 +202,10 @@ export interface ExpTotals {
   draws: number;
   /** 有效对局（去掉 dup 的重复局） */
   effective: number;
+  /** 战术层平均耗时（ms）：只统计真过了战术层的手（Rapfi/mock 侧记 null，不进样本） */
+  tacAvgMs: number | null;
+  /** 上面那个平均值的样本手数 */
+  tacMoves: number;
 }
 
 /** 旧 `renderExpHistory()` 的累计行口径（js/app.js:1347-1390）。 */
@@ -205,10 +214,21 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
   let otherWins = 0;
   let draws = 0;
   let effective = 0;
+  let tacSum = 0;
+  let tacMoves = 0;
+  /* 战术层耗时按「手」加权：一局里两边的样本合起来算，权重是该侧的样本手数 */
+  const addTac = (avg: number | null | undefined, n: number | undefined) => {
+    if (typeof avg !== 'number') return;
+    const cnt = typeof n === 'number' && n > 0 ? n : 1;
+    tacSum += avg * cnt;
+    tacMoves += cnt;
+  };
   list.forEach((e) => {
     (e.games || []).forEach((g) => {
       if (g.dup) return;
       effective++;
+      addTac(g.blackTacMs, g.blackTacN);
+      addTac(g.whiteTacMs, g.whiteTacN);
       const wside = g.winnerChan ?? null;
       const wchan = wside ? (wside === 'A' ? e.chanA : e.chanB) : null;
       if (!wside) draws++;
@@ -218,7 +238,14 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
       }
     });
   });
-  return { jevWins, otherWins, draws, effective };
+  return {
+    jevWins,
+    otherWins,
+    draws,
+    effective,
+    tacAvgMs: tacMoves ? Math.round(tacSum / tacMoves) : null,
+    tacMoves,
+  };
 }
 
 /* ── 对比口径：按「渠道 · 战术版本」分桶 ────────────────────────────────────
@@ -238,11 +265,17 @@ export interface SideIdentity {
   label: string;
 }
 
-/** 取一局里某一侧的归属：局内字段优先，缺了退到轮级字段（旧 `resultCell` 的口径）。 */
+/** 取一局里某一侧的归属：局内字段优先，缺了退到轮级字段（旧 `resultCell` 的口径）。
+ *
+ *  轮级兜底必须按**局号奇偶**取 `tacA/tacB`：A 只在奇数局执黑，缺了局内字段时若一律拿
+ *  `tacA` 去填黑方，B 执黑的那些局就会给 B 侧（例如 Rapfi）安上 A 的战术版本，分桶表里
+ *  于是冒出 `rapfi|v11-vct|0` 这种并不存在的身份。 */
 export function gameSide(e: ExperimentEntry, g: ExpHistoryGame, side: 'black' | 'white'): SideIdentity {
-  const chan = (side === 'black' ? g.blackChan : g.whiteChan) || (side === 'black' ? e.chanA : e.chanB) || '';
-  const tac = (side === 'black' ? g.blackTac : g.whiteTac) || (side === 'black' ? e.tacA : e.tacB) || null;
-  const think = (side === 'black' ? g.blackThink : g.whiteThink) || (side === 'black' ? e.thinkA : e.thinkB) || 0;
+  const aIsBlack = ((g.no || 1) - 1) % 2 === 0;
+  const isA = (side === 'black') === aIsBlack;
+  const chan = (side === 'black' ? g.blackChan : g.whiteChan) || (isA ? e.chanA : e.chanB) || '';
+  const tac = (side === 'black' ? g.blackTac : g.whiteTac) || (isA ? e.tacA : e.tacB) || null;
+  const think = (side === 'black' ? g.blackThink : g.whiteThink) || (isA ? e.thinkA : e.thinkB) || 0;
   return {
     channel: chan,
     tactics: tac,
@@ -260,6 +293,19 @@ export interface SideStat extends SideIdentity {
   losses: number;
   /** 得分率 =（胜 + 和 ÷ 2）÷ 局 */
   rate: number;
+  /** 战术层耗时合计（ms）与样本手数：只统计真过了战术层的手 */
+  tacSum: number;
+  tacMoves: number;
+  /** 战术层平均耗时（ms）；没有样本（Rapfi/mock 身份）时为 null */
+  tacAvgMs: number | null;
+}
+
+/** 把一局的战术层耗时（某一侧）并进身份统计；`null` = 该侧没过战术层，不进样本。 */
+function addSideTac(s: SideStat, avg: number | null | undefined, n: number | undefined): void {
+  if (typeof avg !== 'number') return;
+  const cnt = typeof n === 'number' && n > 0 ? n : 1;
+  s.tacSum += avg * cnt;
+  s.tacMoves += cnt;
 }
 
 /** 按身份聚合出战绩表：局数降序 → 得分率降序 → 名称。`dup` 局不计（与 `expTotals()` 一致）。 */
@@ -268,7 +314,7 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
   const bucket = (id: SideIdentity): SideStat => {
     let s = map.get(id.key);
     if (!s) {
-      s = { ...id, games: 0, wins: 0, draws: 0, losses: 0, rate: 0 };
+      s = { ...id, games: 0, wins: 0, draws: 0, losses: 0, rate: 0, tacSum: 0, tacMoves: 0, tacAvgMs: null };
       map.set(id.key, s);
     }
     return s;
@@ -280,6 +326,8 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
       const white = bucket(gameSide(e, g, 'white'));
       black.games++;
       white.games++;
+      addSideTac(black, g.blackTacMs, g.blackTacN);
+      addSideTac(white, g.whiteTacMs, g.whiteTacN);
       if (!g.winnerChan) {
         black.draws++;
         white.draws++;
@@ -300,6 +348,7 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
   const rows = [...map.values()];
   rows.forEach((s) => {
     s.rate = s.games ? (s.wins + s.draws / 2) / s.games : 0;
+    s.tacAvgMs = s.tacMoves ? Math.round(s.tacSum / s.tacMoves) : null;
   });
   rows.sort((x, y) => y.games - x.games || y.rate - x.rate || x.label.localeCompare(y.label));
   return rows;
@@ -356,12 +405,15 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     t.draws ? ` · 和棋 ${t.draws}` : null,
     ` · 渠道 ${chans.size} 个`,
     tacs.size ? ` · 战术版本 ${tacs.size} 档` : null,
+    /* 战术层平均耗时（口径见 expTotals）：上这一行是为了「这层保险值不值」一眼可见 */
+    t.tacAvgMs == null ? null : ` · 战术层均值 ${t.tacAvgMs}ms（${t.tacMoves} 手）`,
   ]);
   const head = el('div', { class: 'exp-agg-head' }, [
     el('span', { text: '渠道 · 战术' }),
     el('span', { text: '局' }),
     el('span', { text: '胜' }),
     el('span', { text: '和' }),
+    el('span', { title: '战术层平均耗时（只统计真过了战术层的手）', text: '战术' }),
     el('span', { text: '胜率' }),
   ]);
   const rowEls = rows.map((r) =>
@@ -370,6 +422,14 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
       el('span', { class: 'mono exp-agg-num', text: String(r.games) }),
       el('span', { class: 'mono exp-agg-num', text: String(r.wins) }),
       el('span', { class: 'mono exp-agg-num', text: String(r.draws) }),
+      el('span', {
+        class: 'mono exp-agg-num exp-agg-tac',
+        title:
+          r.tacAvgMs == null
+            ? '该身份没有战术层样本（Rapfi/mock 刻意不过战术层）'
+            : '战术层平均耗时 · 样本 ' + r.tacMoves + ' 手',
+        text: r.tacAvgMs == null ? '—' : r.tacAvgMs + 'ms',
+      }),
       el('span', { class: 'exp-agg-rate' }, [
         rateBar(r.rate, r.label + ' 得分率', 'exp-agg-bar'),
         el('b', { class: 'mono', text: pct(r.rate) }),
@@ -380,7 +440,7 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     total,
     head,
     rowEls,
-    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。' }),
+    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。「战术」= 战术层平均耗时，Rapfi/mock 刻意不过战术层故记 —。' }),
   ]);
 }
 
@@ -461,7 +521,10 @@ export function renderExpHistory(list: readonly ExperimentEntry[], root?: UiRoot
   replaceChildren(box, [expAggregate(list), ...list.map((e) => expCard(e))]);
   /* 面板标题栏的注脚：只报规模与有效局数 —— 旧文案「N 轮实验 · Jev X:Y」把两侧同渠道的
      实验（v8 vs v9）都算进「Jev」，是会误导人的口径，已由 .exp-agg 的分桶表取代。 */
-  setText(qs(r, '#expReportNote'), `${list.length} 轮实验 · ${t.effective} 局有效`);
+  setText(
+    qs(r, '#expReportNote'),
+    `${list.length} 轮实验 · ${t.effective} 局有效` + (t.tacAvgMs == null ? '' : ` · 战术层均值 ${t.tacAvgMs}ms`),
+  );
 }
 
 /* ── 最新棋谱：归档里最新的对局 ─────────────────────────────────────────────
@@ -564,6 +627,11 @@ export function newEntryFromRun(state: ExperimentState, date: string = new Date(
       whiteThink: g.whiteThink || 0,
       winnerChan: g.winner ? g.winnerChan : null,
       by: g.by || null,
+      /* 战术层耗时（m07650 的新口径）：null = 该侧没过战术层，聚合时落进样本外 */
+      blackTacMs: typeof g.blackTacMs === 'number' ? g.blackTacMs : null,
+      whiteTacMs: typeof g.whiteTacMs === 'number' ? g.whiteTacMs : null,
+      blackTacN: g.blackTacN || 0,
+      whiteTacN: g.whiteTacN || 0,
     })),
     note: '',
   };

@@ -284,6 +284,8 @@ export interface TrendSeriesPoint {
   /** 置信度（confidence 缺失时退到 top[0].p） */
   conf: number | null;
   latencyMs: number;
+  /** 战术层耗时（ms）：null = 没过战术层（Rapfi/mock）或老棋谱没有这个数 */
+  tacMs: number | null;
   costUsd: number;
   mock: boolean;
   detail: string;
@@ -316,12 +318,15 @@ export function trendSeries(props: CockpitProps): TrendSeriesPoint[] {
       latencyMs: m.latencyMs || 0,
       costUsd: m.costUsd || 0,
       mock: !!m.mock,
+      /** 战术层耗时（ms）：null = 没过战术层（Rapfi/mock）或老棋谱没有这个数 */
+      tacMs: typeof m.tacticsMs === 'number' ? m.tacticsMs : null,
       detail:
         '置信度 ' +
         (typeof m.confidence === 'number' ? (m.confidence * 100).toFixed(0) + '%' : '–') +
         ' · ' +
         (m.latencyMs || 0) +
-        'ms',
+        'ms' +
+        (typeof m.tacticsMs === 'number' ? '（战术 ' + m.tacticsMs + 'ms）' : ''),
     });
   }
   return out;
@@ -448,6 +453,8 @@ export function feedCard(h: SessionMove, animate: boolean): HTMLElement {
   if (typeof m.noul === 'number') extra.push('优势 ' + (m.noul * 100).toFixed(0) + '%');
   if (typeof m.score === 'number') extra.push('局势 ' + m.score.toFixed(1));
   if (m.latencyMs) extra.push(m.latencyMs + 'ms');
+  /* 战术层耗时（m07650 起单记）：null = 这一手没过战术层（Rapfi/mock）或老棋谱没有这个数 */
+  if (typeof m.tacticsMs === 'number') extra.push('战术 ' + m.tacticsMs + 'ms');
   if (m.usage && m.usage.input_tokens) extra.push(m.usage.input_tokens + ' tok');
   if (m.costUsd) extra.push('$' + m.costUsd.toFixed(5));
   const meta = el('div', { class: 'meta' });

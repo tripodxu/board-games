@@ -299,6 +299,10 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
 
   /* 战术事实 + 对局经验注入 state，并同步指令语义 */
   let tactics: TacticsReport = emptyTactics();
+  /* 战术层耗时（ms）：本手在「算战术事实 + 拆杀点安全排序」上花掉的时间，与上游调用分开记账。
+   * 为什么要拆：`latencyMs` 是「战术 + 上游」的总和，而上游一次调用约 1s，战术层正常只有
+   * 几毫秒到几十毫秒——想回答「这层保险值不值/会不会拖慢走子」，必须单独有这一个数。 */
+  let tacticsMs = 0;
   /* 候选点记法：2-ply 外层只扫候选（省时间），取自序列化 questions.move.criteria 的键 */
   let cands: string[] | null = null;
   try {
@@ -306,7 +310,11 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     const crit = q && q.move && q.move.criteria;
     if (crit && typeof crit === 'object') cands = Object.keys(crit as Record<string, unknown>);
   } catch (_) { /* 降级为全量 */ }
-  try { tactics = computeTactics(engine, st, legal, cands, opts.tacticsVersion); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
+  { /* 块级作用域：tt 只是这一段的秒表，别漏到函数作用域里 */
+    const tt = Date.now();
+    try { tactics = computeTactics(engine, st, legal, cands, opts.tacticsVersion); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
+    tacticsMs += Date.now() - tt;
+  }
   attachFacts(ser, tactics, opts.experience);
 
   let answers: Record<string, unknown>, usage: Record<string, unknown>, costUsd: number, probs: Record<string, number>, conf: number | null, modelName: string | undefined;
@@ -337,7 +345,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     const fallback = legal[0] as Move;
     return {
       notation: fallback.notation, move: fallback,
-      meta: { channel, model: modelName, latencyMs, usage, costUsd, confidence: 0, top: [],
+      meta: { channel, model: modelName, latencyMs, tacticsMs, usage, costUsd, confidence: 0, top: [],
               candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
               tactics: null, tacticsVersion: ver.id },
     };
@@ -378,6 +386,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     const oppSide = engine.sides && engine.sides.find((s) => s.id !== (st as { turn: string }).turn);
     if (!oppSide || !engine.deepTactics) return pickAmong(list);
     const candNs = (cands && cands.length) ? cands : legal.map((m) => m.notation);
+    const tt = Date.now();
     try {
       /* 第一轮：排除允许持续攻击的坏点 */
       const good = list.filter((p) => !allowsSustainedAttack(engine, st, p, oppSide.id, (st as { turn: string }).turn, candNs));
@@ -390,7 +399,10 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
         if (score < bestScore) { bestScore = score; best = p; }
       }
       if (best) return best;
-    } catch (_) { /* 降级 */ }
+    } catch (_) { /* 降级 */ } finally {
+      /* 3-ply 安全排序同属战术层，算进 tacticsMs（多 danger 时这是本层最大的一块） */
+      tacticsMs += Date.now() - tt;
+    }
     return pickAmong(list);
   };
   /* 引擎标签层（open4 / parry3 / parry4）同样按版本闸门：版本没实现的层连
@@ -493,7 +505,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     notation,
     move: byNotation.get(notation) || engine.moveFromNotation(st, notation),
     meta: {
-      channel, model: modelName, latencyMs, usage, costUsd, confidence: conf,
+      channel, model: modelName, latencyMs, tacticsMs, usage, costUsd, confidence: conf,
       top: pairs.slice(0, 8).map(([n, p]) => ({ notation: n, p })),
       candidates: pairs.length, /* 合法候选总数 */
       restProb: pairs.slice(8).reduce((s, x) => s + x[1], 0), /* 第 9 名以后的概率合计 */

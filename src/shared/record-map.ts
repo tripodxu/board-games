@@ -58,6 +58,8 @@ export type MoveAiMeta = {
   rank?: number | null;
   cands?: number | null;
   ms?: number | null;
+  /** 战术层耗时（ms）；Rapfi/mock 不过战术层 ⇒ 记 null，历史棋谱也没有 */
+  tacMs?: number | null;
   tv?: string | number | null;
   /** 新前端补的每手保险标记（win/block/vcfAttack…）；历史棋谱没有这个字段 */
   tac?: string | null;
@@ -78,6 +80,8 @@ export type GameMeta = {
   costUsd?: number;
   tokens?: number;
   latencyMs?: { avg?: number; max?: number } | number | null;
+  /** 战术层耗时汇总（只统计真过了战术层的手）；历史棋谱没有 */
+  tacticsMs?: { avg?: number; max?: number; n?: number } | number | null;
   conf?: number;
   tactics?: Record<string, number>;
   tacticsVersion?: string | number | null;
@@ -158,6 +162,8 @@ export type GameRow = {
   tokens_out: number | null;
   latency_avg_ms: number | null;
   latency_max_ms: number | null;
+  tac_avg_ms: number | null;
+  tac_max_ms: number | null;
   avg_conf: number | null;
   tactics_hist: string | null;
   mock: number;
@@ -183,6 +189,7 @@ export type MoveRow = {
   prob: number | null;
   rank: number | null;
   ms: number | null;
+  tac_ms: number | null;
   cands: number | null;
 };
 
@@ -340,6 +347,8 @@ export function mapGameRecord(
   const meta = payload.meta ?? null;
   const lat = meta && typeof meta.latencyMs === 'object' && meta.latencyMs ? meta.latencyMs : null;
   const latNum = meta ? num(meta.latencyMs) : null;
+  const tac = meta && typeof meta.tacticsMs === 'object' && meta.tacticsMs ? meta.tacticsMs : null;
+  const tacNum = meta ? num(meta.tacticsMs) : null;
   const notation = strOrNull(payload.notation) ?? moves.map((m) => m.notation).join(',');
 
   const row: GameRow = {
@@ -376,6 +385,8 @@ export function mapGameRecord(
     tokens_out: meta ? num(meta.usage?.output_tokens) : null,
     latency_avg_ms: lat ? num(lat.avg) : latNum,
     latency_max_ms: lat ? num(lat.max) : null,
+    tac_avg_ms: tac ? num(tac.avg) : tacNum,
+    tac_max_ms: tac ? num(tac.max) : null,
     avg_conf: meta ? num(meta.conf) : null,
     tactics_hist: meta && meta.tactics ? JSON.stringify(meta.tactics) : null,
     mock: payload.mock === true ? 1 : 0,
@@ -404,6 +415,7 @@ export function mapGameRecord(
       prob: ai ? num(ai.p) : null,
       rank: ai ? num(ai.rank) : null,
       ms: ai ? num(ai.ms) : null,
+      tac_ms: ai ? num(ai.tacMs) : null,
       cands: ai ? num(ai.cands) : null,
     };
   });

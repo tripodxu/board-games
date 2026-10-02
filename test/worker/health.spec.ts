@@ -23,7 +23,13 @@ describe('GET /api/health', () => {
     expect(body.service).toBe('jev-qiguan-worker');
     expect(body.version).toBe('1.0.0');
     expect(body.d1).toBe(true);
-    expect(body.schema).toBe('0001_init.sql');
+    /* 断言「最新一条迁移」而不是写死文件名：`/api/health` 的 schema 取的是
+     * `d1_migrations` 里 id 最大的一行（routes/health.ts:44-53），追加迁移
+     * （如 0002_tactics_timing.sql）后写死的断言必然变红。迁移清单由 vitest
+     * 以绑定注入（vitest.config.ts:28 + test/worker/setup.ts:7）。 */
+    const migrationNames = (env.TEST_MIGRATIONS ?? []).map((m) => m.name).sort();
+    expect(migrationNames.length).toBeGreaterThan(0);
+    expect(body.schema).toBe(migrationNames[migrationNames.length - 1]);
     expect(Number.isNaN(Date.parse(body.time))).toBe(false);
   });
 

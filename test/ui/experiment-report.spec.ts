@@ -112,7 +112,9 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
     const rows = [...h.querySelectorAll('.exp-agg-row')];
     expect(rows.length).toBe(2);
     expect(rows.map((r) => (r as HTMLElement).dataset.key)).toEqual(['proxy|v8|0', 'proxy|v9|0']);
-    expect([...need(rows[0], 'v8 行').querySelectorAll('.exp-agg-num')].map((n) => n.textContent)).toEqual(['4', '2', '1']);
+    expect(
+      [...need(rows[0], 'v8 行').querySelectorAll('.exp-agg-num')].map((n) => n.textContent),
+    ).toEqual(['4', '2', '1', '—']);
     expect(rows[0]!.querySelector('.exp-agg-rate b')!.textContent).toBe('62.5%');
     const bar = need(rows[0]!.querySelector('.exp-agg-bar i'), 'v8 条') as HTMLElement;
     expect(bar.style.width).toBe('62.5%');
@@ -126,6 +128,57 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
     expect([...card.querySelectorAll('.exp-bar-side')].map((s) => s.textContent)).toEqual(['A 62.5%', 'B 37.5%']);
     expect(card.querySelector('.exp-card-head .dim')!.textContent).toContain('4 局有效 · 和 1');
     expect(card.textContent).toContain('同一渠道两个战术版本对比');
+  });
+
+  it('战术层平均耗时：按手加权，Rapfi 侧（null）不进样本', () => {
+    /* m07650 的新口径：一局里记录每侧的战术层均值与样本手数；Rapfi/mock 不过战术层记 null。
+       轮级兜底按局号奇偶取 tacA/tacB（gameSide 的一致性修正），所以 Rapfi 不会被安上 A 的档位。 */
+    const entry: ExperimentEntry = {
+      tag: 'exp-tac',
+      date: '2026-10-02T06:00:00.000Z',
+      chanA: 'proxy',
+      chanB: 'rapfi',
+      tacA: 'v11-vct',
+      tacB: null,
+      thinkA: 0,
+      thinkB: 500,
+      total: 2,
+      games: [
+        /* #1：A（proxy）执黑，两手均值 50ms；B 是 Rapfi，没过战术层 */
+        { no: 1, blackChan: 'proxy', blackTac: 'v11-vct', whiteChan: 'rapfi', blackTacMs: 50, blackTacN: 2, winnerChan: 'A' },
+        /* #2：A 换到白方，两手均值 150ms */
+        { no: 2, blackChan: 'rapfi', whiteChan: 'proxy', whiteTac: 'v11-vct', whiteTacMs: 150, whiteTacN: 2, winnerChan: null },
+      ],
+    };
+    const rows = expSideStats([entry]);
+    /* 只有两个身份：A 与 Rapfi。修 gameSide 之前 B 执黑那局会多出 `rapfi|v11-vct|0` */
+    expect(rows.length).toBe(2);
+    const proxy = rows.find((r) => r.channel === 'proxy')!;
+    const rapfi = rows.find((r) => r.channel === 'rapfi')!;
+    /* 按手加权：(50×2 + 150×2) ÷ 4 手 = 100ms */
+    expect(proxy.tacAvgMs).toBe(100);
+    expect(proxy.tacMoves).toBe(4);
+    /* Rapfi 刻意不过战术层：没有样本（不是 0），否则「Jev vs Rapfi」的均值会被拉低 */
+    expect(rapfi.key).toBe('rapfi||500');
+    expect(rapfi.tacAvgMs).toBeNull();
+    expect(rapfi.tacMoves).toBe(0);
+
+    const t = expTotals([entry]);
+    expect(t.tacAvgMs).toBe(100);
+    expect(t.tacMoves).toBe(4);
+
+    const h = host();
+    renderExpHistory([entry], h);
+    expect(need(h.querySelector('#expReportNote')).textContent).toContain('战术层均值 100ms');
+    expect(need(h.querySelector('.exp-total'), '.exp-total').textContent).toContain('战术层均值 100ms（4 手）');
+    const rapfiRow = [...h.querySelectorAll('.exp-agg-row')].find(
+      (r) => (r as HTMLElement).dataset.key === 'rapfi||500',
+    )!;
+    expect(need(rapfiRow, 'rapfi 行').querySelector('.exp-agg-tac')!.textContent).toBe('—');
+    const proxyRow = [...h.querySelectorAll('.exp-agg-row')].find(
+      (r) => (r as HTMLElement).dataset.key === 'proxy|v11-vct|0',
+    )!;
+    expect(need(proxyRow, 'proxy 行').querySelector('.exp-agg-tac')!.textContent).toBe('100ms');
   });
 
   it('空列表：只有空态提示，注脚清空', () => {

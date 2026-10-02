@@ -59,6 +59,12 @@
   第一次尝试卡在 0/12：Rapfi 局中现抓 10 MB 引擎资产在本机链路上要 447 s（≈22 KB/s），
   抓失败抛出的 rejection 没人接住 ⇒ 工具链改为本地供给资产（`3bf480b`，被测行为不变）。
 
+- **战术层耗时口径（2026-10-02 起）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms`
+  单独记 `computeTactics` + `pickSafestParry` 的耗时（`game_moves.ms` 是「战术 + 上游」总耗时，
+  两个口径不要混读）。**Rapfi / mock 不过战术层，记 NULL 而不是 0**，所以 `AVG(tac_ms)` 的样本天然只剩 Jev 侧；
+  本列由追加迁移 [`migrations/0002_tactics_timing.sql`](../migrations/0002_tactics_timing.sql) 引入，
+  已应用到本地与远程 D1。**已有的 12 轮实验都是旧产物、没有这一列**（那是实测值缺失，不是 0）；
+  从下一轮 Jev 实验起，报告面板的「战术」列与轮次注脚会给战术层均值，playbooks §7 有取证 SQL。
 - 源归档 [games/](../games) **冻结只读**：它是金样、对账与归因用例的源数据，不再写入（说明见 [games/README.md](../games/README.md)）。
 - 迁移期导入 SQL 在 [migrations/import/](../migrations/import)（`manifest.json` + `0001_games.sql`）。
 - 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物，1.9 MB / 7 张表，含 wrangler 的 `d1_migrations` 记账表；`backups/` 不入库，需要时重新导出）。
@@ -108,6 +114,7 @@
 | **v9 对「带空隙的活三」完全失明**（27 局 rapfi 复盘的真正输法）：`src/core/engines/gomoku.ts` 的 `liveThreeDir` 只认连续 `_XXX_`（`labelPoint` 打出的 `you:live3` / `deny:live3` 因此漏掉跳活三与斜线组合），`danger_points_opponent` 又只到 2 手（只认「一步成五」），于是「对手 4 手内必胜（走活三 → 下一步造活四）」这类局面**没有任何保险层会触发**，v9 只能走静点等死 | v10 新增**真推演**的两级：`live3Makers(st, sideId)`（落子后己方有 ≥2 个活四制造点 = 4 手内必胜）与 `live3Deny(st, sideId, cands)`（拆掉对手全部活三制造点的点，先试对手的 L3 点、用 `best+1` 截断、最多评 24 个点）；战术层产出 `live3_you` / `live3_opponent` / `live3_deny_points`，接管链在 `vcfDefense` 后插入 `live3Attack` / `live3Defense` 成**十一级**（v11 起十二级），且**只在 `danger_points_opponent` 为空时才动**（对手有 2 手剑时抢 4 手剑会输速度，让给 `parry`）。依据实测：27 局里只有 2 局死于 VCF，27/27 局对手都能造活三，v9 拆 13 次漏 14 次，漏掉的 12 局是执白 ply#6 放行反对角线活三 F10/D12（该局面四点 criteria 全 `null`，旧标签体系确实无可用信息）。测试：`test/engines/tactics.test.mjs` 新增⑤b 五例（引擎层 / 战术事实 / 决策级接管 / 抢攻 / 让位），`test/engines/util.test.mjs` 与 `src/core/view/duel.ts` 的联名断言改为从登记表派生（不再写死 `Jev·v9`）。机制记录 [ADR-0014](adr/0014-live3-real-lookahead.md)。**对照实验结果**：`v10-live3` 6 胜 4 和 2 负（得分率 67%，执白 0 负）vs `v9-vcf-sound` 3 胜 9 负（25%），live3 两层 12 局接管 168 手、v9 同批对手 0 次（见上文「战术 v10 对照实验」）。 |
 | **v10 用启发式活三点覆盖掉了算得清的必胜链**（v11 复盘的真正发现）：v10 的 `live3Attack` 只看「落子后盘面上有 ≥2 个活四制造点」，不区分这些点是本手新造的、也不追问「这一手是否已经进了一条强制胜链」。v10 臂 12 局复算：7-ply 纯冲四（VCF）看得见 **22 手**必杀，加到 11 ply **也只多 2 手**，而把活三当**逼迫手**纳入搜索（VCT）看得见 **42 手**，其中 **20 手分布在 7 局里是纯 VCF（哪怕 11 ply）完全看不见的**；这 20 手实走几乎全是 `live3Attack` 的启发式点（与 VCT 首步不同），7 局里包含 **2 局 225 手满盘和棋与 1 局败局** ⇒ v10 实验里「和棋偏多」至少一部分是漏杀 | v11 新增**连续威胁搜索**：引擎 `vctWin(st, attackerId, maxPlies)`（攻击方着法 = 冲四 ∪ **本手新造 ≥2 个活四制造点**的活三；守方按逼迫类型精确枚举应手 —— ≥2 成五点直接判胜、单成五点唯一应手、活三要求「守方当下没有造冲四的着法」并枚举全部 `vctDefusers`），战术层产出 `vct_win_you`、接管链在 `vcfAttack` 与 `vcfDefense` 之间插 `vctAttack` 成**十二级**（`VCT_PLIES = 9` = 5 手攻方着法）。夹具（归档局 `cf3d85f9…` 第 21 手）：`vcfWin(7)`/`vcfWin(11)` 均无杀，`vctWin(9)` = 胜 `L4>K7>J9>L10>I9`；黑走 `L4` 后白方邻域 **106 个应手全部仍在杀里**；同局面 v10 档实走 `K7`（`live3_you` 首选）、v11 档走 `L4`。测试：`test/engines/tactics.test.mjs` 新增⑤c 四例（引擎层 / 强制性 / 档位差异 / 决策级）。机制记录 [ADR-0015](adr/0015-vct-continuous-threats.md)。**对照实验结果**：`v11-vct` **10 胜 0 和 2 负（得分率 83%，执黑 5 胜 1 负 / 执白 5 胜 1 负）**，同条件 v10 6 胜 4 和 2 负（67%）、v9 3 胜 9 负（25%）；`vctAttack` 单层 12 局接管 62 手、v10 臂上此层 0 次；12 局零和棋、平均手数 34（见上文「战术 v11 对照实验」）。逐手复盘 206 个 v11 回合：**87 手存在必胜链、其中 84 手走了链首步**，3 手让给更高优先级的必胜层（`open4` ×2 / `vcfAttack` ×1，同为强制胜），**「机会真丢」0 手**；两负的两局（28 / 17 个 v11 回合）**一次都没报出必胜链** ⇒ 输在无强制胜可算的局面，下一版入口是防守与长线取势。 |
 
+| **实验报告把 B 侧的战术档安到 A 侧身上**（战术层耗时用例暴露）：`src/ui/panels/experiment-report.ts` 的 `gameSide()` 在局内字段缺失时一律用轮级 `tacA` 兜底黑方，而 A 只在奇数局执黑 ⇒ B 执黑的那些局会给 B 侧安上 A 的战术版本，分桶表冒出 `rapfi\|v11-vct\|0` 这类幻影身份、把手数拆成两行 | 兜底改按局号奇偶：`const aIsBlack = ((g.no \|\| 1) - 1) % 2 === 0; const isA = (side === 'black') === aIsBlack;` 再按 `isA` 取 `chan / tac / think`；`test/ui/experiment-report.spec.ts` 的战术层用例断言「只出现两个身份」钉住（修前红在均值被拆成 50ms） |
 | **`smoke:live` 把数据总量写死在断言里**：`stats.byGame === '{"五子棋":54}'`、`/api/experiments` 恰好 6 轮、写入后 `totalGames === 55` —— D1 现在是活的，真实验一多这三项就红（2026-10-01 真跑 4 局后实测 27/30） | 断言改成**相对基线**：`byGame` 只校验键都是七个中文棋种名且「五子棋」在册，轮次断言「≥ 6 且每轮有 tag」，写入后断言「跑前基线 + 1」（实测 `58 → 59`）。负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1；随后 30/30 通过 |
 
 ### 仍存在（2026-10-01 口径）
