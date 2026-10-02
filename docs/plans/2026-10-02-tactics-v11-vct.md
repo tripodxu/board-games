@@ -1,0 +1,122 @@
+# 计划与执行记录：战术 v11 `v11-vct`（连续威胁搜索）与 Rapfi 0.5s 对照实验
+
+- 状态：**进行中**（代码/单测已落盘并全绿；对照实验待跑完回填第 6 节）
+- 触发：用户在 v10 交付后指示继续做第十一版（m06208：「暂不停用，且继续进行第11版的设置」）
+
+## 1. 目标
+
+1. **复盘**：把 v10 `v10-live3` 与 `rapfi@500ms` 的 12 局对照棋谱（586 个 proxy 回合）逐手复算，
+   回答「v10 还会漏什么样的杀」——只认数字结论。
+2. **优化**：给出第十一版战术（登记表第 12 行 `v11-vct`），机制变化必须能用数字说清
+   「修掉了哪一类漏杀」。
+3. **实验**：`v11-vct` vs `rapfi@500ms`（思考时间最短档，UI 下拉最小值就是 500ms），
+   与 v9 / v10 两臂**同对手、同开局、同局数口径**对比，看是否进步。
+
+## 2. 复盘：从「双活三」假设走到 VCT
+
+### 2.1 第一轮假设（双活三 L4）——否定
+
+`.work/v11-analyze.mjs` 用现有 API 判「落子后 `live3Makers(me).length >= 2`」，单局 calib 里
+**97% 的回合都满足** ⇒ 零区分度，成本还高达 208ms/手（最坏 520ms）。
+
+### 2.2 独立实现重做（`|S(m)| ≥ 2` 的真活三手 + 真双威胁）
+
+`.work/threat-audit.mjs` 不看引擎实现，自己算「落 m 后**新造**的 L2 点集合 `S(m)`」：
+- 真活三手（`|S(m)| ≥ 2`）：v10 臂 586 手里 **120 手**（就是 `live3Attack` 那 120 手——
+  该层落点确实都在造活三），v9 臂 328 手里 49 手（15%，散落在无接管/parry3/vcfAttack 等）；
+- **真双威胁手（`S` 里 ≥2 个点互为独立威胁）24 局 914 个回合出现 0 次** ⇒ 不做「双活三」层。
+
+### 2.3 第二轮（VCT 口径）：漏的是「冲四链 + 活三逼迫」
+
+`.work/vct-probe.mjs`（独立实现，攻击方着法 = 冲四 ∪ 造活三；守方按逼迫类型精确枚举应手）：
+
+| 臂 | proxy 回合 | VCF(7 ply) 有杀 | 深 VCF(11 ply) 补出 | VCT 有杀 | **只有 VCT 看得见** |
+| --- | --- | --- | --- | --- | --- |
+| `v9-vcf-sound`（12 局） | 328 | 15 | 0 | 26 | **13 手（6 局）**，且 11 ply 纯冲四也看不见 |
+| `v10-live3`（12 局） | 586 | 22 | 2 | 42 | **20 手（7 局）**，其中 18 手连 11 ply 也看不见 |
+
+- v10 臂那 20 手分布在 **4 个胜局 + 2 个和局（各有 2–3 次机会）+ 1 个败局**；实走**几乎全是
+  `live3Attack` 的启发式点**且与 VCT 首步不同（唯一例外 `798e17fb` 第 13 手）⇒
+  **v10 用启发式活三覆盖掉了算得清的必胜链**，v10 实验里「4 局满盘和棋」至少一部分是漏杀。
+- 成本：探针口径平均 147ms / 最坏 555ms（`MAX_NODES = 6000`，无回合被封顶）。
+
+### 2.4 顺带查出的 v10 语义缺陷（本轮只记档）
+
+`live3After` 判的是「盘面上**存在** ≥2 个 L2 点」而非「本手**新造**」：实测同局面
+`live3Makers(black)` 报 96 个点、独立实现全盘 185 个（引擎 96 个全在其中），
+不对称全来自「盘上已有活三」；白方同局面只有 5 个。影响：密集局面 `live3_you` 巨大
+（平均 11–12 点、最坏 123 点），`pickAmong` 退化成「取模型全局首选」。详见 ADR-0015。
+
+## 3. 设计：把活三当逼迫手算进搜索
+
+- **攻击方着法**：冲四（成五点 ≥1）∪ 造活三（**新造** ≥2 个 L2 点）；四在前，按成五点降序，
+  取前 `VCT_MOVES_MAX = 14`。
+- **守方应手（按逼迫类型）**：≥2 成五点 ⇒ 立即判胜；恰好 1 个 ⇒ 唯一应手堵该点（黑方禁手点
+  视为堵不住）；活三 ⇒ 应手 = `vctDefusers`（落此点后盘面无必胜点），**且要求守方当下没有
+  造冲四的着法**（否则「我活三 → 他冲四 → 我活四 → 他成五」，他先赢）。
+- **战术层**：`vct_win_you` 事实、`vctAttack` 机制键、`VCT_PLIES = 9`（= 5 手攻方着法，
+  覆盖实测最长 5 手链）、接管链在 `vcfAttack` 与 `vcfDefense` 之间插一层成**十二级**。
+- **登记表**：第 12 行 `v11-vct`（`rank 11`，机制 = v10 全开 + `vctAttack`），`CURRENT` 改指它。
+
+## 4. 实施清单（全部已落盘）
+
+| 文件 | 改动 |
+| --- | --- |
+| `src/core/engines/gomoku.ts` | 新增 `winPointsAfter` / `hasFivePoint` / `fivePointOf` / `hasFourMove` / `l2Window` / `newThreats` / `vctMoves` / `vctDefusers` / `vctWin`（缺省 `VCT_NODE_LIMIT = 3000` / `VCT_MOVES_MAX = 10` / `VCT_DEFUSERS_MAX = 6`、`plies` 默认 9），并在返回对象注册 `vctWin`；根节点无逼迫手时零成本返回；守方应手枚举用**全盘空点**（`allEmpties`） |
+| `src/core/types.ts` | `Engine` 接口加 `vctWin?(st, attackerId, maxPlies?, opts?: VctOptions): VcfResult`；新增 `VctOptions { movesMax?, nodeLimit?, defusersMax? }`（缺省走引擎常量，只有离线标定/实验才传） |
+| `src/core/tactics.ts` | `TacticsReport.vct_win_you`、`ALL_MECH` 15 键、`VCT_PLIES = 9`、VCT 搜索段（fail-soft）、`attachFacts` 英文指令、导出 |
+| `src/core/jev/client.ts` | 接管链插 `vctAttack` 分支（`pickAmong(vct_win_you)`）、`tacticName` 加「连续威胁链首步」 |
+| `src/core/tactics-versions.ts` | 第 12 行 `v11-vct`、`CURRENT` 改指、`MECHS` 15 键、`selfTest` 断言 12 |
+| `index.html` | 三处战术下拉加 `v11-vct` 并移动「（当前）」 |
+| `src/ui/panels/experiment.ts` | 注释里的 CURRENT 示例更新 |
+| `test/engines/tactics.test.mjs` | 登记表/层数/allows 更新；**新增 ⑤c 四例**（引擎层 / 强制性 / 档位差异 / 决策级），夹具 = 归档局 `cf3d85f9…` 前 20 手；⑤b 三例显式钉 `tacticsVersion: 'v10-live3'` |
+| `test/engines/util.test.mjs` | 联名断言 `Jev·v11` / `ran-v3-vs-jev-v11` |
+
+## 5. 验证证据
+
+- **夹具（真实棋谱）**：局面 `cf3d85f9-…` 第 21 手（黑）——`vcfWin(7)` 无杀（5ms）、
+  `vcfWin(11)` 无杀（6ms）、`vctWin(9)` = 胜 `L4>K7>J9>L10>I9`（38ms）；黑走 `L4` 后白方邻域
+  **106 个应手全部仍在杀里**（0 个守住，验证耗时 528ms）；全盘 204 个应手同样 0 个守住（1132ms）。
+- **档位差异**：同局面 v10 档 `live3_you = ['K7','M11']`、`vct_win_you = []`（实走 `K7`）；
+  v11 档 `vct_win_you = ['L4']`、`live3_you` 不变；决策级：模型给 `K7` 0.9 时 v10 走 `K7`/
+  `live3Attack`，v11 走 `L4`/`vctAttack`（`meta.tacticsVersion = 'v11-vct'`）。
+- **全量**：`node test/engines/run.mjs` **130 例全过**（原 126，+4）；金样逐手差分不变
+  （自对弈 1131 手 + 归档 54 局 4379 手；`test/parity/exceptions.json` 仍为 `[]`）；
+  `npm test` 34 文件 / 334 例全过；`npx tsc --noEmit` 0 错。
+- **成本两次低估，最终标定**：先按夹具 68ms 估，实际全量跑（交叉核对 586 回合）平均 1061ms /
+  最坏 14452ms；加 `newThreats` 惰性差集与根节点闸门后缺省降到 607ms / 8837ms；再用
+  `.work/vct-tune.mjs` + `.work/vct-tune3.mjs` 扫参数，定缺省为 `10/3000/6`（同样 55 手，
+  复测平均 **422ms** / 中位 12ms / p90 1636ms / 最坏 4506ms）；夹具整档 166ms → 189ms。
+  完整对照表见 [ADR-0015](../adr/0015-vct-continuous-threats.md)「代价与不做什么」。
+
+## 6. 对照实验（待回填）
+
+设计：单臂 12 局 `v11-vct` vs `rapfi@500ms`，黑白交替，同 v9 / v10 两臂的开局与对手口径。
+命令：`$env:JEV_API_KEY=…; node scripts/experiment-run.mjs --games 12 --tacA v11-vct --chanB rapfi
+--thinkB 500 --port 9450 --out .work/exp-arm5-v11.json`
+
+| 臂 | 版本 | 对手 | 局数 | 战绩 | 得分率 | 黑白拆分 | 平均手数 | tag |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A | `v9-vcf-sound` | `rapfi@500ms` | 12（4+8） | 3 胜 0 和 9 负 | 25% | — | 55 | `exp-20261001174212` + `exp-20261001181244` |
+| B | `v10-live3` | `rapfi@500ms` | 12（4+8） | 6 胜 4 和 2 负 | 67% | 4胜0和2负 / 2胜4和0负 | 98 | `exp-20261001174837` + `exp-20261001182552` |
+| C | `v11-vct` | `rapfi@500ms` | 12 | 待跑 | | | | |
+
+## 7. 仍未闭环
+
+1. **v10 原语的语义缺陷**（`live3After` 判「盘面存在」而非「本手新造」，ADR-0015 背景小节）：
+   为保证 A/B 单变量，本轮**不动**；修它要单独一版并重跑 v10 臂基线。
+2. **v10 提示词里 `live3_you … winning within four moves` 的夸大**：同上，单独一版处理。
+3. **`vctWin` 的搜索宽度**：`VCT_MOVES_MAX = 10` / `VCT_NODE_LIMIT = 3000` / `VCT_DEFUSERS_MAX = 6`
+   是按实测成本定的（标定脚本 `.work/vct-tune.mjs` + `.work/vct-tune3.mjs`，586 个真实回合，
+   见表）；`movesMax` 再放大（12/14）在样本上不再多看见杀，但**更深的链**（>5 手攻方着法）
+   与**更宽的局面**是否还有漏杀没继续扫；最坏 4.5s 的同步阻塞也还没化解。
+4. **和棋率**：v10 臂 4 局满盘和棋是「守得住、滚不起胜势」；v11 的漏杀修正能否把其中一部分
+   转成胜局，是本轮实验要看的第一个数字。
+
+## 8. 下一步候选（未承诺）
+
+- 把 VCT 的守方应手枚举换成「只枚举能拆掉当前威胁的点 + 少量静点」（当前 `defusers` 已经是
+  这个思路，但 `vctMoves` 的宽度可以按威胁数自适应）。
+- 让 `parry3` / `parry4` 也走「精确枚举」而非读模型标签（v10 复盘里它们合计接管 141 手，
+  但都是「按标签走」）。
+- 把 v11 的 `newThreats` 反过来用于修 `live3Makers`（第 7 节第 1 条）。

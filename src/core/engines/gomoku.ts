@@ -14,7 +14,7 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
-import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, UiState, VcfResult } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, UiState, VcfResult, VctOptions } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -416,6 +416,250 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       if (best === 0) break;
     }
     return { before, after: best, best: bestPoints };
+  }
+
+  /* ---------- v11 战术层：VCT（连续威胁搜索：冲四链 + 活三逼迫） ----------
+   * v10 的 vcfWin 只搜冲四：遇到「先造活三逼迫、再用冲四收尾」的链就看不见。实测两臂
+   * 24 局里，v10 有 20 手（7 局）存在 VCF-7 看不见的必胜链（其中 18 手连 11 ply 纯冲四
+   * 也看不见），而当时 v10 走的是启发式的 live3Attack 点。
+   *
+   * 攻击方着法两类，各自配**精确的**守方应手集合：
+   *   ① 冲四：落子后 1 个成五点 → 守方只有唯一点可堵；≥2 个成五点 → 当场必胜。
+   *   ② 造活三：落子后**新造出** ≥2 个「落子即成五点」的点（＝下一手活四）。守方必须让
+   *      这些点全失效，应手集合由 vctDefusers() 精确枚举（不是「随便堵一个端点」）。
+   *      对手自己有冲四可走时这一手不算威胁（他反先一步成五，我们慢一手）。
+   * 与 vcfWin 一样：拷贝上落子/撤销、禁手点对黑方跳过、黑方成五点须精确五连。
+   * 返回的 `line` 是**攻击方**的着法序列（守方应手不入 line，与 vcfWin 的 line 不同）。
+   *
+   * **sound（不谎报必胜）的两处关键**：① 守方应手一律**枚举全盘空点**（不只邻域）——
+   * 漏掉一个能守住的应手就会把和棋/败局当必胜（`vctDefusers` 的候选集来自 `allEmpties`）；
+   * ② 活三逼迫要求「守方当下没有造冲四的着法」（`hasFourMove`），否则时间线是
+   * 「我活三 → 他冲四 → 我活四 → 他成五」，他先赢。 */
+  /* v11 VCT 搜索预算：由 .work/vct-tune.mjs / vct-tune3.mjs 在 586 个真实 proxy 回合上标定。
+     缺省 14/6000/∞ 能看见 55 手必胜链，但平均 607ms / p90 2430ms / 最坏 8837ms；
+     10/3000/6 同样 55 手（丢 0、多 0），平均 444ms / p90 1647ms / 最坏 4586ms ⇒ 取这组。
+     三个上限都只会让搜索「少看见」，不会让它谎报必胜（sound 方向）。 */
+  const VCT_NODE_LIMIT = 3000;
+  const VCT_MOVES_MAX = 10;
+  const VCT_DEFUSERS_MAX = 6;
+  /** 全盘空点（守方应手的候选集：要证「守不住」就不能只看邻域）。 */
+  function allEmpties(board: Board): number[][] {
+    const out: number[][] = [];
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (board[r]![c] === 0) out.push([r, c]);
+    return out;
+  }
+  /** 落 (r,c)（调用方保证已落 p 子）后 p 的成五点；只查过 (r,c) 的五线，到 cap 早退。 */
+  function winPointsAfter(board: Board, p: number, r: number, c: number, cap: number): number[][] {
+    const out: number[][] = [];
+    const seen: Record<number, true> = {};
+    for (const [dr, dc] of DIRS4) {
+      for (let s = -4; s <= 0; s++) {
+        let stones = 0, er = -1, ec = -1, ok = true;
+        for (let k = 0; k < 5; k++) {
+          const rr = r + dr! * (s + k), cc = c + dc! * (s + k);
+          if (!inB(rr, cc)) { ok = false; break; }
+          const v = board[rr]![cc];
+          if (v === p) stones++;
+          else if (v === 0) {
+            if (er >= 0) { ok = false; break; }
+            er = rr; ec = cc;
+          } else { ok = false; break; }
+        }
+        if (ok && stones === 4 && er >= 0) {
+          const key = er * N + ec;
+          if (seen[key]) continue;
+          if (forbidden && p === 1) {
+            board[er]![ec] = 1;
+            const exact = exactFiveAt(board, er, ec);
+            board[er]![ec] = 0;
+            if (!exact) continue;
+          }
+          seen[key] = true;
+          out.push([er, ec]);
+          if (out.length >= cap) return out;
+        }
+      }
+    }
+    return out;
+  }
+  /** p 方是否有一手成五的点（只看邻域空点；成五点必与己子相邻）。 */
+  function hasFivePoint(board: Board, p: number): boolean {
+    for (const [r, c] of nearEmpties(board)) {
+      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+      board[r]![c] = p;
+      const five = isFiveAt(board, r, c, p);
+      board[r]![c] = 0;
+      if (five) return true;
+    }
+    return false;
+  }
+  /** p 方一手成五的落点（无则 null）。 */
+  function fivePointOf(board: Board, p: number): number[] | null {
+    for (const [r, c] of nearEmpties(board)) {
+      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+      board[r]![c] = p;
+      const five = isFiveAt(board, r, c, p);
+      board[r]![c] = 0;
+      if (five) return [r, c];
+    }
+    return null;
+  }
+  /** p 方是否有「造冲四」的着法（活三逼迫前必须确认对手没有反先的四）。 */
+  function hasFourMove(board: Board, p: number): boolean {
+    for (const [r, c] of nearEmpties(board)) {
+      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+      board[r]![c] = p;
+      const wins = winPointsAfter(board, p, r, c, 1);
+      board[r]![c] = 0;
+      if (wins.length > 0) return true;
+    }
+    return false;
+  }
+  /** 沿 (r,c) 四条线 ≤4 格窗口内 p 的「必胜点」（落子即得 ≥2 个成五点）＝落子后的活四制造点。 */
+  function l2Window(board: Board, p: number, r: number, c: number): number[] {
+    const out: number[] = [];
+    const seen: Record<number, true> = {};
+    for (const [dr, dc] of DIRS4) {
+      for (let k = -4; k <= 4; k++) {
+        if (k === 0) continue;
+        const qr = r + dr! * k, qc = c + dc! * k;
+        if (!inB(qr, qc) || board[qr]![qc] !== 0) continue;
+        const key = qr * N + qc;
+        if (seen[key]) continue;
+        seen[key] = true;
+        if (forbidden && p === 1 && isForbiddenPoint(board, qr, qc)) continue;
+        board[qr]![qc] = p;
+        const n = fiveCompletions(board, p, qr, qc);
+        board[qr]![qc] = 0;
+        if (n >= 2) out.push(key);
+      }
+    }
+    return out;
+  }
+  /** 落 (r,c) **新造出**的必胜点（落子后窗口内的 L2 点，减去「落子前就已经是 L2」的那些）。
+   *  等价于旧实现的「落子前后窗口差集」，但只对落子后出现的点逐个回验，省掉整趟前集扫描。 */
+  function newThreats(board: Board, p: number, r: number, c: number): number[] {
+    board[r]![c] = p;
+    const post = l2Window(board, p, r, c);
+    board[r]![c] = 0;
+    const out: number[] = [];
+    for (const k of post) {
+      const qr = (k / N) | 0, qc = k % N;
+      board[qr]![qc] = p;
+      const n = fiveCompletions(board, p, qr, qc);   /* 落子前的盘面（(r,c) 已撤） */
+      board[qr]![qc] = 0;
+      if (n < 2) out.push(k);
+    }
+    return out;
+  }
+  interface VctMove { r: number; c: number; wins: number[][]; live: number[] }
+  /** 攻击方候选：冲四（wins 非空）与造活三（live = 新造出的必胜点，≥2 个）。四在前。 */
+  function vctMoves(board: Board, p: number, movesMax: number): VctMove[] {
+    const out: VctMove[] = [];
+    for (const [r, c] of nearEmpties(board)) {
+      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+      board[r]![c] = p;
+      const wins = winPointsAfter(board, p, r, c, 2);
+      board[r]![c] = 0;
+      if (wins.length > 0) out.push({ r, c, wins, live: [] });
+      else {
+        const live = newThreats(board, p, r, c);
+        if (live.length >= 2) out.push({ r, c, wins: [], live });
+      }
+    }
+    out.sort((a, b) => (b.wins.length - a.wins.length) || (b.live.length - a.live.length));
+    return out.slice(0, movesMax);
+  }
+  /**
+   * 守方真正能拆掉活三的落点：落此点后 S 里再无「落子即得 ≥2 成五点」的点。
+   * `cands` 由调用方给**全盘空点**（`allEmpties`）——漏枚举一个能守住的应手，
+   * 就会把和棋/败局误判成必胜（sound 方向要求）。单个候选的判定很便宜
+   * （|S| 个点各数一次成五点、n≥2 即早退），所以全盘扫的代价可接受。 */
+  function vctDefusers(board: Board, p: number, opp: number, S: number[], cands: number[][]): number[] {
+    const out: number[] = [];
+    const seen: Record<number, true> = {};
+    const tryCell = (qr: number, qc: number): void => {
+      const key = qr * N + qc;
+      if (seen[key]) return;
+      seen[key] = true;
+      if (board[qr]![qc] !== 0) return;
+      /* 黑方禁手点堵不住（走不得）→ 不算应手，攻方照赢 */
+      if (forbidden && opp === 1 && isForbiddenPoint(board, qr, qc)) return;
+      board[qr]![qc] = opp;
+      let alive = false;
+      for (const k of S) {
+        const sr = (k / N) | 0, sc = k % N;
+        if (board[sr]![sc] !== 0) continue;
+        board[sr]![sc] = p;
+        const n = fiveCompletions(board, p, sr, sc);
+        board[sr]![sc] = 0;
+        if (n >= 2) { alive = true; break; }
+      }
+      board[qr]![qc] = 0;
+      if (!alive) out.push(key);
+    };
+    for (const k of S) tryCell((k / N) | 0, k % N);
+    for (const [qr, qc] of cands) tryCell(qr, qc);
+    return out;
+  }
+  function vctWin(st: GomokuState, attackerId: string, maxPlies?: number, opts?: VctOptions): VcfResult {
+    const A = attackerId === 'black' ? 1 : 2;
+    const D = A === 1 ? 2 : 1;
+    const board = clone(st.board);
+    const nodeLimit = opts?.nodeLimit && opts.nodeLimit > 0 ? opts.nodeLimit : VCT_NODE_LIMIT;
+    const movesMax = opts?.movesMax && opts.movesMax > 0 ? opts.movesMax : VCT_MOVES_MAX;
+    const defusersMax = opts?.defusersMax && opts.defusersMax > 0 ? opts.defusersMax : VCT_DEFUSERS_MAX;
+    let nodes = 0;
+    const plies = Math.max(1, Math.min(15, maxPlies! | 0 || 9));
+
+    function search(pliesLeft: number, precomputed?: VctMove[]): number[][] | null {
+      if (pliesLeft <= 0 || nodes > nodeLimit) return null;
+      const five = fivePointOf(board, A);
+      if (five) return [five];                     /* 己方一手成五 */
+      if (hasFivePoint(board, D)) return null;     /* 守方一手成五：这条链赶不上 */
+      const moves = precomputed ?? vctMoves(board, A, movesMax);
+      for (const m of moves) {
+        if (++nodes > nodeLimit) break;
+        board[m.r]![m.c] = A;
+        let line: number[][] | null = null;
+        if (m.wins.length >= 2) line = [];          /* 双四：守方挡不住 */
+        else if (m.wins.length === 1) {
+          const wr = m.wins[0]![0]!, wc = m.wins[0]![1]!;
+          board[wr]![wc] = D;                       /* 冲四：守方唯一应手 */
+          const sub = search(pliesLeft - 2);
+          board[wr]![wc] = 0;
+          if (sub) line = sub;
+        } else if (m.live.length >= 2 && !hasFourMove(board, D)) {
+          const defs = vctDefusers(board, A, D, m.live, allEmpties(board));
+          /* 应手太多时不当作逼迫手（sound：宁可漏判也不谎报必胜），见 vct-tune 标定 */
+          if (defusersMax && defs.length > defusersMax) { /* 落空：这一手不算威胁 */ }
+          else if (defs.length === 0) line = [];      /* 拆不掉 → 下一手活四 */
+          else {
+            let ok = true, tail: number[][] | null = [];
+            for (const q of defs) {
+              const qr = (q / N) | 0, qc = q % N;
+              board[qr]![qc] = D;
+              const sub = search(pliesLeft - 2);
+              board[qr]![qc] = 0;
+              if (!sub) { ok = false; break; }
+              tail = sub;
+            }
+            if (ok) line = tail;
+          }
+        }
+        board[m.r]![m.c] = 0;
+        if (line) return [[m.r, m.c], ...line];
+      }
+      return null;
+    }
+
+    /* 根节点闸门：连一个逼迫手都没有时，直接判无杀（省掉整趟搜索，见 vct-tune 标定） */
+    const rootMoves = vctMoves(board, A, movesMax);
+    if (rootMoves.length === 0) return { win: false, first: null, line: [] };
+    const line = search(plies, rootMoves);
+    if (!line) return { win: false, first: null, line: [] };
+    const toN = (rc: number[]): string => notation(rc[0]!, rc[1]!);
+    return { win: true, first: toN(line[0]!), line: line.map(toN) };
   }
 
   function getLegalMoves(st: GomokuState): GomokuMove[] {
@@ -831,6 +1075,8 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     vcfWin,
     /* v10：活三制造点的真推演（4-ply 威胁，见 jev-client live3Attack/live3Defense） */
     live3Makers, live3Deny,
+    /* v11：VCT 连续威胁搜索（冲四链 + 活三逼迫，见 jev-client vctAttack） */
+    vctWin,
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, mockPick, selfTest,
   } as Engine<GomokuState>;

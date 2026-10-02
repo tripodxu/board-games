@@ -1,4 +1,4 @@
-/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v10 起十一级）+ VCF soundness 回归
+/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v11 起十二级）+ VCF soundness 回归
  *
  * 覆盖旧 test/run-tests.cjs 中的：
  *   - tacticsRegistryTests()（版本登记表、rank/机制单调、层数对照、机制闸门 allows）
@@ -7,6 +7,7 @@
  *   - ⑥c/⑦/⑧/⑨/⑨b/⑨c/⑩/⑪/⑫a–⑫j（战术事实、接管链、经验注入、VCF 真链与伪胜）
  *   - ⑬a–⑬g（版本闸门：同一局面按档给出不同事实与接管行为）
  *   - ⑤b（v10 活三：引擎层真推演 + 两档事实对照 + 决策级抢/拆活三 + 让位给更短的杀）
+ *   - ⑤c（v11 VCT：引擎层连续威胁搜索 + 与纯 VCF 的可见性对照 + 决策级抢链首）
  */
 import { suite, ok, eq, deepEq, near } from './harness.mjs';
 
@@ -53,14 +54,14 @@ const VCF_SEQ = ['E7', 'D7', 'F7', 'A1', 'G7', 'A2', 'H5', 'A3', 'H6', 'B1'];
 const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
 
 /* ------------------------------------------------------------------ *
- * ① 版本登记表（git 历史 × 棋谱数据双锚定：10 个战术版本 + 1 数据驱动基线）
+ * ① 版本登记表（git 历史 × 棋谱数据双锚定：11 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v10-live3', '当前档应为 v10-live3（深活三攻防）');
+  eq(R.CURRENT, 'v11-vct', '当前档应为 v11-vct（连续威胁搜索）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 11, '应为 10 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 12, '应为 11 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
@@ -75,13 +76,13 @@ S.t('版本登记表：机制集合沿梯级单调不减', () => {
   }
 });
 
-S.t('版本登记表：十级层数对照（2/3/5/6/6/7/9/9/9/11）', () => {
+S.t('版本登记表：十一级层数对照（2/3/5/6/6/7/9/9/9/11/12）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
-    'v10-live3': 11,
+    'v10-live3': 11, 'v11-vct': 12,
   };
-  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vcfDefense',
+  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense',
     'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
   for (const v of R.VERSIONS) {
     const got = TIER.filter((k) => v.mech[k]).length;
@@ -95,7 +96,7 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v10-live3 的实证局数看 gamesVerified）');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v11-vct 的实证局数看 gamesVerified）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
@@ -125,6 +126,9 @@ S.t('版本登记表：resolve 回退与 allows 闸门', () => {
   ok(R.allows(R.resolve('v10-live3'), 'live3Defense'), 'live3Defense 应仅 v10 起有');
   ok(!R.allows(R.resolve('v9-vcf-sound'), 'live3Attack'), 'v9 不应有 live3Attack');
   ok(R.allows(R.resolve('v10-live3'), 'sound'), 'v10 应继承 v9 的 sound 层');
+  ok(R.allows(R.resolve('v11-vct'), 'vctAttack'), 'vctAttack 应仅 v11 起有');
+  ok(!R.allows(R.resolve('v10-live3'), 'vctAttack'), 'v10 不应有 vctAttack');
+  ok(R.allows(R.resolve('v11-vct'), 'live3Defense'), 'v11 应继承 v10 的 live3Defense 层');
   const v0 = R.VERSIONS[0];
   for (const k of R.MECHS) ok(!v0.mech[k], 'v0-off 的 ' + k + ' 应为关');
 });
@@ -140,6 +144,7 @@ S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs
   eq(R.resolve('v9-vcf-sound').games, 26, 'v9 快照 26 局（窗口口径）');
   eq(R.resolve('v9-vcf-sound').gamesVerified, 16, 'v9 实证 16 局（4 局旧实证 + 2026-10-02 对照实验的 v9 臂 12 局，每手 ai.tv）');
   eq(R.resolve('v10-live3').gamesVerified, 12, 'v10 实证 12 局（对照实验两臂 4+8，每手 ai.tv = v10-live3）');
+  eq(R.resolve('v11-vct').gamesVerified, 0, 'v11 尚无归档实证（对照实验未跑前必须是 0）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');
@@ -497,7 +502,8 @@ S.t('v10 活三：战术事实按档给（v9 三个字段全空 / v10 报出对�
 S.t('v10 活三：决策级拆活三（live3Defense 纠正静点偏好，v9 不接管）', async () => {
   const st = play(gomoku, L3_SEQ);
   const probs = { J10: 0.9, F10: 0.05 };
-  const d10 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d10 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v10-live3' }));
   ok(d10.notation === 'F10' && d10.meta.tactics === 'live3Defense',
     'v10 应被 live3Defense 接管走 F10，实际：' + d10.notation + '/' + d10.meta.tactics);
   ok(d10.meta.tacticsVersion === 'v10-live3', 'meta.tacticsVersion 应记录 v10-live3，实际：' + d10.meta.tacticsVersion);
@@ -513,7 +519,8 @@ S.t('v10 活三：决策级抢活三（live3Attack 抢占 4 手必杀点）', as
   deepEq(gomoku.live3Makers(st, 'white'), ['F10'],
     '白方活三制造点应为 F10，实际：' + JSON.stringify(gomoku.live3Makers(st, 'white')));
   const probs = { H1: 0.9 };
-  const d10 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d10 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v10-live3' }));
   ok(d10.notation === 'F10' && d10.meta.tactics === 'live3Attack',
     'v10 应被 live3Attack 接管走 F10，实际：' + d10.notation + '/' + d10.meta.tactics);
   const d9 = await withFetch(repliesWith(probs),
@@ -529,9 +536,89 @@ S.t('v10 活三：抢攻层让位给更短的杀（对手 2 手杀优先）', as
   ok(tac.live3_you.length > 0, '夹具前提：白方应有活三制造点，实际：' + JSON.stringify(tac.live3_you));
   ok(tac.danger_points_opponent.length > 0,
     '夹具前提：黑方应有 2 手杀，实际：' + JSON.stringify(tac.danger_points_opponent));
-  const d = await withFetch(repliesWith({ J10: 0.9 }), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d = await withFetch(repliesWith({ J10: 0.9 }),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v10-live3' }));
   ok(d.meta.tactics !== 'live3Attack', '对手有 2 手杀时不该抢 4 手剑，实际：' + d.notation + '/' + d.meta.tactics);
   eq(d.notation, 'D1', '应走 vcfDefense/parry 的 D1，实际：' + d.notation + '/' + d.meta.tactics);
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑤c v11 VCT（连续威胁搜索：冲四链 + 活三逼迫）
+ *
+ * 依据（v10 对照实验 12 局逐手离线复算，独立实现交叉核对）：
+ *   7-ply 纯冲四有杀 22 手、11-ply 补出 2 手，而 VCT 42 手；**只有 VCT 看得见的 20 手
+ *   分布在 7 局**，其中 18 手连 11 ply 纯冲四也看不见 —— 当时走的几乎全是启发式
+ *   live3Attack 点（2 局因此和棋、1 局负）。夹具即其中一手。
+ *
+ * 夹具 = 归档局 cf3d85f9-6962-411a-958d-086eda0ebe09（v10 臂，proxy 执黑 vs rapfi@500ms，
+ * 31 手黑胜）前 20 手，轮黑走：第 21 手实走 K7/live3Attack，而 VCT 的必胜链首步是 L4。
+ * ------------------------------------------------------------------ */
+const VCT_SEQ = ['H8', 'E11', 'G8', 'B14', 'F8', 'E8', 'J8', 'I8', 'I7', 'A15',
+  'K9', 'H6', 'J6', 'G9', 'J7', 'J5', 'H7', 'D12', 'C13', 'G7'];
+
+/**
+ * 邻域（切比雪夫 ≤2）内的合法着法：防守方「有意义的」应手集合。
+ * 用着法自带的 r/c（别从记法里反解：记法是「列字母 + 行号」，反解容易把行列写反）。
+ * 引擎内部的 VCT 已经是**全盘**枚举应手，这里只是抽样子集，成本低。
+ */
+function nearReplies(e, st) {
+  const b = st.board, N = b.length;
+  return e.getLegalMoves(st).filter((m) => {
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const rr = m.r + dr, cc = m.c + dc;
+      if (rr >= 0 && rr < N && cc >= 0 && cc < N && b[rr][cc] !== 0) return true;
+    }
+    return false;
+  });
+}
+
+S.t('v11 VCT：引擎层连续威胁搜索（纯冲四看不见，加深度也补不出来）', () => {
+  const st = play(gomoku, VCT_SEQ);
+  eq(st.turn, 'black', '夹具应轮黑走；若这里就红了，说明夹具记法失效');
+  ok(!gomoku.vcfWin(st, 'black', 7).win, '7-ply 纯冲四不该有杀（这正是 v10 的盲区）');
+  ok(!gomoku.vcfWin(st, 'black', 11).win, '11-ply 纯冲四也不该有杀（必须换机制，不是加深度）');
+  const vct = gomoku.vctWin(st, 'black', 9);
+  ok(vct.win, 'VCT 应找到必胜链');
+  eq(vct.first, 'L4', 'VCT 必胜链首步应为 L4（实走 K7 是启发式活三点）');
+  eq(vct.line.length, 5, '链长应为 5 手攻方着法，实际：' + vct.line.join('>'));
+});
+
+S.t('v11 VCT：链首是强制手（白方任一近邻应手都仍在杀里）', () => {
+  const st = play(gomoku, VCT_SEQ);
+  const first = gomoku.vctWin(st, 'black', 9).first;
+  const stA = gomoku.applyMove(st, gomoku.moveFromNotation(st, first));
+  const replies = nearReplies(gomoku, stA);
+  ok(replies.length >= 50, '夹具前提：邻域应手应足够多，实际 ' + replies.length);
+  const fails = [];
+  for (const m of replies) {
+    const r = gomoku.vctWin(gomoku.applyMove(stA, m), 'black', 7);
+    if (!r.win) fails.push(m.notation);
+  }
+  eq(fails.length, 0, '黑走 ' + first + ' 后白方任一近邻应手都该还在杀里，守住的应手：' + fails.join(','));
+});
+
+S.t('v11 VCT：战术事实按档给（v10 只有启发式活三点，v11 报出必胜链首步）', () => {
+  const st = play(gomoku, VCT_SEQ);
+  const v10 = tacOf(gomoku, st, 'v10-live3');
+  deepEq(v10.vct_win_you, [], 'v10 不应有 VCT 层');
+  deepEq(v10.live3_you, ['K7', 'M11'], 'v10 只有启发式活三点（K7 正是实走的那手）');
+  const v11 = tacOf(gomoku, st, 'v11-vct');
+  deepEq(v11.vct_win_you, ['L4'], 'v11 应报出必胜链首步 L4');
+  deepEq(v11.live3_you, ['K7', 'M11'], 'v11 仍保留 v10 的活三点事实（机制单调不减）');
+  eq(v11.vcf_win_you.length, 0, '该局面纯 VCF 无解（VCT 补的就是这一格）');
+});
+
+S.t('v11 VCT：决策级抢链首（v10 被 live3Attack 带偏到 K7，v11 走 L4）', async () => {
+  const st = play(gomoku, VCT_SEQ);
+  const probs = { K7: 0.9, L4: 0.02 };   /* 模型偏好正是实走的那手 K7 */
+  const d11 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  ok(d11.notation === 'L4' && d11.meta.tactics === 'vctAttack',
+    'v11 应被 vctAttack 接管走 L4，实际：' + d11.notation + '/' + d11.meta.tactics);
+  eq(d11.meta.tacticsVersion, 'v11-vct', 'meta.tacticsVersion 应记录 v11-vct');
+  const d10 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v10-live3' }));
+  ok(d10.notation === 'K7' && d10.meta.tactics === 'live3Attack',
+    'v10 档应照旧走启发式活三点 K7（这就是漏掉必胜链的那一手），实际：' + d10.notation + '/' + d10.meta.tactics);
 });
 
 /* ------------------------------------------------------------------ *

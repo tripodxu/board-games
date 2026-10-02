@@ -34,6 +34,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { CURRENT } from '../src/core/tactics-versions.ts';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const argv = process.argv.slice(2);
@@ -47,7 +48,8 @@ const URL_TARGET = flag('url', 'https://jevqipan.logicc.top/');
 const GAMES = Number(flag('games', '4'));
 const CHAN_A = flag('chanA', 'proxy');
 const CHAN_B = flag('chanB', 'proxy');
-const TAC_A = flag('tacA', 'v10-live3');
+/* A 方战术缺省跟随登记表的 CURRENT（Node ≥ 22.18 能直载 src 里的 .ts，见 AGENTS「引擎可被纯 Node 直载」） */
+const TAC_A = flag('tacA', CURRENT);
 const TAC_B = flag('tacB', 'v9-vcf-sound');
 const THINK_A = flag('thinkA', '');
 const THINK_B = flag('thinkB', '');

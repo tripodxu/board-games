@@ -26,7 +26,7 @@
  *  3. `#expGames` 只在 props.games 显式给出时才写回 DOM（旧实现从不重画该输入框，避免吃掉草稿）。
  *  4. `renderExpResults()` 里胜方归属多了一层 `winnerChan` 空值防御（旧实现直接拼 `who(r.winnerChan)`）。
  *  5. `EXP.results` 的 `winner` 字段保留旧语义（胜方 side id 字符串 / null），不是布尔。
- *  6. 默认战术档用 `CURRENT`（现在是 'v10-live3'）而不是硬编码字符串，随 core 常量走。
+ *  6. 默认战术档用 `CURRENT`（现在是 'v11-vct'）而不是硬编码字符串，随 core 常量走。
  */
 import type { SideConfig } from '../../core/persist.ts';
 import type { SessionExportInfo } from '../../core/session.ts';

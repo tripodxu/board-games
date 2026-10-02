@@ -353,7 +353,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   /* 战术点中文名（接管提示用） */
   const tacticName = (): string => ({
     win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点',
-    vcfAttack: '连续冲四将死链', vcfDefense: '将死链干预点',
+    vcfAttack: '连续冲四将死链', vcfDefense: '将死链干预点', vctAttack: '连续威胁链首步',
     live3Attack: '活三抢攻点', live3Defense: '拆活三点', parry: '拆杀点',
     parry3: '活三/活四预挡点', parry4: '冲四预挡点',
   } as Record<string, string>)[tacticUsed || ''] || '战术点';
@@ -433,6 +433,12 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
      * parry 之前（将死链是强制胜，比「对方下回合可能造双杀」更紧急）。 */
     notation = pickAmong(tactics.vcf_win_you);
     if (notation) tacticUsed = 'vcfAttack';
+  } else if (tactics.vct_win_you.length) {
+    /* v11 VCT 抢攻：VCF（纯冲四）看不见、但含「活三逼迫」的连续威胁链的首步。
+     * 实测 24 局里 v10 有 20 手（7 局）存在这种算得清的必胜链，当时却走了启发式活三点，
+     * 其中两局因此和棋。与 vcfAttack 同级（都是强制胜，排在防守之前）。 */
+    notation = pickAmong(tactics.vct_win_you);
+    if (notation) tacticUsed = 'vctAttack';
   } else if (tactics.vcf_win_opponent.length) {
     /* VCF 防守：对方将死链的干预点（链条入口）。将死是强制输，比 parry 的
      * 「潜在双杀」更紧急，故优先。 */

@@ -87,7 +87,7 @@ src/
     engines/               七个引擎：gomoku / gomoku-pro / go / xiangqi / chess / checkers / chinese-checkers
     registry.ts            引擎注册表（games / ids / getGame / register）
     jev/                   Jev 客户端、离线 mock、Rapfi WASM 接入
-    tactics.ts             战术推算（一步致胜 / 造杀点 / VCF）+ tactics-versions.ts 战术档
+    tactics.ts             战术推算（一步致胜 / 造杀点 / VCF / VCT）+ tactics-versions.ts 战术档
     api/client.ts          后端客户端（探不到后端一律返回 null，即降级）
     record/                棋谱导出 / 战绩簿 / 自动同步
     view/                  落盘展示用的纯字符串渲染（最新一手、对比、校准）
@@ -205,9 +205,10 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
    同一棋谱重复提交由 `dedup_key` 去重（`dedup: true`）。
 5. **决策面板**：每手显示 Jev 概率前 8 名、置信度、`edge` 胜率、`position` 局势分、
    token 与成本、耗时；战术保险接管时标注接管原因。
-6. **强度机制（十一级战术保险）**：`win > block > open4 > threat > vcfAttack > vcfDefense > live3Attack > live3Defense > parry > parry3 > parry4`，
-   其中 `live3*` 两级是 4 手内必胜的**真推演**（跳活三/斜线组合同样认得出），
-   详见 [docs/jev-api.md](docs/jev-api.md) §2.2 与 [ADR-0014](docs/adr/0014-live3-real-lookahead.md)。
+6. **强度机制（十二级战术保险）**：`win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > live3Attack > live3Defense > parry > parry3 > parry4`，
+   其中 `vctAttack` 是**冲四链 + 活三逼迫**的连续威胁搜索（纯冲四看不见的杀由它兜住），
+   `live3*` 两级是 4 手内必胜的**真推演**（跳活三/斜线组合同样认得出），
+   详见 [docs/jev-api.md](docs/jev-api.md) §2.2、[ADR-0014](docs/adr/0014-live3-real-lookahead.md) 与 [ADR-0015](docs/adr/0015-vct-continuous-threats.md)。
 7. **校准实验室**：固定局面的胜率标定与复盘（`src/core/view/calibration.ts`）。
 8. **对比实验**：同一开局跑多局 A/B（渠道/战术档/思考深度可分别设），结果归档到 `/api/experiments`
    并按 tag upsert。
@@ -280,8 +281,9 @@ D1 现为 58 局 / 5279 手 / 7 轮实验（见 [docs/status.md](docs/status.md)
 - 中国跳棋未禁止「永堵营地门」变体。
 - 引擎不建模「认输」（那是应用层裁决）：归档里 1 局记为「黑方 获胜（认输）」的历史记录与引擎判定不一致，属已知差异。
 - Jev 的概率判断仍可能出错——提示词里的「零幻觉」只承诺**输出结构**符合契约，
-  不承诺棋理正确；战术保险（十一级接管）就是为了兜住这类错误。但它只兜得住
-  「已经能算清的局面」（1–4 手内的杀与拆杀）；5 手以上的织网仍可能被对手做出来。
+  不承诺棋理正确；战术保险（十二级接管）就是为了兜住这类错误。但它只兜得住
+  「已经能算清的局面」（`vctAttack` 到 5 手攻方着法内的强制胜链、4 手内的活三威胁与拆杀）；
+  更长的织网与全局估值仍可能被对手做出来。
 - 官方性能与价格数字（$42/百万输入 token 等）为厂商口径与作者实测混合，非长期承诺。
 - 匿名设备标识（`X-Device-Id`）只用于「只看我的」与限流，不是账号体系；换浏览器/清 localStorage 即丢失归属。
 - **金样与归档都已冻结**：`test/fixtures/golden/**` 与 `games/**` 只读（前者由 `test/parity/frozen.json` 的 sha256 封条守住，

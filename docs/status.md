@@ -11,7 +11,7 @@
 | 边缘后端 | ✅ 已上线 | Worker `jev-qiguan`（Hono）；8 条 API：`/api/health`、`/api/games`、`/api/stats`、`/api/experiments`、`/api/openings`、`/api/leaderboard`、`/api/jev`、`/api/export` |
 | 静态资产 | ✅ 已上线 | Workers Static Assets，Vite 产物；`/api/*` 由 `run_worker_first` 保证进 Worker，其余回落 SPA 外壳 |
 | 数据 | ✅ 已迁入 D1 | 数据库 `jev-qiguan`（WNAM），`database_id = f72390fe-a506-4a88-8db7-af7213657947`；见下「数据现状」 |
-| 定时任务 | ✅ 已挂 | Cron `17 3 * * *`（UTC），首次真实执行为 2026-10-02T03:17Z |
+| 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
 | 渠道 | ✅ 六个选项 | `official`、`openrouter`、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
 | 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加） |
@@ -95,7 +95,8 @@
 | **自家限流把整轮对比实验挡死在第 1 局**：`jev` 档 30 次/分/IP，机机对局一个 60 秒窗口打到 34 次；客户端旧写法 4 次尝试（1+2+4 秒）熬不过窗口，且**限流分支从不给 `lastErr` 赋值** → 抛出的文案是「重试次数用尽」，真实原因（被自己限流）完全看不出来；机机对局又没人点「重试」，于是整轮实验报废 | 传输层：`src/core/jev/client.ts` 的 `callWithRetry` 重写 —— 限流（429/529）独立计数 5 次、按 `Retry-After` 退避（截 20 秒）、每次都留带状态码的错误并打 `retryable` 标记（401/4xx 为 `false`）。装配层：`src/app/loop.ts` 的 `aiStep` 对 `retryable` 做自动退避重试（`AI_AUTO_RETRY_DELAYS_MS = [4000, 12000, 25000]`，期间**不暂停**），成功/手动重试/重开一局都清零额度。配置：`jev` 档改由 `vars.JEV_RATE_LIMIT_PER_MIN` 覆盖（生产 60，60×1440 ≈ 8.6 万 < 10 万行/日）。`test/core/jev-retry.spec.ts` 5 例 + `test/app/ai-auto-retry.spec.ts` 2 例；三组负向对照（不遵守 `Retry-After` / 尝试次数降回 4 / `retryable` 改 false / 关掉自动重试分支）各自红了对应用例 |
 | **实验运行脚本会自欺**（`scripts/experiment-run.mjs`）：计量器按绝对路径 `/api/jev` 匹配，而代理端点是相对串 `api/jev`（`src/core/jev/client.ts:29`）→ 永远报「上游 0 次（错 0）」，恰好藏起唯一证据；失败时台账 `history[0]` 还是上一轮的 tag → 归档核对会拿旧数据当本轮成绩；页面停在「等人工重试」时无人可点 | 计量器同时认两种写法并记录 HTTP 状态序列（心跳里直接打出来）；开跑前记台账基线，跑完**只认基线之外的新条目**，没跑满就跳过归档核对；轮询中发现 `#retryBtn` 可见就代点并计数（`report.retryClicks`）；退出码新增 `done` 条件（未跑满一律非 0） |
 
-| **v9 对「带空隙的活三」完全失明**（27 局 rapfi 复盘的真正输法）：`src/core/engines/gomoku.ts` 的 `liveThreeDir` 只认连续 `_XXX_`（`labelPoint` 打出的 `you:live3` / `deny:live3` 因此漏掉跳活三与斜线组合），`danger_points_opponent` 又只到 2 手（只认「一步成五」），于是「对手 4 手内必胜（走活三 → 下一步造活四）」这类局面**没有任何保险层会触发**，v9 只能走静点等死 | v10 新增**真推演**的两级：`live3Makers(st, sideId)`（落子后己方有 ≥2 个活四制造点 = 4 手内必胜）与 `live3Deny(st, sideId, cands)`（拆掉对手全部活三制造点的点，先试对手的 L3 点、用 `best+1` 截断、最多评 24 个点）；战术层产出 `live3_you` / `live3_opponent` / `live3_deny_points`，接管链在 `vcfDefense` 后插入 `live3Attack` / `live3Defense` 成**十一级**，且**只在 `danger_points_opponent` 为空时才动**（对手有 2 手剑时抢 4 手剑会输速度，让给 `parry`）。依据实测：27 局里只有 2 局死于 VCF，27/27 局对手都能造活三，v9 拆 13 次漏 14 次，漏掉的 12 局是执白 ply#6 放行反对角线活三 F10/D12（该局面四点 criteria 全 `null`，旧标签体系确实无可用信息）。测试：`test/engines/tactics.test.mjs` 新增⑤b 五例（引擎层 / 战术事实 / 决策级接管 / 抢攻 / 让位），`test/engines/util.test.mjs` 与 `src/core/view/duel.ts` 的联名断言改为从登记表派生（不再写死 `Jev·v9`）。机制记录 [ADR-0014](adr/0014-live3-real-lookahead.md)。**对照实验结果**：`v10-live3` 6 胜 4 和 2 负（得分率 67%，执白 0 负）vs `v9-vcf-sound` 3 胜 9 负（25%），live3 两层 12 局接管 168 手、v9 同批对手 0 次（见上文「战术 v10 对照实验」）。 |
+| **v9 对「带空隙的活三」完全失明**（27 局 rapfi 复盘的真正输法）：`src/core/engines/gomoku.ts` 的 `liveThreeDir` 只认连续 `_XXX_`（`labelPoint` 打出的 `you:live3` / `deny:live3` 因此漏掉跳活三与斜线组合），`danger_points_opponent` 又只到 2 手（只认「一步成五」），于是「对手 4 手内必胜（走活三 → 下一步造活四）」这类局面**没有任何保险层会触发**，v9 只能走静点等死 | v10 新增**真推演**的两级：`live3Makers(st, sideId)`（落子后己方有 ≥2 个活四制造点 = 4 手内必胜）与 `live3Deny(st, sideId, cands)`（拆掉对手全部活三制造点的点，先试对手的 L3 点、用 `best+1` 截断、最多评 24 个点）；战术层产出 `live3_you` / `live3_opponent` / `live3_deny_points`，接管链在 `vcfDefense` 后插入 `live3Attack` / `live3Defense` 成**十一级**（v11 起十二级），且**只在 `danger_points_opponent` 为空时才动**（对手有 2 手剑时抢 4 手剑会输速度，让给 `parry`）。依据实测：27 局里只有 2 局死于 VCF，27/27 局对手都能造活三，v9 拆 13 次漏 14 次，漏掉的 12 局是执白 ply#6 放行反对角线活三 F10/D12（该局面四点 criteria 全 `null`，旧标签体系确实无可用信息）。测试：`test/engines/tactics.test.mjs` 新增⑤b 五例（引擎层 / 战术事实 / 决策级接管 / 抢攻 / 让位），`test/engines/util.test.mjs` 与 `src/core/view/duel.ts` 的联名断言改为从登记表派生（不再写死 `Jev·v9`）。机制记录 [ADR-0014](adr/0014-live3-real-lookahead.md)。**对照实验结果**：`v10-live3` 6 胜 4 和 2 负（得分率 67%，执白 0 负）vs `v9-vcf-sound` 3 胜 9 负（25%），live3 两层 12 局接管 168 手、v9 同批对手 0 次（见上文「战术 v10 对照实验」）。 |
+| **v10 用启发式活三点覆盖掉了算得清的必胜链**（v11 复盘的真正发现）：v10 的 `live3Attack` 只看「落子后盘面上有 ≥2 个活四制造点」，不区分这些点是本手新造的、也不追问「这一手是否已经进了一条强制胜链」。v10 臂 12 局复算：7-ply 纯冲四（VCF）看得见 **22 手**必杀，加到 11 ply **也只多 2 手**，而把活三当**逼迫手**纳入搜索（VCT）看得见 **42 手**，其中 **20 手分布在 7 局里是纯 VCF（哪怕 11 ply）完全看不见的**；这 20 手实走几乎全是 `live3Attack` 的启发式点（与 VCT 首步不同），7 局里包含 **2 局 225 手满盘和棋与 1 局败局** ⇒ v10 实验里「和棋偏多」至少一部分是漏杀 | v11 新增**连续威胁搜索**：引擎 `vctWin(st, attackerId, maxPlies)`（攻击方着法 = 冲四 ∪ **本手新造 ≥2 个活四制造点**的活三；守方按逼迫类型精确枚举应手 —— ≥2 成五点直接判胜、单成五点唯一应手、活三要求「守方当下没有造冲四的着法」并枚举全部 `vctDefusers`），战术层产出 `vct_win_you`、接管链在 `vcfAttack` 与 `vcfDefense` 之间插 `vctAttack` 成**十二级**（`VCT_PLIES = 9` = 5 手攻方着法）。夹具（归档局 `cf3d85f9…` 第 21 手）：`vcfWin(7)`/`vcfWin(11)` 均无杀，`vctWin(9)` = 胜 `L4>K7>J9>L10>I9`；黑走 `L4` 后白方邻域 **106 个应手全部仍在杀里**；同局面 v10 档实走 `K7`（`live3_you` 首选）、v11 档走 `L4`。测试：`test/engines/tactics.test.mjs` 新增⑤c 四例（引擎层 / 强制性 / 档位差异 / 决策级）。机制记录 [ADR-0015](adr/0015-vct-continuous-threats.md)。**对照实验结果**：见上文「战术 v11 对照实验」。 |
 
 | **`smoke:live` 把数据总量写死在断言里**：`stats.byGame === '{"五子棋":54}'`、`/api/experiments` 恰好 6 轮、写入后 `totalGames === 55` —— D1 现在是活的，真实验一多这三项就红（2026-10-01 真跑 4 局后实测 27/30） | 断言改成**相对基线**：`byGame` 只校验键都是七个中文棋种名且「五子棋」在册，轮次断言「≥ 6 且每轮有 tag」，写入后断言「跑前基线 + 1」（实测 `58 → 59`）。负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1；随后 30/30 通过 |
 
@@ -127,14 +128,16 @@
 
 24. **A/B 局的「记录级 `tacticsVersion`」只反映黑方档位**：`src/core/record/export.ts:207` 写的是 `tacticsVersion: bCfg.tactics`，所以两臂用不同档位时（例如 2026-10-02 的 v10 实验：rapfi 执黑、proxy 执白），归档记录的顶层版本是**黑方**的，`games.tactics_version` 与「棋谱归档」面板的分组键也跟着走 —— 8 局 v10 臂里有 4 局被分到 `v9-vcf-sound` 组。权威字段是 `blackTactics` / `whiteTactics` 与每手 `ai.tv`（本次结论全部按这两个口径取），修法要么让客户端在混合档位时写「双方档位」要么让面板改按 `blackTactics`+`whiteTactics` 分组——属待决，未做。
 
+25. **`v11-vct` 的推演边界**：搜索宽度写死（`VCT_PLIES = 9` = 5 手攻方着法、每层最多 `VCT_MOVES_MAX = 10` 个攻击方着法、`VCT_NODE_LIMIT = 3000` 节点、守方应手多于 `VCT_DEFUSERS_MAX = 6` 就不当作逼迫手）⇒ 更长的混合链（>5 手）看不见，应手极多的活三会被保守跳过（宁可漏判也不谎报必胜）；三个上限由 586 个真实回合标定，`10/3000/6` 与初版 `14/6000/∞` 看见同样 55 手必胜链，平均 607→422ms、p90 2430→1636ms、最坏 8837→4506ms（换缺省常量后复测）（[ADR-0015](adr/0015-vct-continuous-threats.md)「代价与不做什么」）；**最坏 4.6s 的重推演是同步阻塞**（发生在少数深局面，中位仅 13ms），尚未做时间预算以外的异步化；**不做**独立的「双活三 / 双威胁」层（24 局 914 个 proxy 回合实测真双威胁 **0 次**，做了是死代码）；`vctWin` 仍**不建模认输与禁手判负以外的规则**（与其余层同）。**连同 v10 遗留的两条**（为保持 A/B 单变量本轮不动）：`live3After` 判的是「盘面上存在 ≥2 个活四制造点」而非「本手新造」（密集局面 `live3_you` 可达 123 点，`pickAmong` 退化成取模型全局首选），提示词里 `live3_you … winning within four moves` 的措辞只对「两个活四制造点互相独立」成立——见 [ADR-0015](adr/0015-vct-continuous-threats.md) 背景与「代价与不做什么」。**连同 v10 遗留的两条**（为保持 A/B 单变量本轮不动）：`live3After` 判的是「盘面上存在 ≥2 个活四制造点」而非「本手新造」（密集局面 `live3_you` 可达 123 点，`pickAmong` 退化成取模型全局首选），提示词里 `live3_you … winning within four moves` 的措辞只对「两个活四制造点互相独立」成立——见 [ADR-0015](adr/0015-vct-continuous-threats.md) 背景与「代价与不做什么」。
+
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 126 个用例 + vitest 34 个测试文件 / 334 个用例）。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 130 个用例 + vitest 34 个测试文件 / 334 个用例）。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
 | `npm test` | `test:engines` + `test:new`（vitest 三个 project 一次跑完） | 提交前的总闸 |
-| `npm run test:engines` | 引擎自检、战术十一级与 VCF、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
+| `npm run test:engines` | 引擎自检、战术十二级与 VCF/VCT、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
 | `npm run test:tactics` | 战术层独立回归（`test/tactics/run.mjs`） | 改战术层时 |
 | `npm run test:worker` | 真 workerd + 真 D1 的 HTTP 契约与维护任务 | 改 `src/worker/**`、`migrations/**` 后 |
 | `npm run test:ui` | happy-dom 下的视图层与装配层运行时断言 | 改 `src/ui/**`、`src/app/**`、`index.html` 后 |
@@ -160,10 +163,10 @@
 
 1. **归档面板**已补「加载更多」分页（keyset 游标，首屏 50 份）；仍缺按 `code_version` 分组（现在按 `tactics_version` 分组，历史归档全是「未标注」）与按棋种/渠道/标签筛选（服务端 `?game=`/`?tag=`/`?since=` 都已支持，只是面板没给控件）。
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
-3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0014；`npm run check:docs` 绿（43 个 md / 260 个链接）。
+3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0015；`npm run check:docs` 绿（43 个 md / 260 个链接）。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
-> 待确认（不影响功能）：Cron `17 3 * * *` 的首次落库证据要等 2026-10-02T03:17Z 之后查 `stats_cache`。
+> 已核验（2026-10-02）：Cron `17 3 * * *` 的首次落库 —— `stats_cache` 有且只有一行 `daily:2026-10-02`，`updated_at = 2026-10-02T03:17:56.373Z`（调度时刻），`value` 报 `rateLimitsDeleted: 139`、`games: 82`、`moves: 7110`、`experiments: 11`，与 D1 当时的行数一致 ⇒ 定时维护真实执行、口径正确。
 > 已完成（2026-10-01 下午，目标书「新能力」收尾）：归档面板 keyset 分页（版本 `3a4934ee-28c5-4e7e-88c9-214da988b707`）、实验报告分桶对比口径（`29788ef6-747a-4b08-9f0e-4aaea906ee36`）、服务端实验战报并入修复（`18b2fcad-39f8-4974-8e83-952076d83fa8`）、报告顶部「最新棋谱」+ 一键回放（`128ed7db-1b9d-4b84-a3a2-6ae6c9b6a10d`）；三渠道浏览器冒烟 mock/rapfi 各 14/14、离线 13/13。
 > 已完成（2026-10-02 凌晨）：限流可重试标记 + 装配层自动退避（`781316c8-1845-47a6-8f73-e0bf22decffb`）、战术 v10 `v10-live3`（`a8a9130f-f5d8-4ee7-94eb-62e6dfdab86a`，**当前线上**）与它的对照实验回填（提交 `8751070` / `c5762d2`）。
 > CI 已闭环：`test.yml` 提交 `88d7a9f`（run `36852997058`）五步全绿 —— 类型检查 / 构建 / 引擎与金样逐手差分（121 用例）/ vitest（真 workerd + 本地 D1）/ 文档校验。
@@ -188,4 +191,4 @@
 6. **本地 D1 库文件名由 `database_id` 派生**：换过 id（或改了名字）就等于换了一个空库，需要重跑迁移 + 导入，否则会看到 `no such table: games`。
 7. **测试库共享**：worker 项目用 `singleWorker: true`，同一实例里的 D1 是共享状态，新用例必须自己清理数据。
 8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
-9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0014，`npm run check:docs` 绿（43 个 md / 260 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。
+9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0015，`npm run check:docs` 绿（43 个 md / 260 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。

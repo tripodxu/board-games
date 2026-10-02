@@ -86,6 +86,20 @@ export interface Live3Deny {
   best: string[];
 }
 
+/**
+ * VCT 搜索预算（可选项，缺省走引擎常量）。供离线标定与实验扫描用：
+ *   movesMax   每层最多展开几个攻击方着法（默认 10）
+ *   nodeLimit  节点上限（默认 3000）
+ *   defusersMax 活三逼迫时，守方应手多于这个数就不当作逼迫手（默认 6；传 Infinity 表示不限）
+ * 三个上限都只会让搜索「少看见」、不会让它谎报必胜；缺省值由 .work/vct-tune*.mjs 在
+ * 586 个真实回合上标定（10/3000/6 与 14/6000/∞ 看见同样 55 手，但 p90 从 2430ms 降到 1647ms）。
+ */
+export interface VctOptions {
+  movesMax?: number;
+  nodeLimit?: number;
+  defusersMax?: number;
+}
+
 /** 引擎统一接口（docs/engine-interface.md §2）。 */
 export interface Engine<S = any> {
   id: string;
@@ -124,6 +138,13 @@ export interface Engine<S = any> {
    * 对手的 L3 点本身优先试；after 为剩下多少，best 为并列最优（见实现注释）。
    */
   live3Deny?(st: S, sideId: string, candNotations: string[]): Live3Deny;
+  /**
+   * VCT（连续威胁搜索）：把 vcfWin 的冲四链扩展到「冲四 + 活三逼迫」（v11 战术层用）。
+   * 守方应手精确枚举（冲四→唯一堵点；活三→真能拆掉全部必胜点的点），黑方禁手点不算应手。
+   * 返回的 line 只含**攻击方**着法（守方应手不入 line，与 vcfWin 不同）。
+   * opts 是搜索预算（缺省用引擎常量）：离线标定 / 实验用，线上走缺省。
+   */
+  vctWin?(st: S, attackerId: string, maxPlies?: number, opts?: VctOptions): VcfResult;
 
   /** 引擎私有方法（如 gomoku 的 candidates / serialize 用到的辅助）。 */
   [k: string]: unknown;

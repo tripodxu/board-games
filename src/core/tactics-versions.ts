@@ -1,9 +1,9 @@
 /* tactics-versions.ts — 战术层版本登记表（迁移自 js/tactics-versions.js）
  *
- * 为什么存在：战术层是 10 次提交逐层累加上线的，没有登记表就无法回答
+ * 为什么存在：战术层是 11 次提交逐层累加上线的，没有登记表就无法回答
  * 「这个版本为什么强/弱」，实验也无法按版本归因。机制键与 jev 接管链一一对应
  * （优先级从高到低）：
- *   win > block > open4 > threat > vcfAttack > vcfDefense > live3Attack > live3Defense > parry > parry3 > parry4
+ *   win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > live3Attack > live3Defense > parry > parry3 > parry4
  * 附加键：safeSort = 拆杀点并存时 3-ply 试走挑最安全（v5, 87beda6）；
  *         vcfTry   = vcfDefense 链首占不住时逐点试干预（v8, 9cf4a88）；
  *         sound    = vcfWin 伪胜闸门（引擎侧 gomoku.defenderWinsFull，v9, a16fdd9）。
@@ -74,10 +74,13 @@ export const VERSIONS: TacticsVersion[] = [
   { id: 'v10-live3', name: '深活三攻防', rank: 10, commit: '8751070', commitAt: '2026-10-02 01:40',
     date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 12,
     note: '4-ply 活三真推演（用户要求：分析第九版与搜索算法对弈的棋谱后优化）。引擎新增 `live3Makers` / `live3Deny`：把「活三制造点」从 labelPoint 的连续 XXX 模式匹配升级成与 fiveCompletions 同一把尺的推演——L2 活四制造点（落子后 ≥2 个成五点）之上再叠 L3（落子后 ≥2 个 L2，对手只能挡一个），跳活三 / 斜向组合 / 带空隙的四都能认出来；接管链插在 vcfDefense 与 parry 之间，攻击层要求对手没有 2 手剑（`danger_points_opponent` 为空）才抢。**依据（27 局 rapfi 归档复盘）**：rapfi 胜 21 局里只有 2 局是 7-ply VCF 链将死，但 27/27 局都出现过「对手能造活三」的局面；proxy 在首次可用手里拆掉 13 局 / 漏掉 14 局，漏的 12 局是执白在第 6 手放行黑方反对角线活三（黑三子 H8/E11/B14 同在 r+c=14 上，拆点 F10/D12 是跳活三，v9 的连续三模式认不出、parry3 的 deny:live3 标签也打不出来）。**对照实验（2026-10-02，rapfi@500ms，黑白交替，两臂各 12 局）**：本档 **6 胜 4 和 2 负（得分率 67%，执黑 4 胜 2 负 / 执白 2 胜 4 和 0 负）**，v9 同条件 **3 胜 0 和 9 负（25%）**；live3 两层在本档 12 局里接管 168 手（live3Attack 120 / live3Defense 48），v9 同批对手零接管；平均手数 55→98，4 局 225 手满盘和棋。' },
+  { id: 'v11-vct', name: '连续威胁搜索', rank: 11, commit: '（本版实现提交见 CHANGELOG [Unreleased]）', commitAt: '2026-10-02 06:00',
+    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 0,
+    note: 'VCT（连续威胁搜索）：用户要求做第十一版。引擎新增 `vctWin`——把 vcfWin 的冲四链扩展成「冲四 + 活三逼迫」，攻方 5 手 / 每层 10 手 / 3000 节点 / 守方应手 >6 不当作逼迫手（三个上限由 586 个真实回合标定：与初版 14/6000/∞ 看见同样 55 手必胜链，平均 607→422ms、p90 2430→1636ms）。冲四＝守方唯一堵点（双四当场胜）；活三＝落子后**新造出** ≥2 个必胜点，守方应手不靠「堵端点」而是精确枚举（vctDefusers：落此点后攻方再无必胜点），并要求对手当下没有冲四可走（否则他反先一步成五）。**依据（v10 对照实验 12 局逐手离线复算，独立实现交叉核对）**：v10 臂 586 个代理回合里，7-ply 纯冲四有杀 22 手、11-ply 补出 2 手，而 VCT 42 手——**只有 VCT 看得见的 20 手分布在 7 局，其中 18 手连 11 ply 纯冲四也看不见**；这 20 手当时走的几乎全是启发式 `live3Attack`（与 VCT 首步不同），其中 2 局因此和棋（3cc54941 #20/#22、0661aa24 #92/#102/#104）、1 局负（7bfba6f2 #23/#25/#27）、4 局胜。v9 臂同口径只有 13 手（6 局）。**同期纠正的语义**：活三的两个端点互斥（守方堵一端，另一端即失效），所以「≥2 个必胜点＝4 手内必胜」只在两点互相独立时成立（实测「真双威胁」24 局 0 次）；活三的正确性质是**逼迫**，VCT 正是把这种逼迫串起来。接管链插在 vcfAttack 与 vcfDefense 之间（同属强制胜，排在防守之前）。' },
 ];
 
 /** 当前档位（最后一档）。 */
-export const CURRENT = 'v10-live3';
+export const CURRENT = 'v11-vct';
 
 const BY_ID: Record<string, TacticsVersion> = {};
 VERSIONS.forEach((v) => { BY_ID[v.id] = v; });
@@ -117,7 +120,7 @@ export function allows(version: TacticsVersion | null | undefined, mech: string)
  * 那 20 局的历史事实改由 test/core/attribution.spec.ts 钉在数据上断言。 */
 
 /** 机制键（顺序即接管链顺序 + 三个附加键）。 */
-export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vcfDefense', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound']);
+export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound']);
 
 /** 全部档位 id（注册顺序）。 */
 export function ids(): string[] {
@@ -127,7 +130,7 @@ export function ids(): string[] {
 function U(cond: unknown, msg: string): void { assert(cond, msg); }
 
 export function selfTest(): void {
-  assert(VERSIONS.length === 11, '应登记 10 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
+  assert(VERSIONS.length === 12, '应登记 11 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
   U(CURRENT === VERSIONS[VERSIONS.length - 1]!.id, '当前档必须是最后一档');
   VERSIONS.forEach((v, i) => {
     U(v.rank === i, v.id + ' rank 不连续');

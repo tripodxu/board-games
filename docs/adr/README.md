@@ -22,3 +22,4 @@
 | [0012](0012-vite-typescript-build-chain.md) | 引入 Vite + TypeScript 构建链（部分取代 0001） | accepted |
 | [0013](0013-anonymous-device-identity-and-d1-ratelimit.md) | 匿名 deviceId 身份 + D1 原子限流（取代 isolate 内存 Map） | accepted |
 | [0014](0014-live3-real-lookahead.md) | 战术层新增「活三真推演」两级（live3Attack / live3Defense）：4 手内必胜从标签匹配升级为推演 | accepted |
+| [0015](0015-vct-continuous-threats.md) | 战术层新增「连续威胁搜索」（VCT：冲四链 + 活三逼迫，`vctAttack`）：补上纯 VCF 看不见的 20 手杀 | accepted |
