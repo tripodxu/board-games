@@ -18,9 +18,14 @@
  * 用法：
  *   node scripts/browser-smoke.mjs                          # 默认打本地 dev/preview 地址
  *   node scripts/browser-smoke.mjs --url https://jevqipan.logicc.top
- *   node scripts/browser-smoke.mjs --channel rapfi          # 走 Rapfi 渠道（首次要下 10MB）
+ *   node scripts/browser-smoke.mjs --channel rapfi          # 走 Rapfi 渠道（资产缺省从本地 public/rapfi/ 供给）
  *   node scripts/browser-smoke.mjs --offline                # 用 CDP 掐掉所有 /api/ 请求，验「无后端降级」
  *   node scripts/browser-smoke.mjs --headful --keep         # 看得见窗口、跑完不关
+ *   node scripts/browser-smoke.mjs --no-rapfi-local         # 让 /rapfi/* 老老实实走网络（排查用）
+ *
+ * Rapfi 的两个引擎资产合计 11 MB，从远端抓在本机可能要几百秒、失败时 Emscripten 抛的
+ * `TypeError: network error` 会让人误判「引擎不可用」。所以缺省用同一个 Fetch 域把
+ * `/rapfi/*` 用 `public/rapfi/` 里的同一份文件（同一构建产物）答复，`--no-rapfi-local` 关掉。
  *
  * `--offline` 验的是计划 D8 的硬要求：后端不可用时必须是「离线演示 + localStorage 战绩簿」，
  * 而不是白屏或抛异常。它靠 CDP 的 Fetch 域在**请求发出前**把 `/api/` 开头的请求全部 fail 掉
@@ -29,7 +34,7 @@
  * 退出码：0 = 全过；1 = 有失败项（逐条打印）。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -46,6 +51,11 @@ const PORT = Number(flag('port', '9333'));
 const HEADFUL = has('headful');
 const KEEP = has('keep');
 const OFFLINE = has('offline');
+/* Rapfi 引擎资产（.wasm 1.1 MB + .data 10 MB）走远端的慢链路会拖垮冒烟（2026-10-02 实测
+   本机 22 KB/s，10 MB 需要 448 s）。缺省把 `/rapfi/*` 改由本地 `public/rapfi/` 供给：
+   字节与线上同源同内容，只是不走那条链路；`--no-rapfi-local` 可关。 */
+const RAPFI_LOCAL = !has('no-rapfi-local');
+const RAPFI_MIME = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.data': 'application/octet-stream' };
 const PROFILE = join(ROOT, '.work', 'chrome-profile');
 
 const CANDIDATES = [
@@ -105,6 +115,7 @@ let nextId = 1;
 const pending = new Map();
 const pageErrors = [];
 let blockedApi = 0;
+let rapfiLocalServed = 0;
 
 function send(method, params = {}, sessionId) {
   const id = nextId++;
@@ -125,6 +136,32 @@ async function evaluate(expression) {
     throw new Error(`页面内异常：${res.exceptionDetails.exception?.description ?? res.exceptionDetails.text}`);
   }
   return res.result?.value;
+}
+
+/**
+ * 把页面请求的 `/rapfi/*` 资产用本地 `public/rapfi/` 的同一份文件答复。
+ * 远端那 10 MB `.data` 在本机链路上要几百秒（甚至抓失败 → Emscripten 抛
+ * `TypeError: network error`），冒烟会因此误判「Rapfi 引擎不可用」。
+ */
+function serveRapfiLocal(requestId, path) {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  const file = join(ROOT, 'public', 'rapfi', name);
+  if (!name || !existsSync(file)) {
+    send('Fetch.continueRequest', { requestId }).catch(() => {});
+    return;
+  }
+  const buf = readFileSync(file);
+  const ext = name.slice(name.lastIndexOf('.'));
+  rapfiLocalServed += buf.length;
+  send('Fetch.fulfillRequest', {
+    requestId,
+    responseCode: 200,
+    responseHeaders: [
+      { name: 'Content-Type', value: RAPFI_MIME[ext] ?? 'application/octet-stream' },
+      { name: 'Cache-Control', value: 'no-store' },
+    ],
+    body: buf.toString('base64'),
+  }).catch(() => {});
 }
 
 /** 轮询页面里的条件，直到为真或超时。返回最后一次的值。 */
@@ -224,6 +261,8 @@ try {
       if (path.startsWith('/api/')) {
         blockedApi++;
         send('Fetch.failRequest', { requestId: reqId, errorReason: 'Failed' }).catch(() => {});
+      } else if (RAPFI_LOCAL && path.startsWith('/rapfi/')) {
+        serveRapfiLocal(reqId, path);
       } else {
         send('Fetch.continueRequest', { requestId: reqId }).catch(() => {});
       }
@@ -251,7 +290,11 @@ try {
   if (OFFLINE) {
     /* 模式尽量写窄（要求 pathname 以 /api/ 开头的那种 URL 才会暂停）；即便如此仍可能
        误伤 `src/core/api/client.ts` 这类源码路径，所以真正的判定在 requestPaused 里。 */
-    await send('Fetch.enable', { patterns: [{ urlPattern: '*://*/api/*' }] });
+    await send('Fetch.enable', {
+      patterns: [{ urlPattern: '*://*/api/*' }, ...(RAPFI_LOCAL ? [{ urlPattern: '*rapfi*' }] : [])],
+    });
+  } else if (RAPFI_LOCAL) {
+    await send('Fetch.enable', { patterns: [{ urlPattern: '*rapfi*' }] });
   }
   await send('Page.navigate', { url: URL_TARGET });
 
@@ -554,6 +597,9 @@ try {
 } finally {
   const failed = checks.filter((c) => !c.ok);
   console.log('');
+  if (RAPFI_LOCAL && rapfiLocalServed) {
+    console.log(`（Rapfi 资产：本地 public/rapfi/ 供给 ${(rapfiLocalServed / 1048576).toFixed(1)} MB，未走远端链路）`);
+  }
   console.log(`浏览器冒烟：${checks.length - failed.length}/${checks.length} 项通过`);
   if (failed.length) console.log(`失败项：${failed.map((c) => c.name).join('、')}`);
   try {

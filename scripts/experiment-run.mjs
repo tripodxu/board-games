@@ -18,6 +18,12 @@
  *   · 失败时 `history[0]` 是上一轮的 tag → 归档核对会拿旧数据自欺；
  *   · 客户端旧实现 4 次尝试熬不过 60 秒限流窗口 → 整轮停在第 1 局，无人值守无人点重试。
  *
+ * 2026-10-02 的第四次真跑又暴露一个坑，也已修：
+ *   · Rapfi 那次要在局中首次实例化引擎 → 现抓 10 MB `.data`；本机到 Cloudflare 的链路当时
+ *     只有 22 KB/s（448 s），抓失败时 Emscripten 抛 `TypeError: network error` 无人接住 ⇒
+ *     整轮卡死在第 1 局（0/12，上游只调了 1 次）。现在缺省用 CDP `Fetch` 域把 `/rapfi/*`
+ *     改由本地 `public/rapfi/` 供给（同一份构建产物），`--no-rapfi-local` 可关。
+ *
  * 它不碰应用内部 API（除了把 fetch 包一层计数），所以跑的就是产品路径。
  *
  * 用法：
@@ -26,13 +32,14 @@
  *   node scripts/experiment-run.mjs --games 20 --tacA v9-vcf-sound --tacB v8-vcf-try
  *   node scripts/experiment-run.mjs --chanA proxy --chanB rapfi --games 10
  *   node scripts/experiment-run.mjs --url http://localhost:8787/ --headful --keep
+ *   node scripts/experiment-run.mjs --games 12 --stall-min 8 --timeout-min 150   # 12 局机机对局
  *
  * 退出码：0 = 跑完且 N 局全部归档；1 = 有异常/没跑满；2 = 参数或环境不对
  *        （缺 key、局数越界、找不到 Chrome）。结果同时写到 `--out`（默认
  *        `.work/experiment-run.json`），含每局结果、上游调用与 token 消耗。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CURRENT } from '../src/core/tactics-versions.ts';
 
@@ -61,6 +68,9 @@ const TIMEOUT_MIN = Number(flag('timeout-min', '60'));
 const OUT = flag('out', join(ROOT, '.work', 'experiment-run.json'));
 const PROFILE = join(ROOT, '.work', 'exp-chrome-profile');
 const API_KEY = process.env.JEV_API_KEY ?? '';
+/* 缺省把 `/rapfi/*` 的资产改由本地 `public/rapfi/` 供给（见 serveRapfiLocal 的注释）；
+   `--no-rapfi-local` 关掉，让页面老老实实走网络。 */
+const RAPFI_LOCAL = !has('no-rapfi-local');
 
 const NEEDS_KEY = [CHAN_A, CHAN_B].some((c) => c === 'proxy' || c === 'official' || c === 'openrouter');
 if (!Number.isFinite(GAMES) || GAMES < 1 || GAMES > 50) {
@@ -159,6 +169,52 @@ async function waitFor(expression, { timeout = 20000, every = 250, label = expre
       return last;
     }
     await sleep(every);
+  }
+}
+
+/**
+ * Rapfi 引擎资产（`rapfi-single-simd128.wasm` 1.1 MB + `.data` 10 MB）走生产域要下**几分钟**
+ * （2026-10-02 本机实测 22 KB/s，10 MB 用了 448 s），而 Emscripten 抓失败时抛的
+ * `TypeError: network error` 在装配层没人接住 ⇒ 整轮实验卡死在第 1 局（AI 只走了一手）。
+ *
+ * 这里用 CDP 的 `Fetch` 域把页面发出的 `/rapfi/*` 请求**改由本地 `public/rapfi/` 供给**：
+ * 文件名、Content-Type、字节内容都与线上一致（同一份构建产物），只是不再走那条慢链路。
+ * 被测行为不变（Rapfi 还是同一个 wasm + 同一份权重），变的是「字节从哪来」。
+ */
+const RAPFI_MIME = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.data': 'application/octet-stream' };
+const rapfiLocal = { served: 0, bytes: 0, missed: [] };
+
+async function serveRapfiLocal(params) {
+  const { requestId, request } = params;
+  try {
+    const url = new URL(request.url);
+    const name = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
+    const file = join(ROOT, 'public', 'rapfi', name);
+    if (!RAPFI_LOCAL || !name || !existsSync(file)) {
+      if (name && !rapfiLocal.missed.includes(name)) rapfiLocal.missed.push(name);
+      await send('Fetch.continueRequest', { requestId });
+      return;
+    }
+    const buf = readFileSync(file);
+    const ext = name.slice(name.lastIndexOf('.'));
+    rapfiLocal.served += 1;
+    rapfiLocal.bytes += buf.length;
+    await send('Fetch.fulfillRequest', {
+      requestId,
+      responseCode: 200,
+      responseHeaders: [
+        { name: 'Content-Type', value: RAPFI_MIME[ext] ?? 'application/octet-stream' },
+        { name: 'Cache-Control', value: 'no-store' },
+      ],
+      body: buf.toString('base64'),
+    });
+  } catch (err) {
+    pageErrors.push(`本地 Rapfi 资产供给失败：${err instanceof Error ? err.message : String(err)}`);
+    try {
+      await send('Fetch.continueRequest', { requestId });
+    } catch {
+      /* 已经放走了 */
+    }
   }
 }
 
@@ -275,11 +331,18 @@ try {
     if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
       pageErrors.push(`console.error：${(msg.params.args ?? []).map((a) => a.value ?? a.description ?? a.type).join(' ')}`);
     }
+    if (msg.method === 'Fetch.requestPaused') {
+      void serveRapfiLocal(msg.params);
+    }
   });
 
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  if (RAPFI_LOCAL) {
+    await send('Fetch.enable', { patterns: [{ urlPattern: '*rapfi*', requestStage: 'Request' }] });
+    log('Rapfi 资产：改由本地 public/rapfi/ 供给（绕开 10 MB 慢链路；--no-rapfi-local 可关）');
+  }
   await send('Page.navigate', { url: URL_TARGET });
 
   // 3) 应用装配起来了
@@ -455,11 +518,15 @@ try {
       white: `${g.whiteChannel ?? ''}${g.whiteTactics ? '/' + g.whiteTactics : ''}`,
     })),
     pageErrors,
+    rapfiLocal: { enabled: RAPFI_LOCAL, ...rapfiLocal },
     expEntry: entry,
   };
   mkdirSync(join(ROOT, '.work'), { recursive: true });
   writeFileSync(OUT, JSON.stringify(report, null, 2), 'utf8');
   log(`报告已写入 ${OUT}`);
+  if (RAPFI_LOCAL) {
+    log(`Rapfi 资产：本地供给 ${rapfiLocal.served} 个文件 / ${(rapfiLocal.bytes / 1048576).toFixed(1)} MB${rapfiLocal.missed.length ? `，仍走网络：${rapfiLocal.missed.join(',')}` : ''}`);
+  }
 } catch (err) {
   pageErrors.push(`脚本异常：${err instanceof Error ? err.message : String(err)}`);
   log(`✗ ${err instanceof Error ? err.message : String(err)}`);

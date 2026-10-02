@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-10-02 · 长跑实验的隐形杀手：Rapfi 的 10 MB 权重走慢链路（脚本改由本地供给资产）
+
+- **症状**：12 局对照实验卡在第 1 局 **0/12** 原地不动 486 s（脚本按「8 分钟无进展」判据中止），报告里 `meter.calls = 1`（只有第一步 Jev 决策成功）、`pageErrors = ['未捕获异常：TypeError: network error']`；同一时间 `browser-smoke --channel rapfi` 也卡在「对手也落了子」的 90 s 等待上（13/14）。**主线程没被阻塞**（CDP 心跳每 30 s 都答得上）⇒ 不是 VCT 长算把页面冻住，而是 AI 循环停在了自己身上。
+- **取证（别猜，量）**：直接量生产域上那两个资产 —— `rapfi-single-simd128.wasm` **1,161,393 B / 14.7 s**、`rapfi-single-simd128.data` **10,037,111 B / 447.7 s**（≈22 KB/s）。Rapfi 是**局中首次用到才实例化**，Emscripten 这才去抓这两个文件；抓失败时它抛的 `TypeError: network error` 在装配层没人接住 ⇒ `inflight` 永久占位，游戏再也走不下去。
+- **修法（只动工具链，不动被测行为）**：`scripts/browser-smoke.mjs` 与 `scripts/experiment-run.mjs` 都用 CDP 的 `Fetch` 域把页面发出的 `/rapfi/*` 请求**改由本地 `public/rapfi/` 的同一份文件**答复（`Fetch.fulfillRequest` + base64，Content-Type 按扩展名给 `application/wasm` 等），`--no-rapfi-local` 可关。字节同源同内容（同一构建产物），变的只是「从哪来」。修后 `--channel rapfi` 的浏览器冒烟 **14/14**（日志里明写「本地 public/rapfi/ 供给 10.7 MB」）。
+- **可迁移的判据**：无人值守长跑里「上游零调用 + 主线程有响应 + 页面只有一句网络错误」= 先去查**大资源加载**（wasm/权重/字体），不要先怀疑搜索算得慢。另一条：别让 rejection 悬空——它会把状态机卡在一个「看起来在等 AI」的假象里。
+
+---
+
 ## 2026-10-02 · 战术 v11：把「活三」从启发式落点升级成逼迫手搜索（VCT），并标定搜索预算
 
 - **用户要求**（逐字，m06208）：「暂不停用，且继续进行第11版的设置」——① 旧 `pages.dev` 项目**暂不停用**（悬置事项就此关闭）；② 继续做第十一版。
