@@ -4,8 +4,8 @@
  * 它可能把「一步致胜」判成 0.2；这里把「这一步直接赢」「对方下一步赢」「造双杀」
  * 「连续冲四将死链」这类**可判定事实**在引擎上穷举出来，交给 orchestrator 接管。
  *
- * 十二级保险（接管顺序，见 decide）：
- *   win → block → open4 → threat → vcfAttack → vctAttack → vcfDefense →
+ * 十三级保险（接管顺序，见 decide）：
+ *   win → block → open4 → threat → vcfAttack → vctAttack → vcfDefense → vctDefense →
  *   live3Attack → live3Defense → parry → parry3 → parry4
  * 每一级都受**版本闸门**（tactics-versions.mech）约束：老版本没实现的层连算都不算，
  * 否则「v4 的行为」会随新代码漂移，实验就没法按版本归因。
@@ -31,6 +31,10 @@ export interface TacticsReport {
   vcf_win_opponent: string[];
   /** v11：VCT（冲四链 + 活三逼迫，5 手攻击）算出的必胜首步（VCF 看不见时的更强搜索）。 */
   vct_win_you: string[];
+  /** v12：对手的连续威胁链拆点（与 vcf_win_opponent 同语义：对手有链时我们该走的点）。 */
+  vct_win_opponent: string[];
+  /** v12：对手那条链本身（链首在前，供面板/取证；我们拆得掉时才可能非空）。 */
+  vct_chain_opponent: string[];
   /** v10：己方活三制造点（4 手内必胜威胁，覆盖跳活三 / 斜向组合）。 */
   live3_you: string[];
   /** v10：对手的活三制造点。 */
@@ -69,10 +73,10 @@ export interface DecideResult {
  * 常量与缓存
  * ------------------------------------------------------------------ */
 
-/** 15 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
+/** 16 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
 const ALL_MECH: Record<string, boolean> = {
   win: true, block: true, open4: true, threat: true,
-  vcfAttack: true, vcfDefense: true, vctAttack: true, live3Attack: true, live3Defense: true,
+  vcfAttack: true, vcfDefense: true, vctAttack: true, vctDefense: true, live3Attack: true, live3Defense: true,
   parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true,
 };
 
@@ -94,7 +98,7 @@ export function emptyTactics(): TacticsReport {
     winning_points_you: [], winning_points_opponent: [],
     chance_points_you: [], danger_points_opponent: [],
     vcf_win_you: [], vcf_win_opponent: [],
-    vct_win_you: [],
+    vct_win_you: [], vct_win_opponent: [], vct_chain_opponent: [],
     live3_you: [], live3_opponent: [], live3_deny_points: [],
   };
 }
@@ -256,6 +260,8 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     vcf_win_you: [],
     vcf_win_opponent: [],
     vct_win_you: [],
+    vct_win_opponent: [],
+    vct_chain_opponent: [],
     live3_you: [],
     live3_opponent: [],
     live3_deny_points: [],
@@ -305,6 +311,24 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     try {
       const vct = engine.vctWin(st, side, VCT_PLIES);
       if (vct && vct.win && vct.first) res.vct_win_you = [vct.first];
+    } catch (_) { /* 同上：引擎差异 fail-soft */ }
+  }
+
+  /* 连续威胁链的防守（v12）：v11 起只把对手的**纯冲四**链逐点试过（vcfDefense），对手把链换成
+     「活三逼迫 + 冲四收尾」就放行了。实测两轮 v11 vs rapfi@500ms 共 48 个「我方无杀而对手有链」
+     的回合：实走拆掉 33 个、漏 15 个，其中 2 个存在能拆的点却没走（计时轮 #8 ply24 → K9、
+     首轮 #6 ply52 → K8）。这里在 VCF 守没找到点时再算一遍含活三的链，并对「链上各点 → 链点邻域
+     → 全部邻近空点」逐一验「落子后对手既无 VCF 也无 VCT」（见引擎 vctDefense）。 */
+  if (engine.deepTactics && typeof engine.vctDefense === 'function' && win.length === 0 && block.length === 0
+      && oppSide && M.vctDefense && res.vcf_win_you.length === 0 && res.vct_win_you.length === 0
+      && res.vcf_win_opponent.length === 0) {
+    try {
+      const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
+      const def = engine.vctDefense(st, side, VCT_PLIES, { cands: candNotations });
+      if (def) {
+        if (def.chain.length) res.vct_chain_opponent = def.chain;
+        if (def.points.length) res.vct_win_opponent = def.points;
+      }
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
   }
 
@@ -359,6 +383,7 @@ export function attachFacts(ser: JevSerialized, tactics: TacticsReport, experien
       'If `vcf_win_you` is non-empty, playing that point starts a forced sequence of consecutive fours leading to victory — take it when there is no immediate win, block, or double-threat above. ' +
       'If `vcf_win_opponent` is non-empty, the opponent has such a forced sequence; playing that point disrupts it at its entry — prioritize it over quiet moves. ' +
       'If `vct_win_you` is non-empty, playing that point starts a forced threat sequence that mixes consecutive fours with forcing open threes and wins within five of your moves — take it when there is no immediate win, block, or double-threat above. ' +
+      'If `vct_win_opponent` is non-empty, the opponent has such a mixed forced sequence; playing that point breaks the whole chain (it leaves the opponent with neither a four-chain nor a mixed one), so prefer it over your own open-three attacks. ' +
       'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ' +
       'If `live3_opponent` is non-empty, the opponent has points that would create two open-four threats at once (winning within four moves even if you block one); `live3_deny_points` lists the moves that remove that threat — play one of them unless a more urgent item above applies. ' +
       'If `live3_you` is non-empty and the opponent has no equal or faster threat, playing one of those points creates a double open-four threat of your own, winning within four moves. ' +

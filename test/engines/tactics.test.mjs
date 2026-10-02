@@ -1,4 +1,4 @@
-/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v11 起十二级）+ VCF soundness 回归
+/* test/engines/tactics.test.mjs — 战术版本登记表 + 保险接管链（v12 起十三级）+ VCF soundness 回归
  *
  * 覆盖旧 test/run-tests.cjs 中的：
  *   - tacticsRegistryTests()（版本登记表、rank/机制单调、层数对照、机制闸门 allows）
@@ -8,6 +8,7 @@
  *   - ⑬a–⑬g（版本闸门：同一局面按档给出不同事实与接管行为）
  *   - ⑤b（v10 活三：引擎层真推演 + 两档事实对照 + 决策级抢/拆活三 + 让位给更短的杀）
  *   - ⑤c（v11 VCT：引擎层连续威胁搜索 + 与纯 VCF 的可见性对照 + 决策级抢链首）
+ *   - ⑤d（v12 拆连续威胁链：引擎层 vctDefense + 与 vcfDefense 的可见性对照 + 决策级拆链）
  */
 import { suite, ok, eq, deepEq, near } from './harness.mjs';
 
@@ -54,14 +55,14 @@ const VCF_SEQ = ['E7', 'D7', 'F7', 'A1', 'G7', 'A2', 'H5', 'A3', 'H6', 'B1'];
 const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
 
 /* ------------------------------------------------------------------ *
- * ① 版本登记表（git 历史 × 棋谱数据双锚定：11 个战术版本 + 1 数据驱动基线）
+ * ① 版本登记表（git 历史 × 棋谱数据双锚定：12 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v11-vct', '当前档应为 v11-vct（连续威胁搜索）');
+  eq(R.CURRENT, 'v12-vct-def', '当前档应为 v12-vct-def（连续威胁防守）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 12, '应为 11 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 13, '应为 12 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
@@ -76,13 +77,13 @@ S.t('版本登记表：机制集合沿梯级单调不减', () => {
   }
 });
 
-S.t('版本登记表：十一级层数对照（2/3/5/6/6/7/9/9/9/11/12）', () => {
+S.t('版本登记表：十二级层数对照（2/3/5/6/6/7/9/9/9/11/12/13）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
-    'v10-live3': 11, 'v11-vct': 12,
+    'v10-live3': 11, 'v11-vct': 12, 'v12-vct-def': 13,
   };
-  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense',
+  const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
   for (const v of R.VERSIONS) {
     const got = TIER.filter((k) => v.mech[k]).length;
@@ -96,7 +97,7 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v11-vct 的实证局数看 gamesVerified）');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v12-vct-def 的实证局数看 gamesVerified）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
@@ -129,6 +130,10 @@ S.t('版本登记表：resolve 回退与 allows 闸门', () => {
   ok(R.allows(R.resolve('v11-vct'), 'vctAttack'), 'vctAttack 应仅 v11 起有');
   ok(!R.allows(R.resolve('v10-live3'), 'vctAttack'), 'v10 不应有 vctAttack');
   ok(R.allows(R.resolve('v11-vct'), 'live3Defense'), 'v11 应继承 v10 的 live3Defense 层');
+  ok(R.allows(R.resolve('v12-vct-def'), 'vctDefense'), 'vctDefense 应仅 v12 起有');
+  ok(!R.allows(R.resolve('v11-vct'), 'vctDefense'), 'v11 不应有 vctDefense（A/B 必须是单变量）');
+  ok(R.allows(R.resolve('v12-vct-def'), 'vctAttack'), 'v12 应继承 v11 的 vctAttack 层');
+  ok(R.allows(R.resolve('v12-vct-def'), 'live3Defense'), 'v12 应继承 v10 的 live3Defense 层');
   const v0 = R.VERSIONS[0];
   for (const k of R.MECHS) ok(!v0.mech[k], 'v0-off 的 ' + k + ' 应为关');
 });
@@ -145,6 +150,7 @@ S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs
   eq(R.resolve('v9-vcf-sound').gamesVerified, 16, 'v9 实证 16 局（4 局旧实证 + 2026-10-02 对照实验的 v9 臂 12 局，每手 ai.tv）');
   eq(R.resolve('v10-live3').gamesVerified, 12, 'v10 实证 12 局（对照实验两臂 4+8，每手 ai.tv = v10-live3）');
   eq(R.resolve('v11-vct').gamesVerified, 24, 'v11 实证 24 局（两轮对照实验各 12 局：exp-20261002055817 + exp-20261002094817，每手 ai.tv = v11-vct）');
+  eq(R.resolve('v12-vct-def').gamesVerified, 0, 'v12 尚无实证局（对照实验跑完后按 game_moves.ai.tv 回填）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');
@@ -253,7 +259,7 @@ S.t('VCF：开局无链时不误判', () => {
 });
 
 /* ------------------------------------------------------------------ *
- * ④ 接管链（十一级）与经验/事实注入
+ * ④ 接管链（十三级）与经验/事实注入
  * ------------------------------------------------------------------ */
 S.t('接管链：第三级活四点接管（概率偏向 G6）', async () => {
   const st = play(gomoku, SWAP_SEQ);
@@ -611,7 +617,8 @@ S.t('v11 VCT：战术事实按档给（v10 只有启发式活三点，v11 报出
 S.t('v11 VCT：决策级抢链首（v10 被 live3Attack 带偏到 K7，v11 走 L4）', async () => {
   const st = play(gomoku, VCT_SEQ);
   const probs = { K7: 0.9, L4: 0.02 };   /* 模型偏好正是实走的那手 K7 */
-  const d11 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d11 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v11-vct' }));
   ok(d11.notation === 'L4' && d11.meta.tactics === 'vctAttack',
     'v11 应被 vctAttack 接管走 L4，实际：' + d11.notation + '/' + d11.meta.tactics);
   eq(d11.meta.tacticsVersion, 'v11-vct', 'meta.tacticsVersion 应记录 v11-vct');
@@ -619,6 +626,81 @@ S.t('v11 VCT：决策级抢链首（v10 被 live3Attack 带偏到 K7，v11 走 L
     () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v10-live3' }));
   ok(d10.notation === 'K7' && d10.meta.tactics === 'live3Attack',
     'v10 档应照旧走启发式活三点 K7（这就是漏掉必胜链的那一手），实际：' + d10.notation + '/' + d10.meta.tactics);
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑤d v12 拆连续威胁链（`vctDefense`：对手把链换成混合链，vcfDefense 就放行）
+ *
+ * 依据（两轮 v11 vs `rapfi@500ms` 共 48 个「我方无杀而对手有链」的回合，逐手离线复算）：
+ *   实走拆掉 33 个、漏 15 个；漏的 15 个里只有 **2 个存在能拆的点却没走** —— 夹具即其一，
+ *   另一个是首轮 `#6` ply52 → K8（实走 G10/parry）。四种候选生成策略对照后取
+ *   「链上各点 → 链点车氏 ≤2 邻域 → 全部邻近空点（按到链距离升序）」、上限 12 个。
+ *
+ * 夹具 = 归档局 f463acff-b01c-4ef6-815f-b4b607d8fb94（计时轮 tag exp-20261002094817，
+ *   rapfi 执黑 vs proxy/v11 执白，27 手黑胜）前 23 手，轮白走：第 24 手实走 I11/parry ——
+ *   对手的 VCF 链首正是 I11，**占掉它却没有拆掉整条链**（黑方仍有杀），而 K9 才是真拆点。
+ * ------------------------------------------------------------------ */
+const DEF_SEQ = ['H8', 'H7', 'E11', 'H6', 'B14', 'F10', 'A15', 'C13', 'F15', 'H9',
+  'G15', 'E15', 'J12', 'H11', 'L12', 'K12', 'I13', 'K11', 'L13', 'K10', 'K13', 'J13', 'L14'];
+
+S.t('v12 拆链：引擎层 vctDefense（对手链首挡不住，链点邻域里的 K9 才拆得掉）', () => {
+  const st = play(gomoku, DEF_SEQ);
+  eq(st.turn, 'white', '夹具应轮白走；若这里就红了，说明夹具记法失效');
+  const opp = gomoku.vcfWin(st, 'black', 7);
+  ok(opp.win, '对手（黑）当下就该有必胜链（夹具前提）');
+  eq(opp.first, 'I11', '对手链首应为 I11（实走的那一手）');
+  const def = gomoku.vctDefense(st, 'white', 9);
+  ok(def.points.indexOf('K9') >= 0, '拆点应含 K9，实际：' + JSON.stringify(def.points));
+  eq(def.chain[0], 'I11', '返回的链首应是对手链首 I11');
+  ok(def.tried <= 12, '候选点上限 12（VCT_DEF_MAX），实际试了 ' + def.tried);
+  /* 反例：占掉对手链首不是拆 —— 这正是 vcfDefense 之外还要 vctDefense 的原因 */
+  const stI = gomoku.applyMove(st, gomoku.moveFromNotation(st, 'I11'));
+  ok(gomoku.vcfWin(stI, 'black', 7).win, '只占链首 I11 之后对手仍应有杀（实走那手的缺陷）');
+});
+
+S.t('v12 拆链：拆点必须真拆（走后对手既无 VCF 也无 VCT）', () => {
+  const st = play(gomoku, DEF_SEQ);
+  const def = gomoku.vctDefense(st, 'white', 9);
+  ok(def.points.length >= 1, '夹具前提：应至少有一个拆点');
+  const bad = [];
+  for (const p of def.points) {
+    const stA = gomoku.applyMove(st, gomoku.moveFromNotation(st, p));
+    if (gomoku.vcfWin(stA, 'black', 7).win || gomoku.vctWin(stA, 'black', 9).win) bad.push(p);
+  }
+  eq(bad.length, 0, '拆点走后对手不该再有任何连续威胁链，漏掉的：' + bad.join(','));
+});
+
+S.t('v12 拆链：战术事实按档给（v11 只有 parry 层的拆杀点，v12 报出真拆点）', () => {
+  const st = play(gomoku, DEF_SEQ);
+  const v11 = tacOf(gomoku, st, 'v11-vct');
+  deepEq(v11.vct_win_opponent, [], 'v11 不应有 vctDefense 层');
+  deepEq(v11.vcf_win_opponent, [], 'v11 的 vcfDefense 在该局面找不到拆点（放行的就是这一格）');
+  ok(v11.danger_points_opponent.indexOf('I11') >= 0, 'v11 只把 I11 当普通拆杀点（parry）');
+  const v12 = tacOf(gomoku, st, 'v12-vct-def');
+  deepEq(v12.vct_win_opponent, ['K9'], 'v12 应报出真拆点 K9');
+  deepEq(v12.vct_chain_opponent, ['I11'], 'v12 应同时报出对手那条链');
+  deepEq(v12.live3_you, v11.live3_you, 'v12 仍保留 v10/v11 的全部事实（机制单调不减）');
+});
+
+S.t('v12 拆链：决策级接管（v11 走链首 I11/parry，v12 走真拆点 K9/vctDefense）', async () => {
+  const st = play(gomoku, DEF_SEQ);
+  const probs = { I11: 0.6, K9: 0.05 };   /* 模型偏好正是实走的那手 I11 */
+  const d12 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  ok(d12.notation === 'K9' && d12.meta.tactics === 'vctDefense',
+    'v12 应被 vctDefense 接管走 K9，实际：' + d12.notation + '/' + d12.meta.tactics);
+  eq(d12.meta.tacticsVersion, 'v12-vct-def', 'meta.tacticsVersion 应记录 v12-vct-def');
+  const d11 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v11-vct' }));
+  ok(d11.notation === 'I11' && d11.meta.tactics === 'parry',
+    'v11 档应照旧走链首 I11/parry（这就是放行对手的那一手），实际：' + d11.notation + '/' + d11.meta.tactics);
+});
+
+S.t('v12 拆链：我方有必胜链时不进防守层（闸门：先赢再说）', () => {
+  const stVcf = play(gomoku, VCF_SEQ);
+  const t = tacOf(gomoku, stVcf);   /* 缺省 = 当前档 v12 */
+  ok(t.vcf_win_you.length >= 1, '该局面我方应有 VCF 必胜链（夹具前提）');
+  deepEq(t.vct_win_opponent, [], '我方有必胜链时不该再去算对手的链（白算一遍的成本）');
+  deepEq(t.vct_chain_opponent, [], '同上：链也不该报');
 });
 
 /* ------------------------------------------------------------------ *

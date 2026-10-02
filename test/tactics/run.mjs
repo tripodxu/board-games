@@ -1,6 +1,6 @@
 /* test/tactics/run.mjs — 战术实验室用例入口（计划 §6.4：mock 集成对局与 jev-client 用例迁 test/tactics/）
  *
- * 用例主体与 `test/engines/*.test.mjs` 共用一份，这里只收窄到「战术版本闸门 + 十一级接管链 + VCF soundness
+ * 用例主体与 `test/engines/*.test.mjs` 共用一份，这里只收窄到「战术版本闸门 + 十三级接管链 + VCF soundness
  * + Jev 客户端（重试/回退/topK/probe）」两个模块，避免维护两套夹具。
  *
  * 用法：

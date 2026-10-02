@@ -124,8 +124,8 @@ Jev 是无状态概率模型，不会学习；强度来自「喂给它的状态�
    与当前开局前 4 手相同的那部分，统计 `{ opening_plies, games, first_player_win_rate }`。
    样本 <2 局不注入（噪声）；离线演示局从不参与（合成数据不自证）。
 
-**战术保险（客户端十二级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
-threat | vcfAttack | vctAttack | vcfDefense | live3Attack | live3Defense | parry | parry3 | parry4 | null`——① `win` 有致胜点必走其一；
+**战术保险（客户端十三级接管）**：解析概率后按序执行，`meta.tactics = win | block | open4 |
+threat | vcfAttack | vctAttack | vcfDefense | vctDefense | live3Attack | live3Defense | parry | parry3 | parry4 | null`——① `win` 有致胜点必走其一；
 ② `block` 否则有对方致胜点必挡其一；③ `open4` 否则引擎以 `criteria` 保留标签 `you:open4`
 声明的活四点必走（活四 + 对方无先手五 = 理论必胜：两处成五点防不胜防）；④ `threat` 否则抢占
 2-ply 造杀点（`chance_points_you`：走出后己方有 ≥2 个一步致胜点，带护栏）；⑤ `vcfAttack`
@@ -134,20 +134,25 @@ threat | vcfAttack | vctAttack | vcfDefense | live3Attack | live3Defense | parry
 `VCT_PLIES = 9` = 5 手攻方着法）——与 ⑤ 同级、紧随其后，因为纯冲四看不见的杀正是 v10 的漏法
 （v10 臂 12 局复算：7-ply 纯冲四 22 手、11-ply 也只多 2 手，而 VCT 42 手，其中 20 手分布在 7 局）；
 ⑦ `vcfDefense` 否则占对方将死链入口（干预点经试走复搜确认真破杀；对方多条链并存时不硬挡，
-回落 parry）；⑧ `live3Attack` 否则抢己方**活三制造点**（`live3_you`：走出后己方有 ≥2 个
-活四制造点，对手只能挡一个）；⑨ `live3Defense` 否则走 `live3_deny_points`
-（拆掉对方全部活三制造点的那一手）；⑧⑨ 两级都是**真推演**（跳活三、斜线组合、带空隙的四
+回落 parry）；⑧ `vctDefense` 否则拆对方的**混合链**（`vct_win_opponent`：先算对方的链 ——
+有 VCF(7) 用它、否则 VCT(9) —— 再按「链上各点 → 链点车氏 ≤2 邻域 → 全部邻近空点」试走，
+判据是**落子后对方既无 VCF(7) 也无 VCT(9)**；上限 12 个候选点）——它排在 ⑦ 之后，因为
+`vcfDefense` 一旦找到拆点就不必再花这一层（实测开火率 ≤11%）；⑨ `live3Attack` 否则抢己方
+**活三制造点**（`live3_you`：走出后己方有 ≥2 个
+活四制造点，对手只能挡一个）；⑩ `live3Defense` 否则走 `live3_deny_points`
+（拆掉对方全部活三制造点的那一手）；⑨⑩ 两级都是**真推演**（跳活三、斜线组合、带空隙的四
 一律认得出），且**只在对方没有 2 手杀（`danger_points_opponent` 为空）时才动**——对方有更短的剑时
-抢剑会输速度，这两级让位给后面的 `parry` / `vcfDefense`；⑩ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），**多个并存时按 3-ply
+抢剑会输速度，这两级让位给后面的 `parry` / `vcfDefense`；⑪ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），**多个并存时按 3-ply
 安全性排序**——先排除「堵完对手仍有双杀制造点」的坏点（给了对手持续攻击节奏），剩余按对手逼杀
-着法数取最少；⑪ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3` 标签的点
-（对手的活三/活四制造点；只认连续 `_XXX_` 形状，跳活三由 ⑧⑨ 的真推演兜住）；⑫ `parry4` 否则抢占带 `deny:four` 标签的点（对手的冲四制造点，
+着法数取最少；⑫ `parry3` 否则抢占 `criteria` 里带 `deny:open4/deny:live3` 标签的点
+（对手的活三/活四制造点；只认连续 `_XXX_` 形状，跳活三由 ⑨⑩ 的真推演兜住）；⑬ `parry4` 否则抢占带 `deny:four` 标签的点（对手的冲四制造点，
 Rapfi 实战复盘增补：放任冲四制造点会被连续单杀逼迫 → 双杀收尾）。战术点在概率榜内按概率加权抽
 （尊重 topK），榜外（候选预筛遗漏）直接执行该点并在 `meta.warning` 标注「战术保险接管」。
-机制沿革与依据见 [ADR-0014](adr/0014-live3-real-lookahead.md)（活三真推演）与
-[ADR-0015](adr/0015-vct-continuous-threats.md)（连续威胁搜索）。
+机制沿革与依据见 [ADR-0014](adr/0014-live3-real-lookahead.md)（活三真推演）、
+[ADR-0015](adr/0015-vct-continuous-threats.md)（连续威胁搜索）与
+[ADR-0016](adr/0016-vct-defense.md)（连续威胁防守）。
 概率只是偏好，事实优先。深度换时间的边界写死在实现里（外层 64 候选、逼杀着法只查前 8 个、
-逼杀数数到 10 即停、VCF 7 ply/4000 节点、VCT 9 ply/3000 节点/每层 10 个攻击方着法/守方应手 >6 就不当作逼迫手）。
+逼杀数数到 10 即停、VCF 7 ply/4000 节点、VCT 9 ply/3000 节点/每层 10 个攻击方着法/守方应手 >6 就不当作逼迫手、VCT 防守最多试 12 个候选点）。
 **边界声明**：VCF 只搜「连续冲四」强制链；VCT 在冲四之外只加**活三逼迫**（每层新造 ≥2 个活四
 制造点的手），仍不是完整 VCT/估值（不做双威胁层——24 局实测真双威胁 0 次）；
 Rapfi 实战 0-4 复盘见 [status.md](status.md)「已知限制」。
@@ -189,7 +194,7 @@ Rapfi 实战 0-4 复盘见 [status.md](status.md)「已知限制」。
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| 客户端 | `src/core/jev/client.ts` | 渠道解析、加鉴权头、30s 超时 + 外部 `AbortSignal` 合并、429/529 指数退避（最多 4 次）、战术注入与十二级保险、top-k 采样、成本统计。**key 只在这里从 localStorage 读出来放进请求头，不发给任何本站服务端之外的第三方** |
+| 客户端 | `src/core/jev/client.ts` | 渠道解析、加鉴权头、30s 超时 + 外部 `AbortSignal` 合并、429/529 指数退避（最多 4 次）、战术注入与十三级保险、top-k 采样、成本统计。**key 只在这里从 localStorage 读出来放进请求头，不发给任何本站服务端之外的第三方** |
 | 客户端出口 | `src/core/jev/index.ts` | 装配 `decide`（注入 mock 实现）并转发 `probe` / `presetEndpoint` / `CHANNELS` |
 | Worker 路由 | `src/worker/routes/jev.ts` | `POST /api/jev`：限流（`jev` 桶 30/分/IP，D1 固定窗口）→ 校验 → 转发 → 原样透传上游响应；另注册 `OPTIONS /` 预检（在限流**之前**，不占桶、不耗上游额度） |
 | Worker 上游层 | `src/worker/lib/upstream.ts` | 上游调用细节：请求体白名单（只取 `state`/`model`/`questions`，`model` 缺省 `jev-latest`）、超时、错误映射、`toPassthroughResponse`（不读 body，流式透传） |

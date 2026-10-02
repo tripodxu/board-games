@@ -30,7 +30,8 @@ docs/
 │   ├── 0012-vite-typescript-build-chain.md
 │   ├── 0013-anonymous-device-identity-and-d1-ratelimit.md
 │   ├── 0014-live3-real-lookahead.md
-│   └── 0015-vct-continuous-threats.md
+│   ├── 0015-vct-continuous-threats.md
+│   └── 0016-vct-defense.md
 ├── plans/                  ← 实施计划（完成后保留为历史记录，标注状态）
 │   ├── 2026-09-28-board-games-mvp.md            ✅ 已完成
 │   ├── 2026-09-29-iteration-02-play-loop.md     ✅ 已完成（优化轮）
@@ -39,7 +40,8 @@ docs/
 │   ├── 2026-09-29-iteration-05-backend-polish.md  ✅ 已完成（后端化 + 全量打磨）
 │   ├── 2026-10-01-workers-d1-rebuild.md           ✅ 已完成（2026-10-01；架构轮：Worker + D1 全面重构）
 │   ├── 2026-10-02-tactics-v10-live3.md            ✅ 已完成（2026-10-02；战术 v10：活三真推演 + 对照实验）
-│   └── 2026-10-02-tactics-v11-vct.md              🚧 进行中（2026-10-02；战术 v11：连续威胁搜索 + 对照实验）
+│   ├── 2026-10-02-tactics-v11-vct.md              ✅ 已完成（2026-10-02；战术 v11：连续威胁搜索 + 三轮实验）
+│   └── 2026-10-02-tactics-v12-vct-def.md          🚧 进行中（2026-10-02；战术 v12：连续威胁防守 + 回归扫描）
 ├── superpowers/
 │   ├── plans/
 │   │   ├── 2026-09-28-board-games-hardening.md   ✅ 已完成（仓库硬化）

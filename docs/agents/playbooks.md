@@ -64,7 +64,7 @@
 ## 3. 调整 Jev 请求 / prompt / 采样
 
 1. 读 [../jev-api.md](../jev-api.md) §1（上游契约）与 §2（渠道）。
-2. 改 `src/core/jev/client.ts`（请求组装、退避、成本、十二级战术接管）或
+2. 改 `src/core/jev/client.ts`（请求组装、退避、成本、十三级战术接管）或
    某引擎的 `serializeForJev`（state 形状、`questions`/`criteria` 标签、`board_ascii` 之类的事实注入）。
 3. **不要拆三问**：`move`(choice) + `edge`(noul) + `position`(score) 必须一次并行发出
    （[AGENTS.md](../../AGENTS.md) §2 硬性规则 6）。
@@ -129,7 +129,7 @@
 
 ```bash
 $env:JEV_API_KEY = '<key>'    # 只从环境变量读；脚本只打印长度，不落盘
-node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v11-vct \
+node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v12-vct-def \
      --chanB rapfi --thinkB 500 --port 9450 --timeout-min 180 --stall-min 10 \
      --out .work/exp-<臂名>.json
 ```

@@ -14,7 +14,7 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
-import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, UiState, VcfResult, VctOptions } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, UiState, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -662,6 +662,107 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     return { win: true, first: toN(line[0]!), line: line.map(toN) };
   }
 
+  /* ---------- v12 战术层：对手连续威胁链的防守（拆链 + 取势排序） ----------
+   * 证据（两轮 v11 vs rapfi@500ms、48 个「我方无杀而对手有链」的回合）：实走拆掉 33 个、漏 15 个；
+   * 漏的 15 个里只有 2 个存在能拆的点却没走（计时轮 #8 ply24 → K9、首轮 #6 ply52 → K8），其余 13 个
+   * 连全盘候选都拆不掉（点无回头路，局面已经输了）。链首直接占掉能拆掉其中 12+19 手（现有
+   * `live3Deny`/`vcfDefense` 已在做），K9 / K8 这两手只在「链上各点的车氏 ≤2 邻域」「全部邻近空点」
+   * 里找得到 ⇒ 候选集 = 链上各点 → 链点邻域 → 全部邻近空点（按到链距离升序），上限 VCT_DEF_MAX 个。
+   * 判据比 vcfDefense 严：落子后对手**既无 VCF(7) 也无 VCT(9)**（vcfDefense 只验纯冲四，对手把纯链
+   * 换成混合链它就放行）。拆法不止一种时按 1-ply 取势排序（对手造四点 ×2 + 活三点 更少者优先，
+   * 模型候选优先），因为随手拆一个常把主动权交回去（实测有连拆六条链仍被穿透的局）。 */
+  const VCT_DEF_MAX = 12;
+  const VCT_DEF_KEEP = 3;
+  const VCF_DEF_PLIES = 7;
+  /** p 方「造冲四」点的数量（落子后 ≥1 个成五点），到 limit 早退。 */
+  function fourMakeCount(board: Board, p: number, limit: number): number {
+    let cnt = 0;
+    for (const [r, c] of nearEmpties(board)) {
+      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+      board[r]![c] = p;
+      const wins = winPointsAfter(board, p, r, c, 1).length;
+      board[r]![c] = 0;
+      if (wins > 0) { cnt++; if (cnt >= limit) break; }
+    }
+    return cnt;
+  }
+  /** p 方当前的压力粗算（造四点 ×2 + 活三制造点，各到 limit 早退）：并列拆法里挑「交回主动权最少」的。 */
+  function pressureOf(board: Board, p: number, limit: number): number {
+    const cands = nearEmpties(board);
+    return fourMakeCount(board, p, limit) * 2 + live3Count(board, p, cands, limit);
+  }
+  function vctDefense(st: GomokuState, defenderId: string, maxPlies?: number, opts?: VctDefenseOptions): VctDefenseResult {
+    const D = num(defenderId), A = D === 1 ? 2 : 1;
+    const board = clone(st.board);
+    const plies = Math.max(1, Math.min(15, maxPlies! | 0 || 9));
+    const oppId = D === 1 ? 'white' : 'black';
+    /* 对手现在的链：先纯冲四（便宜），没有再看含活三逼迫的混合链 */
+    const vcf = vcfWin(st, oppId, VCF_DEF_PLIES);
+    let chain: string[] = [];
+    let kind: 'vcf' | 'vct' | '' = '';
+    if (vcf && vcf.win && vcf.first) { chain = vcf.line.length ? vcf.line : [vcf.first]; kind = 'vcf'; }
+    else {
+      const vct = vctWin(st, oppId, plies);
+      if (vct && vct.win && vct.first) { chain = vct.line.length ? vct.line : [vct.first]; kind = 'vct'; }
+    }
+    if (chain.length === 0) return { kind: '', chain: [], points: [], tried: 0 };
+
+    const cells = chain.map((n) => parseN(n));
+    const distToChain = (r: number, c: number): number => {
+      let d = 99;
+      for (const p of cells) { const dd = Math.max(Math.abs(r - p.r), Math.abs(c - p.c)); if (dd < d) d = dd; }
+      return d;
+    };
+    const order: number[] = [];
+    const seen: Record<number, true> = {};
+    const push = (r: number, c: number): void => {
+      if (!inB(r, c)) return;
+      const key = r * N + c;
+      if (seen[key] || board[r]![c] !== 0) return;
+      if (forbidden && D === 1 && isForbiddenPoint(board, r, c)) return;   /* 己方禁手点走不得 */
+      seen[key] = true;
+      order.push(key);
+    };
+    for (const p of cells) push(p.r, p.c);                                          /* ① 链上各点（链首在内） */
+    for (const p of cells) {
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) push(p.r + dr, p.c + dc);   /* ② 链点邻域 */
+    }
+    for (const [r, c] of nearEmpties(board).sort((a, b) => distToChain(a[0]!, a[1]!) - distToChain(b[0]!, b[1]!))) {
+      push(r!, c!);                                                                 /* ③ 其余邻近空点 */
+    }
+
+    const modelCands = new Set<string>((opts?.cands ?? []).filter((n) => typeof n === 'string' && !!n));
+    const maxTry = opts?.maxTry && opts.maxTry > 0 ? opts.maxTry : VCT_DEF_MAX;
+    const hits: Array<{ n: string; pressure: number; model: boolean }> = [];
+    let tried = 0;
+    for (const key of order) {
+      if (tried >= maxTry) break;
+      const r = (key / N) | 0, c = key % N;
+      tried++;
+      board[r]![c] = D;
+      /* 落子后对手还赢不赢？——先看他有没有一手成五，再跑 VCF / VCT（两者都只在入口拷一次盘） */
+      const probe = { ...st, board, turn: st.turn } as GomokuState;
+      let still = hasFivePoint(board, A);
+      if (!still) {
+        const v = vcfWin(probe, oppId, VCF_DEF_PLIES);
+        still = !!(v && v.win);
+      }
+      if (!still) {
+        const t = vctWin(probe, oppId, plies);
+        still = !!(t && t.win);
+      }
+      const pressure = still ? 0 : pressureOf(board, A, 3);
+      board[r]![c] = 0;
+      if (still) continue;
+      const n = notation(r, c);
+      hits.push({ n, pressure, model: modelCands.has(n) });
+      if (hits.length >= VCT_DEF_KEEP) break;
+    }
+    /* 模型候选优先，其次对手压力小者（取势），最后按发现顺序（链首/链点靠前） */
+    hits.sort((a, b) => (a.model === b.model ? 0 : a.model ? -1 : 1) || (a.pressure - b.pressure));
+    return { kind, chain, points: hits.map((h) => h.n), tried };
+  }
+
   function getLegalMoves(st: GomokuState): GomokuMove[] {
     const ms: GomokuMove[] = [];
     const ban = forbidden && st.turn === 'black';
@@ -1077,6 +1178,8 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     live3Makers, live3Deny,
     /* v11：VCT 连续威胁搜索（冲四链 + 活三逼迫，见 jev-client vctAttack） */
     vctWin,
+    /* v12：对手连续威胁链的防守（拆链 + 取势排序，见 jev-client vctDefense） */
+    vctDefense,
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, mockPick, selfTest,
   } as Engine<GomokuState>;

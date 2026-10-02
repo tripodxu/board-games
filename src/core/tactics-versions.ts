@@ -1,9 +1,9 @@
 /* tactics-versions.ts — 战术层版本登记表（迁移自 js/tactics-versions.js）
  *
- * 为什么存在：战术层是 11 次提交逐层累加上线的，没有登记表就无法回答
+ * 为什么存在：战术层是 12 次提交逐层累加上线的，没有登记表就无法回答
  * 「这个版本为什么强/弱」，实验也无法按版本归因。机制键与 jev 接管链一一对应
  * （优先级从高到低）：
- *   win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > live3Attack > live3Defense > parry > parry3 > parry4
+ *   win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > vctDefense > live3Attack > live3Defense > parry > parry3 > parry4
  * 附加键：safeSort = 拆杀点并存时 3-ply 试走挑最安全（v5, 87beda6）；
  *         vcfTry   = vcfDefense 链首占不住时逐点试干预（v8, 9cf4a88）；
  *         sound    = vcfWin 伪胜闸门（引擎侧 gomoku.defenderWinsFull，v9, a16fdd9）。
@@ -77,10 +77,13 @@ export const VERSIONS: TacticsVersion[] = [
   { id: 'v11-vct', name: '连续威胁搜索', rank: 11, commit: '638f844', commitAt: '2026-10-02 13:25',
     date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 24,
     note: 'VCT（连续威胁搜索）：用户要求做第十一版。引擎新增 `vctWin`——把 vcfWin 的冲四链扩展成「冲四 + 活三逼迫」，攻方 5 手 / 每层 10 手 / 3000 节点 / 守方应手 >6 不当作逼迫手（三个上限由 586 个真实回合标定：与初版 14/6000/∞ 看见同样 55 手必胜链，平均 607→422ms、p90 2430→1636ms）。冲四＝守方唯一堵点（双四当场胜）；活三＝落子后**新造出** ≥2 个必胜点，守方应手不靠「堵端点」而是精确枚举（vctDefusers：落此点后攻方再无必胜点），并要求对手当下没有冲四可走（否则他反先一步成五）。**依据（v10 对照实验 12 局逐手离线复算，独立实现交叉核对）**：v10 臂 586 个代理回合里，7-ply 纯冲四有杀 22 手、11-ply 补出 2 手，而 VCT 42 手——**只有 VCT 看得见的 20 手分布在 7 局，其中 18 手连 11 ply 纯冲四也看不见**；这 20 手当时走的几乎全是启发式 `live3Attack`（与 VCT 首步不同），其中 2 局因此和棋（3cc54941 #20/#22、0661aa24 #92/#102/#104）、1 局负（7bfba6f2 #23/#25/#27）、4 局胜。v9 臂同口径只有 13 手（6 局）。**同期纠正的语义**：活三的两个端点互斥（守方堵一端，另一端即失效），所以「≥2 个必胜点＝4 手内必胜」只在两点互相独立时成立（实测「真双威胁」24 局 0 次）；活三的正确性质是**逼迫**，VCT 正是把这种逼迫串起来。接管链插在 vcfAttack 与 vcfDefense 之间（同属强制胜，排在防守之前）。**对照实验（2026-10-02，单臂 12 局 vs `rapfi@500ms`，黑白交替，tag exp-20261002055817，上线版本 `1.0.0+638f844`）**：本档 **10 胜 0 和 2 负（得分率 83.3%，执黑 5 胜 1 负 / 执白 5 胜 1 负）**，同条件 v10 6 胜 4 和 2 负（67%）、v9 3 胜 9 负（25%）⇒ 把 v10 的 4 局满盘和棋里的一部分转成了胜局。平均手数 **34**（逐局 27/36/27/32/33/57/34/24/39/32/29/38；v10 臂 98、v9 臂 55）——对局从「长和棋」变「短分胜负」，**12 局零和棋**。实证口径：`game_moves` 里 `v11-vct` **12 局 / 206 手**，与本轮 206 次上游调用逐一手数交叉一致（每手 `ai.tv` 实证），故 `gamesVerified = 12`。**同门直连对照（2026-10-02，两侧同渠道同模型，唯一变量是战术档，12 局黑白交替，tag exp-20261002080446）**：本档 **5 胜 4 和 3 负（得分率 58.3% · 不败率 75.0%；执黑 3 胜 3 和 0 负 / 执白 2 胜 1 和 3 负）**，v10 同条件 **3 胜 4 和 5 负（41.7% · 不败率 58.3%；执黑 3 胜 1 和 2 负 / 执白 0 胜 3 和 3 负）**——两侧执黑战绩相同，净胜来自白方；4 局和棋全是 225 手满盘（同门互攻不穿，对照打 Rapfi 的零和棋可见和棋率由对手强度决定），两侧 `parry4` 合计 160 手 ⇒ 下一版入口在「无强制胜时的防守与长线取势」。**计时轮（2026-10-02，再打一次 `rapfi@500ms`，tag exp-20261002094817，`tac_ms` 上线后首轮）**：本档 **9 胜 0 和 3 负（得分率 = 不败率 75.0%，12 局零和棋，平均 29 手）**，与上一轮同口径的 83.3% 同量级；**单步成本第一次被拆开**——`game_moves.ms` 均值 8730ms（最坏 43423ms）里，战术层 `tac_ms` 均值 **402ms** / 最坏 4474ms（175 手样本），即**战术层约占单步墙钟 4.6%**，其余是模型往返与重试等待；对手 Rapfi 的固定搜索预算是 500ms/手 ⇒ 本档的棋力增量不是靠更大的搜索预算换来的。逐手复盘：175 个 v11 回合里 72 手（41%）存在必胜链、69 手走了链首步、机会真丢 0 手；**3 局负局（#5/#6/#8）全程 0 次报出必胜链** ⇒ 输在「算不出强制胜」的局面。**gamesVerified 12→24** = 两轮对照实验各 12 局，每手 `ai.tv` 实证。' },
+  { id: 'v12-vct-def', name: '连续威胁防守', rank: 12, commit: '（本版实现提交见 CHANGELOG [Unreleased]）', commitAt: '2026-10-02 21:00',
+    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 0,
+    note: '拆对手的连续威胁链（用户要求：根据所有已跑的实验整合出下一版战术优化，并先过一遍已有棋谱看回归风险）。引擎新增 `vctDefense`——v11 的 `vctWin` 只回答「我有没有必胜链」，防守侧仍只有 v9 的 `vcfDefense`（只验纯冲四链）；对手把链换成「活三逼迫 + 冲四收尾」，vcfDefense 就放行了。**依据（两轮 v11 vs `rapfi@500ms`、48 个「我方无杀而对手有链」的回合，逐手离线复算）**：实走拆掉 33 个、漏 15 个；漏的 15 个里只有 **2 个存在能拆的点却没走**——计时轮 `#8 f463acff` ply24 → **K9**（实走 I11/parry）、首轮 `#6` ply52 → **K8**（实走 G10/parry），其余 13 个连全盘候选都拆不掉（点无回头路，局面已输）。四种候选生成策略对照（只试链首 12/20 与 19/28；链首 + 链上各点同数；**加「链点的车氏 ≤2 邻域」13/20 与 21/28**；全部邻近空点按到链距离排序同样 13/20、22/28）⇒ 候选集取「链上各点 → 链点邻域 → 全部邻近空点（按到链距离升序）」、上限 12 个。判据比 vcfDefense 严：落子后对手**既无 VCF(7) 也无 VCT(9)**（外加「没有一手成五」兜底）。拆法不止一种时按 1-ply 取势排序（对手造四点 ×2 + 活三点更少者优先，模型候选优先）——实测有连拆六条链仍被穿透的局，随手拆一个常把主动权交回去。接管链插在 vcfDefense 与 live3Attack 之间（对手的强制胜比我们先手造活三快），闸门是「我方无 VCF/VCT 必胜链 且 vcfDefense 没找到拆点」，故只在「我方无杀而对手有链」的回合开火（实测占代理回合 ≤11%）。' },
 ];
 
 /** 当前档位（最后一档）。 */
-export const CURRENT = 'v11-vct';
+export const CURRENT = 'v12-vct-def';
 
 const BY_ID: Record<string, TacticsVersion> = {};
 VERSIONS.forEach((v) => { BY_ID[v.id] = v; });
@@ -120,7 +123,7 @@ export function allows(version: TacticsVersion | null | undefined, mech: string)
  * 那 20 局的历史事实改由 test/core/attribution.spec.ts 钉在数据上断言。 */
 
 /** 机制键（顺序即接管链顺序 + 三个附加键）。 */
-export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound']);
+export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound']);
 
 /** 全部档位 id（注册顺序）。 */
 export function ids(): string[] {
@@ -130,7 +133,7 @@ export function ids(): string[] {
 function U(cond: unknown, msg: string): void { assert(cond, msg); }
 
 export function selfTest(): void {
-  assert(VERSIONS.length === 12, '应登记 11 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
+  assert(VERSIONS.length === 13, '应登记 12 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
   U(CURRENT === VERSIONS[VERSIONS.length - 1]!.id, '当前档必须是最后一档');
   VERSIONS.forEach((v, i) => {
     U(v.rank === i, v.id + ' rank 不连续');

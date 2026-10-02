@@ -100,6 +100,21 @@ export interface VctOptions {
   defusersMax?: number;
 }
 
+/** 拆连续威胁链（v12）的结果：kind/chain 是对手那条链（链首在前），points 是能拆掉整条链的点。
+ *  `tried` 是实际试过的候选点数（用于成本复盘）；`points` 为空 = 拆不掉（或对手本来没有链）。 */
+export interface VctDefenseResult {
+  kind: 'vcf' | 'vct' | '';
+  chain: string[];
+  points: string[];
+  tried: number;
+}
+
+/** 拆链搜索的输入：cands 是模型候选点（并列拆法里优先），maxTry 是候选点数上限（默认 12）。 */
+export interface VctDefenseOptions {
+  cands?: string[];
+  maxTry?: number;
+}
+
 /** 引擎统一接口（docs/engine-interface.md §2）。 */
 export interface Engine<S = any> {
   id: string;
@@ -145,6 +160,13 @@ export interface Engine<S = any> {
    * opts 是搜索预算（缺省用引擎常量）：离线标定 / 实验用，线上走缺省。
    */
   vctWin?(st: S, attackerId: string, maxPlies?: number, opts?: VctOptions): VcfResult;
+  /**
+   * 拆对手的连续威胁链（v12 战术层用）：先看对手有没有 VCF 链，没有再看含活三逼迫的 VCT 链；
+   * 有链就在「链上各点 → 链点邻域 → 全部邻近空点（按到链距离升序）」里逐点试，
+   * 判据是落子后对手**既无 VCF 也无 VCT**（比 vcfDefense 只验纯冲四严）。
+   * 返回 points 是能拆的落点（模型候选优先、对手压力小者优先），空 = 拆不掉。
+   */
+  vctDefense?(st: S, defenderId: string, maxPlies?: number, opts?: VctDefenseOptions): VctDefenseResult;
 
   /** 引擎私有方法（如 gomoku 的 candidates / serialize 用到的辅助）。 */
   [k: string]: unknown;

@@ -140,6 +140,7 @@
 
 | **实验报告把 B 侧的战术档安到 A 侧身上**（战术层耗时用例暴露）：`src/ui/panels/experiment-report.ts` 的 `gameSide()` 在局内字段缺失时一律用轮级 `tacA` 兜底黑方，而 A 只在奇数局执黑 ⇒ B 执黑的那些局会给 B 侧安上 A 的战术版本，分桶表冒出 `rapfi\|v11-vct\|0` 这类幻影身份、把手数拆成两行 | 兜底改按局号奇偶：`const aIsBlack = ((g.no \|\| 1) - 1) % 2 === 0; const isA = (side === 'black') === aIsBlack;` 再按 `isA` 取 `chan / tac / think`；`test/ui/experiment-report.spec.ts` 的战术层用例断言「只出现两个身份」钉住（修前红在均值被拆成 50ms） |
 | **归档给「不过战术层的渠道」也写上了战术档标签**（计时轮暴露，与上一条同源但更深一层）：Rapfi / mock / 人类侧压根不进 `computeTactics`（`src/core/jev/client.ts` 在 `channel === 'rapfi'` 处短路），可归档里的 `black_tactics` / `white_tactics` 照抄 A/B 配置 ⇒ `black_channel='rapfi'` 的行会带着 `v9-vcf-sound` 这种惰性标签，报表按「渠道\|战术\|思考」分组时冒出 `rapfi\|v9-vcf-sound\|500` 这种并不存在的身份（`scripts/experiment-run.mjs:60` 的旧默认值 `v9-vcf-sound` 是标签来源） | `src/core/view/duel.ts` 新增 `runsTactics()`（human / mock / rapfi ⇒ false）与 `tacticsLabel()`（不过战术层 ⇒ `''`，空串经 `strOrNull()` 落 NULL），`src/core/record/export.ts` 按**每侧真实渠道**（`bChan`/`wChan`，实验轮取 `exp.blackChannel`/`whiteChannel`）过滤档位；`src/ui/panels/experiment-report.ts` 的 `gameSide()` 与 `src/ui/panels/options.ts` 的 `sideAttribution()` 以渠道优先判身份（Rapfi 仍显示 `Rapfi(0.5s)`，只是不再带档位）；`experiment-run.mjs` 的 `tacB` 默认值改 `CURRENT` 并在日志里打出真实生效标签。测试：`test/core/record.spec.ts` 与 `test/ui/experiment-report.spec.ts` 各 1 例钉住（键只能是 `['proxy\|v11-vct\|0', 'rapfi\||500']`）；`src/core/view/duel.ts` 的 `selfTest()` 补 6 条断言 |
+| **对手的「混合链」没有任何一层看得见**（v12 复盘的真正发现，v11 两轮 rapfi 对照 + 逐手离线复算）：`vcfDefense` 只验**纯冲四**链（`vcfWin`），对手把收尾换成「活三逼迫 + 冲四」，它就放行；计时轮 175 个 v11 回合里「我方无杀而对手有链」**20 手（11%）**，其中**实走之后对手仍有链的 8 手（40%）全部落在三局负局**，而 8 手里 **4 手的实走正是对手的链首点**——占掉链首并没有拆掉整条链。另据独立实现逐手压力轨迹：对手「造四点」个数在杀棋前 **4–6 手**开始爬升，我方那几手还在跑 `live3Attack`。 | v12 新增**连续威胁防守**：引擎 `vctDefense(st, defenderId, maxPlies?, opts?)` 先算对手的链（有 VCF(7) 用它，否则算含活三逼迫的 VCT(9)），再按「链上各点 → 链点车氏 ≤2 邻域 → 全部邻近空点（按到链距离升序）」枚举候选（上限 `VCT_DEF_MAX = 12`），判据是**落子后对手既无 VCF(7) 也无 VCT(9)**（比 `vcfDefense` 严一档），并列拆法按「模型候选优先 → 对手造四点 ×2 + 活三点更少者优先」保留 `VCT_DEF_KEEP = 3` 个；战术层产出 `vct_win_opponent` / `vct_chain_opponent`，接管链在 `vcfDefense` 与 `live3Attack` 之间插 `vctDefense` 成**十三级**。候选集是四策略对照选出来的（只试链首 12/20、链首+链上各点 12/20、**+链点邻域 13/20**、全部邻近空点 13/20；首轮 19/21/21/22）——第三档多抓到的就是那两手（计时轮 `#8 ply24 → K9`、首轮 `#6 ply52 → K8`）。夹具（归档局 `f463acff…` 第 24 手）：黑 `vcfWin(7).first = 'I11'`，白`vctDefense` 给 `K9`（走 `K9` 后黑 VCF/VCT 全灭；走链首 `I11` 后黑两样都还在）。测试：`test/engines/tactics.test.mjs` 新增⑤d 五例（引擎层 / 拆点 soundness / 档位差异 / 决策级 / 闸门）。机制记录 [ADR-0016](adr/0016-vct-defense.md)。 |
 | **`smoke:live` 把数据总量写死在断言里**：`stats.byGame === '{"五子棋":54}'`、`/api/experiments` 恰好 6 轮、写入后 `totalGames === 55` —— D1 现在是活的，真实验一多这三项就红（2026-10-01 真跑 4 局后实测 27/30） | 断言改成**相对基线**：`byGame` 只校验键都是七个中文棋种名且「五子棋」在册，轮次断言「≥ 6 且每轮有 tag」，写入后断言「跑前基线 + 1」（实测 `58 → 59`）。负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1；随后 30/30 通过 |
 
 ### 仍存在（2026-10-01 口径）
@@ -174,14 +175,16 @@
 
 26. **每日备份的 CI 工作流从来没有真正跑通过**（2026-10-02 首次触发即失败，见下）：`.github/workflows/backup.yml`（UTC 04:23 导出 + `verify:backup --structural`）与 `deploy.yml` 的 `workflow_dispatch` 都需要仓库 Secrets `CLOUDFLARE_API_TOKEN`（D1:Read）与 `CLOUDFLARE_ACCOUNT_ID`，而 `gh secret list` 是**空的** ⇒ wrangler 在非交互环境直接报 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable`、步骤 exit 1。当前**没有任何自动备份在跑**（手动 `npm run db:export` 仍可用，本机走的是 OAuth）。修法：项目所有者去 Cloudflare 建一个有 D1:Read（部署另需 Workers Scripts:Edit）的 API Token，再 `gh secret set`；在补上之前，第 14 条「备份靠 CI 每日导出」**只是设计意图、不是现状**。
 
+27. **`v12-vct-def` 的边界与代价**：它只能救「已经算得出对手有链、且盘面上还存在能拆的点」的局面 —— 首轮 + 计时轮合计 48 个「我方无杀而对手有链」的回合里，实走拆掉 33、漏 15，**漏的 15 个里只有 2 个存在能拆的点却没走**，其余 **13 个全盘候选都拆不掉**（点无回头路，局面在那之前就输了）；真正的入口是「对手造四点数的爬升期」（杀棋前 4–6 手）**不要抢着走自己的活三**，那是下一版（压力闸门）的事。成本上它比 v11 多一层：最坏局面会叠最多 12 个候选点 × 2 次搜索（`vcfWin(7)` + `vctWin(9)`），与 `v11-vct` 那条「最坏 4.6s 同步阻塞」是同一类风险（见第 25 条），实战最坏值待对照实验的 `tac_ms` 回填。**开火率低是有意的**（只在 `vcfDefense` 没找到点时才算，实测占我方回合 ≤11%）。
+
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 130 个用例 + vitest 34 个测试文件 / 337 个用例）。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 135 个用例 + vitest 34 个测试文件 / 337 个用例）。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
 | `npm test` | `test:engines` + `test:new`（vitest 三个 project 一次跑完） | 提交前的总闸 |
-| `npm run test:engines` | 引擎自检、战术十二级与 VCF/VCT、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
+| `npm run test:engines` | 引擎自检、战术十三级与 VCF/VCT/VCT 防守、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
 | `npm run test:tactics` | 战术层独立回归（`test/tactics/run.mjs`） | 改战术层时 |
 | `npm run test:worker` | 真 workerd + 真 D1 的 HTTP 契约与维护任务 | 改 `src/worker/**`、`migrations/**` 后 |
 | `npm run test:ui` | happy-dom 下的视图层与装配层运行时断言 | 改 `src/ui/**`、`src/app/**`、`index.html` 后 |
