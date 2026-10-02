@@ -78,6 +78,9 @@
   每次失败都留带状态码的错误并打 `retryable` 标记；`src/app/loop.ts` 的 `aiStep` 只对 `retryable` 自动退避重试
   （4s / 12s / 25s 三次，期间**不暂停**），成功 / 手动重试 / 重开一局都清零额度。
   `test/core/jev-retry.spec.ts` 5 例 + `test/app/ai-auto-retry.spec.ts` 2 例钉住（含三组负向对照）。
+  **2026-10-02 补一条同类自欺**：台账基线可能在**服务端合并落地之前**读到，于是本轮的新 tag 会被误判成旧轮次
+  （v11 首跑把 `exp-20261001182552` 当成了本轮）；判本轮只认「基线之外的新 tag」，并且必须与
+  `GET /api/games?tag=` 的归档行数对上。
 - **实验运行脚本会自欺**：计量器只认绝对路径 `/api/jev`，而代理端点是相对串 `api/jev` → 永远报「上游 0 次」，
   恰好藏起唯一的证据；失败时台账 `history[0]` 是上一轮的 tag → 归档核对拿旧数据当本轮成绩。
   现在两种写法都认并记录状态码序列；开跑前记台账基线，跑完只认新增条目，没跑满就跳过归档核对。
@@ -91,6 +94,25 @@
   浏览器冒烟第 12 项钉住它。
 - `scripts/browser-smoke.mjs` 收尾清理临时 Chrome profile 在 Windows 上偶发 `EPERM`，
   会把一次绿跑变成「无报告的崩溃 + exit 1」；现在起手清理与收尾删除都带重试，失败只提示、不影响检查结果。
+- **长跑实验被 Rapfi 的 10 MB 引擎资产卡死**（`3bf480b`）：12 局对照实验第一次跑到 **0/12** 原地不动 486 s，
+  报告里只有 `meter.calls = 1` 和一句 `TypeError: network error`；同一时间 `smoke:browser --channel rapfi`
+  也停在「对手也落了子」的等待上（13/14）。取证：生产域 `rapfi-single-simd128.wasm` 1,161,393 B / 14.7 s、
+  `rapfi-single-simd128.data` **10,037,111 B / 447.7 s**（≈22 KB/s），而 Rapfi 是**局中首次用到才实例化**，
+  Emscripten 抓这两个文件失败时抛的 rejection 在装配层没人接住 ⇒ `inflight` 永久占位、AI 循环再也不走子
+  （主线程有响应、CDP 心跳每 30 s 正常 ⇒ 不是搜索算得慢）。修法**只动工具链**：`scripts/browser-smoke.mjs`
+  与 `scripts/experiment-run.mjs` 用 CDP `Fetch` 域把页面发出的 `/rapfi/*` 改由本地 `public/rapfi/` 的同一份文件
+  `Fetch.fulfillRequest` 答复（base64，按扩展名给 `application/wasm` 等 Content-Type，`--no-rapfi-local` 可关），
+  字节与线上同源同内容、**被测行为不变**。修后 `smoke:browser --channel rapfi` **14/14**、12 局实验跑满。
+  **应用侧未加保护**：慢链路上「局中现抓 10.7 MB 资产」的失败模式仍在（见 [status.md](docs/status.md)「仍存在」第 5 条）。
+
+### 文档与约定
+
+- **两条方向约束写进最显著之处**（`cbcc371`）：项目所有者 2026-10-02 定下 —— **①不吃搜索**（能一眼看清的
+  简单规则、快而不依赖长思考的才做；往深搜 / 强评估函数靠的不做，已有搜索层只做减法或纠偏）、
+  **②不唯胜率**（胜 / 和 / 负一起报，不败率与败局质量同等重要；和棋可以接受、有时应该追求，
+  「负局不增加」优先于「多赢一局」）。落点：[AGENTS.md](AGENTS.md) §2 硬性规则 10–11、[README.md](README.md) 首节、
+  [docs/memory/MEMORY.md](docs/memory/MEMORY.md) 顶部置顶约束块、[docs/agents/playbooks.md](docs/agents/playbooks.md) §0；
+  长跑实验的固定规程补在 playbooks §7。
 
 ## [1.0.0] — 2026-10-01
 

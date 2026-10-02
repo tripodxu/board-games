@@ -121,3 +121,30 @@
    **push 不会自动部署**，也**不会**让旧站 `jev-qiguan.pages.dev` 变新——它是迁移前的只读旧站。
 5. 发版后可选核对：`npm run smoke:live`（HTTP 冒烟）、`npm run verify:backup`（备份校验）、
    `npm run db:export`（导出远程库到 `backups/`）。
+
+## 7. 跑对照实验（长跑无人值守）
+
+脚本是 [scripts/experiment-run.mjs](../../scripts/experiment-run.mjs)（零依赖 CDP + 系统 Chrome/干净 profile）。
+典型一轮：
+
+```bash
+$env:JEV_API_KEY = '<key>'    # 只从环境变量读；脚本只打印长度，不落盘
+node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v11-vct \
+     --chanB rapfi --thinkB 500 --port 9450 --timeout-min 180 --stall-min 10 \
+     --out .work/exp-<臂名>.json
+```
+
+1. **先确认 Rapfi 资产走本地供给**（日志里应有「本地 public/rapfi/ 供给 … MB」）。线上 `.wasm` + `.data`
+   合计 11.2 MB，本机链路实测 **447 s** ⇒ 让页面现抓会把实验卡在第 1 局（症状：上游只有 1 次调用、
+   页面一句 `TypeError: network error`、主线程仍有响应）。`--no-rapfi-local` 只在专门验慢链路时才用。
+2. **日志时间戳是 UTC**（本地 = +8），别把 `08:04` 当成早上八点；判断进展看「上游调用次数」，
+   不要看页面决策流水（它最多 40 行就满了）。
+3. **认本轮只认「台账基线之外的新 tag」+ 归档行数**：基线可能在服务端合并落地之前读到，
+   凭「最新一条」会把上一轮当成这一轮。
+4. **两臂都用 Jev 时不要并行**：同一出口 IP 共享 60 次/分的 `jev` 限流，必须串行；单局时长差别很大
+   （12 局里最快的 22 手约 3 分钟，最长的一局 225 手满盘和棋跑了 22 分钟），`--timeout-min` 要留够。
+5. 跑完三件事：`--out` 的 JSON（逐局结果 + 上游计量 + 页面错误）、`GET /api/games?tag=<tag>&limit=100`
+   （确认每局都归档）、逐手证据用
+   `npx wrangler d1 execute jev-qiguan --remote --command "SELECT side, tactics, COUNT(*) FROM game_moves WHERE game_id IN (SELECT game_id FROM games WHERE experiment_tag='<tag>') GROUP BY side, tactics"`。
+6. 结果写进 [../status.md](../status.md)「数据现状」与对应 plan/ADR，**同时报胜 / 和 / 负与不败率**，
+   并单独交代败局是怎么输的（§0 的两条筛子）。

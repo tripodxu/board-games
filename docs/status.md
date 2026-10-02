@@ -116,7 +116,7 @@
 2. **规则类未实现**：象棋长将/长捉判负、国象三次重复判和、中国跳棋「永堵营地门」都未实现；围棋只有 9 路。
 3. **官方 API 浏览器直连不可行**（CORS 白名单），必须走同源 `/api/jev` 代理；未带 key 时返回 401。
 4. **Jev 的概率判断仍可能出错**：「零幻觉」只保证输出结构体，不保证棋力判断正确。
-5. **Rapfi 渠道**：单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完）；只支持五子棋；首次要下 10.7 MB 资产（`npm run smoke:browser -- --channel rapfi` 已能自动验完这条路，实测 14/14，等待窗口 90 s）。
+5. **Rapfi 渠道**：单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完）；只支持五子棋；**首次要下 10.7 MB 资产**，而这在慢链路上是个真陷阱：实测生产域 `rapfi-single-simd128.wasm` 1,161,393 B / 14.7 s、`rapfi-single-simd128.data` 10,037,111 B / **447.7 s**（≈22 KB/s）；Rapfi 是**局中首次用到才实例化**，抓取失败时 Emscripten 抛的 rejection 没人接住 ⇒ `inflight` 永久占位、AI 循环停摆（上游零调用、页面只有一句 `TypeError: network error`、主线程仍有响应，2026-10-02 实测两次）。**应用侧未加保护**——本轮只把 `smoke:browser` / `experiment-run` 改成由本地 `public/rapfi/` 供给资产（`3bf480b`），真实用户在不稳定链路上仍可能撞上这种「看着在等 AI」的假死。`npm run smoke:browser -- --channel rapfi` 能自动验完这条路（实测 14/14，等待窗口 90 s）。
 6. **战术档闸门**只影响 Jev 三渠道与 `random` 基线，`mock` / `rapfi` 早退不受影响。
 7. **`sideConfig` 是一份全局设置**（localStorage 键与旧实现逐字兼容），不按局快照；实验会借走并在结束后归还。
 8. **沿革竖列与设置抽屉改的是全局默认档**，不影响已经开打的那一局。
@@ -162,7 +162,7 @@
 | `npm run db:export` | 从远程导出一份 SQL 快照到 `backups/` | 切流前、发布前后留底 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 30 项 | 部署后（**会写一行再删掉，注意线上数据**） |
 | `npm run smoke:browser` | 真浏览器（CDP）冒烟 14 项（含归档分页的游标追加、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道 | 部署后、改前端入口后 |
-| `node scripts/experiment-run.mjs --games N` | 用干净 profile 的真浏览器跑一轮 A/B 对比实验并留 JSON 证据：填渠道与 key（**只从 `JEV_API_KEY` 环境变量读**）→ 点「开始实验」→ 轮询心跳（局数、上游调用次数与 HTTP 状态序列）→ 回查 `GET /api/games?tag=` 确认每局都进了 D1；页面停在「等人工重试」时代点 `#retryBtn`（计数） | 改实验面板 / 渠道 / 重试逻辑后；**会真花上游配额**，日常不跑 |
+| `node scripts/experiment-run.mjs --games N` | 用干净 profile 的真浏览器跑一轮 A/B 对比实验并留 JSON 证据：填渠道与 key（**只从 `JEV_API_KEY` 环境变量读**）→ 点「开始实验」→ 轮询心跳（局数、上游调用次数与 HTTP 状态序列）→ 回查 `GET /api/games?tag=` 确认每局都进了 D1；页面停在「等人工重试」时代点 `#retryBtn`（计数）；默认把 `/rapfi/*` 改由本地 `public/rapfi/` 供给资产（`--no-rapfi-local` 可关），规程与四条坑见 [agents/playbooks.md](agents/playbooks.md) §7 | 改实验面板 / 渠道 / 重试逻辑后；**会真花上游配额**，日常不跑 |
 | `npm run check:docs` | MEMORY 置顶、所有 md 相对链接可解析、status 日期在 30 天内 | 改任何 md 后（CI 里也跑） |
 | `npm run deploy` | `vite build && wrangler deploy` | 发布（`deploy.yml` 同样只手动触发） |
 | `npm run golden` | 重新生成金样 | **预期失败，别当成坏了**：金样已冻结为只读文物（封条 `test/parity/frozen.json`），生成器依赖的旧实现 `js/**` 在 P8 删除后它只打印中文说明并 `exit 1` |
@@ -173,7 +173,8 @@
 
 1. **归档面板**已补「加载更多」分页（keyset 游标，首屏 50 份）；仍缺按 `code_version` 分组（现在按 `tactics_version` 分组，历史归档全是「未标注」）与按棋种/渠道/标签筛选（服务端 `?game=`/`?tag=`/`?since=` 都已支持，只是面板没给控件）。
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
-3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0015；`npm run check:docs` 绿（43 个 md / 260 个链接）。
+3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0015；`npm run check:docs` 绿（45 个 md / 277 个链接）。
+4. **下一版入口由两条方向约束决定**（2026-10-02，[AGENTS.md](../AGENTS.md) §2 规则 10–11）：v10/v11 的败局都出在「算不出强制胜」的局面，所以优先做**无强制胜时的防守与长线取势**——要求是简单规则、快而不依赖长思考；**不**把 VCT 挖得更深。同一批待决项里，`live3After` 的语义纠偏（判「本手新造」而非「盘面上存在」）属于允许的「减法/纠偏」，可以做。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
 > 已核验（2026-10-02）：Cron `17 3 * * *` 的首次落库 —— `stats_cache` 有且只有一行 `daily:2026-10-02`，`updated_at = 2026-10-02T03:17:56.373Z`（调度时刻），`value` 报 `rateLimitsDeleted: 139`、`games: 82`、`moves: 7110`、`experiments: 11`，与 D1 当时的行数一致 ⇒ 定时维护真实执行、口径正确。
@@ -201,4 +202,5 @@
 6. **本地 D1 库文件名由 `database_id` 派生**：换过 id（或改了名字）就等于换了一个空库，需要重跑迁移 + 导入，否则会看到 `no such table: games`。
 7. **测试库共享**：worker 项目用 `singleWorker: true`，同一实例里的 D1 是共享状态，新用例必须自己清理数据。
 8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
-9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0015，`npm run check:docs` 绿（43 个 md / 260 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。
+9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0015，`npm run check:docs` 绿（45 个 md / 277 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。
+10. **Rapfi 的 10 MB 资产仍由页面在局中现抓**（慢链路上会假死，见「仍存在」第 5 条）：本轮只修了工具链（本地供给），应用侧的重试/报错面与预取都未做——这是一条**已知未闭环**的风险，不是已修项。
