@@ -27,6 +27,7 @@
  *     `expTotals()` 保留但只再用于「有效局数」这一个数字。
  */
 import type { StorageLike } from '../../core/persist.ts';
+import { tacticsLabel } from '../../core/view/duel.ts';
 import { el, qs, replaceChildren, setText, type UiRoot } from '../dom.ts';
 import { expTag, type ExperimentState } from './experiment.ts';
 import { JEV_CHANNELS, sideAttribution } from './options.ts';
@@ -274,7 +275,10 @@ export function gameSide(e: ExperimentEntry, g: ExpHistoryGame, side: 'black' | 
   const aIsBlack = ((g.no || 1) - 1) % 2 === 0;
   const isA = (side === 'black') === aIsBlack;
   const chan = (side === 'black' ? g.blackChan : g.whiteChan) || (isA ? e.chanA : e.chanB) || '';
-  const tac = (side === 'black' ? g.blackTac : g.whiteTac) || (isA ? e.tacA : e.tacB) || null;
+  const rawTac = (side === 'black' ? g.blackTac : g.whiteTac) || (isA ? e.tacA : e.tacB) || null;
+  /* 不过战术层的渠道（rapfi/mock/人类）不认档位：老棋谱里那侧写的是脚本默认值，
+     照抄就会在分桶表里造出 `rapfi|v9-vcf-sound` 这种幻影身份（与归档侧的 `tacticsLabel()` 同一条规则）。 */
+  const tac = tacticsLabel({ channel: chan, tactics: rawTac ?? undefined }) || null;
   const think = (side === 'black' ? g.blackThink : g.whiteThink) || (isA ? e.thinkA : e.thinkB) || 0;
   return {
     channel: chan,

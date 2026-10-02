@@ -57,7 +57,10 @@ const CHAN_A = flag('chanA', 'proxy');
 const CHAN_B = flag('chanB', 'proxy');
 /* A 方战术缺省跟随登记表的 CURRENT（Node ≥ 22.18 能直载 src 里的 .ts，见 AGENTS「引擎可被纯 Node 直载」） */
 const TAC_A = flag('tacA', CURRENT);
-const TAC_B = flag('tacB', 'v9-vcf-sound');
+/* B 方战术：旧默认写死 `v9-vcf-sound`，在 Rapfi 臂上会变成一个**惰性档位**（Rapfi 不进战术层），
+   归档照抄后报表里冒出 `rapfi|v9-vcf-sound` 幻影身份（2026-10-02 事故）。缺省改为 CURRENT，
+   与 A 方同口径；真正不过战术层的渠道由归档侧 `tacticsLabel()` 统一写空。 */
+const TAC_B = flag('tacB', CURRENT);
 const THINK_A = flag('thinkA', '');
 const THINK_B = flag('thinkB', '');
 const PORT = Number(flag('port', '9444'));
@@ -105,6 +108,13 @@ const log = (msg) => console.log(`[${stamp()}] ${msg}`);
 console.log(`浏览器： ${BROWSER}`);
 console.log(`目标：   ${URL_TARGET}`);
 console.log(`对阵：   A=${CHAN_A}/${TAC_A}${THINK_A ? '/' + THINK_A + 'ms' : ''}  vs  B=${CHAN_B}/${TAC_B}${THINK_B ? '/' + THINK_B + 'ms' : ''}`);
+/* 惰性档位提醒：`mock`/`rapfi` 两侧在 client.ts 里直接短路，战术档标签对它们没有意义
+   （归档侧会写空；这里打出来免得有人照着日志读成「Rapfi 用了 vN 战术」）。 */
+for (const [tag, chan] of [['A', CHAN_A], ['B', CHAN_B]]) {
+  if (chan === 'mock' || chan === 'rapfi') {
+    console.log(`         · ${tag} 方渠道 ${chan} 不过战术层：战术档标签惰性，归档里写空（tac_ms 也是 NULL）`);
+  }
+}
 console.log(`局数：   ${GAMES}（key：${NEEDS_KEY ? `已提供（长度 ${API_KEY.length}）` : '不需要'}）`);
 console.log('');
 

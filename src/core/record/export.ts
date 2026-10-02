@@ -14,11 +14,14 @@
  *    `winner`/`endReason`（结构化胜负，省掉服务端解析中文串）、每手 `ai.tac`
  *    （record-map.ts:397-399 明确按 `ai.tac` 取每手战术，旧实现只写了 `move.tactics`）。
  *    这几项都是**加字段不改旧字段**，旧消费方容忍缺省。
+ *  - **2026-10-02 起的唯一值语义变化**：`tacticsVersion`/`blackTactics`/`whiteTactics` 只在
+ *    「这一侧真的会跑战术层」的渠道上才写档位（`proxy` 系列），`rapfi`/`mock`/人类侧写空串
+ *    （D1 里落 NULL）。键集合、拼法与默认值都没动，只是不再把配置里的惰性档位当成事实。
  */
 import { aiGameMeta, aiMoveMeta, type AiGameMeta, type AiMoveMeta } from '../meta.ts';
 import { effectiveChannelOf, effSide, type EffSide } from '../persist.ts';
 import { aiMovesOf, isAISide, sideNameOf, type GameSession, type SessionMeta } from '../session.ts';
-import { duelLabel, slug } from '../view/duel.ts';
+import { duelLabel, slug, tacticsLabel } from '../view/duel.ts';
 import type { Engine, GameStatus } from '../types.ts';
 
 /** 归档格式标识（旧实现硬编码，js/app.js:759）。 */
@@ -190,6 +193,10 @@ export function buildGameExport(session: GameSession, engine: Engine, opts?: Bui
   const bCfg = exportSideCfg(session, engine, 'black', opts);
   const wCfg = exportSideCfg(session, engine, 'white', opts);
   const by = typeof g.by === 'string' ? g.by : null;
+  /* 双方渠道先定下来：战术档标签要不要写，取决于**这一侧的渠道到底跑不跑战术层**
+     （`rapfi`/`mock`/人类侧不跑，见 `view/duel.ts:runsTactics`）。 */
+  const bChan = exp ? exp.blackChannel : bCfg.channel;
+  const wChan = exp ? exp.whiteChannel : wCfg.channel;
   const rec: GameRecord = {
     format: GAME_EXPORT_FORMAT,
     exported: (opts && opts.exported) || new Date().toISOString(),
@@ -200,13 +207,15 @@ export function buildGameExport(session: GameSession, engine: Engine, opts?: Bui
     /* 联名三件套：文件名 slug / 展示联名 / 双方渠道与战术档（旧消费方都容许缺省） */
     slug: slug(bCfg, wCfg),
     duel: duelLabel(bCfg, wCfg),
-    blackChannel: exp ? exp.blackChannel : bCfg.channel,
-    whiteChannel: exp ? exp.whiteChannel : wCfg.channel,
+    blackChannel: bChan,
+    whiteChannel: wChan,
     experiment: exp ? exp.tag : undefined,
     expGameNo: exp ? exp.gameNo : undefined,
-    tacticsVersion: bCfg.tactics,
-    blackTactics: exp ? exp.blackTactics : bCfg.tactics,
-    whiteTactics: exp ? exp.whiteTactics : wCfg.tactics,
+    /* 战术档标签只在会跑战术层的渠道上有意义：Rapfi/mock/人类侧写空串（归档里落 NULL）。
+       2026-10-02 的事故：Rapfi 侧照抄了脚本默认档位，报表里于是出现 `rapfi|v9-vcf-sound` 幻影身份。 */
+    tacticsVersion: tacticsLabel({ channel: bChan, tactics: bCfg.tactics }),
+    blackTactics: tacticsLabel({ channel: bChan, tactics: exp ? exp.blackTactics : bCfg.tactics }),
+    whiteTactics: tacticsLabel({ channel: wChan, tactics: exp ? exp.whiteTactics : wCfg.tactics }),
     result: formatResultText(session, engine, g),
     /* 终局裁决来源：'human' = 人手点「认输」；缺省 = 引擎自判（五连/禁手/棋盘满）。 */
     endBy: g.over && by ? by : undefined,

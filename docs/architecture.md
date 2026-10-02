@@ -148,7 +148,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | 表 | 用途 | 关键约束 |
 | --- | --- | --- |
 | `games` | 一局棋一行：既有列化的派生字段（day / game / mode / result / winner / move_count / opening_prefix / slug / 渠道与战术档 / 实验标签 / 版本 / 成本与延迟 / 设备 / 来源），也有 `payload` 与 `payload_bytes` | `game_uid` 与 `dedup_key` 各自唯一；`device_id` 外键指向 `devices`；`payload` 是保真副本，列化字段是派生值——两者不一致时以 `payload` 为准 |
-| `game_moves` | 每手一行（供棋谱流水与逐手回放） | 主键 `(game_id, ply)`，`ON DELETE CASCADE`，`WITHOUT ROWID` |
+| `game_moves` | 每手一行（供棋谱流水与逐手回放） | 主键 `(game_id, ply)`，`ON DELETE CASCADE`，`WITHOUT ROWID`。**`game_moves.game_id` 是数值外键，指向 `games.id`，不是 `games.game_id`**（后者是引擎 id 文本，全是 `gomoku`）——手写 SQL 连表要写 `games g ON g.id = mv.game_id`，写成 `g.game_id = mv.game_id` 会**静默返回 0 行** |
 | `devices` | 匿名设备（首次/最近出现时间、UA 摘要） | 主键 `device_id`。**写路由必须先 `touchDevice`**，否则外键约束直接拒 |
 | `experiments` | 实验轮：A/B 渠道与战术档、思考时长、总局数、成员棋谱 | 主键 `tag`；`tac_a`/`tac_b` 是同渠道 A/B 的唯一可分辨依据，不能丢 |
 | `rate_limits` | 限流计数：每个（桶，窗口起点）一行 | 主键 `(bucket, window_start)`，`WITHOUT ROWID` |
@@ -157,6 +157,8 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 > 两个容易踩的点：① `migrations/0001_init.sql` **一旦应用到 remote 就不得修改**，只能追加 `0002_*.sql`（0002 就是这么加的）；② 单行 payload 上限 512 KB（应用层校验），**历史归档实测最大只有 68.7 KB**。
 >
 > **战术层耗时列（0002 追加）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms` 记的是**战术层单独耗时**（`computeTactics` + `pickSafestParry`），与 `latency_avg_ms` / 每手 `ms`（那是「战术 + 上游」总耗时）不是一个口径。三列都可为 NULL，NULL 有两种含义：**历史棋谱没有这个字段**，或**该手不过战术层**（Rapfi / mock 渠道刻意短路）——所以 `AVG(tac_ms)` 自动只统计 Jev 渠道，`COUNT(tac_ms)` vs `COUNT(*)` 才能看出覆盖面。
+>
+> **战术档标签同理只在 Jev 渠道有意义**：`games.black_tactics` / `white_tactics` 与 `game_moves.tactics_version` 描述的是**真正跑战术层的那一侧**；Rapfi / mock / 人类侧一律为空（NULL）。判一侧是什么身份要看 `black_channel` / `white_channel`，不要把 `*_tactics` 当成对手的属性（2026-10-02 计时轮的「幻影身份」就是这么来的：脚本旧默认值给 Rapfi 侧写了 `v9-vcf-sound`）。
 
 ## 5. 身份与限流（ADR-0013）
 

@@ -141,14 +141,21 @@ export function fillSelect(
   }
 }
 
-/** 单边归因文案（旧 `sideAttribution`，js/app.js:1293-1298）：老战报缺字段时的三级回落。 */
+/** 单边归因文案（旧 `sideAttribution`，js/app.js:1293-1298）：老战报缺字段时的三级回落。
+ *
+ *  没有战术档时**不再硬译渠道名**（`proxy` → `Jev(代理)` 会让人以为它就是当前档）：Rapfi 侧
+ *  仍走 `sideLabel()`，好把思考时长带上（`Rapfi(0.5s)`）——归档从 2026-10-02 起不再给
+ *  不过战术层的渠道写档位标签，那侧 `tactics` 就是空，这里负责把展示补回原样。 */
 export function sideAttribution(
   channel: string | null | undefined,
   tactics: string | null | undefined,
   rapfiThinkMs?: number | null,
 ): string {
   if (!channel) return '旧数据';
-  if (!tactics) return CHAN_LABEL[channel] || channel;
+  if (!tactics) {
+    if (channel === 'rapfi') return sideLabel({ channel: channel, rapfiThinkMs: rapfiThinkMs ?? 0 });
+    return CHAN_LABEL[channel] || channel;
+  }
   return sideLabel({ channel: channel, tactics: tactics, rapfiThinkMs: rapfiThinkMs ?? 0 });
 }
 

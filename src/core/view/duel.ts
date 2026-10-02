@@ -54,6 +54,24 @@ export function sideSlug(cfg: SideInput | null | undefined): string {
   return en + '-' + versionTag(c.tactics);
 }
 
+/** 该渠道这一侧会不会真的跑战术层：`mock` 与 `rapfi` 在 `client.ts` 里**直接短路**
+ *  （连 `computeTactics` 都不进，所以那两侧的 `tac_ms` 恒为 NULL），人类那侧没有战术层。
+ *  这三类侧写了战术档标签就是幻影身份——归档里会冒出 `rapfi|v9-vcf-sound` 这种并不存在的组合。 */
+export function runsTactics(cfg: SideInput | null | undefined): boolean {
+  const c: SideInput = cfg || {};
+  if (c.human) return false;
+  const ch = c.channel || '';
+  return ch !== 'mock' && ch !== 'rapfi';
+}
+
+/** 归档/报表里的战术档标签：不过战术层的一侧写空串（`strOrNull('')` ⇒ D1 里落 NULL）。
+ *  **只在会跑战术层的渠道上有意义**；`sideLabel()`/`sideSlug()` 早就按这个规则忽略 rapfi/mock 的档位，
+ *  这里把同一条规则补到「原始字段」上，免得报表按 `渠道|战术|思考` 分组时造出幻影身份。 */
+export function tacticsLabel(cfg: SideInput | null | undefined): string {
+  const c: SideInput = cfg || {};
+  return runsTactics(c) ? (c.tactics || '') : '';
+}
+
 export function duelLabel(black: SideInput, white: SideInput): string {
   return '黑 ' + sideLabel(black) + ' vs 白 ' + sideLabel(white);
 }
@@ -105,6 +123,13 @@ export function selfTest(): void {
   U(slug({ human: true }, { channel: 'proxy', tactics: 'v0-off' }) === 'me-vs-jev-v0', 'human slug 不对');
   U(duelLabel({ human: true }, { channel: 'proxy' }) === '黑 我 vs 白 ' + V, 'human duelLabel 不对');
   U(slug({ human: true }, { human: true }) === 'me-vs-me', '双人 slug 应为 me-vs-me');
+  /* 战术档标签只在会跑战术层的渠道上有意义（2026-10-02 的 `rapfi|v9-vcf-sound` 幻影身份事故） */
+  U(tacticsLabel({ channel: 'proxy', tactics: 'v11-vct' }) === 'v11-vct', 'proxy 侧战术标签应原样保留');
+  U(tacticsLabel({ channel: 'rapfi', tactics: 'v9-vcf-sound', rapfiThinkMs: 500 }) === '', 'rapfi 侧不得写战术标签');
+  U(tacticsLabel({ channel: 'mock', tactics: 'v11-vct' }) === '', 'mock 侧不得写战术标签');
+  U(tacticsLabel({ human: true, tactics: 'v11-vct' }) === '', '人类侧不得写战术标签');
+  U(tacticsLabel({ channel: 'proxy' }) === '', 'proxy 侧没配档位时给空串（不是 undefined）');
+  U(runsTactics({ channel: 'random', tactics: 'v4-parry3' }), 'random 侧会跑战术层（client.ts:489 起用档位）');
 }
 
-export const duel = { CH_SHORT, CH_EN, versionTag, sideLabel, sideSlug, duelLabel, gameLabel, expLabel, slug, selfTest };
+export const duel = { CH_SHORT, CH_EN, versionTag, sideLabel, sideSlug, runsTactics, tacticsLabel, duelLabel, gameLabel, expLabel, slug, selfTest };

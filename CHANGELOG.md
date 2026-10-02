@@ -39,7 +39,7 @@
   执黑 5 胜 1 负 / 执白 5 胜 1 负）**，同条件 `v10-live3` 6 胜 4 和 2 负（67%）、`v9-vcf-sound` 3 胜 9 负（25%）；
   `vctAttack` 单层 12 局接管 **62 手**（v10 臂上此层不存在），v10 的活三两层由 168 手降到 28 手；
   **12 局零和棋、平均手数 34**（v10 臂 98、v9 臂 55）⇒ v10 的 4 局满盘和棋被转成了胜局
-  （登记表 `v11-vct.gamesVerified = 12`）。逐手事后复盘：206 个回合里 87 手存在必胜链、84 手走了链首步，
+  （登记表 `v11-vct.gamesVerified` 当时记 12，两轮合计后为 **24**）。逐手事后复盘：206 个回合里 87 手存在必胜链、84 手走了链首步，
   3 手让给更高优先级的 `open4` / `vcfAttack`（同为强制胜，机会没丢）。
   **同门直连对照（2026-10-02，两侧同渠道同模型，唯一变量是战术档，12 局）**：`v11-vct` **5 胜 4 和 3 负**
   （得分率 58.3% · **不败率 75.0%**；执黑 3 胜 3 和 0 负 / 执白 2 胜 1 和 3 负），`v10-live3` 3 胜 4 和 5 负
@@ -47,6 +47,12 @@
   4 局和棋全是 225 手满盘（同门互攻不穿），而 v11 的胜局都短（19–56 手）；对照本轮打 Rapfi 的**零和棋**可见
   和棋率由对手强度决定。逐手接管两侧各约 600 手，`parry4` 合计 **160 手** ⇒ 被动挨打多于主动起链，
   下一版入口在「无强制胜时的防守与长线取势」。证据 `.work/duel-v10-vs-v11.mjs`（按战术档分侧出报告）。
+  **计时轮（2026-10-02，`tac_ms` 上线后首轮，再打一次 `rapfi@500ms`）**：`v11-vct` **9 胜 0 和 3 负**
+  （得分率 = 不败率 **75.0%**，12 局零和棋、平均 29 手）；**成本第一次被拆开**——347 手里 v11 侧 175 手有样本，
+  `game_moves.ms` 均值 8730 ms（最坏 43423 ms）中战术层 `tac_ms` 均值 **402 ms** / 最坏 4474 ms，
+  **约占单步墙钟 4.6%**，其余是模型往返与重试等待；对手 Rapfi 的固定预算是 **500 ms/手** ⇒
+  v11 的棋力增量不是靠更大的搜索预算换来的。逐手复盘 175 个回合：72 手（41%）存在必胜链、69 手走了链首步、
+  机会真丢 0 手，**3 局负局全程 0 次报出必胜链**（登记表 `v11-vct.gamesVerified` 12 → **24**）。
 - **战术 v10 `v10-live3`「深活三攻防」（十一级保险）**：把「活三」从**形状匹配**升级为**真推演**。
   旧标签体系（`src/core/engines/gomoku.ts` 的 `liveThreeDir`）只认连续 `_XXX_`——跳活三、斜线组合与带空隙的四
   一律认不出（`deny:live3` 标签恒空），而 2-ply 的 `danger_points_opponent` 只认「一步成五」；
@@ -83,6 +89,19 @@
 
 ### 修复
 
+- **归档给「不过战术层的渠道」也写了战术档标签**（计时轮暴露，与下一条同源但更深一层）：
+  Rapfi / mock / 人类侧压根不进 `computeTactics`（`src/core/jev/client.ts` 在 `channel === 'rapfi'` 处短路），
+  归档里的 `black_tactics` / `white_tactics` 却照抄 A/B 配置 ⇒ `black_channel='rapfi'` 的行带着
+  `v9-vcf-sound` 这种**惰性标签**（`scripts/experiment-run.mjs` 的 `tacB` 旧默认值），
+  报表按「渠道|战术|思考」分组时冒出 `rapfi|v9-vcf-sound|500` 这种并不存在的身份。
+  修法：`src/core/view/duel.ts` 新增 `runsTactics()`（human / mock / rapfi ⇒ false）与
+  `tacticsLabel()`（不过战术层 ⇒ 空串，经 `strOrNull()` 落 NULL）；`src/core/record/export.ts`
+  按**每侧真实渠道**（`bChan`/`wChan`，实验轮取 `exp.blackChannel`/`whiteChannel`）过滤档位；
+  `src/ui/panels/experiment-report.ts` 与 `src/ui/panels/options.ts` 以渠道优先判身份
+  （Rapfi 仍显示 `Rapfi(0.5s)`，只是不再带档位）；`experiment-run.mjs` 的 `tacB` 默认值改 `CURRENT`
+  并在日志里打出真实生效标签。只动工具链与归档语义，**未碰搜索**。
+  测试：`test/core/record.spec.ts` 与 `test/ui/experiment-report.spec.ts` 各 1 例钉住
+  （身份键只能是 `['proxy|v11-vct|0', 'rapfi||500']`），`src/core/view/duel.ts` 的 `selfTest()` 补 6 条断言。
 - **实验报告把 B 侧的战术档安到 A 侧身上**（写战术层耗时用例时才暴露）：`src/ui/panels/experiment-report.ts`
   的 `gameSide()` 在局内字段缺失时一律用轮级 `tacA` 兜底黑方，而 **A 只在奇数局执黑** ——
   于是 B 执黑的那些局（例如 A=Jev、B=Rapfi）会给 Rapfi 安上 A 的战术版本，分桶表里冒出

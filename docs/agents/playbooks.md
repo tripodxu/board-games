@@ -145,12 +145,23 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v11-vct \
    （12 局里最快的 22 手约 3 分钟，最长的一局 225 手满盘和棋跑了 22 分钟），`--timeout-min` 要留够。
 5. 跑完三件事：`--out` 的 JSON（逐局结果 + 上游计量 + 页面错误）、`GET /api/games?tag=<tag>&limit=100`
    （确认每局都归档）、逐手证据用
-   `npx wrangler d1 execute jev-qiguan --remote --command "SELECT side, tactics, COUNT(*) FROM game_moves WHERE game_id IN (SELECT game_id FROM games WHERE experiment_tag='<tag>') GROUP BY side, tactics"`。
+   `npx wrangler d1 execute jev-qiguan --remote --command "SELECT mv.side, mv.tactics, COUNT(*) FROM game_moves mv JOIN games g ON g.id = mv.game_id WHERE g.experiment_tag='<tag>' GROUP BY mv.side, mv.tactics"`。
+   ⚠️ **连表必须写 `g.id = mv.game_id`**：`games.game_id` 是**引擎 id 文本**（全是 `gomoku`），
+   数值主键是 `games.id`；`game_moves.game_id` 引用的是后者。写成 `g.game_id = mv.game_id`
+   会静默返回 0 行（不报错），很容易把「查不到」误读成「没有数据」。
 6. **战术层耗时是必报项**（只要那一臂是 `proxy` 渠道）：
    `SELECT COUNT(*) AS 局数, ROUND(AVG(tac_avg_ms)) AS 战术层均值, MAX(tac_max_ms) AS 战术层最坏 FROM games WHERE experiment_tag='<tag>'`；
    拆到每一侧用
-   `SELECT mv.side, mv.tactics_version, COUNT(mv.tac_ms) AS 有样本手, COUNT(*) AS 总手, ROUND(AVG(mv.tac_ms)) AS 本手均值 FROM game_moves mv JOIN games g ON g.game_id = mv.game_id WHERE g.experiment_tag='<tag>' GROUP BY mv.side, mv.tactics_version`。
+   `SELECT mv.side, mv.tactics_version, COUNT(mv.tac_ms) AS 有样本手, COUNT(*) AS 总手, ROUND(AVG(mv.tac_ms)) AS 本手均值, MAX(mv.tac_ms) AS 本手最坏 FROM game_moves mv JOIN games g ON g.id = mv.game_id WHERE g.experiment_tag='<tag>' GROUP BY mv.side, mv.tactics_version`。
    **`tac_ms` 为 NULL 不是 0**：Rapfi / mock 侧刻意不过战术层，所以 `AVG` 的样本天然只剩 Jev 侧；
    要判断覆盖面就看「有样本手」与「总手」的差。列与口径见 [../architecture.md](../architecture.md) §4。
-7. 结果写进 [../status.md](../status.md)「数据现状」与对应 plan/ADR，**同时报胜 / 和 / 负与不败率**，
+   **读成本时把两个口径分开**：`game_moves.ms` 是「战术 + 上游（含重试等待）」的**单步墙钟**，
+   随上游快慢在 1 s～10 s 之间浮动（同一臂不同轮实测 1.0 s / 3.5 s / 10.1 s），
+   `tac_ms` 才是战术层本身（实测均值 **402 ms** / 最坏 4474 ms）；报「战术层占单步比例」时要用同一轮的 `ms` 做分母。
+7. **战术档标签只在 Jev 渠道有意义**：`games.black_tactics` / `white_tactics` 与 `game_moves.tactics_version`
+   只描述**真正跑战术层的那一侧**（`proxy` 等 Jev 渠道）。Rapfi / mock / 人类的档位标签一律为空（NULL），
+   因为它们压根不进 `computeTactics`——2026-10-02 计时轮就因为实验脚本的旧默认值给 Rapfi 侧写上了
+   `v9-vcf-sound`，报表里冒出 `rapfi|v9-vcf-sound|500` 这种并不存在的身份。**判一侧的身份要看 `*_channel`，
+   别把 `*_tactics` 当对手的属性**；同理 `tac_ms` 为 NULL 的那一侧就是不过战术层的那一侧。
+8. 结果写进 [../status.md](../status.md)「数据现状」与对应 plan/ADR，**同时报胜 / 和 / 负与不败率**，
    并单独交代败局是怎么输的（§0 的两条筛子）。

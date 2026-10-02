@@ -324,6 +324,26 @@ describe('record/export：真实归档反推再导出（新旧契约逐字段一
     });
   }
 
+  /* 幻影身份回归（2026-10-02 事故）：Rapfi/mock/人类侧**不过战术层**，归档里那侧的档位标签必须是空，
+     否则报表按「渠道|战术|思考」分组时会冒出 `rapfi|v9-vcf-sound` 这种并不存在的身份。
+     用真实实验归档做底稿，只把黑方改成 Rapfi 并塞一个惰性标签（实验脚本的旧默认值）。 */
+  it('Rapfi 侧不写战术档标签，真正跑战术层的另一侧原样保留', () => {
+    setSeed(null);
+    const src = full.find((a) => typeof a.payload.experiment === 'string' && a.payload.blackTactics);
+    expect(src).toBeTruthy();
+    const clone = JSON.parse(JSON.stringify(src!.payload)) as RawArchive;
+    clone.blackChannel = 'rapfi';
+    clone.blackTactics = 'v9-vcf-sound'; /* 惰性标签：Rapfi 侧从不进 computeTactics */
+    clone.whiteTactics = clone.whiteTactics || 'v11-vct';
+    const { session, engine } = replay(clone);
+    const rec = JSON.parse(JSON.stringify(buildGameExport(session, engine, { exported: clone.exported }))) as GameRecord;
+    expect(rec.blackChannel).toBe('rapfi');
+    expect(rec.blackTactics).toBe('');
+    expect(rec.tacticsVersion).toBe(''); /* 该字段是黑方口径，同理擦掉 */
+    expect(rec.whiteTactics).toBe(clone.whiteTactics);
+    expect(rec.whiteTactics).toBeTruthy();
+  });
+
   it('认输局：结构字段仍逐字段一致，只有结果串/胜负复现不出（引擎不建模认输）', () => {
     setSeed(null);
     const a = resignArchives[0];

@@ -101,6 +101,33 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
     expect(expSideStats([thin]).map((r) => r.key).sort()).toEqual(['proxy|v8|0', 'rapfi||3000']);
   });
 
+  it('Rapfi 侧的惰性档位标签不进身份（2026-10-02 幻影身份事故）', () => {
+    /* 事故现场：`exp-20261002094817` 那 12 局的白方是 Rapfi，可归档里白方战术档写的是
+       实验脚本的旧默认值 `v9-vcf-sound`（Rapfi 根本不进 computeTactics）⇒ 分桶表冒出
+       `rapfi|v9-vcf-sound|500` 这种并不存在的身份。修法：不过战术层的渠道不认档位。 */
+    const phantom: ExperimentEntry = {
+      tag: 'exp-rapfi-label',
+      date: '2026-10-02T09:48:17.000Z',
+      chanA: 'proxy',
+      chanB: 'rapfi',
+      tacA: 'v11-vct',
+      tacB: 'v9-vcf-sound' /* 惰性：Rapfi 侧从不使用它 */,
+      thinkB: 500,
+      total: 2,
+      games: [
+        { no: 1, blackChan: 'proxy', whiteChan: 'rapfi', blackTac: 'v11-vct', whiteTac: 'v9-vcf-sound', whiteThink: 500, winnerChan: 'A' },
+        { no: 2, blackChan: 'rapfi', whiteChan: 'proxy', blackTac: 'v9-vcf-sound', blackThink: 500, whiteTac: 'v11-vct', winnerChan: 'A' },
+      ],
+    };
+    const rows = expSideStats([phantom]);
+    expect(rows.map((r) => r.key).sort()).toEqual(['proxy|v11-vct|0', 'rapfi||500']);
+    const rapfi = rows.find((r) => r.channel === 'rapfi')!;
+    expect(rapfi.tactics).toBeNull();
+    /* 展示名仍要带思考档：擦掉的是档位标签，不是 Rapfi(0.5s) 这个身份 */
+    expect(rapfi.label).toBe('Rapfi(0.5s)');
+    expect(rows.every((r) => !String(r.key).includes('v9-vcf-sound'))).toBe(true);
+  });
+
   it('渲染：分桶表 + 单轮得分率条 + 注脚不再出现「Jev 渠道」', () => {
     const h = host();
     renderExpHistory([JEV_V8_VS_V9], h);

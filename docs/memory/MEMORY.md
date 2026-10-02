@@ -19,6 +19,17 @@
 
 ---
 
+## 2026-10-02 · v11 计时轮：9 胜 0 和 3 负，战术层 402 ms ≈ 单步墙钟的 4.6%（外加 Rapfi 侧惰性档位标签的幻影身份）
+
+- **为什么再打一轮**：上一轮（tag `exp-20261002055817`，83%）跑在 `tac_ms` 上线之前，`tac_ms` 全 NULL ⇒ 答不了「战术层到底占多少成本」。本轮与 C 臂**同对手同口径**（`v11-vct` vs `rapfi@500ms`，12 局黑白交替），唯一差别是带上了计时，命令 `node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v11-vct --chanB rapfi --thinkB 500`（tag `exp-20261002094817`，用时 1966 s，上游 213 次调用 / in 471,834 / out 94,723 tok，38 次状态 0 的传输错误全被 `callWithRetry` 重试成 200，零 429）。
+- **结果**：`v11-vct` **9 胜 0 和 3 负（得分率 = 不败率 75.0%，12 局零和棋，平均 29 手）**，与上一轮 83% 同量级；三局负局是 #5（v11 执黑 24 手）、#6（执白 35 手）、#8（执白 27 手）。逐手接管：`vctAttack` 49 手（执黑 24 / 执白 25）、`live3Attack` 17、`vcfDefense` 13、`open4` 9、`win` 9、`vcfAttack` 5、`live3Defense` 4、`block` 4、`parry4` 2、`parry`/`parry3` 各 1。
+- **成本对照（项目所有者 m08110 要的证据）**：本轮 347 手里 v11 侧 175 手有样本。`game_moves.ms` 均值 **8730 ms** / 最坏 43423 ms（38 手 >5 s）——**这个分母完全由上游决定**（同一战术档在不同轮里 1039 ms / 3487 ms / 8730–10084 ms，浮动来自模型与重试等待）；战术层 `tac_ms` 均值 **402 ms** / 最坏 4474 ms ⇒ **约占单步墙钟 4.6%**。对手 Rapfi 的固定搜索预算是 **500 ms/手**（UI 最高档 10 000 ms 本项目未采集）。**结论：v11 相对 v10/v9 的棋力增量不是靠更大的搜索预算换来的**——它的搜索预算是百毫秒量级且随局面伸缩。逐局 `tac_avg/max`：122/329、735/4474、562/1325、298/936、272/641、288/873、374/792、268/1027、402/960、680/3883、436/970、255/925。
+- **逐手复盘**（`.work/v11-postmortem.mjs --tag exp-20261002094817`）：175 个 v11 回合里 **72 手（41%）存在必胜链、69 手走了链首步**，3 手让给更高优先级的 `open4`/`vcfAttack`（同为强制胜），**机会真丢 0 手**；引擎 `vctWin(9 ply)` 平均 79 ms / 最坏 3458 ms。**三局负局全程 0 次报出必胜链** ⇒ 与直连轮、上一轮结论一致：入口在「无强制胜时的防守与长线取势」，不是把 VCT 挖更深。
+- **本轮抓出的真缺陷：归档给不过战术层的渠道写了战术档标签（幻影身份）**。Rapfi/mock/人类侧压根不进 `computeTactics`（`src/core/jev/client.ts` 在 `channel === 'rapfi'` 处短路），但归档的 `black_tactics`/`white_tactics` 照抄 A/B 配置 ⇒ Rapfi 侧带着实验脚本的旧默认值 `v9-vcf-sound`，报表按「渠道|战术|思考」分组时冒出 `rapfi|v9-vcf-sound|500` 这种并不存在的身份。修法（只动工具链与归档语义，未碰搜索）：`src/core/view/duel.ts` 新增 `runsTactics()` 与 `tacticsLabel()`（不过战术层 ⇒ 空串落 NULL），`src/core/record/export.ts` 按**每侧真实渠道**过滤档位，`src/ui/panels/experiment-report.ts` 与 `options.ts` 以渠道优先判身份（`Rapfi(0.5s)` 的展示保留），`scripts/experiment-run.mjs` 的 `tacB` 默认值改 `CURRENT` 并打印真实生效标签。**可迁移判据：判一侧的身份看 `*_channel`，别把 `*_tactics` 当对手的属性；`tac_ms` 为 NULL 的那一侧就是不过战术层的那一侧。**
+- **数据落点**：D1 **118 局 / 9067 手 / 14 轮实验 / 0 设备**；`game_moves` 分组 = `v10-live3` 1186 手 / `v11-vct` 983 手 / `v9-vcf-sound` 1104 手 / `v8-vcf-try` 765 手 / `v0-off` 13 手 / 无声明 5016 手。证据 `.work/exp-arm6-v11-tacms.{json,log}`、`.work/postmortem-r6.log`（都不入库）；登记表 `v11-vct.gamesVerified` 12 → **24**；文档见 [plans/2026-10-02-tactics-v11-vct.md](../plans/2026-10-02-tactics-v11-vct.md) §6.2、[status.md](../status.md) 与 [agents/playbooks.md](../agents/playbooks.md) §7。
+
+---
+
 ## 2026-10-02 · v10 直连 v11 同门对照：唯一变量是战术档，v11 不败率 75% vs 58.3%
 
 - **怎么跑的**（这是本项目第一次「同渠道同模型、只换战术档」的单变量对照）：两侧都是 `proxy` / `jev-latest`，A=`v10-live3` 奇数局执黑，12 局黑白交替；`node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v10-live3 --chanB proxy --tacB v11-vct`（tag `exp-20261002080446`，用时 5540 s，上游 1311 次调用 / in 3,570,328 / out 595,344 tok，109 次状态 0 的传输错误全被 `callWithRetry` 重试成 200 ≈8%、**零 429**）。报告脚本 `.work/duel-v10-vs-v11.mjs` 按**战术档**（不是「proxy/其他」）分侧。
