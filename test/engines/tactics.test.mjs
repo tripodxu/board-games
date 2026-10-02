@@ -150,7 +150,7 @@ S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs
   eq(R.resolve('v9-vcf-sound').gamesVerified, 16, 'v9 实证 16 局（4 局旧实证 + 2026-10-02 对照实验的 v9 臂 12 局，每手 ai.tv）');
   eq(R.resolve('v10-live3').gamesVerified, 12, 'v10 实证 12 局（对照实验两臂 4+8，每手 ai.tv = v10-live3）');
   eq(R.resolve('v11-vct').gamesVerified, 24, 'v11 实证 24 局（两轮对照实验各 12 局：exp-20261002055817 + exp-20261002094817，每手 ai.tv = v11-vct）');
-  eq(R.resolve('v12-vct-def').gamesVerified, 0, 'v12 尚无实证局（对照实验跑完后按 game_moves.ai.tv 回填）');
+  eq(R.resolve('v12-vct-def').gamesVerified, 12, 'v12 实证 12 局（单臂对照实验 exp-20261002115126，每手 ai.tv = v12-vct-def）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');

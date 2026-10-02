@@ -137,7 +137,8 @@ threat | vcfAttack | vctAttack | vcfDefense | vctDefense | live3Attack | live3De
 回落 parry）；⑧ `vctDefense` 否则拆对方的**混合链**（`vct_win_opponent`：先算对方的链 ——
 有 VCF(7) 用它、否则 VCT(9) —— 再按「链上各点 → 链点车氏 ≤2 邻域 → 全部邻近空点」试走，
 判据是**落子后对方既无 VCF(7) 也无 VCT(9)**；上限 12 个候选点）——它排在 ⑦ 之后，因为
-`vcfDefense` 一旦找到拆点就不必再花这一层（实测开火率 ≤11%）；⑨ `live3Attack` 否则抢己方
+`vcfDefense` 一旦找到拆点就不必再花这一层（实测开火率 ≤11%；v12 对 `rapfi@500ms` 那一轮
+198 个回合里 42 个防守机会全被既有层拆掉，**这一层 0 次开火**，实战检验要等更强的对手）；⑨ `live3Attack` 否则抢己方
 **活三制造点**（`live3_you`：走出后己方有 ≥2 个
 活四制造点，对手只能挡一个）；⑩ `live3Defense` 否则走 `live3_deny_points`
 （拆掉对方全部活三制造点的那一手）；⑨⑩ 两级都是**真推演**（跳活三、斜线组合、带空隙的四

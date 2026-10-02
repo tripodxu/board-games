@@ -285,7 +285,8 @@ VCF 将死链，见 [docs/jev-api.md](docs/jev-api.md) §2.2），五子棋另�
 以及**与旧实现逐手零差异**——7 棋种自对弈 + 54 局历史棋谱，合计 5510 手，
 金样见 [test/parity/README.md](test/parity/README.md)。线上数据核对：导入 54 局 / 4379 手 / 6 轮实验，
 `sum(payload_bytes) = 845578`；2026-10-01 又真跑了 4 局 proxy 对比实验（各 225 手，全和棋），
-D1 现为 118 局 / 9067 手 / 14 轮实验（见 [docs/status.md](docs/status.md)「数据现状」）。
+D1 现为 130 局 / 9457 手 / 15 轮实验（见 [docs/status.md](docs/status.md)「数据现状」）；
+战术档对 `rapfi@500ms` 的逐版曲线是 v9 25% → v10 67% → v11 83%/75% → v12 **12 胜 0 和 0 负**。
 
 **已知限制**：
 
