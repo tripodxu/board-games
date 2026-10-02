@@ -144,7 +144,7 @@ S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs
   eq(R.resolve('v9-vcf-sound').games, 26, 'v9 快照 26 局（窗口口径）');
   eq(R.resolve('v9-vcf-sound').gamesVerified, 16, 'v9 实证 16 局（4 局旧实证 + 2026-10-02 对照实验的 v9 臂 12 局，每手 ai.tv）');
   eq(R.resolve('v10-live3').gamesVerified, 12, 'v10 实证 12 局（对照实验两臂 4+8，每手 ai.tv = v10-live3）');
-  eq(R.resolve('v11-vct').gamesVerified, 0, 'v11 尚无归档实证（对照实验未跑前必须是 0）');
+  eq(R.resolve('v11-vct').gamesVerified, 12, 'v11 实证 12 局（2026-10-02 对照实验单臂 12 局，每手 ai.tv = v11-vct）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');
