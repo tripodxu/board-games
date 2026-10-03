@@ -183,7 +183,18 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
 - **12 局正式实验**：`--a rapfi::500 --b random:v13-pressure-gate:0 --games 12`（tag `exp-20261003042812-rapfi1-r1`）
   ⇒ 12/12 ok、约 52s/局、checkpoint 全 verified=true。
 - **追加一轮（Elo 样本）**：`--a proxy:v13-pressure-gate:0 --b rapfi::500 --games 12`
-  （tag `exp-20261003052604-x1-r1`）执行中（约 70 分钟），完成后合并出总表。
+  （tag `exp-20261003052604-x1-r1`，落到 plan 里 b 归一成 `rapfi:v13-pressure-gate:500`——
+  rapfi 不走战术层，档位标签只是臂上下文，与站点历史行同 convention）⇒ **12/12 ok**
+  （约 100s/局，含 429 退避；2 局 225 手满盘和棋），全部 verified=true。
+  **合并三轮 26 局** Elo（K=16，和棋 0.5）：`proxy|v13-pressure-gate|0` 1551.9（10胜2和2负）
+  > `rapfi|-|0` 1503.1（6-0-6）> `random|v13-pressure-gate|0` 1481.4（6-0-8）> `rapfi|-|500` 1463.6（2胜2和8负）
+  ⇒ **proxy·v13 对 rapfi@500ms 合计 6 胜 2 和 4 负**，全部 ⚠<50 局。
+  x1 用补行能力上线前的旧代码跑 ⇒ experiments 行由 `.work/backfill-experiments.mjs` 事后补（HTTP 200）。
+- **和棋判定缺陷（铁律 11）**：x1 合并 Elo 时发现 `batch-elo.mjs` 只认 `winner==='draw'`，
+  而真实导出的和棋**没有 `winner` 字段**（`result:"和棋（棋盘已满）"`；`record-map.ts:251-258`
+  `parseResult()` 对和棋给 `winner:null`，D1 `games.winner` 亦 NULL）⇒ 两局和棋被当未终局丢掉、
+  Elo 只算 22/24 局。修法：按 result 串 `/^和棋(?:（(.+?)）)?\s*$/` 判和棋（与 parseResult 同形，
+  endReason 取括号内容），新增 2 例单测钉住。
 
 ### P5 文档收口（✅ 2026-10-03 完成）
 - 计划本篇执行记录、ADR-0018、`docs/README.md` 索引（adr 0018 + 两个 plans 行）、AGENTS.md §4 命令、
@@ -195,10 +206,18 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
   （`experimentEntryFrom()` 纯函数 + 429 退避两次；入口加 `import.meta.url` 守卫让 worker 可被单测 import），
   新增 `test/scripts/experiment-entry.spec.mjs` 7 例（臂口径/局口径/只收 ok/null 耗时/date ISO）；
   rapfi1 与 smoke1 两轮用 `.work/backfill-experiments.mjs` 补归档并 GET 验证；status/ADR/§9 同步更新。
+- **追加闭环 2（Elo 和棋口径，铁律 11）**：`batch-elo.mjs` 的 `gameRecord()` 原先只认
+  `winner==='black'/'white'/'draw'`，而**和棋在导出/D1 口径里没有 `winner` 字段**
+  （`result:"和棋（棋盘已满）"`）⇒ x1 两局满盘和棋被丢。改为按 result 串识别和棋（与
+  `record-map.ts` 的 `parseResult()` 同形正则），`reason` 兜底取括号里的「棋盘已满」；
+  新增/改写 3 例单测（和棋按 result 计 0.5、未终局不计入、winner 缺失但 result 是和棋也计）。
+  `npm run test:scripts` 38 例通过。教训：**Elo 每个「丢局」原因都要单独论证**，
+  和棋漏算会让两个臂的 Elo 同时偏移且方向取决于对局构成。
+- 终验（追加闭环后重跑）：`npm test` **375 例 / 37 文件全过** + `npm run typecheck` 干净。
 
 ## 9. 未闭环 / 遗留
 
-- **Elo 样本 < 50 局/档**：官方口径下所有身份都标 ⚠；x1 轮完成后总样本 26 局/档，仍属噪声内，
+- **Elo 样本 < 50 局/档**：官方口径下所有身份都标 ⚠；三轮合并后总样本 26 局/档，仍属噪声内，
   只可作相对参考，不可作结论。
 - **Node rapfi vs 浏览器归档不可逐字复现**：墙钟属性，聚合口径（胜/和/负 + 不败率）不受影响；
   若要单局复盘对齐，需要浏览器侧固定随机源（超出本计划范围）。

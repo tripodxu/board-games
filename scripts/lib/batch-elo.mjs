@@ -32,11 +32,15 @@ export function gameRecord(exportJson) {
   const g = typeof exportJson === 'string' ? JSON.parse(exportJson) : exportJson;
   const result = String(g.result || '');
   const winner = String(g.winner || '');
+  const draw = /^和棋(?:（(.+?)）)?\s*$/.exec(result); // 与 record-map.ts:255 parseResult() 同形
   let score = null; // 黑方得分
   if (winner === 'black') score = 1;
   else if (winner === 'white') score = 0;
-  else if (winner === 'draw') score = 0.5;
-  // winner 缺失/空/未知 ⇒ 未终局或超时截断，不是和棋，不计入 Elo
+  /* 和棋的 winner 在导出/D1 口径里就是 null（record-map.ts 的 parseResult() 对「和棋」返回
+     winner:null，D1 games.winner 也是 NULL），只能靠 result 串识别。漏了它会把和棋当未终局
+     整局丢掉——AGENTS.md 铁律 11 要求胜/和/负同报，「把和棋变胜局」不算功绩。 */
+  else if (winner === 'draw' || draw) score = 0.5;
+  // winner 缺失/空/未知且 result 不是和棋 ⇒ 未终局或超时截断，不计入 Elo
   if (score === null) return null;
   // 没有 identity 线索的 JSON 不当棋谱（多一层保险，正常布局下 visit 不到）
   if (!g.blackChannel || !g.whiteChannel) return null;
@@ -48,7 +52,8 @@ export function gameRecord(exportJson) {
     white: identityOf({ channel: g.whiteChannel, tactics: g.whiteTactics, thinkMs: g.whiteThink }),
     blackScore: score,
     result,
-    reason: g.endReason || g.end_reason || '',
+    /* 和棋的 endReason 从 result 串的括号里取（parseResult() 的口径），导出缺 endReason 时兜底 */
+    reason: g.endReason || g.end_reason || (draw && draw[1]) || '',
     plies: Array.isArray(g.moves) ? g.moves.length : 0,
   };
 }

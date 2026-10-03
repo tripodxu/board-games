@@ -87,8 +87,19 @@
    归档 slug 显示 "mock-vs-rapfi"（结构化字段仍正确）⇒ playOne 透传 key 修复；
    另补 `blackThink/whiteThink`（`export.ts` 的 GameRecord 不含 think 字段，
    浏览器上传也不带，D1 `black_think` 恒 null ⇒ 不同思考档不可分辨）。
-7. **全量**：`npm test` 366 例 / 36 文件全过；`npx tsc --noEmit` 0 错；
-   `npm run check:docs` 通过。
+7. **全量**：`npm test` 375 例 / 37 文件全过（含 x1 追加轮后修复的 Elo 和棋口径）；
+   `npx tsc --noEmit` 0 错；`npm run check:docs` 通过。
+
+## 追加轮与一个口径修正（x1 后）
+
+- **x1 轮**：`proxy:v13-pressure-gate` vs `rapfi@500ms` ×12 ⇒ 12/12 ok（含 2 局 225 手满盘和棋）。
+  合并 rapfi1/smoke1/x1 三轮 26 局：`proxy|v13|0` **1551.9**（10胜2和2负）>
+  `rapfi|-|0` 1503.1（6-0-6）> `random|v13|0` 1481.4（6-0-8）> `rapfi|-|500` 1463.6（2胜2和8负）
+  ⇒ proxy·v13 对 rapfi@500ms 合计 **6 胜 2 和 4 负**，全部 ⚠<50 局。
+- **Elo 和棋口径修正**：和棋在导出/D1 里**没有 `winner` 字段**（`result:"和棋（棋盘已满）"`，
+  `record-map.ts:251-258` 对和棋给 `winner:null`）⇒ 只认 `winner==='draw'` 会把和棋当未终局丢掉
+  （x1 一度只算 22/24 局）。改为按 result 串识别（与 `parseResult()` 同形正则）——
+  否则「不唯胜率」在工具侧就破了。
 
 ## 后果
 
@@ -98,6 +109,6 @@
   pwsh 工具跑 ssh 要 `cmd /c … < NUL` 防 stdin 挂起）。
 - 遗留：Elo 样本 < 50 局仅作相对参考。远端轮次**已补 `/api/experiments` 行**
   （worker 轮末 POST，形状对齐浏览器 `newEntryFromRun()`；`X-Device-Id` 不带即匿名；
-  上线的两轮 rapfi1/smoke1 用一次性脚本补归档，`GET /api/experiments` 可见）。
+  上线前跑完的三轮 rapfi1/smoke1/x1 用一次性脚本补归档，`GET /api/experiments` 可见 `total` 12 / 2 / 12）。
   仍不进统计的是 dry-run 局与 experiments 行的战术层耗时字段（worker 不统计 per-side tac_ms，
   落样本外）。

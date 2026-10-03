@@ -57,9 +57,19 @@
      `ERROR Unable to open model file` ⇒ 引擎跑缺省配置，这不是回归。
   10. **pwsh 工具管道捕获 ssh stdout 时可能挂起**（stdin 管道保持打开）：本机跑编排 CLI 用
       `cmd /c "node scripts\experiment-batch.mjs … < NUL > log 2>&1"` 包一层即可稳定返回。
-- **第一批战果**：`rapfi::500 vs random:v13-pressure-gate ×12` 12/12 ok、52s/局、Elo(K=16)
-  1503.1 vs 1496.9（各 6 胜，⚠<50 局）；`proxy:v13 vs random ×2` 真上游冒烟 game-1 已归档
-  （archivedId=269、verified=true）。
+   11. **和棋没有 `winner` 字段**：导出/D1 口径里和棋长这样——`result:"和棋（棋盘已满）"`、
+       `winner` 根本不存在（`src/shared/record-map.ts:251-258` 的 `parseResult()` 对和棋返回
+       `winner:null`；D1 `games.winner` 也是 NULL）⇒ `batch-elo.mjs` 原先只认 `winner==='draw'`，
+       把 x1 两局 225 手满盘和棋当「未终局」整局丢掉（Elo 只算 22/24 局、和棋列全 0）。
+       判和棋必须匹配 result 串 `/^和棋(?:（(.+?)）)?\s*$/`（与 parseResult 同形），
+       endReason 从括号里取。这违反铁律 11「不唯胜率」——**和棋漏一局就是 Elo 偏一截**。
+- **战果（截至 2026-10-03，K=16，和棋 0.5；合并 Elo 见 `.work/elo-remote.json`）**：
+  `proxy|v13|0` 1551.9（14 局 10胜2和2负）、`rapfi|-|0` 1503.1（12 局 6-0-6）、
+  `random|v13|0` 1481.4（14 局 6-0-8）、`rapfi|-|500` 1463.6（12 局 2胜2和8负）——
+  即 **proxy·v13 对 rapfi@500ms 合计 6 胜 2 和 4 负**（x1 12 局口径），均 ⚠样本不足(<50)。
+  三轮 26 局全部归档 verified：rapfi1 12 局 + smoke1 2 局 + x1 12 局（含 2 局 225 手满盘和棋）；
+  三轮都已补 `/api/experiments` 行（x1 是旧代码跑的，用 `.work/backfill-experiments.mjs` 事后补，
+  HTTP 200；此后的轮次由 worker 轮末自动补）。
 - **运维事实**：box 上 `/usr/local/bin/{node,npm,npx}` 软链到 `/opt/node/bin`（非登录 shell 找不到 node）；
   仓库 public 可 https clone，但 **box 上没有 github key ⇒ 只能 https 拉、不能 ssh 推**；
   本机 `~/.ssh/id_ed25519` 已授权到 box。

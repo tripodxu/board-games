@@ -27,6 +27,17 @@ describe('gameRecord', () => {
     expect(gameRecord({ ...base, winner: 'white', result: 'white_win' }).blackScore).toBe(0);
     expect(gameRecord({ ...base, winner: 'draw', result: 'draw' }).blackScore).toBe(0.5);
   });
+  /* 真实导出的和棋形状：result=「和棋（棋盘已满）」而 winner 字段根本没有
+     （record-map.ts:255 parseResult() 对和棋给 winner:null；D1 games.winner 也是 NULL）。
+     x1 轮两局 225 手满盘和棋曾因此被整局丢掉 ⇒ Elo 只算 22/24 局。 */
+  it('和棋按 result 串识别（winner 缺失也计 0.5，铁律 11：胜/和/负同报）', () => {
+    expect(gameRecord({ ...base, result: '和棋（棋盘已满）' }).blackScore).toBe(0.5);
+    expect(gameRecord({ ...base, result: '和棋' }).blackScore).toBe(0.5);
+    expect(gameRecord({ ...base, winner: '', result: '和棋（棋盘已满）' }).reason).toBe('棋盘已满');
+  });
+  it('未终局（既无 winner、result 也不是和棋）→ 不计入', () => {
+    expect(gameRecord({ ...base, result: '黑方 获胜（五连）' })).toBeNull();
+  });
   it('winner 缺失 → 不计入', () => {
     expect(gameRecord({ ...base })).toBeNull();
     expect(gameRecord({ ...base, winner: '' })).toBeNull();
