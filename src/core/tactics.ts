@@ -23,11 +23,26 @@
 import { weightedPick } from './weighted.ts';
 import { ids, resolve } from './tactics-versions.ts';
 import type { TacticsVersion } from './tactics-versions.ts';
+import { DEFAULT_BUDGET, budgetOf } from './tactics-budget.ts';
+import type { EngineBudget } from './tactics-budget.ts';
 import type { Engine, JevSerialized, Move } from './types.ts';
 
 /* ------------------------------------------------------------------ *
  * 类型
  * ------------------------------------------------------------------ */
+
+/** 解析后的战术版本：登记表记录 + 运行时缺省补齐（见 resolveVersion）。 */
+interface ResolvedVersion {
+  id: string;
+  mech: Record<string, boolean>;
+  budget: EngineBudget;
+  /** VCF 的 soundness 闸门是否启用（v0–v8 历史为 false，v9 起为 true，见 §3 D4）。 */
+  sound: boolean;
+  /** 开局前几手不做战术（原 `computeTactics` 里的硬编码 4，P1 起随档位）。 */
+  openingMin: number;
+  /** 事实注入口径：`'mech'` = 只注入本档真有的机制句（当前口径），`'all'` = 不过滤（兼容位）。 */
+  promptFacts: 'mech' | 'all';
+}
 
 /** 战术事实（字段名与旧实现逐字一致，直接进 state.tactics）。 */
 export interface TacticsReport {
@@ -129,13 +144,30 @@ function flipTurn<S>(st: S, sideId: string): S {
  *  过去 catch 后返回 `ALL_MECH`：一个写错的档号会让这一手跑满全部机制 —— 标签还写着
  *  那个错档号，既不是它、也不是当前档，实验数据直接失真。现在只允许「什么都不做」：
  *  宁可战术层空转（可观测、可解释），也不许悄悄变成别的档位。登记表本身不可用时同理。
+ *
+ *  P1（冻结层）起还带出该档的**预算 / sound / openingMin / promptFacts**：搜索上限不再从
+ *  模块常量现取，而是随档位走 —— 否则今天调一次参，历史档位的行为就被静默改写。
  */
-function resolveVersion(versionId?: string | null): { id: string; mech: Record<string, boolean> } {
+function resolveVersion(versionId?: string | null): ResolvedVersion {
   try {
     const v: TacticsVersion = resolve(versionId);
-    if (v && v.id) return { id: v.id, mech: (v.mech || {}) as Record<string, boolean> };
+    if (v && v.id) {
+      return {
+        id: v.id,
+        mech: (v.mech || {}) as Record<string, boolean>,
+        budget: budgetOf(v.budget),
+        sound: v.sound !== false,
+        openingMin: typeof v.openingMin === 'number' && v.openingMin >= 0 ? v.openingMin : 4,
+        promptFacts: v.promptFacts === 'all' ? 'all' : 'mech',
+      };
+    }
   } catch (_) { /* 未知档号 / 登记表不可用：按空机制集处理（见上） */ }
-  return { id: ids()[0] || 'v0-off', mech: {} };
+  return { id: ids()[0] || 'v0-off', mech: {}, budget: DEFAULT_BUDGET, sound: false, openingMin: 4, promptFacts: 'mech' };
+}
+
+/** 这一档的机制集（`attachFacts` 的调用方用它决定「哪些指令句该出现」）。 */
+export function mechOf(versionId?: string | null): Record<string, boolean> {
+  return resolveVersion(versionId).mech;
 }
 
 /* ------------------------------------------------------------------ *
@@ -243,13 +275,14 @@ function allowsSustainedAttack(engine: Engine, st: unknown, p: string, oppId: st
 export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands: string[] | null | undefined, versionId?: string | null): TacticsReport {
   const ver = resolveVersion(versionId);
   const M = ver.mech;
+  const B = ver.budget;
   if (tacCache && st && typeof st === 'object') {
     const hit = tacCache.get(st as object)?.get(ver.id);
     if (hit) return hit;
   }
   const sm = st as { moveNum?: number; turn: string };
-  /* 开局前 4 手没有战术可言（也避免把 2-ply 花在无意义的空盘上） */
-  if (typeof sm.moveNum === 'number' && sm.moveNum < 4) return emptyTactics();
+  /* 开局前几手没有战术可言（也避免把 2-ply 花在无意义的空盘上）。P1 起阈值随档位（默认 4）。 */
+  if (typeof sm.moveNum === 'number' && sm.moveNum < ver.openingMin) return emptyTactics();
 
   const side = sm.turn;
   const win: string[] = [];
@@ -298,15 +331,17 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
     res.danger_points_opponent = threatMakers(engine, st, oppSide.id, side, candNotations, false);
   }
 
-  /* VCF（连续冲四将死链）：v7 起；v8 起对防守链逐点试干预；v9 起引擎侧有 soundness 闸门 */
+  /* VCF（连续冲四将死链）：v7 起；v8 起对防守链逐点试干预；v9 起引擎侧有 soundness 闸门。
+     P1 起深度/节点/展开数与 sound 都取自本档预算（v0–v8 的 sound=false = 历史语义）。 */
   if (engine.deepTactics && typeof engine.vcfWin === 'function' && win.length === 0 && block.length === 0 && oppSide && (M.vcfAttack || M.vcfDefense)) {
+    const vcfOpts = { sound: ver.sound, nodeLimit: B.vcfNodeLimit, movesMax: B.vcfMovesMax };
     try {
       if (M.vcfAttack) {
-        const atk = engine.vcfWin(st, side, VCF_PLIES);
+        const atk = engine.vcfWin(st, side, B.vcfPlies, vcfOpts);
         if (atk && atk.win && atk.first) res.vcf_win_you = [atk.first];
       }
       if (res.vcf_win_you.length === 0 && M.vcfDefense) {
-        const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, VCF_PLIES);
+        const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, B.vcfPlies, vcfOpts);
         if (def && def.win && def.first) {
           const cands2: string[] = [def.first];
           const seen = new Set(cands2);
@@ -319,7 +354,7 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
             if (!mv) continue;
             let stAfter;
             try { stAfter = engine.applyMove(st, mv); } catch (_) { continue; }
-            const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, VCF_PLIES);
+            const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, B.vcfPlies, vcfOpts);
             if (!recheck || !recheck.win) { res.vcf_win_opponent = [n]; break; }
           }
         }
@@ -333,7 +368,7 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
   if (engine.deepTactics && typeof engine.vctWin === 'function' && win.length === 0 && block.length === 0
       && oppSide && M.vctAttack && res.vcf_win_you.length === 0) {
     try {
-      const vct = engine.vctWin(st, side, VCT_PLIES);
+      const vct = engine.vctWin(st, side, B.vctPlies, { nodeLimit: B.vctNodeLimit, movesMax: B.vctMovesMax, defusersMax: B.vctDefusersMax });
       if (vct && vct.win && vct.first) res.vct_win_you = [vct.first];
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
   }
@@ -348,7 +383,13 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
       && res.vcf_win_opponent.length === 0) {
     try {
       const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
-      const def = engine.vctDefense(st, side, VCT_PLIES, { cands: candNotations });
+      const def = engine.vctDefense(st, side, B.vctPlies, {
+        cands: candNotations,
+        maxTry: B.vctDefMax,
+        keep: B.vctDefKeep,
+        vcfPlies: B.vcfDefPlies,
+        pressureLimit: B.vctDefPressureLimit,
+      });
       if (def) {
         if (def.chain.length) res.vct_chain_opponent = def.chain;
         if (def.points.length) res.vct_win_opponent = def.points;
@@ -363,12 +404,12 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
   if (engine.deepTactics && typeof engine.fourPressure === 'function' && win.length === 0 && block.length === 0
       && oppSide && M.pressureGate) {
     try {
-      res.pressure_you = engine.fourPressure(st, side);
-      res.pressure_opponent = engine.fourPressure(st, oppSide.id);
+      res.pressure_you = engine.fourPressure(st, side, B.fourPressureLimit);
+      res.pressure_opponent = engine.fourPressure(st, oppSide.id, B.fourPressureLimit);
       if (res.pressure_opponent > res.pressure_you && typeof engine.pressureCut === 'function') {
         /* 只把**模型候选**当前置优先序；不能像别处那样退回「全部合法着法」——那等于按行序盲试，
          * 会把真正有效的削点挤出候选上限（实测 `1be84659` ply24 的 C8 就在第 40 个之后）。 */
-        const cut = engine.pressureCut(st, side, { cands: (cands && cands.length) ? cands : [] });
+        const cut = engine.pressureCut(st, side, { cands: (cands && cands.length) ? cands : [], maxTry: B.pressureCutMax, keep: B.pressureCutKeep });
         if (cut && cut.points.length) res.pressure_cut_points = cut.points;
       }
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
@@ -382,7 +423,7 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
       && oppSide && (M.live3Attack || M.live3Defense)) {
     try {
       const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
-      const l3opts = { fresh: M.live3Fresh === true };
+      const l3opts = { fresh: M.live3Fresh === true, evalMax: B.live3DenyEvalMax };
       if (M.live3Defense) {
         res.live3_opponent = engine.live3Makers(st, oppSide.id, l3opts);
         if (res.live3_opponent.length && typeof engine.live3Deny === 'function') {
@@ -408,8 +449,12 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
  * ------------------------------------------------------------------ */
 
 /** 把战术事实写进序列化结果的 state，并在 move 指令里追加一段语义说明。
- *  state 的三种形态（对象/字符串/数组）都要处理——旧契约允许引擎自选形态。 */
-export function attachFacts(ser: JevSerialized, tactics: TacticsReport, experience?: Experience): void {
+ *  state 的三种形态（对象/字符串/数组）都要处理——旧契约允许引擎自选形态。
+ *
+ *  opts.mech（P1/D5）：给了就**只注入本档真有的机制句**（`M[key] === true`），不给则不过滤
+ *  （兼容老调用方）。句序与句面**逐字不变**，当前档（机制全开）的输出因此与冻结前完全一致。 */
+export function attachFacts(ser: JevSerialized, tactics: TacticsReport, experience?: Experience,
+                            opts?: { mech?: Record<string, boolean> | null }): void {
   const facts: Record<string, unknown> = { tactics };
   if (experience) facts.experience = experience;
   if (ser.state && typeof ser.state === 'object' && !Array.isArray(ser.state)) {
@@ -421,21 +466,34 @@ export function attachFacts(ser: JevSerialized, tactics: TacticsReport, experien
     ser.state.push(JSON.stringify(facts));
   }
   if (ser.questions && ser.questions.move && typeof ser.questions.move.instructions === 'string') {
-    ser.questions.move.instructions +=
-      ' The state includes a `tactics` object: if `winning_points_you` is non-empty, playing one of those points wins immediately this turn. ' +
-      'If `winning_points_opponent` is non-empty, the opponent would win there next turn unless stopped, so play one of those points unless you can win immediately. ' +
-      'If `chance_points_you` is non-empty, playing one creates two winning threats at once (the opponent can block at most one of them), winning within two moves — take it when there is no immediate win or block. ' +
-      'If `vcf_win_you` is non-empty, playing that point starts a forced sequence of consecutive fours leading to victory — take it when there is no immediate win, block, or double-threat above. ' +
-      'If `vcf_win_opponent` is non-empty, the opponent has such a forced sequence; playing that point disrupts it at its entry — prioritize it over quiet moves. ' +
-      'If `vct_win_you` is non-empty, playing that point starts a forced threat sequence that mixes consecutive fours with forcing open threes and wins within five of your moves — take it when there is no immediate win, block, or double-threat above. ' +
-      'If `vct_win_opponent` is non-empty, the opponent has such a mixed forced sequence; playing that point breaks the whole chain (it leaves the opponent with neither a four-chain nor a mixed one), so prefer it over your own open-three attacks. ' +
-      'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ' +
-      'If `live3_opponent` is non-empty, the opponent has points that would create two open-four threats at once (winning within four moves even if you block one); `live3_deny_points` lists the moves that remove that threat — play one of them unless a more urgent item above applies. ' +
-      'If `live3_you` is non-empty and the opponent has no equal or faster threat, playing one of those points creates a double open-four threat of your own, winning within four moves. ' +
-      (tactics.pressure_you || tactics.pressure_opponent
-        ? '`pressure_you` and `pressure_opponent` count how many points would immediately create a four for each side; when `pressure_opponent` is greater than `pressure_you`, the opponent is already weaving a net of fours while your own open-three attack would only be a forcing move — play `pressure_cut_points` instead (the point that leaves the opponent with the fewest four-making points), not `live3_you`. '
-        : '') +
-      (experience ? 'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ' : '');
+    const M = opts && opts.mech ? opts.mech : null;
+    const on = (k: string): boolean => !M || M[k] === true;
+    let ins = '';
+    if (on('win')) ins +=
+      ' The state includes a `tactics` object: if `winning_points_you` is non-empty, playing one of those points wins immediately this turn. ';
+    if (on('block')) ins +=
+      'If `winning_points_opponent` is non-empty, the opponent would win there next turn unless stopped, so play one of those points unless you can win immediately. ';
+    if (on('threat')) ins +=
+      'If `chance_points_you` is non-empty, playing one creates two winning threats at once (the opponent can block at most one of them), winning within two moves — take it when there is no immediate win or block. ';
+    if (on('vcfAttack')) ins +=
+      'If `vcf_win_you` is non-empty, playing that point starts a forced sequence of consecutive fours leading to victory — take it when there is no immediate win, block, or double-threat above. ';
+    if (on('vcfDefense')) ins +=
+      'If `vcf_win_opponent` is non-empty, the opponent has such a forced sequence; playing that point disrupts it at its entry — prioritize it over quiet moves. ';
+    if (on('vctAttack')) ins +=
+      'If `vct_win_you` is non-empty, playing that point starts a forced threat sequence that mixes consecutive fours with forcing open threes and wins within five of your moves — take it when there is no immediate win, block, or double-threat above. ';
+    if (on('vctDefense')) ins +=
+      'If `vct_win_opponent` is non-empty, the opponent has such a mixed forced sequence; playing that point breaks the whole chain (it leaves the opponent with neither a four-chain nor a mixed one), so prefer it over your own open-three attacks. ';
+    if (on('threat')) ins +=
+      'If `danger_points_opponent` is non-empty, the opponent would create such a double threat next turn unless stopped, so block one of those points now (after handling any immediate win or block above). ';
+    if (on('live3Defense')) ins +=
+      'If `live3_opponent` is non-empty, the opponent has points that would create two open-four threats at once (winning within four moves even if you block one); `live3_deny_points` lists the moves that remove that threat — play one of them unless a more urgent item above applies. ';
+    if (on('live3Attack')) ins +=
+      'If `live3_you` is non-empty and the opponent has no equal or faster threat, playing one of those points creates a double open-four threat of your own, winning within four moves. ';
+    if (on('pressureGate') && (tactics.pressure_you || tactics.pressure_opponent)) ins +=
+      '`pressure_you` and `pressure_opponent` count how many points would immediately create a four for each side; when `pressure_opponent` is greater than `pressure_you`, the opponent is already weaving a net of fours while your own open-three attack would only be a forcing move — play `pressure_cut_points` instead (the point that leaves the opponent with the fewest four-making points), not `live3_you`. ';
+    if (experience) ins +=
+      'The state also includes `experience`: first_player_win_rate over past games reaching this same opening; weigh it when judging quiet moves. ';
+    ser.questions.move.instructions += ins;
   }
 }
 

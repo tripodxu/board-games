@@ -19,6 +19,33 @@
 
 ---
 
+## 2026-10-03 · P1 冻结层：档位自带预算，注入句按档裁剪（零行为变更对照 1800 行 0 差异）
+
+- **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` D1/D3/D4/D5）**：新增
+  `src/core/tactics-budget.ts`（`EngineBudget` 15 个上限 + `DEFAULT_BUDGET` 逐字冻结 + `BUDGET_KEYS` +
+  `budgetOf()` + `sameBudget()`）；15 条档位记录各增 `budget`/`sound`/`openingMin`/`promptFacts`/`fidelity`
+  （统一 `FROZEN` 缺省，逐档只写 `sound`/`fidelity`）；预算经 opts 下到 `src/core/engines/gomoku.ts` 的五处
+  （`vcfWin` 的 `sound`/`nodeLimit`/`movesMax`、`live3Deny` 的 `evalMax`、`vctDefense` 的
+  `keep`/`vcfPlies`/`pressureLimit`、`pressureCut` 的 `keep`）；`attachFacts()` 增 `opts.mech` 逐句过滤，
+  `src/core/jev/client.ts` 传 `mechOf(opts.tacticsVersion)`（与 `computeTactics` 同一解析路径）。
+- **关键纪律**：① **缺省 = 历史常量**，引擎所有 opts 缺省时行为逐字不变；② 预算**只减不增**（AGENTS.md 规则 10），
+  加新上限必须同步 `BUDGET_KEYS`；③ `budgetOf()` 对 0/负数/NaN **回落默认**——「预算写错的后果只能是少看见」；
+  ④ `sound` 记的是**历史事实**（v0–v8 上线时没有闸门），不是「推荐值」，`selfTest()` 断言 `v.sound === (rank >= 9)`。
+- **怎么证的（三段证据，脚本都在 gitignored `.work/`）**：① 基线与对照 —— `.work/p1-fidelity-check.mjs`
+  在干净 HEAD `446f976` dump 15 档 × 120 真实归档局面（1800 行，`{tac, ins}`），改后同脚本复跑 +
+  `.work/p1-fidelity-diff.mjs` ⇒ **`tac` 与 `ins` 全部 0 差异**（比预告更强：v7/v8 的 soundness 差异面在这 120
+  个局面里没触发）；② 过滤量化 `.work/p1-mech-filter-probe.mjs`（40 局面）⇒ v12–v14 **0 差异**、v11 少 9600 字符、
+  v10 19360、v7–v9 37560、v3–v6 51280、v1/v2 67520、v0 79200，丢的句子与机制表严格对应（v11 只丢
+  `vct_win_opponent`、v0 12 句全丢）；③ sound 正对照（单测）——哨兵局面（守方堵点造四反杀）缺省不报胜、
+  `sound:false` 报出 `F5→F6→E5`，档位级 v7 报 `F5` / v9 不报，`nodeLimit:1` 搜不出 ⇒ 预算与闸门真到了引擎。
+- **教训 / 坑**：① 对照脚本的 `ins` 口径是**不带 `mech` 的旧调用**，它只能证明「句面逐字未改」，
+  **过滤效果必须另立探针**（否则会误以为 D5 没生效）；② 归档 JSON 的 `game` 是中文显示名，引擎 id 在 **`gid`**，
+  读错会得到「没有可回放的归档局面」；③ 测试里 `versionTag(undefined)` 必须仍显示当前档（宽容改造时先红过
+  3 条 duel 用例）；④ 一次性批量改 15 条记录用脚本（`.work/p1-versions-patch.mjs`）比手改安全，
+  但改完必须 `tsc` + `selfTest()` + 逐档抽查。
+- **数字**：`node test/engines/run.mjs` **148/148**（原 144，+4 例 P1）；`npx vitest run` **38 文件 / 399 例**；
+  `npx tsc --noEmit` 干净。**仍待 P2**：`test/parity/tactics-fingerprints.json` 指纹冻结 + 故意改预算试红。
+
 ## 2026-10-03 · P0/P0b 落地：静默换档封死 + 实验面两道防污染闸门 + 报表带 Wilson 区间
 
 - **做了什么（P0，plan `2026-10-03-tactics-fidelity-and-elo-ladder` D2 + 卫生包①②）**：

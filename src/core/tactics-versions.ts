@@ -18,6 +18,8 @@
  * 比较里才需要，而那个比较随审计台账一起退役了）。
  */
 import { assert } from './assert.ts';
+import { BUDGET_KEYS, DEFAULT_BUDGET } from './tactics-budget.ts';
+import type { EngineBudget } from './tactics-budget.ts';
 
 export interface TacticsVersion {
   id: string;
@@ -30,6 +32,17 @@ export interface TacticsVersion {
   games: number;
   gamesVerified: number;
   note: string;
+  /** P1 冻结层：本档的搜索上限。**改它就等于改历史** —— 要变只能新开一档（见 tactics-budget.ts）。 */
+  budget: EngineBudget;
+  /** VCF soundness 闸门是否启用。**记的是历史事实**：v0–v8 上线时没有这道闸门（false），v9 起有（true）。 */
+  sound: boolean;
+  /** 开局前几手直接判「无战术」（原硬编码 4）。 */
+  openingMin: number;
+  /** 事实注入口径：`'mech'` = 只注入本档真有的机制句。 */
+  promptFacts: 'mech' | 'all';
+  /** 冻结保真度：`'exact'` = 预算/语义与上线时逐字一致；`'restored'` = 有证据复原；
+   *  `'approximate'` = 用当前常量近似（P3 考古前的默认，别拿它当「当时就是这样」）。 */
+  fidelity: 'exact' | 'restored' | 'approximate';
 }
 
 /* commitAt = git log %ci 实测（北京时间）。
@@ -42,51 +55,69 @@ export interface TacticsVersion {
    **现在判一局跑的是哪一版，只看数据自带的版本声明**：棋谱里的 `meta.code`
    （D1 的 `games.code_version` 列，导入时逐字落库）与每手 `ai.tv`。
    没有声明的局就是「未知」，不许再按文件名/落库时间猜（见 test/core/attribution.spec.ts）。 */
-export const VERSIONS: TacticsVersion[] = [
-  { id: 'v0-off', name: '无战术基线', rank: 0, commit: '678b701 之前', commitAt: '2026-09-29 14:21 前',
-    date: '2026-09-29', mech: {}, games: 0, gamesVerified: 2,
+/** P1 冻结层的**统一缺省**：三条与档位无关的字段（预算 = 冻结当天常量逐字 / 开局短路 4 手 / 只注入本档真有的机制句）。
+ *  逐档只写自己偏离默认的 `sound` 与 `fidelity` —— 预算真要变，必须新开一档并显式写 `budget`（见 tactics-budget.ts）。 */
+const FROZEN = { budget: DEFAULT_BUDGET, openingMin: 4, promptFacts: 'mech' as const };
+
+export const VERSIONS: TacticsVersion[] = [  { id: 'v0-off', name: '无战术基线', rank: 0, commit: '678b701 之前', commitAt: '2026-09-29 14:21 前',
+    date: '2026-09-29', mech: {},
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 0, gamesVerified: 2,
     note: '基线：战术层上线前纯概率走子（92e38e6→1da4d8a 区间）。战术层上线前的对局未归档棋谱，games=0；此档仍须在表内——它是「战术层净贡献」归因的对照组。' },
   { id: 'v1-facts', name: '胜/挡', rank: 1, commit: '678b701', commitAt: '2026-09-29 14:21',
-    date: '2026-09-29', mech: { win: true, block: true }, games: 0, gamesVerified: 0,
+    date: '2026-09-29', mech: { win: true, block: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 0, gamesVerified: 0,
     note: '战术保险初版：自己一步能赢直接赢，对方一步能赢必须挡。无归档棋谱（新版实验设施补测对象）。' },
   { id: 'v2-open4', name: '活四级', rank: 2, commit: '15996b1', commitAt: '2026-09-29 16:08',
-    date: '2026-09-29', mech: { win: true, block: true, open4: true }, games: 0, gamesVerified: 0,
+    date: '2026-09-29', mech: { win: true, block: true, open4: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 0, gamesVerified: 0,
     note: 'criteria 战术标签契约：引擎代读棋盘打标签，活三/活四识别不再靠模型猜。无归档棋谱。' },
   { id: 'v3-make2', name: '造杀/拆杀', rank: 3, commit: 'e086742', commitAt: '2026-09-29 16:39',
-    date: '2026-09-29', mech: { win: true, block: true, open4: true, threat: true, parry: true }, games: 0, gamesVerified: 0,
+    date: '2026-09-29', mech: { win: true, block: true, open4: true, threat: true, parry: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 0, gamesVerified: 0,
     note: '2-ply 扩展（用户补丁）：threat 造杀点（自己两步胜）+ parry 拆杀点（对方双杀点）。无归档棋谱。' },
   { id: 'v4-parry3', name: '活三预挡', rank: 4, commit: 'd10fd1f', commitAt: '2026-09-29 17:11',
-    date: '2026-09-29', mech: { win: true, block: true, open4: true, threat: true, parry: true, parry3: true }, games: 0, gamesVerified: 0,
+    date: '2026-09-29', mech: { win: true, block: true, open4: true, threat: true, parry: true, parry3: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 0, gamesVerified: 0,
     note: '败局复盘驱动：抢 deny:open4/deny:live3 标签点。与 v5 仅差 safeSort 内部排序，棋谱标签不可分——按落库时间归 v5 窗口（21 局）。' },
   { id: 'v5-safesort', name: '拆杀安全排序', rank: 5, commit: '87beda6', commitAt: '2026-09-29 17:41',
-    date: '2026-09-29', mech: { win: true, block: true, open4: true, threat: true, parry: true, parry3: true, safeSort: true }, games: 21, gamesVerified: 0,
+    date: '2026-09-29', mech: { win: true, block: true, open4: true, threat: true, parry: true, parry3: true, safeSort: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 21, gamesVerified: 0,
     note: '层数不变，parry 层内部升级：多 danger 并存时 3-ply 试走挑最安全的。9/29 17:51–19:28 落库 21 局（11 局人机/机机 + 10 局 exp-20260929105234/exp-20260929111222，proxy vs random），parry3 标签实证 ≥v4。' },
   { id: 'v6-parry4', name: '冲四预挡', rank: 6, commit: 'f48d052', commitAt: '2026-09-30 10:42',
-    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, parry: true, parry3: true, safeSort: true, parry4: true }, games: 0, gamesVerified: 0,
+    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, parry: true, parry3: true, safeSort: true, parry4: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 0, gamesVerified: 0,
     note: 'deny:four 冲四预挡（Rapfi 复盘：放任冲四制造点会被连续单杀逼迫）；同期加入禁手模式 gomoku-pro。与 v7 相隔 1 分钟，无归档棋谱。' },
   { id: 'v7-vcf', name: 'VCF 攻防', rank: 7, commit: '57a9508', commitAt: '2026-09-30 10:43',
-    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true }, games: 4, gamesVerified: 20,
+    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 4, gamesVerified: 20,
     note: 'VCF 威胁空间搜索接入：7 ply / 4000 节点，层数 5→9，vcfAttack/vcfDefense 插在 threat 与 parry 之间。exp-20260930025135（proxy vs rapfi，10:53–10:57 落库）4 局，vcfAttack/vcfDefense 标签实证。' },
   { id: 'v8-vcf-try', name: 'VCF 逐点试', rank: 8, commit: '9cf4a88', commitAt: '2026-09-30 11:41',
-    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true }, games: 3, gamesVerified: 3,
+    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true },
+    ...FROZEN, sound: false, fidelity: 'approximate', games: 3, gamesVerified: 3,
     note: '层数不变，vcfDefense 补丁：链首占不住时逐点试干预。两组数据要分开读：exp-20260930084500（proxy vs rapfi，16:46–16:54 落库）3 局=**窗口推定**，均无 meta；本轮 A/B 的 3 个 v8 阵营位（每手 ai.tv 实证，gamesVerified 指的就是它们）。' },
   { id: 'v9-vcf-sound', name: '防伪胜', rank: 9, commit: 'a16fdd9', commitAt: '2026-09-30 16:58',
-    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 26, gamesVerified: 16,
+    date: '2026-09-30', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'approximate', games: 26, gamesVerified: 16,
     note: 'vcfWin soundness 修复：引擎层双杀短路前过守方反杀闸门（gomoku.defenderWinsFull）+ 棋谱归因 meta（codeVersion/aiMoveMeta/aiGameMeta）。**快照口径（已退役）**：当时 `games: 26` 是按文件名时间窗算出来的，新棋谱会持续落进本档窗口，所以只记到改表那一刻；实时局数看「棋谱归档」面板。**gamesVerified=4 才是真跑过本档的局**：3 局机机 A/B（jev-v8-vs-jev-v9 / jev-v9-vs-jev-v8 ×2）+ 1 局人机（jev-v9-vs-jev-v9），每手 ai.tv 实证。**当时「归组按时间窗、不按内容」是错的**：部署滞后期间落库的 20 局（meta.code=0.7.0）被窗口算进本档，实证却是 v7 档——P7 已删掉时间窗口径与滞后台账，归因只看 `meta.code` / 每手 `ai.tv`（D1 的 `code_version` 列）。**gamesVerified 4→16**：2026-10-02 的 v10 对照实验里有 12 局跑的是本档（tag exp-20261001174212 4 局 + exp-20261001181244 8 局，每手 `ai.tv` = v9-vcf-sound）。' },
   { id: 'v10-live3', name: '深活三攻防', rank: 10, commit: '8751070', commitAt: '2026-10-02 01:40',
-    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 12,
+    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'approximate', games: 0, gamesVerified: 12,
     note: '4-ply 活三真推演（用户要求：分析第九版与搜索算法对弈的棋谱后优化）。引擎新增 `live3Makers` / `live3Deny`：把「活三制造点」从 labelPoint 的连续 XXX 模式匹配升级成与 fiveCompletions 同一把尺的推演——L2 活四制造点（落子后 ≥2 个成五点）之上再叠 L3（落子后 ≥2 个 L2，对手只能挡一个），跳活三 / 斜向组合 / 带空隙的四都能认出来；接管链插在 vcfDefense 与 parry 之间，攻击层要求对手没有 2 手剑（`danger_points_opponent` 为空）才抢。**依据（27 局 rapfi 归档复盘）**：rapfi 胜 21 局里只有 2 局是 7-ply VCF 链将死，但 27/27 局都出现过「对手能造活三」的局面；proxy 在首次可用手里拆掉 13 局 / 漏掉 14 局，漏的 12 局是执白在第 6 手放行黑方反对角线活三（黑三子 H8/E11/B14 同在 r+c=14 上，拆点 F10/D12 是跳活三，v9 的连续三模式认不出、parry3 的 deny:live3 标签也打不出来）。**对照实验（2026-10-02，rapfi@500ms，黑白交替，两臂各 12 局）**：本档 **6 胜 4 和 2 负（得分率 67%，执黑 4 胜 2 负 / 执白 2 胜 4 和 0 负）**，v9 同条件 **3 胜 0 和 9 负（25%）**；live3 两层在本档 12 局里接管 168 手（live3Attack 120 / live3Defense 48），v9 同批对手零接管；平均手数 55→98，4 局 225 手满盘和棋。**同门直连对照（2026-10-02，两侧同渠道同模型、唯一变量是战术档，12 局黑白交替，tag exp-20261002080446）**：本档 **3 胜 4 和 5 负（得分率 41.7% · 不败率 58.3%；执黑 3 胜 1 和 2 负 / 执白 0 胜 3 和 3 负）**，v11-vct 同条件 5 胜 4 和 3 负（不败率 75.0%）——v10 执白一胜未得，差距集中在白方。' },
   { id: 'v11-vct', name: '连续威胁搜索', rank: 11, commit: '638f844', commitAt: '2026-10-02 13:25',
-    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 24,
+    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'approximate', games: 0, gamesVerified: 24,
     note: 'VCT（连续威胁搜索）：用户要求做第十一版。引擎新增 `vctWin`——把 vcfWin 的冲四链扩展成「冲四 + 活三逼迫」，攻方 5 手 / 每层 10 手 / 3000 节点 / 守方应手 >6 不当作逼迫手（三个上限由 586 个真实回合标定：与初版 14/6000/∞ 看见同样 55 手必胜链，平均 607→422ms、p90 2430→1636ms）。冲四＝守方唯一堵点（双四当场胜）；活三＝落子后**新造出** ≥2 个必胜点，守方应手不靠「堵端点」而是精确枚举（vctDefusers：落此点后攻方再无必胜点），并要求对手当下没有冲四可走（否则他反先一步成五）。**依据（v10 对照实验 12 局逐手离线复算，独立实现交叉核对）**：v10 臂 586 个代理回合里，7-ply 纯冲四有杀 22 手、11-ply 补出 2 手，而 VCT 42 手——**只有 VCT 看得见的 20 手分布在 7 局，其中 18 手连 11 ply 纯冲四也看不见**；这 20 手当时走的几乎全是启发式 `live3Attack`（与 VCT 首步不同），其中 2 局因此和棋（3cc54941 #20/#22、0661aa24 #92/#102/#104）、1 局负（7bfba6f2 #23/#25/#27）、4 局胜。v9 臂同口径只有 13 手（6 局）。**同期纠正的语义**：活三的两个端点互斥（守方堵一端，另一端即失效），所以「≥2 个必胜点＝4 手内必胜」只在两点互相独立时成立（实测「真双威胁」24 局 0 次）；活三的正确性质是**逼迫**，VCT 正是把这种逼迫串起来。接管链插在 vcfAttack 与 vcfDefense 之间（同属强制胜，排在防守之前）。**对照实验（2026-10-02，单臂 12 局 vs `rapfi@500ms`，黑白交替，tag exp-20261002055817，上线版本 `1.0.0+638f844`）**：本档 **10 胜 0 和 2 负（得分率 83.3%，执黑 5 胜 1 负 / 执白 5 胜 1 负）**，同条件 v10 6 胜 4 和 2 负（67%）、v9 3 胜 9 负（25%）⇒ 把 v10 的 4 局满盘和棋里的一部分转成了胜局。平均手数 **34**（逐局 27/36/27/32/33/57/34/24/39/32/29/38；v10 臂 98、v9 臂 55）——对局从「长和棋」变「短分胜负」，**12 局零和棋**。实证口径：`game_moves` 里 `v11-vct` **12 局 / 206 手**，与本轮 206 次上游调用逐一手数交叉一致（每手 `ai.tv` 实证），故 `gamesVerified = 12`。**同门直连对照（2026-10-02，两侧同渠道同模型，唯一变量是战术档，12 局黑白交替，tag exp-20261002080446）**：本档 **5 胜 4 和 3 负（得分率 58.3% · 不败率 75.0%；执黑 3 胜 3 和 0 负 / 执白 2 胜 1 和 3 负）**，v10 同条件 **3 胜 4 和 5 负（41.7% · 不败率 58.3%；执黑 3 胜 1 和 2 负 / 执白 0 胜 3 和 3 负）**——两侧执黑战绩相同，净胜来自白方；4 局和棋全是 225 手满盘（同门互攻不穿，对照打 Rapfi 的零和棋可见和棋率由对手强度决定），两侧 `parry4` 合计 160 手 ⇒ 下一版入口在「无强制胜时的防守与长线取势」。**计时轮（2026-10-02，再打一次 `rapfi@500ms`，tag exp-20261002094817，`tac_ms` 上线后首轮）**：本档 **9 胜 0 和 3 负（得分率 = 不败率 75.0%，12 局零和棋，平均 29 手）**，与上一轮同口径的 83.3% 同量级；**单步成本第一次被拆开**——`game_moves.ms` 均值 8730ms（最坏 43423ms）里，战术层 `tac_ms` 均值 **402ms** / 最坏 4474ms（175 手样本），即**战术层约占单步墙钟 4.6%**，其余是模型往返与重试等待；对手 Rapfi 的固定搜索预算是 500ms/手 ⇒ 本档的棋力增量不是靠更大的搜索预算换来的。逐手复盘：175 个 v11 回合里 72 手（41%）存在必胜链、69 手走了链首步、机会真丢 0 手；**3 局负局（#5/#6/#8）全程 0 次报出必胜链** ⇒ 输在「算不出强制胜」的局面。**gamesVerified 12→24** = 两轮对照实验各 12 局，每手 `ai.tv` 实证。' },
   { id: 'v12-vct-def', name: '连续威胁防守', rank: 12, commit: '472e228', commitAt: '2026-10-02 19:48',
-    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 36,
+    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'approximate', games: 0, gamesVerified: 36,
     note: '拆对手的连续威胁链（用户要求：根据所有已跑的实验整合出下一版战术优化，并先过一遍已有棋谱看回归风险）。引擎新增 `vctDefense`——v11 的 `vctWin` 只回答「我有没有必胜链」，防守侧仍只有 v9 的 `vcfDefense`（只验纯冲四链）；对手把链换成「活三逼迫 + 冲四收尾」，vcfDefense 就放行了。**依据（两轮 v11 vs `rapfi@500ms`、48 个「我方无杀而对手有链」的回合，逐手离线复算）**：实走拆掉 33 个、漏 15 个；漏的 15 个里只有 **2 个存在能拆的点却没走**——计时轮 `#8 f463acff` ply24 → **K9**（实走 I11/parry）、首轮 `#6` ply52 → **K8**（实走 G10/parry），其余 13 个连全盘候选都拆不掉（点无回头路，局面已输）。四种候选生成策略对照（只试链首 12/20 与 19/28；链首 + 链上各点同数；**加「链点的车氏 ≤2 邻域」13/20 与 21/28**；全部邻近空点按到链距离排序同样 13/20、22/28）⇒ 候选集取「链上各点 → 链点邻域 → 全部邻近空点（按到链距离升序）」、上限 12 个。判据比 vcfDefense 严：落子后对手**既无 VCF(7) 也无 VCT(9)**（外加「没有一手成五」兜底）。拆法不止一种时按 1-ply 取势排序（对手造四点 ×2 + 活三点更少者优先，模型候选优先）——实测有连拆六条链仍被穿透的局，随手拆一个常把主动权交回去。接管链插在 vcfDefense 与 live3Attack 之间（对手的强制胜比我们先手造活三快），闸门是「我方无 VCF/VCT 必胜链 且 vcfDefense 没找到拆点」，故只在「我方无杀而对手有链」的回合开火（实测占代理回合 ≤11%）。**对照实验（2026-10-02，单臂 12 局 vs `rapfi@500ms`，黑白交替，tag exp-20261002115126，上线版本 `1.0.0+472e228`）**：本档 **12 胜 0 和 0 负（得分率 = 不败率 100%，执黑 6 胜 0 负 / 执白 6 胜 0 负）**，平均手数 **33**（28–50），逐手接管 198 手：无接管 47 / vctAttack 38 / vcfAttack 28 / live3Attack 25 / vcfDefense 15 / block 12 / open4 12 / win 12 / live3Defense 6 / parry4 3。**如实说明**：本档新增的 `vctDefense` 在这一轮 **0 次开火**——198 个代理回合里我方有杀 78、对手有链的机会 42，实走 **42/42 全数拆掉**，且全部由既有层（vcfDefense / block / parry）完成，所以这个 12-0 是攻击层与老防守层打出来的；`vctDefense` 的实证仍是离线回归扫描（36 局 983 回合 → 防守机会 118 / 老层已认领 51 / 开火 13 / 真救 3 / 本就拆掉 10 / 拆不掉 0）与夹具用例，**留给抬高 Rapfi 思考档后的下一轮验证**。成本：`tac_ms` 中位 241ms / 均值 381ms / p90 896ms / 最坏 4161ms，单步墙钟中位 743ms / 均值 1029ms ⇒ 战术层占单步均值 **37.0%**（本轮上游极快，故占比远高于 v11 计时轮的 4.6%）。**抬高 Rapfi 思考档后两轮（按 m08704，同口径单臂 12 局）**：`rapfi@1000ms`（tag exp-20261002121700）**10 胜 0 和 2 负（83.3%）**、平均 40 手，239 个代理回合里本层**开火 1 次**（给了点但没走，实走也拆掉），`tac_ms` 均值 695ms / 最坏 6843ms、占单步均值 51.6%；`rapfi@2000ms`（tag exp-20261002123631）**7 胜 1 和 4 负（62.5%）**、平均 60 手，并首次出现 225 手满盘和棋，363 个代理回合里本层**实走即拆点 1 次**（实走就是它给的点，链确实被拆掉），`tac_ms` 均值 815ms / 最坏 5362ms、占单步均值 54.0%。**三轮合计真救 0、拆不掉 9+14 手逐条都是「全盘没有拆点」，六局负局全程「我方有杀 0」** ⇒ 本层是「堵住最后一个可救点」的保险而非强度杠杆；`rapfi@500ms` 档那条逐版上升曲线（25% → 67% → 75~83% → 100%）抬档后回落为 83.3% → 62.5%，下一版的杠杆是压力闸门（对手造四点数压过我们时别抢自己的活三），不是继续加深搜索。' },
   { id: 'v13-pressure-gate', name: '压力闸门', rank: 13, commit: '10762a6', commitAt: '2026-10-02 23:16',
-    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 52,
+    date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'approximate', games: 0, gamesVerified: 52,
     note: '压力闸门（用户要求：根据所有已跑的实验整合出下一版战术优化）。新增一层 `pressureGate`（削对手做四点）：**对手的做四手数（`pressure_opponent`）大于我们（`pressure_you`）时，先走削点（`pressure_cut_points`）再谈进攻**。引擎新增两个方法：`fourPressure(st, sideId)`（车氏 ≤2 邻域内落子即成冲四的空点数，精确计数不早退——早退会让两侧同时触顶而误判「不落后」）与 `pressureCut(st, sideId)`（**候选序 = 模型候选点 → 对手做四点的车氏 ≤2 邻域（按距离升序）→ 其余邻近空点**，上限 `PRESSURE_CUT_MAX = 120`；每个候选做 1-ply 模拟，只有「落子后对手做四手数**严格下降**」才算削点，并列时取自己做四手数更大者，保留前 `PRESSURE_CUT_KEEP = 3` 个。**候选序是硬要求**：`.work/v13-cut-debug.mjs` 实测按行序盲试、或让调用点在候选为空时兜底成「全部合法着法」，会把 `1be84659` ply24 的全盘最优削点 `C8`（对手做四 6 → 4）挤出候选上限，削点集变空集——表现为「25 个压力落后回合 / 0 个有削点」）；战术层把它们算成 `pressure_you` / `pressure_opponent` / `pressure_cut_points` 三个事实字段。**依据（六轮 rapfi 对照 / 1787 个 Jev 回合 / 探针 `.work/v13-pressure-probe.mjs`，独立实现量双方做四手数）**：`live3Attack` 实走 205 手（11.5%），其中 **39 手（19.0%，占全部回合 2.2%）在落子前对手做四手数已超过我们**；这 39 手实走之后对手仍握 ≥2 个做四点（双四威胁 = 2 手胜）的有 **37 手**，而改走「拆对手活三点」能把对手做四手数压得更低的有 **37/39、0 手更差**，平均 −1.87 个，双四威胁从 37 手降到 **7 手**；候选点可用率 39/39（引擎的候选集是探针那套活三点的**超集**，度量同一 ⇒ 只能找到不差于它的点）。**为什么不是「拦下 live3Attack 让它落到 live3Defense」**：实测那 5 个闸门回合（v12@500ms 轮 `exp-20261002115126` 的 25 手 live3Attack 里）`live3_deny_points` **全为空**——引擎 `live3Deny` 的候选与判据比独立实现严，拦下来只会掉到 parry 系，削不到对手压力、复现不出 −1.87，故闸门自带削点搜索。语义依据：ADR-0015 已修正「活三＝4 手内必胜」的旧口径（两个 L2 点互斥，真双威胁实测 0 次），活三只是**逼手**，对手做四点密集时才真危险。**漏杀风险为零**：真正的强制胜（VCF / VCT）在接管链上排得更前，本层只在「没有算得出的必胜链」时才算；**削点为空时本层不开火，行为与 v12 逐字一致**（最小回归面）。**开火四条**：`M.pressureGate` + 有削点 + 压力落后 + **`danger_points_opponent` 为空**（安全线：削点搜索只认手数、不认「对手下一步就有杀」，`test/engines/tactics.test.mjs` 的 p18 夹具「双 danger 并存」抓到过反例——当时它会挑走 `I9`；加上这条守卫后与 `live3Attack` 站同一条线，危险局面交回 `parry` / `safeSort`）。**位置**：`src/core/jev/client.ts` 接管链的新分支，插在 `vctDefense` 之后、`live3Attack` 之前（抢活三正是要拦的那一步；也排在 `live3Defense` 之前，因为削点直接压对手做四手数，而 `live3_deny_points` 在实测里经常为空）。**回归扫描（`.work/v13-cut-check.mjs`，三个 v12 回合 = 800 个 Jev 回合逐手重算，回答用户「看看优化是否有回归降低能力的风险」）**：有削点且压力落后 **78 手（9.8%）**、闸门**真能接管 26 手（3.3%）**，其余 52 手被更高层挡住（`vcfDefense` 40 / `parry4` 7 / `vcfAttack` 5 / `open4` 3 / `vctAttack` 3 / `vctDefense` 1 —— 优先级正确，不是漏杀）；对手做四手数 **更优 24 / 持平 54 / 更差 0**、平均 −0.69 个，双四威胁 **45 → 30**；`pressureCut` 单次成本均值 **4.0 ms** / 中位 3 / 最坏 9。**代价（已量化）**：真接管的 26 手里我们自己的做四手数平均 **−1.92 个**、13 手让掉攻势 ⇒ 这是「用攻势换安全」的取舍。**同口径 A/B（tag `exp-20261002160819`，`rapfi@1000ms`，12 局，2026-10-03）**：**9 胜 0 和 3 负（75.0%，对比 v12 同档 10 胜 0 和 2 负 = 83.3%）**——一局之差在 12 局样本里落在噪声内，比分口径在这轮无效；**决定性证据是接管标签 × 局结果的交叉表**：四个进攻类层（`vctAttack` / `open4` / `win` / `vcfAttack`）在 9 个胜局合计命中 **79 手**、3 个负局命中 **0 手**，三局负局的「我方有杀」全为 0 ⇒ **输在「赢不了」而不是「防不住」**，本层是纯防守机制、结构上治不了这个病。**结论：机制按设计工作（对手做四手数确实降、双四威胁确实减）但不是当前瓶颈 ⇒ 保留、不再加码**，下一版转向进攻侧。另有一轮被打断的首轮（tag `exp-20261002154056`，3 局 / 59 手，无实验行）未计入。**20 局档位复核（用户 m10573：各 20 轮）**：`rapfi@1000ms` 20 局 **11 胜 1 和 8 负（57.5% / 不败率 60.0%）**、`rapfi@2000ms` 20 局 **13 胜 2 和 5 负（70.0% / 75.0%）**；本档同档合并 = **32 局 20 胜 1 和 11 负（64.1%）**。⚠️ 同档两轮差 17.5 个百分点（12 局 75.0% → 20 局 57.5%）**大于档位之间的差** ⇒ 比分由上游采样方差主导，20 局仍分辨不出档位效应；能分辨的是机制层。成本（同轮同分母）：战术层 `tac_ms` 中位 240 / 262 ms、均值 661 / 685 ms、最坏 5961 / 7090 ms，两轮一致；「战术层占单步比例」6.9% vs 59.7% **不可跨轮比较**（1000ms 轮有 99 次状态 0 传输错误把上游往返抬到 8854 ms，2000ms 轮 0 次错误、往返仅 462 ms）。逐手复盘（`.work/v12-round-postmortem.mjs`）：1000ms 轮 469 回合 / 我方有杀 82 / 防守机会 124 / 本层开火 1 / 实走拆掉 100 / **真救 0 / 拆不掉 24**；2000ms 轮 598 / 114 / 147 / 开火 2 / 拆掉 131 / **真救 0 / 拆不掉 16** —— **两轮 40 个「拆不掉」回合全部是「全盘没有拆点」**（已经输了的局面），`vctDefense` 两轮合计开火 3 次、真救 0，仍未被实战检验。' },
   { id: 'v14-live3-fresh', name: '活三判据纠偏', rank: 14, commit: 'b6c6921', commitAt: '2026-10-03 11:58',
-    date: '2026-10-03', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 72,
+    date: '2026-10-03', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 72,
     note: '活三判据纠偏（用户指令「继续探索v14」）。**不加层、不加预算**，只把 live3 两层用的判据修成它本来就该有的语义：`live3After` 自 v10 上线起只要求「落子后本方存在 ≥2 个活四制造点（L2）」，**没有要求这些点由这一手新造** ⇒ 本方本来就有活四制造点时，任何一步闲棋都被判成「制造活三」。引擎侧加可选基线 `before`（`l2Set`），`live3Makers` / `live3Deny` 收 `opts.fresh`，战术层按 `M.live3Fresh` 传参；**缺省仍旧口径**，所以 v0–v13 的历史归因与回放逐字不变。**依据（`.work/v14-live3-correct-scan.mjs`，五轮 rapfi 对照共 3864 个回合，逐回合用独立实现交叉核对）**：引擎口径非空 1648 回合（42.7%），其中整集全假 16 回合（占非空 1.0%）；引擎报点 18675 个里 **12676 个（67.9%）是幻影点**；纠正口径**零漏报**（引擎集恒为纠正集的超集）。**影响面用接管层标签实测（`.work/v14-live3-tac-scan.mjs`，同一批 3864 回合）**：`live3Attack` 真接管 289 手、`live3Defense` 122 手，**没有一手落在幻影点上**（411/411 纠正口径仍认，且 `live3Defense` 比的是 `live3Deny` 的 best）；78 手「实走落在幻影点」全部来自其它层或模型自选（`block` 36 / 无接管 33 / `win` 9）⇒ **纠偏不会改变任何一手已发生的决策**，只收窄给模型看的事实面：旧集合非空且与纠正集合不同 **212 手（占我方回合 5.5%）**，其中无接管（模型自选）80 手、整集皆假 16 手。不改规则、不加深搜索、不动层数。**成本**：纠正口径单回合中位 14ms / p90 24ms / 最坏 66ms（对照一次 Jev 往返约 1s），因为它把 baseline 只算一次摊到每个候选上。**同时修掉的是给模型看的事实**：`live3_you` / `live3_opponent` / `live3_deny_points` 从 68% 幻影改成真话（早盘探针 `.work/v14-threat-race.mjs` 五轮 76 局：短胜局早盘真活三 1.4 个 vs 短负 0.6 个，是唯一稳定分型的早盘量）。**如实说明**：这是**纠偏、不是棋力杠杆**——真接管的 411 手在两套口径下判据一致（0 手被改），改变的是 212 手 / 5.5% 回合里注入模型的 `live3_*` 描述从幻影变真话，强度增量在 12 局量级上不可分辨（同档两轮 20 局差 17.5 个百分点 > 任何档位差）；它的价值是「说真话」，后续任何「活三事实」的读数都以本档为准。**抬高 Rapfi 档位后的第二轮（2026-10-03，单臂 20 局 vs `rapfi@2000ms`，黑白交替，tag `exp-20261003050139`，上线版本 `1.0.0+d2f1b1d`，用时 3453s、上游 760 次调用全 200 / HTTP 错 0，in 2 368 081 / out 402 289 tok）**：本档 **9 胜 3 和 8 负（得分率 52.5% · 不败率 60.0%；执黑 5 胜 3 和 2 负 / 执白 4 胜 0 和 6 负）**，平均 76 手（Jev 侧 760 手 / Rapfi 侧 758 手）；三个和局全是 **225 ½手满盘互拆**（#1 `d15ff001` 防守机会 24 次全拆掉）。逐手接管 760 手 = 无接管 266 / `live3Attack` 99 / `block` 94 / `vcfDefense` 67 / `live3Defense` 66 / `vctAttack` 57 / `parry4` 34 / `pressureGate` 25 / `parry3` 17 / `open4` 9 / `win` 9 / `vcfAttack` 8 / `parry` 5 / `vctDefense` 4。成本：`tac_ms` 中位 199ms / 均值 627ms / p90 1955ms / 最坏 6441ms；单步墙钟中位 647ms / 均值 1176ms ⇒ 战术层占单步均值 **53.3%**（逐手平均 36.0%）。落库口径已在线上核实：`black_think` / `white_think` 在 Rapfi 侧写 **2000**、`proxy` 侧留 NULL（`experiments.think_b = 2000`）。**规则 11 的败局交代**：轮级 760 个 Jev 回合里我方有杀 74、防守机会 187、`vctDefense` 开火 1、实走拆掉 153、**真救 0**、拆不掉 **34 手逐条都是「全盘没有拆点」**；**8 个负局全部「我方有杀 0」**（同一个失效模式，没有新缺陷）。链首现：胜局我方 9/9（均值 ½手 13.6）· 对手 8/9（14.3）· 领先占比 39.6%；负局我方 **3/8（74.7）** · 对手 8/8（26.0）· 占比 45.2%；和局我方 **0/3** · 占比 **66.4%**（压力领先却换不出杀）⇒ 与前两轮同型。**跨档位比分不是曲线**（本轮 20 局 / 1s 档 12 局，都低于「同档轮间方差 17.5 个百分点」所需分辨率），本档不宣称跨档强弱，只报事实。**对照实验（2026-10-03，单臂 12 局 vs `rapfi@1000ms`，黑白交替，tag `exp-20261003035953`，上线版本 `1.0.0+b6c6921`，用时 1165s、上游 316 次调用全 200 / HTTP 错 0）**：本档 **9 胜 1 和 2 负（得分率 79.2% · 不败率 83.3%；执黑 5 胜 0 和 1 负 / 执白 4 胜 1 和 1 负）**，平均 52 手（28–225：两负在最前两局 64 / 57 手，其后 8 连胜 + 225 手满盘和）。逐手接管 316 手 = 无接管 107 / `vctAttack` 48 / `live3Attack` 43 / `block` 23 / `vcfDefense` 20 / `live3Defense` 17 / `parry3` 13 / `parry4` 11 / `pressureGate` 9 / `open4` 9 / `win` 9 / `vcfAttack` 5 / `vctDefense` 1 / `parry` 1。成本：`tac_ms` 中位 190ms / 均值 422ms / p90 878ms / 最坏 6494ms；单步墙钟中位 591ms / 均值 913ms ⇒ 战术层占单步均值 **46.2%**（逐手超一半 93 手）——**占比不能跨轮比**：v13 同档轮的 4.9% 差在上游（那轮 66 次 HTTP 错把单步均值抬到 10.1s，本轮 0 错 / 0.9s）。**部署生效实证（`.work/v14-deploy-verify.mjs`，从归档记法独立重放）**：本方 316 手里 live3 两层接管 60 手、**60/60 落在纠正口径内**、旧集与纠正集不同 0 手；事实面 316 回合 = 旧集非空 184（58.2%）· 旧≠纠正 22（**7.0%**，与离线 5.5% 同量级）· 点数 2481 → 972（**幻影 60.8%**）⇒ 线上确实在改给模型看的事实，而一手决策都没改。**两负逐手复盘（规则 11）**：两局全程「我方有杀 0」，防守机会 8 / 11 次各拆掉 5 / 5，其余 3 / 6 手逐条都是「全盘没有拆点」⇒ 输在**更早的织网期没造出自己的杀**（B 型长局：链首现实测我方链首现 ½手 57 或从未出现，对手 9.5）。与 v13 同档的 9 胜 0 和 3 负并列，**差一局的分辨不了**（同档轮间方差实测 17.5 个百分点）。**抬档阶梯两轮（2026-10-03，同口径单臂各 20 局）**：`rapfi@3000ms`（tag `exp-20261003075310`，上线版本 `1.0.0+fe43b16`，用时 2089s、上游 443 次全 200 / HTTP 错 0）**15 胜 1 和 4 负（得分率 77.5% · 不败率 80.0%；执黑 8 胜 0 和 2 负 / 执白 7 胜 1 和 2 负）**，平均 44 手，逐手接管 443 手 = 无接管 128 / `vctAttack` 94 / `live3Attack` 60 / `block` 32 / `vcfDefense` 31 / `live3Defense` 24 / `pressureGate` 18 / `win` 15 / `open4` 14 / `vcfAttack` 12 / `parry4` 8 / `parry3` 4 / `parry` 2 / `vctDefense` 1，`tac_ms` 中位 247ms / 均值 647ms / p90 1595ms / 最坏 5850ms、占单步均值 54.9%；`rapfi@5000ms`（tag `exp-20261003082805`，用时 2898s、上游 496 次全 200 / HTTP 错 0）**12 胜 1 和 7 负（得分率 62.5% · 不败率 65.0%；执黑 8 胜 0 和 2 负 / 执白 4 胜 1 和 5 负）**，平均 50 手，接管 496 手 = 无接管 118 / `live3Attack` 71 / `vcfDefense` 70 / `vctAttack` 63 / `block` 58 / `live3Defense` 34 / `vcfAttack` 16 / `pressureGate` 15 / `parry4` 13 / `win` 12 / `open4` 11 / `parry3` 8 / `parry` 4 / `vctDefense` 3，`tac_ms` 中位 225ms / 均值 792ms / p90 2698ms / 最坏 6762ms、占单步均值 57.7%；两轮 `black_think` / `white_think` 在 Rapfi 侧落库 3000 / 5000、proxy 侧 NULL。**四档阶梯（v14 单臂）**：1000ms 9-1-2（79.2%）· 2000ms 9-3-8（52.5%）· 3000ms 15-1-4（77.5%）· 5000ms 12-1-7（62.5%）⇒ **非单调，「跨档位比分不是曲线」第三次被实测确认**。**规则 11 败局交代（两轮合计 40 局）**：939 个我方回合 · 我方有杀 210 · 防守机会 254 · `vctDefense` 开火 3 · 实走即拆点 1 · 拆掉 210 · **真救 0** · 拆不掉 44（**44/44 逐条都是「全盘没有拆点」**）；两轮共 11 个负局**全部「我方有杀 0」**（整局没造出自己的杀），两个和局各 112 回合、防守机会 17 / 29 全数拆掉。' },
 ];
 
@@ -205,7 +236,18 @@ export function selfTest(): void {
     U(typeof v.note === 'string' && v.note.length > 0, v.id + ' 缺实战依据');
     U(Number.isInteger(v.games) && v.games >= 0, v.id + ' games 必须是非负整数');
     U(Number.isInteger(v.gamesVerified) && v.gamesVerified >= 0, v.id + ' gamesVerified 必须是非负整数');
+    /* P1 冻结层：预算字段一个都不能少（少一个 = 冻结漏了一个口子）、sound/开头/注入口径/fidelity 合法 */
+    for (const k of BUDGET_KEYS)
+      U(typeof v.budget?.[k] === 'number' && Number.isFinite(v.budget[k]) && v.budget[k]! > 0,
+        v.id + ' 的预算字段 ' + k + ' 缺失或非正数');
+    U(typeof v.sound === 'boolean', v.id + ' 的 sound 必须是布尔（记历史事实，不是「推荐值」）');
+    U(Number.isInteger(v.openingMin) && v.openingMin >= 0, v.id + ' 的 openingMin 必须是非负整数');
+    U(v.promptFacts === 'mech' || v.promptFacts === 'all', v.id + ' 的 promptFacts 只能是 mech/all');
+    U(v.fidelity === 'exact' || v.fidelity === 'restored' || v.fidelity === 'approximate',
+      v.id + ' 的 fidelity 只能是 exact/restored/approximate');
   });
+  /* 历史事实断言：v9 之前没有 soundness 闸门（v7/v8 报过不健全的链），v9 起才有 */
+  VERSIONS.forEach((v) => U(v.sound === (v.rank >= 9), v.id + ' 的 sound 与「v9 才有 soundness 闸门」的历史不符'));
   for (let i = 1; i < VERSIONS.length; i++)
     for (const k of MECHS)
       if (VERSIONS[i - 1]!.mech[k]) U(!!VERSIONS[i]!.mech[k], VERSIONS[i]!.id + ' 丢了上级机制 ' + k);

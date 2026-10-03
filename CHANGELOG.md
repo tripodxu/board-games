@@ -27,6 +27,19 @@
 
 ### 新增
 
+- **战术档位可冻结（P1 冻结层，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：新增
+  [`src/core/tactics-budget.ts`](src/core/tactics-budget.ts) —— `EngineBudget`（15 个搜索上限）+ `DEFAULT_BUDGET`
+  （= 冻结当天的常量，逐字）+ `BUDGET_KEYS` + `budgetOf()`（写错/非正数一律回落默认 ⇒ **预算写错的后果只能是少看见**）
+  + `sameBudget()`。15 条档位记录各增 `budget`/`sound`/`openingMin`/`promptFacts`/`fidelity`（统一缺省常量 `FROZEN`，
+  逐档只写偏离项），`selfTest()` 增断言（15 个预算字段齐全且为正、`sound === (rank >= 9)` 记历史事实、`fidelity` 合法）。
+  `computeTactics` 按档下传预算：`vcfWin`（`sound`/`nodeLimit`/`movesMax`）、`live3Deny`（`evalMax`）、
+  `vctDefense`（`keep`/`vcfPlies`/`pressureLimit`）、`pressureCut`（`keep`）、开局短路改读 `openingMin`；
+  `attachFacts()` 增 `opts.mech` **逐句过滤**（句面逐字不变，老档不再收到自己没有的机制句），
+  `src/core/jev/client.ts` 用新增的 `mechOf(opts.tacticsVersion)` 走同一解析路径。
+  **零行为变更证据**：基线取自干净 HEAD `446f976`（15 档 × 120 真实归档局面 = 1800 行），改后复跑同一脚本
+  ⇒ `tac` 与 `ins` **全部 0 差异**；过滤效果量化（40 局面）：v12–v14 文本 0 差异、v11 少 9600 字符、
+  v10 19360、v7–v9 37560、v3–v6 51280、v1/v2 67520、v0 79200；sound 正对照：哨兵局面缺省不报胜、
+  `sound:false` 报出 `F5→F6→E5`，档位级 v7 报 `F5`、v9 不报。引擎套件 **148 例**（+4）、vitest **38 文件 / 399 例**。
 - **实验报表带上不确定度（P0b）**：`scripts/lib/batch-elo.mjs` 新增 `wilson(hits, n, z=1.96)`
   （得分率的 Wilson 95% 区间），`rankTable()` 每行带 `rate/ci/halfPt`，`formatRankTable()` 印
   「95% 区间(Wilson)」列并在样本 < 50 局时追加 `±XX.Xpt ⚠` 与读数纪律注：**20 局/对半宽 ≈ ±20 pt**

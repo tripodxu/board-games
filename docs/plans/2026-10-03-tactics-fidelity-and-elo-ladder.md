@@ -1,6 +1,6 @@
 # 计划：战术「任意版本可回溯」语义冻结 + 远端 Elo 能力阶梯
 
-> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 + P0b 数据卫生与报表口径已完成，P1 起待做）**。
+> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 ✅ / P0b 数据卫生与报表口径 ✅ / P1 冻结层 ✅ 已完成，P2 指纹设施起待做）**。
 > 触发：项目所有者要求（2026-10-03，逐字）：「参考 …/2026-10-03-tactics-coupling-audit.md，这些问题怎么办，我需要战术可以回溯到任意版本，我想要让机器在远端跑 elo 比较各版本的战术以及 rapfi@不同时间真正的能力，给出计划」。
 > 补充要求（2026-10-03 同日，逐字）：「这些也要包含到计划里，可以让这个测试全在云端服务器上本地跑，不连接我自己的 cf worker，减少连接数，但我可以通过 ssh 来检验进度，最终将结果上传到桶中」⇒ ① 上一轮给的「建议打包（五条）」**并入本计划**（见 §3.1）；② 新增 **G3 运行面独立**（见 §1、§4、§6 P4/P4b）。
 > 上游输入：耦合性审计 [2026-10-03-tactics-coupling-audit.md](2026-10-03-tactics-coupling-audit.md)（12 条耦合风险 + §4 两条静默回退坑 + §5 四类不按版本裁剪的漂移）、
@@ -75,11 +75,11 @@
 
 | # | 决策 | 理由 |
 |---|---|---|
-| **D1** | **档位 = 冻结参数记录**：`VERSIONS[i]` 增 `budget`（12 个常量）、`sound: boolean`、`openingMin: number`、`promptFacts: 'mech'`、`fidelity: 'exact' \| 'restored' \| 'approximate'`。传 `tacticsVersion` 即完全决定行为，不再读 HEAD 写死常量 | 审计 §5 的直接结论：不这么做，「回溯」永远是「像当年」而不是「是当年」 |
+| **D1** | **档位 = 冻结参数记录**：`VERSIONS[i]` 增 `budget`（15 个常量）、`sound: boolean`、`openingMin: number`、`promptFacts: 'mech'`、`fidelity: 'exact' \| 'restored' \| 'approximate'`。传 `tacticsVersion` 即完全决定行为，不再读 HEAD 写死常量 | 审计 §5 的直接结论：不这么做，「回溯」永远是「像当年」而不是「是当年」 |
 | **D2** | **两条静默回退都改成显式失败**：`resolve()` 未知 id **抛错**（错误信息附最接近的合法 id）；`resolveVersion()` catch 回落 **`v0-off`（空机制集）**，绝不回落全开 | 审计风险 1/2。A/B 实验的单变量假设不能被无声破坏；「贴 v7 标签跑 v13」是最贵的一类错误 |
-| **D3** | 预算经 **opts** 下传（`VcfOptions`/`VctOptions`/`VctDefenseOptions`/`Live3Options` 已就绪），引擎缺省值**保持不变**（= 今天的常量），只有显式给值才覆盖 | 零行为变更地拿到可冻结性；线上路径与今日逐字一致（P1 用对照测试证明） |
-| **D4** | `sound` 变**活键**：`computeTactics` 的 VCF 块按 `ver.sound` 传 `defenderWinsFull` 开关，v9 之前 = 关 | 审计风险 5；顺带把「v9 起才有 soundness 闸门」这个历史事实写进登记表 |
-| **D5** | `attachFacts()` 按 `ver.mech` 生成事实句，**不再无条件全量追加** | 审计 §5 第 4 条：这是唯一「与机制门正交、任何开关都修不掉」的漂移源，也是老版本 prompt 复原的唯一途径 |
+| **D3** | 预算经 **opts** 下传（`VcfOptions`/`VctOptions`/`VctDefenseOptions`/`Live3Options`/`PressureCutOptions`），引擎缺省值**保持不变**（= 今天的常量），只有显式给值才覆盖 | 零行为变更地拿到可冻结性；线上路径与今日逐字一致（**P1 已证**：15 档 × 120 真实局面逐字节 0 差异） |
+| **D4** | `sound` 变**活键**：`computeTactics` 的 VCF 块按 `ver.sound` 传 `defenderWinsFull` 开关，v9 之前 = 关 | 审计风险 5；顺带把「v9 起才有 soundness 闸门」这个历史事实写进登记表。**P1 已证**：哨兵局面（守方堵点造四反杀）缺省不报胜、`sound:false` 报出 `F5→F6→E5`；档位级 v7 报 `F5`、v9 不报（`test/engines/tactics.test.mjs`） |
+| **D5** | `attachFacts()` 按 `ver.mech` 生成事实句，**不再无条件全量追加** | 审计 §5 第 4 条：这是唯一「与机制门正交、任何开关都修不掉」的漂移源，也是老版本 prompt 复原的唯一途径。**P1 已证**：40 局面 × 15 档，v12–v14 文本 0 差异，越早的档少掉的句子越多（v0 每局丢 12 句 / v11 只丢 `vct_win_opponent`），且丢的句子与该档机制表严格对应 |
 | **D6** | **冻结指纹**：从归档棋谱抽 N≈120 个局面（覆盖 15 档 × 早/中盘），每档记录 `{ply, 层, 落点, facts 摘要}` 为 `test/parity/tactics-fingerprints.json`；`version-freeze.test.mjs` 断言一致，重写需显式 `--write` 且 commit 里说明理由 | 把审计 §3.3「改一处牵多档」从人工审视变成红灯；这是「没被悄悄改掉」的唯一机械证据 |
 | **D7** | 指纹只记**决策**（层 + 落点 + 事实），**不记耗时** | 搜索预算下的耗时天然抖动；记耗时会让测试变成 flaky，反而逼人放宽阈值 |
 | **D8** | 对 v0–v13 做**考古**（逐 commit diff `gomoku.ts`/`tactics.ts` 的常量、门、prompt 逻辑），能确证的填进 `budget/sound/openingMin` 并标 `fidelity:'restored'`；不能确证的标 `fidelity:'approximate'` 并写明缺口 | 「回溯到任意版本」对老档只能靠考古；标不出置信度就等于在猜（违反项目「no data, no guessing」） |
@@ -137,7 +137,7 @@
 
 | 文件 | 内容 | 体量 |
 |---|---|---|
-| `src/core/tactics-budget.ts` | `TacticsBudget` 类型 + 每档预算记录 + `DEFAULT_BUDGET`（= 今日常量，逐字） | ~90 行 |
+| `src/core/tactics-budget.ts` | `EngineBudget` 接口（15 个上限字段）+ `DEFAULT_BUDGET`（= 今日常量，逐字冻结）+ `BUDGET_KEYS`（冻结顺序）+ `budgetOf()`（写错只会回落默认 ⇒ 只能少看见）+ `sameBudget()` | ~90 行 |
 | `test/engines/fingerprint.mjs` | 语料抽取（读 `.work` 归档或用冻结的 120 局面 fixture）+ `--write` 生成指纹 | ~160 行 |
 | `test/parity/tactics-fingerprints.json` | 生成的冻结产物（15 档 × 120 局面） | 生成物 |
 | `test/engines/version-freeze.test.mjs` | 断言指纹一致 + `fidelity` 字段完整性 | ~90 行 |
@@ -157,10 +157,11 @@
 
 | 文件 | 改动 |
 |---|---|
-| `src/core/tactics-versions.ts` | 记录增字段；`resolve()` 改抛错（留 `resolveLenient()` 给 UI 下拉兜底？**不**——UI 只送白名单值，见 P0）；`selfTest()` 增断言（预算字段齐全、`fidelity` 合法、单调继承不变） |
-| `src/core/tactics.ts` | 读 `ver.budget`/`ver.sound`/`ver.openingMin`/`ver.promptFacts` 并下传；`resolveVersion` catch 回落 `v0-off` |
-| `src/core/engines/gomoku.ts` | 5 处搜索方法接受预算 opts（缺省 = 今日常量）；`defenderWinsFull` 受 opts 开关 |
-| `src/core/types.ts` | 预算选项字段补齐（`EngineBudget`），注释写清「缺省 = 历史常量」 |
+| `src/core/tactics-versions.ts` | ✅ 已完成：记录增 `budget`/`sound`/`openingMin`/`promptFacts`/`fidelity`（统一缺省常量 `FROZEN`，逐档只写偏离项）；`resolve()` 抛错 + `tryResolve()` 给展示面（P0）；`selfTest()` 增断言（15 个预算字段齐全且为正、`sound === (rank >= 9)` 的历史事实、`fidelity` 合法、单调继承不变） |
+| `src/core/tactics.ts` | ✅ 已完成：`resolveVersion()` 返回 `{id, mech, budget, sound, openingMin, promptFacts}` 并下传；`mechOf()` 给注入面同一解析路径；`attachFacts()` 增 `opts.mech` 逐句过滤（句面逐字不变） |
+| `src/core/engines/gomoku.ts` | ✅ 已完成：`vcfWin`（`sound`/`nodeLimit`/`movesMax`）、`live3Deny`（`evalMax`）、`vctDefense`（`keep`/`vcfPlies`/`pressureLimit`）、`pressureCut`（`keep`）接受 opts，缺省 = 今日常量 |
+| `src/core/types.ts` | ✅ 已完成：新增 `VcfOptions`；`Live3Options`/`VctDefenseOptions`/`PressureCutOptions` 补齐字段，注释写清「缺省 = 历史常量」 |
+| `src/core/jev/client.ts` | ✅ 已完成：`attachFacts(ser, tactics, experience, { mech: mechOf(opts.tacticsVersion) })` —— 与 `computeTactics` 同一解析路径 |
 | `scripts/experiment-worker.mjs` | `--openings <file>`、`--store local\|d1`、`--device-id`（阶梯默认 `ladder-<batch>`）、**`--upstream direct\|worker`（默认 direct，读 `/root/.jev-key`）**、**`--rate-limit <n>/min`（默认 30）**、每局写 `progress.json`/`events.jsonl`、上游 429 熔断退避 |
 | `scripts/experiment-batch.mjs` | `ladder` 子命令；`--allow-production` 闸门（§3.1 第 1 条）；`--parallel` 仅双本地臂（第 2 条）；`status --watch`（经 SSH 读 `progress.json`，D13）；每轮结束调 `batch-bucket.mjs push`（可 `--no-upload`） |
 | `test/engines/tactics.test.mjs` | 两处「固化为静默回落」的用例改为断言**抛错**；登记表字段断言补全 |
@@ -174,7 +175,7 @@
 |---|---|---|
 | **P0 闸门收紧** ✅ **已完成（2026-10-03）**（~120 行） | D2：`resolve()` 抛错 + `resolveVersion` 回落 `v0-off` + 三个入口（脚本 / UI 下拉 / 远端批量 `parseSpec`）白名单校验，错误信息含最接近合法 id；**并入 §3.1 第 1、2 条**：`--allow-production` 闸门 + `--parallel` 仅双本地臂 | 实测全过：① `node test/engines/run.mjs` **144/144**；② `npx vitest run` **38 文件 / 399 例**（+14：两道闸门 7 例 + Wilson 5 例 + UI 拒绝启动 2 例）；③ `--tacA v12-vct-de` ⇒ 打印「最接近的合法档位：v12-vct-def」+ 15 档全列表、**exit 2**；④ `submit` 不给 `--origin` ⇒ exit 2 并提示 `--allow-production`；⑤ `--parallel` + 含 `proxy` 臂 ⇒ 点名 `A=proxy` 拒绝；⑥ UI 下拉值都在白名单时照常开跑（`test/app/experiment-start.spec.ts` 正对照）。**「边界严格、展示宽容」**：`resolve()` 只在白名单来源处调用，展示/陈旧存档走 `tryResolve()`（`src/core/view/duel.ts` `versionTag`、`src/app/records.ts` 归档分组头、`src/core/persist.ts` `loadSettings()` 就地净化） |
 | **P0b 数据卫生与报表口径** ✅ **已完成（2026-10-03）**（~40 行 + 3 条 SQL + 文档） | §3.1 第 3–5 条 | 实测全过：① 三条历史 tag 回填前先补 `devices` 行（`games.device_id REFERENCES devices(device_id)`）⇒ `update … where device_id is null and experiment_tag in (…)` ⇒ `select count(*) from games where device_id='ssh-batch'` = **26**，26 局 `code_version` 仍为 `dev+nogit`（未猜 sha）；② `wilson()` 落 `scripts/lib/batch-elo.mjs`，20 局/对半宽 **±20.1 pt**，`formatRankTable()` 每行印 `95% 区间(Wilson)` 列 + 样本 < 50 时印 `±XX.Xpt ⚠` 与读数纪律注（用例把 ±20 pt 钉死）；③ `docs/agents/playbooks.md` §7 新增第 12 条「报表只准聚合口径」+ 第 11 条补齐回填 SQL；④ `npm run check:docs` 绿 |
-| **P1 冻结层**（~250 行） | D1/D3/D4/D5：`tactics-budget.ts` + 预算下传 + `sound` 活键 + `openingMin` + `attachFacts` 按 mech | **零行为变更对照**：15 档 × 120 局面，逐档落点/层与改前**逐字一致**（脚本比对，作为 P1 的证据）；`node test/engines/run.mjs` 142 例全绿 |
+| **P1 冻结层** ✅ **已完成（2026-10-03）**（~250 行） | D1/D3/D4/D5：`tactics-budget.ts` + 预算下传 + `sound` 活键 + `openingMin` + `attachFacts` 按 mech | 实测全过：① **零行为变更对照** `.work/p1-fidelity-check.mjs` + `.work/p1-fidelity-diff.mjs`，基线取自干净 HEAD `446f976`、改后同脚本复跑：**15 档 × 120 真实归档局面 = 1800 行，`tac` 与 `ins` 全部 0 差异**（比预告更强 —— v7/v8 的 soundness 差异面在这 120 个局面里没有触发；该口径的 `ins` 是不带 `mech` 的旧调用，只证明「句面逐字未改」）；② **过滤效果** `.work/p1-mech-filter-probe.mjs`（40 局面）：v12/v13/v14 文本 **0 差异**，v11 少 9600 字符、v10 19360、v7–v9 37560、v3–v6 51280、v1/v2 67520、v0 79200，丢掉的句子与该档机制表严格对应（v11 只丢 `vct_win_opponent`、v0 12 句全丢）；③ **sound 正对照**（`test/engines/tactics.test.mjs`）：哨兵局面缺省不报胜、`sound:false` 报出 `F5→F6→E5`，档位级 v7 报 `F5` / v9 不报，`nodeLimit:1` 搜不出 ⇒ 预算与闸门真下到引擎；④ `node test/engines/run.mjs` **148/148**（原 144，+4 例 P1）；⑤ `npx vitest run` **38 文件 / 399 例**；⑥ `npx tsc --noEmit` 干净 |
 | **P2 指纹设施**（~250 行） | D6/D7 + `version-freeze.test.mjs` + CI 接线 | 首次 `--write` 生成基线；**故意改一处 `vcfWin` 预算试红**（证明测试有效，随后还原）；`npm test`、`npm run typecheck`、`check:docs` 全绿 |
 | **P3 回放 + 考古**（~220 行 + 文档） | `tactics-replay.mjs`；逐 commit diff 填 `budget/sound/openingMin`/`fidelity`；产出考古文档 | 回放工具在 `exp-20261003082805` 上跑出「与实走一致率」并列出会变的手；考古表 14 档无空缺（每格要么有证据 commit，要么标 `approximate` + 缺口描述） |
 | **P4 阶梯地基**（~200 行） | `openings.mjs` + worker `--openings`/`--store local` + **D13 进度文件**（`progress.json` + `events.jsonl` + `--store local` 时零网络写） | 合成开局库可复现；一局真跑（rapfi 自对弈，开局库前 6 手逐手一致）；JSONL 产物能被 `loadRecords` 读回；`ssh <host> cat progress.json` 在跑动中可读到 `{round, gameNo, done, wdl, etaS}` |

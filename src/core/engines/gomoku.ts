@@ -14,7 +14,7 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
-import type { Engine, GameStatus, JevSerialized, Live3Deny, Live3Options, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Live3Options, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfOptions, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -198,16 +198,23 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
    * 只能占一个点，≥2 个时无解），否则该分支不是将死链，直接跳过。
    * 守方的即时致胜点只能由守方自己的新子产生（攻子进不了守方五连），故只需
    * 查经过"本层堵点"的四线；入口没有"最后一手"可依附，做一次全盘扫。
-   * vcfWin(st, attackerId, maxPlies)：st.turn 应为 attackerId。
+   * vcfWin(st, attackerId, maxPlies, opts)：st.turn 应为 attackerId。
+   * opts（P1 冻结层，缺省 = 历史常量，见 src/core/tactics-budget.ts）：
+   *   sound=false 关掉上面的 soundness 闸门 → 回到 v7/v8 的旧语义（守方手握即时致胜点时
+   *   也照样报「将死链」，即历史上那批不健全的链；只有考古/复现 v7/v8 时才该这么用）；
+   *   nodeLimit / movesMax 收放搜索面（只允许收紧，见 AGENTS.md 规则 10）。
    * 返回 { win, first, line }（记法）；无将死链时 { win:false, first:null, line:[] }。
    * 禁手模式：黑方攻击时禁手点不可走；黑方防守时禁手堵点视为堵不住（攻方胜）；
    * 黑方致胜点须为精确五连（长连不算赢，见 winsAfter 内过滤）。 */
-  function vcfWin(st: GomokuState, attackerId: string, maxPlies?: number): VcfResult {
+  function vcfWin(st: GomokuState, attackerId: string, maxPlies?: number, opts?: VcfOptions): VcfResult {
     const A = attackerId === 'black' ? 1 : 2;
     const D = A === 1 ? 2 : 1;
     const board = st.board.map((row) => row.slice()); /* 试走用拷贝，不碰原状态 */
     let nodes = 0;
     const NODE_LIMIT = 4000;
+    const nodeLimit = opts?.nodeLimit && opts.nodeLimit > 0 ? opts.nodeLimit : NODE_LIMIT;
+    const movesMax = opts?.movesMax && opts.movesMax > 0 ? opts.movesMax : 12;
+    const sound = opts?.sound !== false;
     maxPlies = Math.max(1, Math.min(15, maxPlies! | 0 || 7));
 
     /* (r,c) 已落 p 子，找 p 的致胜点。只查过 (r,c) 的四线：新增致胜点必用 (r,c)，
@@ -259,7 +266,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       }
       const out: Forcing[] = [];
       for (const key of cand) {
-        if (++nodes > NODE_LIMIT) break;
+        if (++nodes > nodeLimit) break;
         const r = (key / 15) | 0, c = key % 15;
         if (forbidden && A === 1 && isForbiddenPoint(board, r, c)) continue;
         board[r]![c] = A;
@@ -268,7 +275,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
         if (wins.length > 0) out.push({ r, c, wins });
       }
       out.sort((a, b) => b.wins.length - a.wins.length);
-      return out.slice(0, 12);
+      return out.slice(0, movesMax);
     }
 
     /* 守方在全盘的即时致胜点（只有入口用：入口没有"守方最后一手"可依附，只能全扫） */
@@ -287,14 +294,14 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       return out;
     }
 
-    /* dWins = 当前盘面上守方的即时致胜点（轮到攻方走）。 */
+    /* dWins = 当前盘面上守方的即时致胜点（轮到攻方走）。sound=false 时不算也不算（旧语义）。 */
     function search(pliesLeft: number, dWins: number[][]): number[][] | null {
-      if (pliesLeft <= 0 || nodes > NODE_LIMIT) return null;
+      if (pliesLeft <= 0 || nodes > nodeLimit) return null;
       const moves = forcingMoves();
       for (const m of moves) {
         /* soundness 闸门：守方手上有即时致胜点时，攻方这一手必须占掉它，否则守方
          * 下一手直接成五，这条链走不到最后（一步只能占一个点，≥2 个点时无解）。 */
-        if (dWins.length && !(dWins.length === 1 && dWins[0]![0] === m.r && dWins[0]![1] === m.c)) continue;
+        if (sound && dWins.length && !(dWins.length === 1 && dWins[0]![0] === m.r && dWins[0]![1] === m.c)) continue;
         if (m.wins.length >= 2) return [[m.r, m.c]]; /* 双杀：对方至多堵其一 */
         const wr = m.wins[0]![0]!, wc = m.wins[0]![1]!;
         /* 黑方防守时禁手堵点 = 堵不住，攻方直接胜 */
@@ -302,7 +309,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
         board[m.r]![m.c] = A;
         board[wr]![wc] = D;
         /* 堵点后守方新产生的即时致胜点只能经过 (wr,wc)（攻子进不了守方五连） */
-        const sub = search(pliesLeft - 2, winsAfter(wr, wc, D));
+        const sub = search(pliesLeft - 2, sound ? winsAfter(wr, wc, D) : []);
         board[wr]![wc] = 0;
         board[m.r]![m.c] = 0;
         if (sub) return [[m.r, m.c], [wr, wc], ...sub];
@@ -310,7 +317,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       return null;
     }
 
-    const line = search(maxPlies, defenderWinsFull());
+    const line = search(maxPlies, sound ? defenderWinsFull() : []);
     if (!line) return { win: false, first: null, line: [] };
     const toN = (rc: number[]): string => notation(rc[0]!, rc[1]!);
     return { win: true, first: toN(line[0]!), line: line.map(toN) };
@@ -404,6 +411,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     const board = clone(st.board);
     const cands = nearEmpties(board);
     const fresh = opts?.fresh === true;
+    const evalMax = opts?.evalMax && opts.evalMax > 0 ? opts.evalMax : LIVE3_DENY_EVAL_MAX;
     const before = live3Count(board, opp, cands, 999, fresh);
     if (before === 0) return { before: 0, after: 0, best: [] };
     const oppMakers: string[] = [];
@@ -422,7 +430,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     /* 每评估一个点都要重数一遍对手的 L3，故用 best+1 截断早退；best===0 直接收工 */
     let best = before;
     let bestPoints: string[] = [];
-    for (let i = 0; i < order.length && i < LIVE3_DENY_EVAL_MAX; i++) {
+    for (let i = 0; i < order.length && i < evalMax; i++) {
       const n = order[i]!;
       const { r, c } = parseN(n);
       board[r]![c] = me;
@@ -713,8 +721,12 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     const board = clone(st.board);
     const plies = Math.max(1, Math.min(15, maxPlies! | 0 || 9));
     const oppId = D === 1 ? 'white' : 'black';
+    /* P1 预算（缺省 = 历史常量）：复验深度 / 凑够几个点收工 / 并列排序的压力早退阈值 */
+    const vcfDefPlies = opts?.vcfPlies && opts.vcfPlies > 0 ? opts.vcfPlies : VCF_DEF_PLIES;
+    const keep = opts?.keep && opts.keep > 0 ? opts.keep : VCT_DEF_KEEP;
+    const pressureLimit = opts?.pressureLimit && opts.pressureLimit > 0 ? opts.pressureLimit : 3;
     /* 对手现在的链：先纯冲四（便宜），没有再看含活三逼迫的混合链 */
-    const vcf = vcfWin(st, oppId, VCF_DEF_PLIES);
+    const vcf = vcfWin(st, oppId, vcfDefPlies);
     let chain: string[] = [];
     let kind: 'vcf' | 'vct' | '' = '';
     if (vcf && vcf.win && vcf.first) { chain = vcf.line.length ? vcf.line : [vcf.first]; kind = 'vcf'; }
@@ -761,19 +773,19 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       const probe = { ...st, board, turn: st.turn } as GomokuState;
       let still = hasFivePoint(board, A);
       if (!still) {
-        const v = vcfWin(probe, oppId, VCF_DEF_PLIES);
+        const v = vcfWin(probe, oppId, vcfDefPlies);
         still = !!(v && v.win);
       }
       if (!still) {
         const t = vctWin(probe, oppId, plies);
         still = !!(t && t.win);
       }
-      const pressure = still ? 0 : pressureOf(board, A, 3);
+      const pressure = still ? 0 : pressureOf(board, A, pressureLimit);
       board[r]![c] = 0;
       if (still) continue;
       const n = notation(r, c);
       hits.push({ n, pressure, model: modelCands.has(n) });
-      if (hits.length >= VCT_DEF_KEEP) break;
+      if (hits.length >= keep) break;
     }
     /* 模型候选优先，其次对手压力小者（取势），最后按发现顺序（链首/链点靠前） */
     hits.sort((a, b) => (a.model === b.model ? 0 : a.model ? -1 : 1) || (a.pressure - b.pressure));
@@ -843,6 +855,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     for (const [r, c] of nearEmpties(board)) push(r!, c!);
 
     const maxTry = opts?.maxTry && opts.maxTry > 0 ? opts.maxTry : PRESSURE_CUT_MAX;
+    const keep = opts?.keep && opts.keep > 0 ? opts.keep : PRESSURE_CUT_KEEP;
     let tried = 0;
     let best = beforeOpponent;
     const first: Array<{ r: number; c: number; opp: number }> = [];
@@ -871,7 +884,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       else if (you === bestYou) hits.push({ n, opp: h.opp, you });
     }
     return {
-      points: hits.slice(0, PRESSURE_CUT_KEEP).map((h) => h.n),
+      points: hits.slice(0, keep).map((h) => h.n),
       before: { you: beforeYou, opponent: beforeOpponent },
       after: { you: bestYou, opponent: best },
       tried,

@@ -15,7 +15,8 @@ import { suite, ok, eq, deepEq, near } from './harness.mjs';
 
 import { games, getGame } from '../../src/core/registry.ts';
 import { setSeed } from '../../src/core/rng.ts';
-import { computeTactics, emptyTactics } from '../../src/core/tactics.ts';
+import { computeTactics, emptyTactics, attachFacts, mechOf } from '../../src/core/tactics.ts';
+import { BUDGET_KEYS, DEFAULT_BUDGET, budgetOf, sameBudget } from '../../src/core/tactics-budget.ts';
 import * as R from '../../src/core/tactics-versions.ts';
 import { decide } from '../../src/core/jev/index.ts';
 
@@ -149,6 +150,85 @@ S.t('版本登记表：resolve 严格（P0/D2）与 allows 闸门', () => {
   ok(R.allows(R.resolve('v12-vct-def'), 'live3Defense'), 'v12 应继承 v10 的 live3Defense 层');
   const v0 = R.VERSIONS[0];
   for (const k of R.MECHS) ok(!v0.mech[k], 'v0-off 的 ' + k + ' 应为关');
+});
+
+/* ------------------------------------------------------------------ *
+ * ①b P1 冻结层（预算表 + sound 历史语义 + openingMin / 指令按机制过滤）
+ * ------------------------------------------------------------------ */
+S.t('P1 冻结层：15 档预算齐全、缺省即历史常量、写错只会更保守', () => {
+  eq(BUDGET_KEYS.length, 15, '预算字段应为 15 个（BUDGET_KEYS 是冻结顺序的唯一来源）');
+  for (const v of R.VERSIONS)
+    for (const k of BUDGET_KEYS)
+      ok(typeof v.budget[k] === 'number' && v.budget[k] > 0, v.id + ' 缺预算 ' + k);
+  eq(sameBudget(budgetOf(), DEFAULT_BUDGET), true, 'budgetOf() 应逐字等于 DEFAULT_BUDGET');
+  eq(budgetOf({ vcfPlies: 3 }).vcfPlies, 3, '给了正数就用给的');
+  eq(budgetOf({ vcfPlies: 0 }).vcfPlies, DEFAULT_BUDGET.vcfPlies, '0 不是「关掉」而是写错 ⇒ 回落默认');
+  eq(budgetOf({ vcfNodeLimit: -5 }).vcfNodeLimit, DEFAULT_BUDGET.vcfNodeLimit, '负数回落默认');
+  eq(budgetOf({ vctNodeLimit: NaN }).vctNodeLimit, DEFAULT_BUDGET.vctNodeLimit, 'NaN 回落默认');
+  eq(sameBudget(DEFAULT_BUDGET, budgetOf({ live3DenyEvalMax: 25 })), false, '一个字段不同就不算同预算');
+  /* 冻结常量 = 今日常量逐字：要改它们只能新开一档，所以这里逐字钉死（改这里等于改历史） */
+  const FROZEN_EXPECT = {
+    vcfPlies: 7, vcfNodeLimit: 4000, vcfMovesMax: 12,
+    vctPlies: 9, vctNodeLimit: 3000, vctMovesMax: 10, vctDefusersMax: 6,
+    vctDefMax: 12, vctDefKeep: 3, vcfDefPlies: 7, vctDefPressureLimit: 3,
+    live3DenyEvalMax: 24, pressureCutMax: 120, pressureCutKeep: 3, fourPressureLimit: 99,
+  };
+  for (const k of BUDGET_KEYS) eq(DEFAULT_BUDGET[k], FROZEN_EXPECT[k], 'DEFAULT_BUDGET.' + k + ' 必须等于冻结当天的常量');
+});
+
+S.t('P1 冻结层：sound 记历史事实（v9 起才有闸门）/ fidelity / openingMin / 注入口径', () => {
+  eq(R.resolve('v8-vcf-try').sound, false, 'v8 上线时没有 soundness 闸门（历史事实，不是「推荐值」）');
+  eq(R.resolve('v9-vcf-sound').sound, true, 'v9 起有 soundness 闸门');
+  for (const v of R.VERSIONS) {
+    eq(v.sound, v.rank >= 9, v.id + ' 的 sound 应与「v9 才有闸门」一致');
+    eq(v.openingMin, 4, v.id + ' 的开局短路应仍是 4 手');
+    eq(v.promptFacts, 'mech', v.id + ' 的注入口径应为 mech（只注入本档真有的机制句）');
+  }
+  eq(R.resolve('v14-live3-fresh').fidelity, 'exact', 'v14 就是冻结当天那一版 ⇒ exact');
+  eq(R.resolve('v13-pressure-gate').fidelity, 'approximate', 'P3 考古前的历史档只能是近似（别当「当时就是这样」）');
+});
+
+S.t('P1 冻结层：预算与 sound 真的下到引擎（vcfWin 正对照）', () => {
+  /* 正对照局面（同 ⑫i）：守方堵点造四反杀 —— sound 闸门开着不许报胜，关掉就该报出那条链 */
+  const syn2 = gomoku.newGame();
+  [[1, 5, 1], [2, 5, 1], [3, 5, 1], [4, 6, 1], [4, 7, 1], [5, 6, 1],
+    [0, 5, 2], [5, 2, 2], [5, 3, 2], [5, 4, 2]].forEach(([r, c, p]) => { syn2.board[r][c] = p; });
+  syn2.moveNum = 12;
+  const gated = gomoku.vcfWin(syn2, 'black', 7);
+  ok(!gated.win, '缺省（sound=true）不得报出不健全链，实际：' + JSON.stringify(gated));
+  const unsound = gomoku.vcfWin(syn2, 'black', 7, { sound: false });
+  ok(unsound.win && unsound.first === 'F5', 'sound=false 应恢复 v7/v8 的历史语义（报出 F5 链），实际：' + JSON.stringify(unsound));
+  ok(!gomoku.vcfWin(syn2, 'black', 7, { nodeLimit: 1 }).win, 'nodeLimit 关到 1 应搜不出链 ⇒ 预算真的下到了引擎');
+  const st = play(gomoku, VCF_SEQ);
+  const full = gomoku.vcfWin(st, 'black', 7, { sound: true, nodeLimit: 4000, movesMax: 12 });
+  ok(full.win && full.first === 'H7', '显式给默认预算必须与缺省同解，实际：' + JSON.stringify(full));
+  /* 档位级（computeTactics）：v7 无闸门 ⇒ 报出 F5；v9 有闸门 ⇒ 不报。这是「按档下传」的端到端证据 */
+  const t7 = tacOf(gomoku, syn2, 'v7-vcf');
+  const t9 = tacOf(gomoku, syn2, 'v9-vcf-sound');
+  ok(t7.vcf_win_you.indexOf('F5') >= 0, 'v7 应报出 F5（无闸门），实际：' + JSON.stringify(t7.vcf_win_you));
+  ok(t9.vcf_win_you.indexOf('F5') < 0, 'v9 不应报出 F5（有闸门），实际：' + JSON.stringify(t9.vcf_win_you));
+});
+
+S.t('P1 冻结层：机制句按档过滤，当前档逐字不变（D5）', () => {
+  const st = play(gomoku, VCF_SEQ);
+  const tac = tacOf(gomoku, st, R.CURRENT);
+  ok(tac.vcf_win_you.length > 0, '夹具局面应真有 VCF 杀，否则这条测不出过滤');
+  const a = gomoku.serializeForJev(st, st.turn);
+  const b = gomoku.serializeForJev(st, st.turn);
+  attachFacts(a, tac);                                        /* 老调用方：不过滤 */
+  attachFacts(b, tac, undefined, { mech: mechOf(R.CURRENT) });
+  eq(b.questions.move.instructions, a.questions.move.instructions, '当前档（机制全开）的指令必须逐字不变');
+  ok(/vcf_win_you/.test(b.questions.move.instructions), '当前档应注入 VCF 进攻句');
+  const c = gomoku.serializeForJev(st, st.turn);
+  attachFacts(c, tac, undefined, { mech: mechOf('v1-facts') });
+  ok(/winning_points_you/.test(c.questions.move.instructions), 'v1 应有 win 句');
+  ok(!/vcf_win_you/.test(c.questions.move.instructions), 'v1 不该有 VCF 句（那时还没这一层）');
+  ok(!/live3_/.test(c.questions.move.instructions), 'v1 不该有活三句');
+  /* 未知档号 = 空机制集 = 不注入任何机制句（P0 的严格 resolve 与 P1 的过滤合起来的效果） */
+  const d = gomoku.serializeForJev(st, st.turn);
+  attachFacts(d, tac, undefined, { mech: mechOf('v99-nope') });
+  ok(!/winning_points_you|vcf_win_you|live3_you|pressure_cut_points/.test(d.questions.move.instructions),
+    '未知档号不得注入任何机制句，实际：' + d.questions.move.instructions);
 });
 
 S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs 实证）', () => {

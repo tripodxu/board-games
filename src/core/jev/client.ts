@@ -10,7 +10,7 @@
 import { weightedPick } from '../weighted.ts';
 import { rand } from '../rng.ts';
 import {
-  computeTactics, attachFacts, emptyTactics,
+  computeTactics, attachFacts, emptyTactics, mechOf,
   countForcingReplies, allowsSustainedAttack,
   resolveVersion,
 } from '../tactics.ts';
@@ -328,7 +328,8 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     try { tactics = computeTactics(engine, st, legal, cands, opts.tacticsVersion); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
     tacticsMs += Date.now() - tt;
   }
-  attachFacts(ser, tactics, opts.experience);
+  /* P1/D5：指令句按本档真有的机制过滤（同一解析路径；未知档号 = 空机制集 ⇒ 不注入任何机制句） */
+  attachFacts(ser, tactics, opts.experience, { mech: mechOf(opts.tacticsVersion) });
 
   let answers: Record<string, unknown>, usage: Record<string, unknown>, costUsd: number, probs: Record<string, number>, conf: number | null, modelName: string | undefined;
   if (channel === 'random') {

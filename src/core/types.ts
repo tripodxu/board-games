@@ -100,6 +100,22 @@ export interface Live3Deny {
  */
 export interface Live3Options {
   fresh?: boolean;
+  /** 破活三搜索里最多评估几个候选点（默认 24，见 LIVE3_DENY_EVAL_MAX）。 */
+  evalMax?: number;
+}
+
+/**
+ * VCF（连续冲四）搜索预算（P1 冻结层引入，缺省 = 历史常量）：
+ *   sound     是否启用 soundness 闸门（默认 true = 今天的口径；false = v7/v8 的旧语义，
+ *             守方手握即时致胜点时也照样报「将死链」，即历史上那批不健全的链）
+ *   nodeLimit 节点上限（默认 4000）
+ *   movesMax  每层最多展开几个逼迫着法（默认 12）
+ * 三个都只影响「看见多少」，缺省时逐字等于冻结前的行为。
+ */
+export interface VcfOptions {
+  sound?: boolean;
+  nodeLimit?: number;
+  movesMax?: number;
 }
 
 /**
@@ -125,10 +141,15 @@ export interface VctDefenseResult {
   tried: number;
 }
 
-/** 拆链搜索的输入：cands 是模型候选点（并列拆法里优先），maxTry 是候选点数上限（默认 12）。 */
+/** 拆链搜索的输入：cands 是模型候选点（并列拆法里优先），maxTry 是候选点数上限（默认 12）。
+ *  keep 是凑够几个可用点就收工（默认 3）；vcfPlies/pressureLimit 是内部复验 VCF 的深度与
+ *  并列取势的压力早退阈值（默认 7 / 3）——都由 P1 的 per-version 预算下传，缺省等于历史常量。 */
 export interface VctDefenseOptions {
   cands?: string[];
   maxTry?: number;
+  keep?: number;
+  vcfPlies?: number;
+  pressureLimit?: number;
 }
 
 /** 削点搜索（v13）的结果：points 是「落子后对手做四手数最小」的点（并列取前几个）；
@@ -141,10 +162,12 @@ export interface PressureCutResult {
   tried: number;
 }
 
-/** 削点搜索的输入：cands 是模型候选点（先试），maxTry 是候选点数上限（默认 40）。 */
+/** 削点搜索的输入：cands 是模型候选点（先试），maxTry 是候选点数上限（默认 120）。
+ *  keep 是并列最优里最多留几个点（默认 3），由 P1 的 per-version 预算下传。 */
 export interface PressureCutOptions {
   cands?: string[];
   maxTry?: number;
+  keep?: number;
 }
 
 /** 引擎统一接口（docs/engine-interface.md §2）。 */
@@ -173,8 +196,9 @@ export interface Engine<S = any> {
   /* 可选能力 */
   passMove?(st: S): Move | { notation: string; [k: string]: unknown };
   mockPick?(st: S, moves: Move[], side: string, cfg?: PickConfig): Move | null | undefined;
-  /** st.turn 须为 attackerId；无链返回 { win:false, first:null, line:[] }。 */
-  vcfWin?(st: S, attackerId: string, maxPlies: number): VcfResult;
+  /** st.turn 须为 attackerId；无链返回 { win:false, first:null, line:[] }。
+   *  opts（P1）：sound=false 关掉 soundness 闸门（v7/v8 旧语义），nodeLimit/movesMax 收放搜索面。 */
+  vcfWin?(st: S, attackerId: string, maxPlies: number, opts?: VcfOptions): VcfResult;
   /**
    * 活三制造点（L3）：落子后自己有 ≥2 个活四制造点＝4 手内必胜威胁（v10 战术层用）。
    * 覆盖 labelPoint 的连续三模式认不出的跳活三 / 斜向组合。返回记法列表，可能为空。
