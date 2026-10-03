@@ -155,7 +155,7 @@ S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs
   eq(R.resolve('v11-vct').gamesVerified, 24, 'v11 实证 24 局（两轮对照实验各 12 局：exp-20261002055817 + exp-20261002094817，每手 ai.tv = v11-vct）');
   eq(R.resolve('v12-vct-def').gamesVerified, 36, 'v12 实证 36 局（三轮单臂对照实验各 12 局：exp-20261002115126 + exp-20261002121700 + exp-20261002123631，每手 ai.tv = v12-vct-def）');
   eq(R.resolve('v13-pressure-gate').gamesVerified, 52, 'v13 实证 52 局（exp-20261002160819 单臂 12 局 + 20 局档位复核 exp-20261003003108 / exp-20261003020720；另 3 局属被打断的首轮 exp-20261002154056，无实验行、不计入）');
-  eq(R.resolve('v14-live3-fresh').gamesVerified, 32, 'v14 实证 32 局（对照实验 exp-20261003035953 单臂 12 局 @1000ms + exp-20261003050139 单臂 20 局 @2000ms，每手 ai.tv = v14-live3-fresh）');
+  eq(R.resolve('v14-live3-fresh').gamesVerified, 72, 'v14 实证 72 局（exp-20261003035953 单臂 12 局 @1000ms + exp-20261003050139 单臂 20 局 @2000ms + 抬档阶梯 exp-20261003075310 单臂 20 局 @3000ms + exp-20261003082805 单臂 20 局 @5000ms，每手 ai.tv = v14-live3-fresh）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');
