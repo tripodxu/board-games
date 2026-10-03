@@ -191,6 +191,10 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
 - commit 拆分：feat(scripts) P1 / fix(scripts) P2 收尾 / feat(scripts) P4 rapfi loader+probe /
   fix(scripts) 三处归因修正 / fix(scripts) key 预检改提示 / docs(adr) 0018（`0e7e9fb` 8 文件 +241/−18）/ docs(plans) 两篇。
 - 终验（`0e7e9fb`）：`npm test` **366 例 / 36 文件全过** + `npm run typecheck` 干净 + `npm run check:docs` 全部通过（memory 置顶、53 个 md / 330 链接、status 时效 0 天）。
+- **追加闭环（`experiments` 统计行）**：worker 轮末 POST `/api/experiments`
+  （`experimentEntryFrom()` 纯函数 + 429 退避两次；入口加 `import.meta.url` 守卫让 worker 可被单测 import），
+  新增 `test/scripts/experiment-entry.spec.mjs` 7 例（臂口径/局口径/只收 ok/null 耗时/date ISO）；
+  rapfi1 与 smoke1 两轮用 `.work/backfill-experiments.mjs` 补归档并 GET 验证；status/ADR/§9 同步更新。
 
 ## 9. 未闭环 / 遗留
 
@@ -198,8 +202,10 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
   只可作相对参考，不可作结论。
 - **Node rapfi vs 浏览器归档不可逐字复现**：墙钟属性，聚合口径（胜/和/负 + 不败率）不受影响；
   若要单局复盘对齐，需要浏览器侧固定随机源（超出本计划范围）。
-- `experiments` 统计表行仍只由浏览器实验器写（`/api/experiments`），本工具的局只进 `games` 表 +
-  归档核对；若要让远端轮次也进统计表，需在 worker 里补 experiments upsert（独立小轮次）。
+- ~~`experiments` 统计表行仍只由浏览器实验器写~~ ✅ **已闭环（2026-10-03 追加）**：worker 轮末
+  POST `/api/experiments`（形状对齐 `newEntryFromRun`，429 退避两次；失败不坏出口码）。
+  上线前已跑完的 rapfi1/smoke1 两轮用一次性脚本 `.work/backfill-experiments.mjs` 补归档
+  （HTTP 200，`GET /api/experiments?limit=200` 可见，`total` 12 / 2）。
 - `--parallel 2..3` 未实装（当前每轮串行起 1 个 worker、局内串行）；单上游臂场景够用，
   双上游臂必须串行（限流）。
 - `.work/` 产物（plan/日志/checkpoint/games）留在本机与 box，入库只含结论数字。

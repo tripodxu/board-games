@@ -96,5 +96,8 @@
 - 新踩坑固化进 `docs/memory/MEMORY.md`（spec 静默回落、scp 不吃 `-n`、
   ssh 会话被 nohup 拖住的解法、`.data` 无 classic model 的报错是既有状态、
   pwsh 工具跑 ssh 要 `cmd /c … < NUL` 防 stdin 挂起）。
-- 遗留：Elo 样本 < 50 局仅作相对参考；`experiments` 表从实验器写行，
-  本工具的认证局不进统计表（只进 games + 归档核对）。
+- 遗留：Elo 样本 < 50 局仅作相对参考。远端轮次**已补 `/api/experiments` 行**
+  （worker 轮末 POST，形状对齐浏览器 `newEntryFromRun()`；`X-Device-Id` 不带即匿名；
+  上线的两轮 rapfi1/smoke1 用一次性脚本补归档，`GET /api/experiments` 可见）。
+  仍不进统计的是 dry-run 局与 experiments 行的战术层耗时字段（worker 不统计 per-side tac_ms，
+  落样本外）。

@@ -89,6 +89,74 @@ async function apiPostGame(origin, payload) {
   return await r.json();
 }
 
+/**
+ * 轮末补一行 `/api/experiments`（计划 §9 未闭环第 1 条：远端轮次只在棋谱里、没实验行）。
+ *
+ * 形状对齐浏览器 `newEntryFromRun()`（src/ui/panels/experiment-report.ts:613-642）：
+ * `chanA/tacA/thinkA` 是「臂」口径（对阵双方），`games[]` 是「局」口径（黑白按局交替，
+ * 每局的 sidesForGameSpec 与 playOne 同源）。`X-Device-Id` 不带：deviceMiddleware
+ * 对缺失是 value:null 放行（src/worker/lib/validate.ts:35-40），不带即匿名。
+ * 战术层耗时字段填 null——worker 不统计 per-side tac_ms，mapExperimentRecord 的
+ * num() 会把 null 落进样本外（与「该侧没过战术层」同义）。
+ */
+export function experimentEntryFrom(plan, a, b, summary) {
+  const games = [];
+  for (const g of summary.games) {
+    if (g.status !== 'ok') continue;
+    const { black, white } = sidesForGameSpec(a, b, g.gameNo);
+    const winnerSide = g.winner === 'black' ? black : g.winner === 'white' ? white : null;
+    games.push({
+      no: g.gameNo,
+      blackChan: black.channel,
+      whiteChan: white.channel,
+      blackTac: black.tactics || null,
+      whiteTac: white.tactics || null,
+      blackThink: black.thinkMs || 0,
+      whiteThink: white.thinkMs || 0,
+      winnerChan: winnerSide ? winnerSide.channel : null,
+      by: null,
+      blackTacMs: null,
+      whiteTacMs: null,
+      blackTacN: 0,
+      whiteTacN: 0,
+    });
+  }
+  return {
+    tag: plan.tag,
+    date: new Date().toISOString(),
+    chanA: a.channel,
+    chanB: b.channel,
+    tacA: a.tactics || null,
+    tacB: b.tactics || null,
+    thinkA: a.thinkMs || 0,
+    thinkB: b.thinkMs || 0,
+    total: games.length,
+    games,
+    note: 'SSH 远端批量（experiment-batch.mjs）',
+  };
+}
+
+/** 轮末 POST /api/experiments；429 退避两次（写限流 20 次/分，一轮只发一次，大概率不撞）。 */
+async function apiPostExperiment(origin, entry) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      const r = await fetch(`${origin}/api/experiments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+      if (r.status === 429) throw new Error('HTTP 429 限流');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await sleep(2000 * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
 /** 每侧 decide 入参（apiKey/endpoint 按渠道取；proxy 端点要拼 origin，client.ts:29 的 'api/jev' 是相对路径）。 */
 function decideEnvFor(cfg, plan) {
   const apiKey = cfg.channel === 'openrouter'
@@ -170,6 +238,16 @@ async function main() {
   summary.endedAt = new Date().toISOString();
   writeJson(path.join(outDir, 'round-summary.json'), summary);
   const okCount = summary.games.filter((g) => g.status === 'skipped' || g.status === 'ok' || g.status === 'ok-dry').length;
+  /* 轮末补 experiments 行（只写真跑的局）：失败不坏出口码——棋谱才是主产物，
+     实验行缺失时 status.md「实验轮」口径已在 ADR-0018 后果里交代。 */
+  if (!dryRun && okCount > 0) {
+    try {
+      const resp = await apiPostExperiment(origin, experimentEntryFrom(plan, a, b, summary));
+      log(`experiments 行已归档：tag=${plan.tag} total=${resp && resp.total != null ? resp.total : '?'}`);
+    } catch (e) {
+      log(`experiments 归档失败（棋谱不受影响）：${e.message || e}`);
+    }
+  }
   log(`worker 完：${okCount}/${games} 局正常`);
   /* rapfi 胶水的 Node 分支在程序退出时会 exit(1) 置位 process.exitCode
      （public/rapfi/rapfi-single-simd128.js:10 的 ha=(a,b)=>{process.exitCode=a;throw b}，
@@ -330,4 +408,7 @@ async function playOne(plan, a, b, gameNo, dirs) {
   return result;
 }
 
-await main();
+/* 入口守卫：被 import（单测）时不跑 main。node scripts/experiment-worker.mjs 时 argv[1]
+   就是本文件路径。process.argv[1] 可能是 file URL 或原生路径，两种都比一次。 */
+const invokedDirectly = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').replace(/^[A-Za-z]:/, ''));
+if (invokedDirectly) await main();
