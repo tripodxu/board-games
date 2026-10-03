@@ -19,6 +19,34 @@
 
 ---
 
+## 2026-10-03 · P2 指纹设施：接管链抽成纯函数 + 210 行决策指纹（改一处预算 = 红灯 32 处）
+
+- **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` D6/D7）**：
+  ① 把内嵌在 `src/core/jev/client.ts`（原 `:374-527`）的接管链抽成 `src/core/takeover.ts` 纯函数
+  `pickTakeover({engine, st, tactics, mech, criteria, legal, pairs, cands, topK, onTime})` → `{notation, layer, bypassed}`，
+  另导出 `TAKEOVER_ORDER`（14 层权威顺序）与 `TAKEOVER_LABEL`（中文层名）；`client.ts` 565 → 431 行。
+  ② `test/engines/fingerprint.mjs`：`fingerprintOf()` **一趟链**同时拿「事实摘要 `digest` + 接管层 + 落点」
+  （先 `computeTactics` 再 `pickTakeover`，与 `decide()` 同序），`--write`/`--check` + 覆盖表。
+  ③ `test/parity/tactics-fingerprints.json`：**14 局面 × 15 档 = 210 行**（归档抽样早 4/中 4/晚 2 + 具名夹具 win/open4/vcf/vct）。
+  ④ `test/engines/version-freeze.test.mjs` 5 例，已进 `test/engines/runner.mjs` 的 `ALL_MODULES`。
+- **为什么先做抽取**：指纹若走 `decide()` 会跑两遍链（成本翻倍），而 P3 的「任意棋谱 × 任意档位」回放本来就必须
+  离线跑这条链 —— 抽取是两处的公共前置。抽取纪律：**先 dump 基线再抽**，抽完逐行比对。
+- **证据**：① 抽取前后 `.work/p2-ab-baseline.mjs` 各 30 局面 × 15 档 = 450 行，**差异 0 行**；
+  ② 基线生成 24.0 s（210 行）；③ **试红**：`DEFAULT_BUDGET.vcfNodeLimit` 4000 → 1 ⇒ `⑭b` 报「决策指纹漂移 **32 处**」
+  （v7…v14 层从 `vcfDefense` 变 `parry`/`vctDefense`），还原后全绿；④ `⑭d` 证指纹与 `decide()` 同解；
+  ⑤ 引擎套件 148 → **153 例**、vitest **38 文件 / 399 例**、`tsc` 干净、`check:docs` 58 md / 397 链接。
+- **教训**：
+  ① **语料规模必须按实测定，不能按直觉**：120 局面 ≈ 9 分钟（早/中盘棋盘稀疏、候选点多 ⇒ 搜索扇出大；
+  晚盘密棋盘反而便宜），进不了 CI；最终 14 局面 24 s。逐档成本差 3 个数量级（v0–v2 ~1–2 ms，v12–v14 ~1.2 s）。
+  ② **归档局面天然缺早段层**：`win/open4/vcfAttack/vctAttack` 在 ply 12–47 的局面里几乎遇不到（早被更靠前的层接管，
+  或棋盘上根本没杀），必须补**具名夹具**（4 个夹具只花 2.8 s，换来 4 层覆盖）——「随机抽样」不等于「覆盖」。
+  ③ **`threat` 层是死分支**（实测）：`you:open4` 标签判据与 `chance_points_you` 判据同源（走后 ≥2 个成五点），
+  且含 `threat` 的档都含 `open4`、链里 `open4` 在前 ⇒ gomoku + 非空候选集下不可达。
+  2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管。指纹断言因此写成
+  「除 `threat` 外每层都必须被走到 + `missing` 恰为 `['threat']`」——**把「覆盖不到」变成显式事实，而不是含糊的缺口**。
+  ④ `test/engines/*.test.mjs` 必须 `export default S`，否则 `runner.mjs` 的 `if (!s) continue` 会**静默跳过整个模块**
+  （本次 0 例被跑过一轮，靠总数对不上才发现）；`MECHS` 是 `readonly string[]` 不是字典，断言用 `indexOf`。
+
 ## 2026-10-03 · P1 冻结层：档位自带预算，注入句按档裁剪（零行为变更对照 1800 行 0 差异）
 
 - **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` D1/D3/D4/D5）**：新增

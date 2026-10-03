@@ -88,7 +88,7 @@
 npm run dev                     # vite dev：单进程起 Worker + 前端 + 本地 D1 绑定 → http://localhost:8787（端口被占会自动顺延，看启动日志）
 npm test                        # 唯一验收命令：test:engines（src/core 自检 + 战术 + 金样逐手差分）→ test:new（vitest 全 project）
 npm run typecheck               # tsc --noEmit（提交前必须干净）
-npm run test:engines            # 只跑纯 Node 层：七引擎 selfTest + 战术十五级与 VCF/VCT 攻防 + 金样逐手差分（7 局自对弈 + games/ 归档 54 局）
+npm run test:engines            # 只跑纯 Node 层：七引擎 selfTest + 战术十五级与 VCF/VCT 攻防 + 档位决策指纹 + 金样逐手差分（7 局自对弈 + games/ 归档 54 局）
 npm run test:tactics            # 只跑战术层回归（node test/tactics/run.mjs）
 npm run test:new                # vitest 全部 project（worker / core / ui / scripts）；也可细分 test:worker / test:ui / test:scripts
 npm run check:docs              # 文档自检：memory 置顶、md 相对链接可解析、status 时效

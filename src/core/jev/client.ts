@@ -11,9 +11,11 @@ import { weightedPick } from '../weighted.ts';
 import { rand } from '../rng.ts';
 import {
   computeTactics, attachFacts, emptyTactics, mechOf,
-  countForcingReplies, allowsSustainedAttack,
   resolveVersion,
 } from '../tactics.ts';
+/* 接管链在 2026-10-03（P2）抽成纯函数：指纹冻结与 P3 回放都要在**无模型**下跑这条链。
+ * 抽取是逐字搬运，行为逐字不变（对照证据：`.work/p2-ab-baseline.mjs` 450 行 0 差异）。 */
+import { pickTakeover, TAKEOVER_LABEL } from '../takeover.ts';
 import type { DecideOpts, DecideResult, TacticsReport } from '../tactics.ts';
 import type { Engine, JevQuestion, JevSerialized, Move } from '../types.ts';
 
@@ -367,164 +369,28 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   }
   pairs.sort((a, b) => b[1] - a[1]);
 
-  /* 战术保险：十三级接管——致胜点必走、对方致胜必挡、己方活四点必走（活四+对方无先手五
+  /* 战术保险：十五级接管——致胜点必走、对方致胜必挡、己方活四点必走（活四+对方无先手五
    * = 理论必胜：两处成五点防不胜防）。概率只是偏好，事实优先。
    * 活四点由引擎以 criteria 保留标签 "you:open4" 声明（engine-interface 契约）。
-   * v13 起再加一道**压力闸门**：对手做四点比我们多时先削点（pressureGate），不抢活三。 */
-  let notation: string | null = null;
-  let tacticUsed: string | null = null;
-  let tacticBypassed = false;
-  /* 战术点中文名（接管提示用） */
-  const tacticName = (): string => ({
-    win: '致胜点', block: '必挡点', open4: '活四点', threat: '造杀点',
-    vcfAttack: '连续冲四将死链', vcfDefense: '将死链干预点', vctAttack: '连续威胁链首步',
-    vctDefense: '拆连续威胁链', pressureGate: '削对手做四点',
-    live3Attack: '活三抢攻点', live3Defense: '拆活三点', parry: '拆杀点',
-    parry3: '活三/活四预挡点', parry4: '冲四预挡点',
-  } as Record<string, string>)[tacticUsed || ''] || '战术点';
-  const pickAmong = (list: string[]): string | null => {
-    const inPairs = pairs.filter(([n]) => list.indexOf(n) >= 0);
-    const k2 = Math.max(1, (opts.topK as number | undefined) || 1);
-    if (inPairs.length) {
-      if (k2 > 1 && inPairs.length > 1) {
-        return weightedPick(inPairs.map((p) => p[0]), inPairs.map((p) => p[1]));
-      }
-      return inPairs[0]![0];
-    }
-    tacticBypassed = true;
-    const mv = engine.moveFromNotation(st, list[0] as string);
-    return mv ? mv.notation : null;
-  };
-  /* 拆杀点安全性排序：多个 danger 并存时逐个试走，优先排除给对方持续攻击节奏的
-   * 坏点（3-ply：对手 p → 我逼杀 q → 对手被迫堵 → 我仍有 danger），剩余再按逼杀数
-   * 排序。单个点或非 deepTactics 引擎时回退到 pickAmong。 */
-  const pickSafestParry = (list: string[]): string | null => {
-    if (list.length <= 1) return pickAmong(list);
-    const oppSide = engine.sides && engine.sides.find((s) => s.id !== (st as { turn: string }).turn);
-    if (!oppSide || !engine.deepTactics) return pickAmong(list);
-    const candNs = (cands && cands.length) ? cands : legal.map((m) => m.notation);
-    const tt = Date.now();
-    try {
-      /* 第一轮：排除允许持续攻击的坏点 */
-      const good = list.filter((p) => !allowsSustainedAttack(engine, st, p, oppSide.id, (st as { turn: string }).turn, candNs));
-      const pool = good.length ? good : list;
-      if (pool.length === 1) return pool[0] as string;
-      /* 第二轮：按逼杀着法数排序，取最少 */
-      let best: string | null = null, bestScore = Infinity;
-      for (const p of pool) {
-        const score = countForcingReplies(engine, st, p, oppSide.id, candNs);
-        if (score < bestScore) { bestScore = score; best = p; }
-      }
-      if (best) return best;
-    } catch (_) { /* 降级 */ } finally {
-      /* 3-ply 安全排序同属战术层，算进 tacticsMs（多 danger 时这是本层最大的一块） */
-      tacticsMs += Date.now() - tt;
-    }
-    return pickAmong(list);
-  };
-  /* 引擎标签层（open4 / parry3 / parry4）同样按版本闸门：版本没实现的层连
-   * criteria 都不用扫，才能让老版本的战略行为可复现。 */
+   * v13 起再加一道**压力闸门**：对手做四点比我们多时先削点（pressureGate），不抢活三。
+   *
+   * 2026-10-03（P2）：整条链搬进 `src/core/takeover.ts` 的 `pickTakeover()`——指纹冻结与
+   * P3 回放都要在**无模型**下跑「事实 + 层 + 落点」，链留在 `decide()` 里就必须发一次请求。
+   * 搬运逐字，分支顺序/闸门/兜底路径不变；这里只做入参装箱与三变量回填。 */
   const criteria = (): Record<string, unknown> => {
     const q = ser.questions as Record<string, JevQuestion> | undefined;
     const c = q && q.move && q.move.criteria;
     return c && typeof c === 'object' ? c as Record<string, unknown> : {};
   };
-  const open4Points = M.open4 ? Object.entries(criteria())
-    .filter(([n, v]) => typeof v === 'string' && /(^|\+)you:open4(\+|$)/.test(v) && byNotation.has(n))
-    .map(([n]) => n) : [];
-  /* 第四级（3-ply 预挡）：对手的 deny:open4/deny:live3 标签点 = 对方下回合可造活四/活三的
-   * 制造点。放任不管会被迫逐手拆杀（实战败局：p20 白走闲着 E6，黑 E7 活三点 → 强制拆 →
-   * J8 双杀 → 输）。win/block/open4/threat/parry 都无时抢先占掉，让对手造不成活三。
-   * 第五级（Rapfi 实战复盘 2026-09-29 增补）：deny:four = 对方下回合可造冲四（单杀逼迫链
-   * 起点）。Rapfi 对局显示：放任冲四制造点会被连续单杀逼迫 → 双杀收尾（4 局 3 次）。
-   * 优先级 deny:open4/deny:live3 > deny:four（后者多为单杀，可被 block 层处理，但提前
-   * 抢占能打断对方的连续逼杀节奏）。 */
-  const parry3Points = M.parry3 ? Object.entries(criteria())
-    .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:(open4|live3)(\+|$)/.test(v) && byNotation.has(n))
-    .map(([n]) => n) : [];
-  const parry4Points = M.parry4 ? Object.entries(criteria())
-    .filter(([n, v]) => typeof v === 'string' && /(^|\+)deny:four(\+|$)/.test(v) && byNotation.has(n))
-    .map(([n]) => n) : [];
-  if (tactics.winning_points_you.length) {
-    notation = pickAmong(tactics.winning_points_you);
-    if (notation) tacticUsed = 'win';
-  } else if (tactics.winning_points_opponent.length) {
-    notation = pickAmong(tactics.winning_points_opponent);
-    if (notation) tacticUsed = 'block';
-  } else if (open4Points.length) {
-    notation = pickAmong(open4Points);
-    if (notation) tacticUsed = 'open4';
-  } else if (tactics.chance_points_you.length) {
-    notation = pickAmong(tactics.chance_points_you);
-    if (notation) tacticUsed = 'threat';
-  } else if (tactics.vcf_win_you.length) {
-    /* VCF 进攻：连续冲四将死链的首步。排在 threat 之后（双杀两步胜更快）、
-     * parry 之前（将死链是强制胜，比「对方下回合可能造双杀」更紧急）。 */
-    notation = pickAmong(tactics.vcf_win_you);
-    if (notation) tacticUsed = 'vcfAttack';
-  } else if (tactics.vct_win_you.length) {
-    /* v11 VCT 抢攻：VCF（纯冲四）看不见、但含「活三逼迫」的连续威胁链的首步。
-     * 实测 24 局里 v10 有 20 手（7 局）存在这种算得清的必胜链，当时却走了启发式活三点，
-     * 其中两局因此和棋。与 vcfAttack 同级（都是强制胜，排在防守之前）。 */
-    notation = pickAmong(tactics.vct_win_you);
-    if (notation) tacticUsed = 'vctAttack';
-  } else if (tactics.vcf_win_opponent.length) {
-    /* VCF 防守：对方将死链的干预点（链条入口）。将死是强制输，比 parry 的
-     * 「潜在双杀」更紧急，故优先。 */
-    notation = pickAmong(tactics.vcf_win_opponent);
-    if (notation) tacticUsed = 'vcfDefense';
-  } else if (tactics.vct_win_opponent.length) {
-    /* v12 拆连续威胁链：对手的混合链（活三逼迫 + 冲四收尾）在 vcfDefense 只验纯冲四时会被放行。
-     * 实测两轮 48 个「我方无杀而对手有链」的回合里漏 15 个，其中 2 个存在能拆的点却没走
-     * （计时轮 #8 ply24 → K9、首轮 #6 ply52 → K8，两手实走都落在 parry 上）。
-     * 排在 vcfDefense 之后（纯冲四链已有拆点时先按原路走）、live3Attack 之前
-     * （对手的强制胜比我们先手造活三快）。 */
-    notation = pickAmong(tactics.vct_win_opponent);
-    if (notation) tacticUsed = 'vctDefense';
-  } else if (M.pressureGate && tactics.pressure_cut_points.length
-      && tactics.pressure_opponent > tactics.pressure_you
-      && !tactics.danger_points_opponent.length) {
-    /* v13 压力闸门：对手的「做四手数」压过我们时，先削点再谈进攻。ADR-0015 已证明活三不是杀
-     * （两个 L2 点互斥，「4 手内必胜」不成立），它只是逼手；真正危险的是对手造四点密集
-     * （双四威胁 = 2 手胜）。六轮实测 39 个「我们仍去抢活三而对手做四点已领先」的回合里，
-     * 实走之后对手仍握双四威胁的有 37 个；改用 1-ply 削点（引擎 pressureCut）压对手做四手数，
-     * 37/39 更优、0 手更差，平均 −1.87 个，双四威胁 37 → 7。削点为空时本层不开火，
-     * 行为与 v12 完全一致；真强制胜早被上面的 vcfAttack / vctAttack 接管，故不漏杀。
-     * 排在 live3Attack 之前（抢活三正是要拦的那一步）、live3Defense 之前（削点比破活三点更普适：
-     * 它直接压对手的做四手数，而 live3_deny_points 在实测里经常为空）。
-     * 与 live3Attack 同一条安全线：对手已有「危险点」时本层让位给 parry/safeSort（实测 p18 那类
-     * 「双 danger 并存」的局面里，pressureCut 只认手数、不认对手下一步的杀，会挑出走子方偏好的
-     * 危险点，所以必须显式挡住）。 */
-    notation = pickAmong(tactics.pressure_cut_points);
-    if (notation) tacticUsed = 'pressureGate';
-  } else if (M.live3Attack && !tactics.danger_points_opponent.length && tactics.live3_you.length) {
-    /* v10 活三抢攻：自己的 L3（落子后 ≥2 个活四制造点）＝ 4 手内必胜。排在 vcf 之后
-     * （将死链是强制胜，更快），parry 之前（对手下回合的双杀还没成型时我们先手更划算）。
-     * danger_points_opponent 非空时让位：对手下回合就能造活四（2 手胜），我们先手 4 手剑
-     * 会输速度——那种局面交给下面的 parry 层。
-     * v13 压力闸门（见上一分支）在入口处先接管：对手做四点领先且存在削点时不会走到这里。 */
-    notation = pickAmong(tactics.live3_you);
-    if (notation) tacticUsed = 'live3Attack';
-  } else if (M.live3Defense && !tactics.danger_points_opponent.length && tactics.live3_deny_points.length) {
-    /* v10 拆活三：对手有 L3 时走引擎算出的破点（让对手 L3 点数归零的那些点）。
-     * 排在 parry3（模型自己的 deny:live3 标签）之前：标签只认连续 XXX，跳活三/斜向组合
-     * 根本打不出标签，而实测 27 局 rapfi 归档里 14 局正是死在这种认不出的活三上。 */
-    notation = pickAmong(tactics.live3_deny_points);
-    if (notation) tacticUsed = 'live3Defense';
-  } else if (M.safeSort && tactics.danger_points_opponent.length) {
-    /* v5 起多 danger 并存时 3-ply 安全排序；v5 之前直接取概率最高者 */
-    notation = pickSafestParry(tactics.danger_points_opponent);
-    if (notation) tacticUsed = 'parry';
-  } else if (tactics.danger_points_opponent.length) {
-    notation = pickAmong(tactics.danger_points_opponent);
-    if (notation) tacticUsed = 'parry';
-  } else if (parry3Points.length) {
-    notation = pickAmong(parry3Points);
-    if (notation) tacticUsed = 'parry3';
-  } else if (parry4Points.length) {
-    notation = pickAmong(parry4Points);
-    if (notation) tacticUsed = 'parry4';
-  }
+  const tk = pickTakeover({
+    engine, st, tactics, mech: M, criteria: criteria(), legal, pairs, cands,
+    topK: opts.topK as number | undefined,
+    /* 3-ply 安全排序同属战术层，算进 tacticsMs（多 danger 时这是本层最大的一块） */
+    onTime: (ms) => { tacticsMs += ms; },
+  });
+  let notation: string | null = tk.notation;
+  const tacticUsed: string | null = tk.layer;
+  const tacticBypassed = tk.bypassed;
 
   /* top-k 概率加权随机（随机度） */
   if (!notation) {
@@ -558,7 +424,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
       tactics: tacticUsed,
       tacticsVersion: ver.id,
       warning: tacticBypassed
-        ? '战术保险接管：Jev 概率未覆盖' + tacticName() + '，已直接执行'
+        ? '战术保险接管：Jev 概率未覆盖' + (TAKEOVER_LABEL[tacticUsed || ''] || '战术点') + '，已直接执行'
         : undefined,
     },
   };

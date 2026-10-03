@@ -4,6 +4,8 @@
 > 触发：项目所有者要求（2026-10-03，paraphrased）：「建新 worktree；①确认战术版本之间是否有耦合牵连；②建 SSH 远程批量实验工具……先给出你的计划」。本文件是 ① 的答案，② 见同目录 [2026-10-03-remote-batch-experiments.md](2026-10-03-remote-batch-experiments.md)。
 > 结论速览：**有耦合，且分三层**——状态层（低）、机制层（高）、复现层（最高）。「同进程并行跑不同版本做对比」是安全的；「在 HEAD 上逐字复现老版本」是不安全的。详见 §2–§5。
 > ⚠️ **快照口径（2026-10-03 合入后补注）**：本文写于 v13 时代，当时的登记表是 **14 档 / 17 个机制键**，正文里的档位数、`src/core/engines/gomoku.ts` 行号都是那天的快照。当天稍后 v14（`v14-live3-fresh`）落盘 ⇒ 现为 **15 档（14 个战术版本 + `v0-off` 基线）/ 18 个机制键**（新增 `live3Fresh`），live3 那一段实现重写 ⇒ 该段行号有位移。**结论（三层耦合、两条静默回退坑、写死预算）不受影响**，引用行号时请以当天 commit `0e7e9fb` 为准。
+> 📌 **后续修订（2026-10-03 晚，P1/P2 落地后）**：两条静默回退坑已由 P0 改成显式失败；写死预算已由 P1 抽成 `src/core/tactics-budget.ts`；
+> §3.3 的「人工审视」已由 P2 的决策指纹换成机械红灯，接管链也已抽到 `src/core/takeover.ts` —— 详见 §3.3 末尾的更新框。
 
 ---
 
@@ -31,7 +33,7 @@
 
 ## 3. 机制层：层与层之间的依赖（改一版牵连谁）
 
-**接管链**是 `src/core/jev/client.ts:433-512` 一条单文件单序的 if/else：`win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > vctDefense > pressureGate > live3Attack > live3Defense > parry > parry3 > parry4`。
+**接管链**是 `src/core/jev/client.ts:433-512`（**P2 起已抽到 `src/core/takeover.ts` 的 `TAKEOVER_ORDER`/`pickTakeover()`**）一条单序的 if/else：`win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > vctDefense > pressureGate > live3Attack > live3Defense > parry > parry3 > parry4`。
 
 ### 3.1 向上依赖（高层机制读低层输出字段）
 
@@ -59,6 +61,19 @@
 | 接管链插新层但漏写 mech 门 | **新层以下全部老版本** | 高（未来风险） |
 
 **现有防线**：`src/core/tactics-versions.ts:150-152` 的 selfTest 单调性断言（上级机制不许丢）+ 决策级回归（`test/engines/tactics.test.mjs:391-460`、`:675-774`）。这两条是「新层静默改老版本」的唯一自动防线，新层插入必须人工审视引用 `danger_points_opponent` 的守卫。
+
+> **2026-10-03 更新（P2 指纹设施落地后）**：本矩阵的「人工审视」已换成**机械红灯** ——
+> `test/engines/version-freeze.test.mjs` 拿 `test/parity/tactics-fingerprints.json`（14 局面 × 15 档 = 210 行：
+> 层 + 落点 + 15 个事实点数摘要 + 事实 `digest`）逐行重放比对。试红实证：把 `DEFAULT_BUDGET.vcfNodeLimit`
+> 由 4000 改成 1（即上表第一行的「改引擎搜索」）⇒ 报「决策指纹漂移 **32 处**」，牵连 v7…v14（层从 `vcfDefense`
+> 变 `parry`/`vctDefense`），与本表预测的牵连面一致。另有两条**现场改正**：
+> ① 接管链已从 `src/core/jev/client.ts` 抽到 `src/core/takeover.ts`（`TAKEOVER_ORDER` 是层顺序的单一权威口径），
+> 本文件里 `client.ts:433-512` 一类行号只对应抽取前的版本；
+> ② **`threat` 层实测不可达**（不是罕见）：`you:open4` 标签判据（走后 ≥2 个成五点，`src/core/engines/gomoku.ts:1063-1064`）
+> 与 `chance_points_you` 判据（`src/core/tactics.ts:202`）同源，且凡含 `threat` 的档（v3 起）都含 `open4`、链里
+> `open4` 在前 ⇒ 只有「候选集扫不到 open4 点却算得出 chance 点」才可能开火。取证：2225 个归档候选 +
+> 双活三/双四合成局面全部 chance=0 或层被 `open4` 接管（`.work/p2-threat-probe2.mjs`）。故上表 `threatMakers`/2-ply
+> 一行的真实牵连面只有「`danger_points_opponent` 的取值」（parry/v13/live3Attack 的守卫），`threat` 这一层本身不产生决策。
 
 ---
 

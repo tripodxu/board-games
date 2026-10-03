@@ -16,6 +16,7 @@ export const ALL_MODULES = [
   './tactics.test.mjs',
   './jev.test.mjs',
   './archive.test.mjs',
+  './version-freeze.test.mjs',
   './parity.test.mjs',
 ];
 

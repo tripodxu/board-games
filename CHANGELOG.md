@@ -27,6 +27,24 @@
 
 ### 新增
 
+- **战术档位改动会亮红灯（P2 指纹设施，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：接管链原本内嵌在
+  [`src/core/jev/client.ts`](src/core/jev/client.ts) 的 `decide()` 里（原 `:374-527`），现在抽成纯函数
+  [`src/core/takeover.ts`](src/core/takeover.ts)：`TAKEOVER_ORDER`（14 层权威顺序）+ `TAKEOVER_LABEL`（中文层名）+
+  `pickTakeover({engine, st, tactics, mech, criteria, legal, pairs, cands, topK, onTime})` → `{notation, layer, bypassed}`
+  （`client.ts` 565 → 431 行；抽取零行为变更：30 局面 × 15 档 = 450 行决策面**差异 0 行**）。
+  新增 [`test/engines/fingerprint.mjs`](test/engines/fingerprint.mjs)（语料抽取 + `fingerprintOf()` 一趟链拿「事实 + 层 + 落点」+
+  `--write`/`--check` + 覆盖表）、[`test/parity/tactics-fingerprints.json`](test/parity/tactics-fingerprints.json)
+  （**14 局面 × 15 档 = 210 行**：归档抽样早 4/中 4/晚 2 + 具名夹具 4 个；生成 24.0 s）与
+  [`test/engines/version-freeze.test.mjs`](test/engines/version-freeze.test.mjs)（5 例：形状 / 逐行重放 / 覆盖与必须覆盖层 /
+  与 `decide()` 全链路同解 / 冻结字段完整；已进 `test/engines/runner.mjs` 的 `ALL_MODULES`）。
+  **红灯有效**：把 `DEFAULT_BUDGET.vcfNodeLimit` 由 4000 改成 1 ⇒ `⑭b` 报「决策指纹漂移 **32 处**」（v7…v14 的层
+  从 `vcfDefense` 变 `parry`/`vctDefense`），还原后立刻全绿 —— 审计 §3.3 的「改一处牵多档」从人工审视变成机械红灯。
+  语料规模按实测收缩（原计划 N≈120 ⇒ 约 9 分钟，进不了 CI；早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面）；
+  覆盖 13/14 层，唯一走不到的 `threat` 是**结构性**的：`you:open4` 标签判据（走后 ≥2 个成五点，
+  `src/core/engines/gomoku.ts:1063-1064`）与 `chance_points_you` 判据（`src/core/tactics.ts:202`）同源，且凡含
+  `threat` 的档（v3 起）都含 `open4`、链里 `open4` 在前 ⇒ 只有「候选集扫不到 open4 点却算得出 chance 点」才可能开火
+  （取证：2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）。引擎套件 **153 例**（+5）。
+  决策记录：[ADR-0020](docs/adr/0020-tactics-fidelity-freeze.md)。
 - **战术档位可冻结（P1 冻结层，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：新增
   [`src/core/tactics-budget.ts`](src/core/tactics-budget.ts) —— `EngineBudget`（15 个搜索上限）+ `DEFAULT_BUDGET`
   （= 冻结当天的常量，逐字）+ `BUDGET_KEYS` + `budgetOf()`（写错/非正数一律回落默认 ⇒ **预算写错的后果只能是少看见**）

@@ -321,7 +321,17 @@
   `.work/p1-fidelity-diff.mjs` ⇒ **`tac` 与 `ins` 全部 0 差异**（零行为变更）；② `.work/p1-mech-filter-probe.mjs`（40 局面）
   ⇒ v12–v14 文本 0 差异、v11 少 9600 字符、v10 19360、v7–v9 37560、v3–v6 51280、v1/v2 67520、v0 79200，丢的句子与机制表严格对应；
   ③ sound 正对照（哨兵局面缺省不报胜 / `sound:false` 报出 `F5→F6→E5` / 档位级 v7 报 `F5`、v9 不报，`nodeLimit:1` 搜不出）；
-  ④ 引擎套件 **148 例**（+4）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净。仍待 P2：指纹冻结（`test/parity/tactics-fingerprints.json`）。
+  ④ 引擎套件 **148 例**（+4）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净。
+- **战术档位改动会亮红灯（P2 指纹设施，2026-10-03）**：接管链从 `src/core/jev/client.ts`（原 `:374-527`）抽成纯函数
+  `src/core/takeover.ts`（`TAKEOVER_ORDER` 14 层权威顺序 + `TAKEOVER_LABEL` + `pickTakeover({engine, st, tactics, mech, criteria, legal, pairs, cands, topK, onTime})`），
+  本文件 565 → 431 行；新增 `test/engines/fingerprint.mjs`（语料抽取 + `fingerprintOf()` 一趟链拿「事实 + 层 + 落点」+ `--write`/`--check` + 覆盖表）、
+  `test/parity/tactics-fingerprints.json`（**14 局面 × 15 档 = 210 行，24.0 s**：归档抽样 10 个（早 4/中 4/晚 2）+ 具名夹具 4 个）、
+  `test/engines/version-freeze.test.mjs`（5 例，已进 `test/engines/runner.mjs` 的 `ALL_MODULES`）。
+  证据：① **抽取零行为变更**：`.work/p2-ab-baseline.mjs` 抽取前后各 30 局面 × 15 档 = 450 行，**差异 0 行**；
+  ② **试红有效**：把 `DEFAULT_BUDGET.vcfNodeLimit` 由 4000 改成 1 ⇒ `⑭b` 报「决策指纹漂移 **32 处**」（v7…v14 的层从 `vcfDefense` 变 `parry`/`vctDefense`），还原后全绿；
+  ③ 覆盖 **13/14 层**（缺 `threat`，结构性不可达：`you:open4` 标签判据与 `chance_points_you` 同源，且含 `threat` 的档都含 `open4` 而链里 `open4` 在前；
+  取证 2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）；④ `⑭d` 证指纹与 `decide()` 全链路同解；
+  ⑤ 引擎套件 **153 例**（+5）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净、`check:docs` 58 md / 397 链接。语料规模是实测定的：120 局面要 ~9 分钟（早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面），进不了 CI。决策记录 [ADR-0020](adr/0020-tactics-fidelity-freeze.md)。
 - 迁移各阶段的实测数字与偏差裁决见计划 P0–P8 执行记录（含本地导入 4440 changes、7 张表、线上部署版本号等）。
 
 ## 设计例外（有意保留，不是遗漏）
@@ -403,7 +413,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **148 个用例** + vitest **38 个测试文件 / 399 个用例**（含 `scripts` project：`test/scripts/**` 57 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **38 个测试文件 / 399 个用例**（含 `scripts` project：`test/scripts/**` 57 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
@@ -444,8 +454,7 @@
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
-   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅ 已完成**（见上「已验证」三条），**下一步 P2 指纹设施**
-   （`test/parity/tactics-fingerprints.json` + `version-freeze.test.mjs` + 故意改预算试红）→ P3 回放/考古
+   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅ 已完成**（见上「已验证」四条），**下一步 P3 回放/考古**
    （`tactics-replay.mjs` + 逐 commit 考古填 `budget/sound/openingMin`/`fidelity`）→ P4/P4b 离线运行面
    （`--store local` + `--upstream direct` + 进度文件 + 桶留档，零 CF 触碰验收）→ P5 Elo 升级（BT + bootstrap CI）
    → P6 阶梯编排。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
