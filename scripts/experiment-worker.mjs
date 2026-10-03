@@ -213,6 +213,12 @@ async function playOne(plan, a, b, gameNo, dirs) {
     black: { channel: s.black.channel, tactics: s.black.tactics, rapfiThinkMs: s.black.thinkMs },
     white: { channel: s.white.channel, tactics: s.white.tactics, rapfiThinkMs: s.white.thinkMs },
   };
+  /* effSide（persist.ts:176-187）对非 mock/rapfi/proxy 的渠道要 settings.apiKey 才认：
+     没 key 时把 random 兜底成 mock，导出 slug/duel 就会把「随机」显示成「演示」
+     （浏览器里用户配了 key 所以不触发；实测 rapfi1 批 slug=mock-vs-rapfi-0-5s）。
+     这里把本局 key 透传进 settings，与浏览器同口径；export 不带 settings，不泄密。 */
+  const gameApiKey = decideEnvFor(a, plan).apiKey || decideEnvFor(b, plan).apiKey;
+  if (gameApiKey) session.settings.apiKey = gameApiKey;
 
   const deadline = startedAt + timeoutMin * 60000;
   const stallMs = stallMin * 60000;
@@ -281,6 +287,11 @@ async function playOne(plan, a, b, gameNo, dirs) {
   session.endedAt = Date.now();
   const g = engine.getStatus(session.st);
   const payload = buildGameExport(session, engine);
+  /* 思考 ms 不在 export 里（浏览器同款 payload 也没这俩键），但本地 Elo 身份
+     （rapfi|500 ≠ rapfi|1000）与 D1 归因都要用：expInfo 现成，补成可选字段
+     （record-map.ts:375 的 num() 认得；旧消费方都有 ?? 0 兜底）。 */
+  payload.blackThink = s.black.thinkMs || 0;
+  payload.whiteThink = s.white.thinkMs || 0;
   const gameFile = path.join(dirs.gamesDir, gameRecordName(round, gameNo));
   writeJson(gameFile, payload);
 
@@ -302,12 +313,14 @@ async function playOne(plan, a, b, gameNo, dirs) {
     try {
       const resp = await apiPostGame(origin, payload);
       result.archivedId = resp && (resp.id ?? null);
-      /* 归档核对：GET /api/games?tag= 里应能数到本局（uid 优先，退化按局号计数）。 */
+      /* 归档核对：GET /api/games?tag= 里应能数到本局（uid 优先，退化按局号计数）。
+         注意列表项是 camelCase（gameUid/experimentTag），不是 snake_case。 */
       const list = await apiListByTag(origin, tag);
       const rows = (list && Array.isArray(list.games) ? list.games : []);
       const hit = rows.find((r) => r.game_uid === session.gameUid || r.gameUid === session.gameUid);
-      result.verified = Boolean(hit) || rows.filter((r) => r.tag === tag).length >= gameNo;
-      result.rowsForTag = rows.filter((r) => r.tag === tag).length;
+      const byTag = rows.filter((r) => (r.experimentTag || r.tag) === tag).length;
+      result.verified = Boolean(hit) || byTag >= gameNo;
+      result.rowsForTag = byTag;
     } catch (e) {
       result.status = 'error';
       result.error = `归档失败：${e.message || e}`;

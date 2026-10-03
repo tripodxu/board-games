@@ -4,8 +4,9 @@
 // 子命令：
 //   submit  --a 渠道[:战术档[:思考ms]] --b 同左 [--games 12] [--rounds 1]
 //           [--pause 2500] [--seed N] [--dry-run] [--force] [--batch 名]
-//           [--host IP] [--repo 远端仓根] [--user root]
+//           [--host IP] [--repo 远端仓根] [--user root] [--key-file 路径]
 //     → 本地生成每轮 plan.json → scp 到远端 → nohup 起 worker，后台跑
+//       （--key-file 默认 /root/.jev-key：远端 shell source 它把 key 注入 worker 环境）
 //   status  [--batch 名]           → scp 回 batch 目录，打印每轮进度/最新日志
 //   pull    --batch 名 [--out 目录] → 把远端 batch 目录整体拉回本地
 //   elo     <目录...> [--k 16] [--json 文件] → 对拉回来的棋谱算 Elo 排行
@@ -150,12 +151,15 @@ function cmdSubmit(args) {
   }
 
   // 逐轮起 worker（后台；</dev/null + nohup + pid 落盘，避免 ssh 会话被后台进程拖住）
+  // key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
+  // key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。
+  const keyFile = String(args['key-file'] || '/root/.jev-key');
   for (const p of plans) {
     const planPath = `${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`;
     const logPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.log`;
     const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.pid`;
     const ok = ssh(host, user,
-      `cd ${repo} && exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+      `cd ${repo} && set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a; exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
       20000, SSH_LAUNCH_OPTS);
     if (!ok) die(`round-${p.round} worker 启动失败`);
   }
@@ -260,7 +264,7 @@ function main() {
   else if (cmd === 'elo') cmdElo(args);
   else {
     console.log('用法：node scripts/experiment-batch.mjs <submit|resume|status|pull|elo> [选项]');
-    console.log('  submit --a <spec> --b <spec> [--games 12] [--rounds 1] [--pause 2500] [--seed N] [--dry-run]');
+    console.log('  submit --a <spec> --b <spec> [--games 12] [--rounds 1] [--pause 2500] [--seed N] [--dry-run] [--force] [--key-file 路径]');
     console.log('  resume --batch 名 [--round N]   按 checkpoint 续跑某一轮（kill 后恢复用）');
     console.log('  status [--batch 名]    拉回并显示每轮进度');
     console.log('  pull   --batch 名      拉回远端产物');
