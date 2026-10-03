@@ -97,6 +97,7 @@ function cmdSubmit(args) {
   const host = String(args.host || DEFAULT_HOST);
   const user = String(args.user || DEFAULT_USER);
   const repo = String(args.repo || DEFAULT_REPO);
+  const keyFile = String(args['key-file'] || '/root/.jev-key');
 
   // 速率预算：上游臂 × 双方轮流 × 每步墙钟估计
   const budget = estimateBudget(a, b, games, 4, 30);
@@ -108,15 +109,15 @@ function cmdSubmit(args) {
     die(`速率预算 ≈ ${budget.jevCallsPerMin} 次/分 > 40，接近线上限流。确认要跑就加 --force`);
   }
 
-  // 缺 key 预检（只在本机能看时提示；真正校验在远端 worker 开局前）
+  // key 预检改为提示性：key 放远端（--key-file 默认 /root/.jev-key，远端 shell source），
+  // 本机不必有 key；真正校验在远端 worker 开局前（缺 key exit 2）。
   if (!dryRun && budget.upstreamSides > 0) {
-    for (const side of [a, b]) {
-      if (side.channel === 'openrouter' && !process.env.JEV_OR_KEY) {
-        die('本机没有 JEV_OR_KEY（openrouter 臂需要）。worker 在远端跑，需要另有办法把 key 送过去（如远端 env 文件）');
-      }
-      if (side.channel !== 'openrouter' && UPSTREAM_CHANNELS.includes(side.channel) && !process.env.JEV_API_KEY) {
-        die('本机没有 JEV_API_KEY（' + side.channel + ' 臂需要）。worker 在远端跑，同样要把 key 配置到远端');
-      }
+    const missing = [];
+    if (a.channel === 'openrouter' || b.channel === 'openrouter') missing.push('JEV_OR_KEY');
+    if ([a, b].some((s) => s.channel !== 'openrouter' && UPSTREAM_CHANNELS.includes(s.channel))) missing.push('JEV_API_KEY');
+    if (missing.length) {
+      console.log(`注意：臂走上游，worker 需要 ${missing.join(' / ')}；key 从远端 ${keyFile} 注入（本机无需持有）。`);
+      console.log('  若远端缺 key，worker 会在开局前 exit 2，日志可见。');
     }
   }
 
@@ -153,9 +154,7 @@ function cmdSubmit(args) {
   // 逐轮起 worker（后台；</dev/null + nohup + pid 落盘，避免 ssh 会话被后台进程拖住）
   // key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
   // key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。
-  const keyFile = String(args['key-file'] || '/root/.jev-key');
-  for (const p of plans) {
-    const planPath = `${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`;
+  for (const p of plans) {    const planPath = `${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`;
     const logPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.log`;
     const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.pid`;
     const ok = ssh(host, user,
