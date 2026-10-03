@@ -49,7 +49,8 @@ docs/
 │   ├── 2026-10-03-tactics-v14-evidence.md         📋 证据评审（2026-10-03；v14 候选的负结论 + 两个对照复算 + §4.4 抬档复核 9-3-8）
 │   ├── 2026-10-03-tactics-coupling-audit.md       ✅ 已完成（2026-10-03；战术版本耦合性审计，并行 A/B 安全性）
 │   ├── 2026-10-03-remote-batch-experiments.md     ✅ 已完成（2026-10-03；SSH 远端批量对弈实验设施 P0–P5）
-│   └── 2026-10-03-tactics-v14-fresh-live3.md      ✅ 已上线（2026-10-03；v14 活三判据纠偏；`rapfi@1000ms` 9-1-2 / `@2000ms` 9-3-8）
+│   ├── 2026-10-03-tactics-v14-fresh-live3.md      ✅ 已上线（2026-10-03；v14 活三判据纠偏；`rapfi@1000ms` 9-1-2 / `@2000ms` 9-3-8）
+│   └── 2026-10-03-tactics-fidelity-and-elo-ladder.md 📋 待批（2026-10-03；战术任意版本可回溯的语义冻结 + 远端 Elo 能力阶梯）
 ├── superpowers/
 │   ├── plans/
 │   │   ├── 2026-09-28-board-games-hardening.md   ✅ 已完成（仓库硬化）
