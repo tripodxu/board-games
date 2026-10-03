@@ -37,6 +37,7 @@ import {
   gameRecordName,
   identityOf,
 } from './lib/batch-common.mjs';
+import { installRapfiNodeLoader } from './lib/rapfi-node-loader.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -119,12 +120,18 @@ async function main() {
   /* 前置校验：渠道/档位（parseSpec 已拦）、tag 形状、真上游 key 是否在位。
      缺 key 必须在开局前退出——不然每局都白跑十几分钟才失败（AGENTS.md「不在事后日志里备案」）。 */
   batchTag(new Date(), plan.batchId, round); // 形状校验（tag 本身用 plan 里的，时序以 submit 为准）
-  for (const cfg of [a, b]) {
-    if (cfg.channel === 'rapfi') {
-      process.stderr.write('rapfi 臂尚未开放（P4 强度 gate 未过）：等 scripts/lib/rapfi-node-loader.mjs\n');
+  /* rapfi 臂：装配 Node 侧胶水加载器（与浏览器同一条 core 协议路径，见
+     scripts/lib/rapfi-node-loader.mjs 头部说明；缺资产会在这里早失败）。 */
+  if (a.channel === 'rapfi' || b.channel === 'rapfi') {
+    try {
+      installRapfiNodeLoader();
+    } catch (err) {
+      process.stderr.write(`rapfi 臂加载失败：${err.message}\n`);
       process.exitCode = 2;
       return;
     }
+  }
+  for (const cfg of [a, b]) {
     if (UPSTREAM_CHANNELS.includes(cfg.channel)) {
       const need = cfg.channel === 'openrouter' ? process.env.JEV_OR_KEY : process.env.JEV_API_KEY;
       if (!need) {
@@ -162,7 +169,12 @@ async function main() {
   }
   summary.endedAt = new Date().toISOString();
   writeJson(path.join(outDir, 'round-summary.json'), summary);
-  log(`worker 完：${summary.games.filter((g) => g.status === 'skipped' || g.status === 'ok' || g.status === 'ok-dry').length}/${games} 局正常`);
+  const okCount = summary.games.filter((g) => g.status === 'skipped' || g.status === 'ok' || g.status === 'ok-dry').length;
+  log(`worker 完：${okCount}/${games} 局正常`);
+  /* rapfi 胶水的 Node 分支在程序退出时会 exit(1) 置位 process.exitCode
+     （public/rapfi/rapfi-single-simd128.js:10 的 ha=(a,b)=>{process.exitCode=a;throw b}，
+     stdin EOF/引擎 teardown 触发），纯噪声。这里按 summary 显式定出口码，把噪声与真实失败分开。 */
+  process.exitCode = okCount === games ? 0 : 1;
 }
 
 /** 跑一局；返回写进 checkpoint 的结果对象（不出异常，失败也返回）。 */
