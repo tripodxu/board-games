@@ -50,9 +50,21 @@
 | 我方上游协议是**自研形状**，不是 chat/completions | 请求体白名单 `state`/`model`/`questions`（`src/worker/routes/jev.ts:101-105`）；响应按 `answers.move.probabilities` 解析；`state` 里是 `board_ascii`/`legal_moves` 等（`src/core/engines/gomoku.ts:1082-1094`） |
 | 现有三个渠道与端点 | `src/core/jev/client.ts:26-30 CHANNELS`：`official` → `https://api.typesafe.ai/v1/systemone`（model `jev-latest`）、`openrouter` → `https://openrouter.ai/api/v1/systemone`（`typesafe/jev-1.13`）、`proxy` → 同源 `api/jev` |
 | Worker 转发层**已为换端留了口子** | `src/worker/lib/upstream.ts:37 DEFAULT_UPSTREAM_URL`、`:46 DEFAULT_TIMEOUT_MS = 30_000`、`:49 DEFAULT_MODEL = 'jev-latest'`、`:56 UpstreamFailureKind = 'timeout'|'aborted'|'network'`、`:63-64 UpstreamCall.url?` 可覆盖、`:71-72 fetcher` 可注入；key 优先级 `X-Api-Key` > `env.TYPESAFE_API_KEY` > 请求体（`src/worker/routes/jev.ts:80-84`） |
-| commandcode **不是** Jev 的可直换端点 | `GET https://api.commandcode.ai/provider/v1` → 404 `{"success":false,…,"cause":"GET https://api.commandcode.ai/provider/v1 is not a registered API route"}`；`GET …/provider/v1/models` → 200，OpenAI 风格清单 ~85 个模型，`supported_endpoints` 只有 `/chat/completions`、`/responses`、`/messages`，**没有任何 `systemone` / `jev-*` 条目** |
+| commandcode 的**模型清单不权威** | `GET …/provider/v1/models`（带 key）→ 200，85 个模型，**不含 `typesafe/jev`**；可同一 key 却能用 `typesafe/jev` 调通 `/systemone`（下一行）⇒ 清单不能用来判断可用性 |
+| **`/provider/v1/systemone` 与我方协议同形**（C1 实测，2026-10-03） | 请求 `{"model":"typesafe/jev","state":{…},"questions":{"move":{type:"choice",instructions,criteria},"edge":{type:"noul"},"position":{type:"score",criteria:[…]}},"options":[…]}` → **200**：`{"model":"typesafe/jev","answers":{"move":{"type":"choice","choice":"H8","confidence":0.21,"probabilities":{"F6":0.13,"H8":0.48,"E5":0.39}},"edge":{"type":"noul","noul":0.61},"position":{"type":"score","score":2.45,"confidence":0.13,"legend":{…},"probabilities":{…}}},"usage":{"input_tokens":377,"output_tokens":42}}` |
+| 非 systemone 路径**不接受** Jev 模型 | `POST …/provider/v1/chat/completions` + `model=jev-latest` / `systemone` / `typesafe/jev-latest` → 400 `{"error":{"message":"Model \"…\" is not supported on this endpoint.","type":"invalid_request_error","param":"model","code":"unsupported_model"}}`；同端点用清单内模型（`deepseek/deepseek-v4-pro`）→ 200（chat 形状，带 `reasoning`） |
+| 网关**不提供限流/配额线索** | 响应头只有 `cf-ray` / `server-timing` / `x-trace-id` / `x-powered-by: Hono` / `access-control-allow-origin: *`，无 `x-ratelimit-*`、无配额字段 ⇒ 429/402 只能被动分类处理 |
+| `position.criteria` 必须是**数组** | 送对象会 400 `Invalid input: expected array, received object`（`param: questions.position.criteria`）；我方 `SCORE_LEVELS`（`src/core/engines/gomoku.ts:964`）本来就是数组，天然相符 |
 
-**结论**：G-A 是「把请求侧已有的数记下来 + 报表消费」，不是新机制；G-B 不是换 URL，而是**加一层协议适配**（把我们的三问请求映射成 chat 补全，再把回复映射回逐点概率形状）。
+**结论**：G-A 是「把请求侧已有的数记下来 + 报表消费」，不是新机制；G-B 是**近乎直换**——同一套 `state`/`questions`/`options` 请求、同一套 `answers.*.probabilities` 响应，**不需要协议适配器**，切换 = 「base URL + model `typesafe/jev` + key」三元组替换（`src/worker/lib/upstream.ts:63-64` 的 `url?` 覆盖口子现成）。真正要写的只有 provider 表、失败分类与局内粘滞。
+
+### 2.1 C1 探针记录（已完成，2026-10-03）
+
+- 探针脚本：`.work/cc-probe.mjs`（清单与错误分类）、`.work/cc-probe2.mjs`（用**我方真实形状**的三问打 `/systemone`）、`.work/cc-probe3.mjs`（响应头/配额线索）；key 从 `.work/cc-key.txt` 读、不打印、不入库（`.work/` 已 gitignore）。
+- 复现命令（key 以文件注入，不写进命令行）：
+  `POST https://api.commandcode.ai/provider/v1/systemone`，头 `Authorization: Bearer <CMD_API_KEY>` + `Content-Type: application/json`，体 `{"model":"typesafe/jev","state":…,"questions":{…}}`。
+- 实测延迟：最小示例 3.2–4.9 s（121 B）；我方三问 1.4 s（510 B）；三轮共 3 次调用**全部 200，无 429**。
+- ⚠️ 未覆盖：真实一局（~1.2K 输入 token × 40+ 手）下的**配额与并发**未知；`usage` 里同样有 `input_tokens`/`output_tokens`（成本口径不变）。
 
 ---
 
@@ -68,15 +80,15 @@
 - **D-A2 缺失写 null，不写 0**：沿用 `src/core/meta.ts:65 tacMs` 的同款写法（只在 `typeof … === 'number'` 时写出），并把同一纪律复制到 `candsSent`/`candsLabeled`。非 Jev 侧（rapfi/人类）三列全 NULL，与 `thinkMsOf` 闸门同理。
 - **D-A3 归档短键 + D1 列名**：归档 JSON 用 `candsSent`/`candsLabeled`（与既有 `cands` 同风格，不做缩写）；D1 用 `cands_sent`/`cands_labeled`，落在 `migrations/0003_move_cands.sql`（现有迁移只到 `0002_tactics_timing.sql`）。
 - **D-A4 报表口径**：逐手三数 → 按轮/按身份聚合 mean / median / min–max + 五个桶（1–9 / 10–29 / 30–49 / 50–59 / 60–64）+ 「模型评分率 = `cands/candsSent`」。UI 侧在 `expSideStats`/`expAggregate` 增一列「候选」（均值），逐手细节仍归 `src/core/view/board.ts`。
-- **D-A5 `candsLabeled` 允许缺省**：它只对真过战术层的侧有意义（`channel === 'rapfi'` 之外）；首版可以只落 `candsSent`，`candsLabeled` 与 D-A1 一起上，但如果实现成本超预算，**先落 `candsSent`**（用户原话要的是「由 Jev 决定的候选点有几个」）。
+- **D-A5 三键一起上，但留退路**：用户 2026-10-03 拍板「三个一起记」（D-A1 全量）。若 C0 实现中预算超支，退路是先只落 `candsSent`（用户原话要的就是「由 Jev 决定的候选点有几个」），但**任何时候都不动 `cands` 的历史语义**。
 
 ### B 部分（兜底提供方）
 
-- **D-B1 走适配器，不换 URL**：新增纯模块 `src/core/jev/providers.ts`（`PROVIDERS` 表 + `buildRequest()` + `parseReply()`），`mode: 'jev' | 'openai-chat'`；fetch 仍留在调用侧（Worker `src/worker/lib/upstream.ts`、box/Node 直连路径），保持 `src/core/**` 纯函数、无 `fetch`。
+- **D-B1 直换三元组，不写协议适配器**（C1 实测协议同形）：新增纯模块 `src/core/jev/providers.ts` —— `PROVIDERS` 每项 `{ id, label, url, model, keySource, kind: 'systemone' }`（`primary` = TypeSafe 原端点 + `jev-latest`；`backup` = `https://api.commandcode.ai/provider/v1/systemone` + `typesafe/jev`）+ 纯函数 `pickProvider(failures, stickyId)`。fetch 仍留在调用侧（Worker `src/worker/lib/upstream.ts`、box/Node 直连路径），`src/core/**` 保持纯函数、不碰 `fetch`。**保留 `kind: 'openai-chat'` 的设计位但不实现**——只有将来接一个非 systemone 网关时才需要适配器。
 - **D-B2 触发与粘滞**：401/402/403（key/额度）、429 且 `Retry-After` 重试用尽、5xx 连续 3 次 ⇒ 切换；切换前用备用 key 打一次 `GET /provider/v1/models` 探活；**同一局内粘滞**，不回切（避免抖动把一局棋切成两半）；切换事件进 `events.jsonl`（box）/ worker 日志。
-- **D-B3 降级要诚实**：适配器拿不到逐点概率时 → `probSource='derived'`、`cands=null`，只在 `provider` 列标记；报表按 `provider` 分桶并标注「兜底手 N 手，未计入主口径」。绝不把 `cands` 填成 `candsSent` 或 1。
-- **D-B4 密钥纪律**：Worker 侧 `env.COMMANDCODE_API_KEY`（secret）；box 侧 `chmod 600` 文件（与 `/root/.jev-key` 同款）；**不写日志、不进 URL、不入库**。⚠️ 用户已在会话里贴出该 token ⇒ 建议本轮收尾时轮换一次。
-- **D-B5 默认兜底模型**：`deepseek/deepseek-v4-pro`（清单里 1M 上下文、支持 `/chat/completions` 的通用模型），可用 `COMMANDCODE_MODEL` 覆盖；**这是待拍板项**（另有 `gpt-6-sol`/`claude-sonnet-5-5` 等，但后者走 `/messages`，适配器要写两套）。
+- **D-B3 降级要诚实**：备用网关若某次不返回逐点概率 → `probSource='derived'`、`cands=null`，只在 `provider` 列标记；报表按 `provider` 分桶并标注「兜底手 N 手，未计入主口径」。绝不把 `cands` 填成 `candsSent` 或 1。
+- **D-B4 密钥纪律**：Worker 侧 `env.COMMANDCODE_API_KEY`（secret）；box 侧 `chmod 600` 文件（与 `/root/.jev-key` 同款）；**不写日志、不进 URL、不入库**。用户 2026-10-03 明确选择**不轮换**（视为测试 key）；因此该 key 只允许出现在 box 侧 600 文件与本机 `.work/cc-key.txt`（已 gitignore）里，仓库内任何文件都不得出现。
+- **D-B5 默认兜底模型**：`typesafe/jev`（用户 2026-10-03 拍板「使用jev」，C1 已实测该 model 在 `/systemone` 可用），可用 `COMMANDCODE_MODEL` 覆盖；清单里那 85 个 chat 模型与本计划无关（`/chat/completions` 那条路不采用）。
 - **D-B6 归属**：不改 `channel`（仍记 `proxy`/`official`，那是「走哪条渠道」），新增逐手 `provider` 字段回答「这一手是谁答的」；两者独立，报表同时可见。
 
 ---
@@ -90,8 +102,8 @@
 | `src/shared/record-map.ts` | 类型与映射（`ai ? num(ai.candsSent) : null` 同款） | ~15 行 |
 | `src/worker/lib/record-input.ts` + `src/worker/db/games.ts` | 入参白名单 + 列名（INSERT/SELECT 各一处） | ~12 行 |
 | `migrations/0003_move_cands.sql` | `ALTER TABLE game_moves ADD COLUMN cands_sent INTEGER;` …（两条）+ `provider`/`prob_source` 两列（B 部分） | ~8 行 |
-| `src/core/jev/providers.ts`（新） | provider 表 + `buildRequest()` + `parseReply()`（含 chat 适配与 JSON 契约解析） | ~180 行 |
-| `src/worker/lib/upstream.ts` + `src/worker/routes/jev.ts` | 依 provider 表选端点、失败分类映射、切换粘滞状态与时序归因 | ~70 行 |
+| `src/core/jev/providers.ts`（新） | provider 表 + 失败分类 + 粘滞选择（**无协议适配**；`kind: 'openai-chat'` 只留空位不实现） | ~110 行 |
+| `src/worker/lib/upstream.ts` + `src/worker/routes/jev.ts` | 依 provider 表选端点（url/model/key 三元组）、失败分类映射、切换粘滞状态与时序归因 | ~80 行 |
 | `src/ui/panels/experiment-report.ts` | `SideStat` 加候选均值、`expAggregate` 加列、`ExperimentEntry` 透传 | ~60 行 |
 | `test/engines/*`（自检） + `test/ui/experiment-report.spec.ts` + `test/scripts/*`（provider 表纯单测、SigV4 无关） | 覆盖 A1/A4 与 D-B1/D-B3 | ~140 行 |
 | 文档 | 本计划 + `docs/status.md` 口径行 + `README.md` 数据/命令 + `CHANGELOG.md` + `docs/memory/MEMORY.md`；B 部分是否单开 `docs/adr/0020-provider-failover.md` 待批 | ~60 行 |
@@ -103,8 +115,8 @@
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
 | **C0**（~0.5 天） | A 部分：三数落库 + D1 迁移 + 报表列 + 测试 | `tsc` 0 错；引擎自检 + vitest 全绿；`test/parity` 黄金零漂移；D1 新列在下一局非空、老局仍 NULL |
-| **C1**（~0.5 小时，只读探针） | 用备用 token 打一次最小 chat 请求，确认鉴权头形状、JSON 结构化输出是否被遵守、能否按候选点给分 | 三条结论各带一条原始响应片段（不猜） |
-| **C2**（~1 天） | B 部分：`providers.ts` + Worker 接线 + Node/box 直连路径共用同一策略 | 坏主 key 跑 4 局全部终局；`provider` 逐手可辨；切换有日志；单测覆盖 401/429/5xx 三条触发 |
+| **C1**（✅ 已完成 2026-10-03） | 只读探针：端点、协议同形、逐点概率、配额线索 | 结论见 §2.1 表与探针记录（`/systemone` + `typesafe/jev` → 200，`answers.move.probabilities` 存在；`/chat/completions` 不接受 Jev 模型；无限流头） |
+| **C2**（~0.5 天，无适配器） | B 部分：`providers.ts` + Worker 接线 + Node/box 直连路径共用同一策略 | 坏主 key 跑 4 局全部终局；`provider` 逐手可辨；切换有日志；单测覆盖 401/429/5xx 三条触发 |
 | **C3**（~0.5 天） | 归因与报表：`provider`/`prob_source` 落库 + 报表分桶 + 文档 | 报表能给出「兜底手 N 手 + 未计入主口径」一行；status 口径更新 |
 | **C4**（随下一次实验） | 与 G-B2 合并跑（直连上游 + 兜底），并报战术层耗时与成本对照 | 见 [fidelity-and-elo-ladder](2026-10-03-tactics-fidelity-and-elo-ladder.md) §7 报表第 ①②⑥ 项 |
 
@@ -117,20 +129,28 @@
 | 风险 | 处置 |
 | --- | --- |
 | 第三网关条款/零留存未知（棋局不是隐私数据，但要说明） | 文档写明数据去向；如用户要求，兜底只用于实验面、不进生产默认路径 |
-| 适配器把概率丢了 ⇒ 主指标断档 | D-B3：如实标 `derived` + 报表分桶，宁可样本少也不混口径 |
+| 备用网关某次不返回逐点概率，或将来协议漂移 | D-B3：如实标 `derived` + 报表分桶；`providers.ts` 单测用**离线夹具**（C1 的真实响应体）钉住形状，漂移时单测先红 |
+| 网关**配额/并发未知**（响应头无线索） | 保守串行 + 429 退避；先在实验面小样本试跑，再决定是否给生产路径开兜底 |
 | 切换抖动导致一局被切碎 | D-B2 局内粘滞 + 探活 + 事件日志 |
 | 新列让 `test/parity` 黄金 diff 失败 | 「是 number 才写」纪律 + 老归档零键；黄金用例显式覆盖 |
 | box 直连备用网关不通 | 与 G3 同一降级路径（经业主 Worker + `--allow-production`），或只用 Worker 侧兜底 |
-| 用户贴出的 token 已外泄 | 建议轮换；轮换后只更新 box/Worker secret，不动代码 |
+| token 已进会话记录（用户选择不轮换） | 只在 box 600 文件与本机 `.work/cc-key.txt`（gitignore）留存；仓库/日志/URL 一律不出现；`git grep` 抽查作为收尾动作 |
 
 ---
 
-## 7 待拍板
+## 7 拍板记录（2026-10-03）与仍开放项
 
-1. **口径**：三数（`cands` / `candsSent` / `candsLabeled`）一起上，还是先只上 `candsSent`？（D-A5 给了「先 `candsSent`」的退路）
-2. **B 的形态**：适配器保概率契约（D-B1，~1 天）还是另立 `commandcode` 渠道丢概率（~2 小时，但 `cands` 断档、实验口径要分渠道）？
-3. **兜底模型**：默认 `deepseek/deepseek-v4-pro` 是否可以？（清单里没有 systemone 系模型，必须选一个通用模型）
-4. **token 轮换**：现在就换，还是等接线完成再换？
+已拍板：
+
+1. **口径** → 三个一起记（`cands` + `candsSent` + `candsLabeled`），见 D-A1/D-A5。
+2. **B 的形态** → 保概率契约；C1 实测证明**不需要适配器**（协议同形），直接按 D-B1 的三元组切换。
+3. **兜底模型** → 用 Jev 本体（`typesafe/jev`，走 `/provider/v1/systemone`），见 D-B5。
+4. **token** → 不轮换（视为测试 key），见 D-B4 的留存纪律。
+
+仍开放（不阻塞 C0）：
+
+- **兜底是否进生产路径**：默认只给实验面（box 直连）开兜底，生产 Worker 是否也启用待定——取决于网关配额（§2.1 未覆盖项）与用户对第三方路径的接受度。
+- **是否单开 `docs/adr/0020-provider-failover.md`**：若兜底进生产路径则开 ADR，否则只在本计划与 `status.md` 记录。
 
 ---
 
