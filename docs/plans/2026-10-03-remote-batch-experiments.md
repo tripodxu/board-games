@@ -1,6 +1,6 @@
 # 计划与执行记录：SSH 远程批量实验工具（纯 Node 对弈回路 + Elo 自动排名）
 
-> 类型：**工具/架构轮**（新增脚本与测试接线，不改 `src/core`、`src/ui`、`src/app`、worker 行为；`tactics-versions.ts` 只读白名单引用）。状态：**✅ 已完成（2026-10-03；P0–P4 已执行并留痕于 §8，P5 收口中）**。
+> 类型：**工具/架构轮**（新增脚本与测试接线，不改 `src/core`、`src/ui`、`src/app`、worker 行为；`tactics-versions.ts` 只读白名单引用）。状态：**✅ 已完成（2026-10-03；P0–P5 全部执行并留痕 §8，x1 追加轮仍在 box 上跑，见 §8）**。
 > 触发：项目所有者要求（2026-10-03，paraphrased）：「建新 worktree；②建一个批量实验工具，跑在空闲的 SSH 主机上——现在实验太费时间，要解放本机；自由选择比拼双方（渠道/思考档强度/战术档）、等待时间；时间允许时自动跑 Elo 排名。先给出你的计划。」
 > 工作分支：`feat/ssh-batch-experiments`（worktree `.worktrees/feat-ssh-batch-experiments`，HEAD `dd8f657`，基线 `npm test` 337 全过）。
 > 配套审计：同目录 [2026-10-03-tactics-coupling-audit.md](2026-10-03-tactics-coupling-audit.md)（需求①的答案；本计划 D2/D4 直接消费它的结论）。
@@ -185,12 +185,12 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
 - **追加一轮（Elo 样本）**：`--a proxy:v13-pressure-gate:0 --b rapfi::500 --games 12`
   （tag `exp-20261003052604-x1-r1`）执行中（约 70 分钟），完成后合并出总表。
 
-### P5 文档收口（进行中）
+### P5 文档收口（✅ 2026-10-03 完成）
 - 计划本篇执行记录、ADR-0018、`docs/README.md` 索引（adr 0018 + 两个 plans 行）、AGENTS.md §4 命令、
   MEMORY.md 置顶条目、status.md 数据现状。
 - commit 拆分：feat(scripts) P1 / fix(scripts) P2 收尾 / feat(scripts) P4 rapfi loader+probe /
-  fix(scripts) 三处归因修正 / fix(scripts) key 预检改提示 / docs(adr) 0018 / docs(plans) 两篇。
-- 终验：`npm test` 全量 + `npm run typecheck` + `npm run check:docs`。
+  fix(scripts) 三处归因修正 / fix(scripts) key 预检改提示 / docs(adr) 0018（`0e7e9fb` 8 文件 +241/−18）/ docs(plans) 两篇。
+- 终验（`0e7e9fb`）：`npm test` **366 例 / 36 文件全过** + `npm run typecheck` 干净 + `npm run check:docs` 全部通过（memory 置顶、53 个 md / 330 链接、status 时效 0 天）。
 
 ## 9. 未闭环 / 遗留
 
