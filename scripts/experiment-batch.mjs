@@ -33,6 +33,9 @@ const DEFAULT_HOST = '185.242.234.48';
 const DEFAULT_USER = 'root';
 const DEFAULT_REPO = '/root/board-games';
 const SSH_OPTS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
+// 起 worker 的 ssh 加 -n（stdin 来自 /dev/null，避免本机终端管道把 ssh 挂住）；
+// scp 不支持 -n，只给起 worker 的 ssh 用
+const SSH_LAUNCH_OPTS = ['-n', ...SSH_OPTS];
 
 function die(msg, code = 2) {
   console.error('✗ ' + msg);
@@ -53,17 +56,21 @@ function parseArgs(argv) {
   return out;
 }
 
-function sh(cmd, args) {
+function sh(cmd, args, timeoutMs) {
   try {
-    execFileSync(cmd, args, { stdio: 'inherit' });
+    execFileSync(cmd, args, { stdio: 'inherit', timeout: timeoutMs });
     return true;
-  } catch {
+  } catch (err) {
+    if (err.signal === 'SIGTERM') {
+      console.log('（本地 ssh 客户端已超时断开；远程 nohup worker 不受影响，用 status --batch 查看）');
+      return true;
+    }
     return false;
   }
 }
 
-function ssh(host, user, remoteCmd) {
-  return sh('ssh', [...SSH_OPTS, `${user}@${host}`, remoteCmd]);
+function ssh(host, user, remoteCmd, timeoutMs, opts = SSH_OPTS) {
+  return sh('ssh', [...opts, `${user}@${host}`, remoteCmd], timeoutMs);
 }
 
 function scp(args) {
@@ -91,13 +98,13 @@ function cmdSubmit(args) {
   const repo = String(args.repo || DEFAULT_REPO);
 
   // 速率预算：上游臂 × 双方轮流 × 每步墙钟估计
-  const budget = estimateBudget({ a, b, movesPerGame: Math.round(games * 30), avgMoveMs: 4000 });
+  const budget = estimateBudget(a, b, games, 4, 30);
   if (budget.upstreamSides === 2 && !args.force) {
     die(`两臂都是上游渠道（${formatSpec(a)} / ${formatSpec(b)}）：限流口径下必须串行（concurrency=1）。` +
-      `确认要跑就加 --force（预计每分钟上游调用 ≈ ${budget.callsPerMin}）`);
+      `确认要跑就加 --force（预计每分钟上游调用 ≈ ${budget.jevCallsPerMin}）`);
   }
-  if (budget.callsPerMin > 40 && !args.force) {
-    die(`速率预算 ≈ ${budget.callsPerMin} 次/分 > 40，接近线上限流。确认要跑就加 --force`);
+  if (budget.jevCallsPerMin > 40 && !args.force) {
+    die(`速率预算 ≈ ${budget.jevCallsPerMin} 次/分 > 40，接近线上限流。确认要跑就加 --force`);
   }
 
   // 缺 key 预检（只在本机能看时提示；真正校验在远端 worker 开局前）
@@ -113,9 +120,10 @@ function cmdSubmit(args) {
   }
 
   const plans = [];
+  const startedAt = new Date();
   for (let i = 1; i <= rounds; i++) {
     const plan = {
-      batchId, round: i, tag: batchTag(), games,
+      batchId, round: i, tag: batchTag(startedAt, batchId, i), games,
       a: formatSpec(a), b: formatSpec(b), pauseMs,
       timeoutMin: 180, stallMin: 15, maxPlies: 225, topK: 3, seed,
       dryRun, origin: 'https://jevqipan.logicc.top',
@@ -129,8 +137,9 @@ function cmdSubmit(args) {
   fs.mkdirSync(localPlans, { recursive: true });
   for (const p of plans) fs.writeFileSync(path.join(localPlans, `round-${p.round}.json`), JSON.stringify(p, null, 2) + '\n');
 
-  console.log(`提交 batch=${batchId} rounds=${rounds} games/轮=${games} 对阵 ${formatSpec(a)} vs ${formatSpec(b)}${dryRun ? '（dry-run 不打上游）' : ''}`);
-  console.log(`  速率预算：上游臂 ${budget.upstreamSides} 个，估计 ≈ ${budget.callsPerMin} 次/分（按 4s/步）`);
+  console.log(`提交 batch=${batchId} rounds=${rounds} games/轮=${games}`);
+  console.log(`  对阵 ${String(args.a)} vs ${String(args.b)}${dryRun ? '（dry-run 不打上游）' : ''}`);
+  console.log(`  速率预算：上游臂 ${budget.upstreamSides} 个，估计 ≈ ${budget.jevCallsPerMin} 次/分（按 4s/步），单轮 D1 写 ≈ ${budget.writesPerDay} 行`);
   console.log(`  tag：${plans.map((p) => p.tag).join(' , ')}`);
 
   // 远端建目录 + 逐个上传 plan
@@ -140,18 +149,39 @@ function cmdSubmit(args) {
     if (!scp([rel, `${user}@${host}:${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`])) die(`上传 round-${p.round} plan 失败`);
   }
 
-  // 逐轮起 worker（后台）
+  // 逐轮起 worker（后台；</dev/null + nohup + pid 落盘，避免 ssh 会话被后台进程拖住）
   for (const p of plans) {
     const planPath = `${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`;
     const logPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.log`;
+    const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.pid`;
     const ok = ssh(host, user,
-      `cd ${repo} && nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 & echo started pid=$!`);
+      `cd ${repo} && exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+      20000, SSH_LAUNCH_OPTS);
     if (!ok) die(`round-${p.round} worker 启动失败`);
   }
 
   console.log(`已启动。查看进度：node scripts/experiment-batch.mjs status --batch ${batchId}`);
   console.log(`拉回棋谱：  node scripts/experiment-batch.mjs pull --batch ${batchId}`);
   console.log(`算 Elo：     node scripts/experiment-batch.mjs elo .work/remote/${batchId}`);
+}
+
+/* ---------------- resume（断点续跑：worker 自己跳过已 ok 的 checkpoint） ---------------- */
+function cmdResume(args) {
+  const batchId = sanitizeBatchId(String(args.batch || ''));
+  if (!batchId) die('resume 需要 --batch <名>');
+  const round = args.round ? Number(args.round) : 1;
+  if (!Number.isInteger(round) || round < 1) die('--round 必须是正整数');
+  const host = String(args.host || DEFAULT_HOST);
+  const user = String(args.user || DEFAULT_USER);
+  const repo = String(args.repo || DEFAULT_REPO);
+  const planPath = `${repo}/.work/remote/${batchId}/plans/round-${round}.json`;
+  const logPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.log`;
+  const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.pid`;
+  const ok = ssh(host, user,
+    `cd ${repo} && exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+    20000, SSH_LAUNCH_OPTS);
+  if (!ok) die(`round-${round} 续跑失败（plan 不存在？ssh 不通？）`);
+  console.log(`已续跑 batch=${batchId} round=${round}（已完成的对局会按 checkpoint 跳过）`);
 }
 
 /* ---------------- status / pull ---------------- */
@@ -161,12 +191,14 @@ function pullBatch(args, { quiet }) {
   const host = String(args.host || DEFAULT_HOST);
   const user = String(args.user || DEFAULT_USER);
   const repo = String(args.repo || DEFAULT_REPO);
-  const outDir = path.resolve(String(args.out || path.join(ROOT, '.work/remote', batchId)));
-  fs.mkdirSync(outDir, { recursive: true });
-  if (!scp(['-r', `${user}@${host}:${repo}/.work/remote/${batchId}`, outDir + path.sep])) die('scp 拉取失败');
-  const local = path.join(outDir, batchId);
-  if (!quiet) printStatus(local, batchId);
-  return local;
+  const outParent = path.resolve(String(args.out || path.join(ROOT, '.work/remote')));
+  fs.mkdirSync(outParent, { recursive: true });
+  const localDir = path.join(outParent, batchId);
+  fs.rmSync(localDir, { recursive: true, force: true }); // 每次整体覆盖，保持目录形状稳定
+  if (!scp(['-r', `${user}@${host}:${repo}/.work/remote/${batchId}`, outParent + path.sep])) die('scp 拉取失败');
+  if (!fs.existsSync(localDir)) die('拉回后本地没有 ' + localDir);
+  if (!quiet) printStatus(localDir, batchId);
+  return localDir;
 }
 
 function printStatus(batchDir, batchId) {
@@ -178,7 +210,7 @@ function printStatus(batchDir, batchId) {
     const rd = path.join(batchDir, r);
     const sumFile = path.join(rd, 'round-summary.json');
     const gamesDir = path.join(rd, 'games');
-    const cps = fs.existsSync(path.join(rd, 'checkpoints')) ? fs.readdirSync(path.join(rd, 'checkpoints')) : [];
+    const cps = fs.existsSync(path.join(rd, 'checkpoint')) ? fs.readdirSync(path.join(rd, 'checkpoint')) : [];
     let done = 0;
     if (fs.existsSync(sumFile)) { try { done = JSON.parse(fs.readFileSync(sumFile, 'utf8')).games.length; } catch { /* 半写 */ } }
     const nGames = fs.existsSync(gamesDir) ? fs.readdirSync(gamesDir).filter((f) => f.endsWith('.json')).length : 0;
@@ -193,7 +225,7 @@ function printStatus(batchDir, batchId) {
 
 /* ---------------- elo ---------------- */
 function cmdElo(args) {
-  const dirs = args._.slice(1);
+  const dirs = args._;
   if (dirs.length === 0) die('elo 需要一个或多个含棋谱 JSON 的目录');
   const k = args.k ? Number(args.k) : 16;
   const records = loadRecords(dirs.map((d) => path.resolve(d)));
@@ -222,12 +254,14 @@ function main() {
   const cmd = argv[0];
   const args = parseArgs(argv.slice(1));
   if (cmd === 'submit') cmdSubmit(args);
+  else if (cmd === 'resume') cmdResume(args);
   else if (cmd === 'status') pullBatch(args, { quiet: false });
   else if (cmd === 'pull') pullBatch(args, { quiet: true });
   else if (cmd === 'elo') cmdElo(args);
   else {
-    console.log('用法：node scripts/experiment-batch.mjs <submit|status|pull|elo> [选项]');
+    console.log('用法：node scripts/experiment-batch.mjs <submit|resume|status|pull|elo> [选项]');
     console.log('  submit --a <spec> --b <spec> [--games 12] [--rounds 1] [--pause 2500] [--seed N] [--dry-run]');
+    console.log('  resume --batch 名 [--round N]   按 checkpoint 续跑某一轮（kill 后恢复用）');
     console.log('  status [--batch 名]    拉回并显示每轮进度');
     console.log('  pull   --batch 名      拉回远端产物');
     console.log('  elo   <目录...>        本地算 Elo 排行');

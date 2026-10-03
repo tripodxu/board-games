@@ -38,6 +38,8 @@ export function gameRecord(exportJson) {
   else if (winner === 'draw') score = 0.5;
   // winner 缺失/空/未知 ⇒ 未终局或超时截断，不是和棋，不计入 Elo
   if (score === null) return null;
+  // 没有 identity 线索的 JSON 不当棋谱（多一层保险，正常布局下 visit 不到）
+  if (!g.blackChannel || !g.whiteChannel) return null;
   return {
     tag: g.experiment || g.tag || '',
     gameUid: g.gameUid || g.game_uid || '',
@@ -51,7 +53,11 @@ export function gameRecord(exportJson) {
   };
 }
 
-/** 读一个目录（或目录数组）下所有棋谱 JSON，按 exported/tag 稳定排序。 */
+/**
+ * 读一个目录（或目录数组）下的棋谱 JSON，按 exported/tag 稳定排序。
+ * 只收 `<任意层级>/games/*.json`：worker 的产物布局是 round-i/games/，
+ * 这样 round-summary.json / elo.json / plans/plan.json 都不会被当成棋谱。
+ */
 export function loadRecords(dirOrDirs) {
   const dirs = Array.isArray(dirOrDirs) ? dirOrDirs : [dirOrDirs];
   const files = [];
@@ -62,7 +68,7 @@ export function loadRecords(dirOrDirs) {
         const p = path.join(d, name);
         const st = fs.statSync(p);
         if (st.isDirectory()) walk(p);
-        else if (/\.json$/i.test(name)) files.push(p);
+        else if (/\.json$/i.test(name) && path.basename(d) === 'games') files.push(p);
       }
     };
     walk(dir);

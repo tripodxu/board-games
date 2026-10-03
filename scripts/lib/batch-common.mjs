@@ -122,6 +122,7 @@ export function estimateBudget(a, b, games, avgMoveSec, avgPliesPerGame) {
   const sides = [a, b].filter((c) => UPSTREAM_CHANNELS.includes(c.channel));
   const worstMoveMs = Math.max(402, avgMoveSec * 1000); // playbooks: tactics 均值 402ms
   return {
+    upstreamSides: sides.length,
     jevCallsPerMin: sides.length ? jevMovesPerMin(worstMoveMs) * sides.length : 0,
     jevCallsPerGame: sides.length ? Math.ceil(avgPliesPerGame / 2) * sides.length : 0,
     writesPerDay: Math.ceil((1 + avgPliesPerGame) * games),

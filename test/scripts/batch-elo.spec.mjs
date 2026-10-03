@@ -73,16 +73,22 @@ describe('computeElo / rankTable', () => {
 });
 
 describe('loadRecords', () => {
-  it('跳过坏 JSON、按导出行排序、不计入无 winner 的局', () => {
+  it('只收 games/ 子目录里的棋谱，跳过坏 JSON 与 summary/elo 等非棋谱文件', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elo-'));
+    const games = path.join(dir, 'round-1', 'games');
+    fs.mkdirSync(games, { recursive: true });
     const g = (winner, exported, uid) => JSON.stringify({
       exported, gameUid: uid, winner, result: winner || '', endReason: '', moves: [],
       blackChannel: 'mock', whiteChannel: 'mock', blackTactics: '', whiteTactics: '',
     });
-    fs.writeFileSync(path.join(dir, 'a.json'), g('black', '2026-10-03T00:00:02Z', 'u2'));
-    fs.writeFileSync(path.join(dir, 'b.json'), '{ 坏 json');
-    fs.writeFileSync(path.join(dir, 'c.json'), g('white', '2026-10-03T00:00:01Z', 'u1'));
-    fs.writeFileSync(path.join(dir, 'd.json'), g('', '2026-10-03T00:00:03Z', 'u3')); // winner 空 → 未终局，不计入
+    fs.writeFileSync(path.join(games, 'a.json'), g('black', '2026-10-03T00:00:02Z', 'u2'));
+    fs.writeFileSync(path.join(games, 'b.json'), '{ 坏 json');
+    fs.writeFileSync(path.join(games, 'c.json'), g('white', '2026-10-03T00:00:01Z', 'u1'));
+    fs.writeFileSync(path.join(games, 'd.json'), g('', '2026-10-03T00:00:03Z', 'u3')); // winner 空 → 未终局，不计入
+    // 同目录里的非棋谱 JSON 不应被统计
+    fs.writeFileSync(path.join(games, 'round-summary.json'), JSON.stringify({ games: [] }));
+    fs.writeFileSync(path.join(games, 'elo.json'), JSON.stringify({ rows: [] }));
+    fs.writeFileSync(path.join(dir, 'plans.json'), JSON.stringify({ tag: 'x' }));
     const recs = loadRecords([dir, path.join(dir, '不存在')]);
     expect(recs.map((r) => r.gameUid)).toEqual(['u1', 'u2']);
   });
