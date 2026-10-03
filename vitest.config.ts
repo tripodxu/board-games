@@ -6,6 +6,7 @@
  *  - `ui`    ：happy-dom 环境，跑对局循环与面板的运行时行为测试
  *              （取代原先读源码文本做字符串匹配的 DOM 契约断言）。
  *  - `core`  ：纯 Node 环境，跑 src/core 的纯逻辑单测（引擎自检另走 node test/run-tests.mjs）。
+ *  - `scripts`：纯 Node 环境，跑 scripts/ 下工具链（scripts/lib、CLI/worker 的纯函数）的单测。
  */
 import { defineConfig } from 'vitest/config';
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-workers';
@@ -50,6 +51,14 @@ export default defineConfig(async () => {
             name: 'core',
             environment: 'node',
             include: ['test/core/**/*.spec.ts'],
+          },
+        },
+        {
+          test: {
+            name: 'scripts',
+            environment: 'node',
+            // 工具链单测：scripts/lib 纯函数 + worker 的 mock 冒烟（不打线上）
+            include: ['test/scripts/**/*.spec.mjs'],
           },
         },
       ],
