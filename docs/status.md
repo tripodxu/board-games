@@ -1,6 +1,6 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-02。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-03。
 
 ## 当前状态
 
@@ -13,6 +13,7 @@
 | 数据 | ✅ 已迁入 D1 | 数据库 `jev-qiguan`（WNAM），`database_id = f72390fe-a506-4a88-8db7-af7213657947`；见下「数据现状」 |
 | 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
+| 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0018](adr/0018-remote-batch-experiments.md)） |
 | 渠道 | ✅ 六个选项 | `official`、`openrouter`、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
 | 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
@@ -24,15 +25,15 @@
 ## 数据现状
 
 线上 D1 与导入产物一致（来源：计划 P4 执行记录，以及 [migrations/import/manifest.json](../migrations/import/manifest.json)）；
-2026-10-01 下午起 D1 里多了**真跑出来**的 4 局（见下「真实验」一行），2026-10-02 又加了战术 v10 对照实验的两臂 24 局、v11 单臂 12 局、v10 直连 v11 的同门 12 局、v11 的计时轮 12 局、v12 单臂 12 局，v12 对 `rapfi@1000ms` 与 `rapfi@2000ms` 各 12 局（同日傍晚，用来验证「按 m08704 抬高 Rapfi 思考档」这一档），以及 v13 对 `rapfi@1000ms` 的 12 局（外加一轮被打断的首轮 3 局，无实验行）；导入基线仍是 54 局 / 4379 手：
+2026-10-01 下午起 D1 里多了**真跑出来**的 4 局（见下「真实验」一行），2026-10-02 又加了战术 v10 对照实验的两臂 24 局、v11 单臂 12 局、v10 直连 v11 的同门 12 局、v11 的计时轮 12 局、v12 单臂 12 局，v12 对 `rapfi@1000ms` 与 `rapfi@2000ms` 各 12 局（同日傍晚，用来验证「按 m08704 抬高 Rapfi 思考档」这一档），以及 v13 对 `rapfi@1000ms` 的 12 局（外加一轮被打断的首轮 3 局，无实验行）；2026-10-03 起新增 **SSH 远端批量口径**（[ADR-0018](adr/0018-remote-batch-experiments.md)，工具落 `scripts/experiment-batch.mjs`）跑出的 14 局：`rapfi@500ms` vs `random/v13` 12 局（tag `exp-20261003042812-rapfi1-r1`）+ `proxy/v13` vs `random/v13` 2 局真上游冒烟（tag `exp-20261003052056-smoke1-r1`，均已 POST 归档并 GET 核对 verified）；导入基线仍是 54 局 / 4379 手：
 
 | 项 | 值 |
 | --- | --- |
-| 棋谱 | **169 局 / 11310 手** = 导入基线 54 局 / 4379 手（全部五子棋；日期 2026-09-29 与 2026-09-30）**+ 4 局 proxy-vs-proxy 真实验**（2026-10-01，各 225 手，tag `exp-20261001132645`）**+ 24 局 v10 对照实验**（2026-10-02，tag `exp-20261001174212` / `…174837` / `…181244` / `…182552`）**+ 12 局 v11 对照实验**（2026-10-02，408 手，tag `exp-20261002055817`）**+ 12 局 v10 直连 v11**（2026-10-02，1202 手，tag `exp-20261002080446`）**+ 12 局 v11 计时轮**（2026-10-02，347 手，tag `exp-20261002094817`）**+ 12 局 v12 对照实验**（2026-10-02，390 手，tag `exp-20261002115126`）**+ 12 局 v12 vs `rapfi@1000ms`**（2026-10-02，474 手，tag `exp-20261002121700`）**+ 12 局 v12 vs `rapfi@2000ms`**（2026-10-02，725 手，tag `exp-20261002123631`）**+ 12 局 v13 vs `rapfi@1000ms`**（2026-10-02，535 手，tag `exp-20261002160819`）**+ 3 局被打断的 v13 首轮**（2026-10-02，119 手，tag `exp-20261002154056`，**无 `experiments` 行**，不计入实验轮）；54 份归档源仍是 [games/](../games) 那 54 局 |
-| 实验轮 | 18（导入 6 轮 + 2026-10-01 真跑的 `exp-20261001132645` + 2026-10-02 对照实验的 4 轮 + v11 单臂 `exp-20261002055817` + 直连 `exp-20261002080446` + 计时轮 `exp-20261002094817` + v12 单臂 `exp-20261002115126` + `rapfi@1s` 轮 `exp-20261002121700` + `rapfi@2s` 轮 `exp-20261002123631` + v13 `rapfi@1s` 轮 `exp-20261002160819`；被打断的 `exp-20261002154056` 无行、只在棋谱里） |
+| 棋谱 | **183 局 / 12017 手** = 导入基线 54 局 / 4379 手（全部五子棋；日期 2026-09-29 与 2026-09-30）**+ 4 局 proxy-vs-proxy 真实验**（2026-10-01，各 225 手，tag `exp-20261001132645`）**+ 24 局 v10 对照实验**（2026-10-02，tag `exp-20261001174212` / `…174837` / `…181244` / `…182552`）**+ 12 局 v11 对照实验**（2026-10-02，408 手，tag `exp-20261002055817`）**+ 12 局 v10 直连 v11**（2026-10-02，1202 手，tag `exp-20261002080446`）**+ 12 局 v11 计时轮**（2026-10-02，347 手，tag `exp-20261002094817`）**+ 12 局 v12 对照实验**（2026-10-02，390 手，tag `exp-20261002115126`）**+ 12 局 v12 vs `rapfi@1000ms`**（2026-10-02，474 手，tag `exp-20261002121700`）**+ 12 局 v12 vs `rapfi@2000ms`**（2026-10-02，725 手，tag `exp-20261002123631`）**+ 12 局 v13 vs `rapfi@1000ms`**（2026-10-02，535 手，tag `exp-20261002160819`）**+ 3 局被打断的 v13 首轮**（2026-10-02，119 手，tag `exp-20261002154056`，**无 `experiments` 行**，不计入实验轮）**+ 12 局 SSH 远端 `rapfi@500ms` vs `random/v13`**（2026-10-03，600 手，tag `exp-20261003042812-rapfi1-r1`）**+ 2 局 SSH 远端 `proxy/v13` vs `random/v13` 真上游冒烟**（2026-10-03，107 手，tag `exp-20261003052056-smoke1-r1`）；54 份归档源仍是 [games/](../games) 那 54 局 |
+| 实验轮 | 20（导入 6 轮 + 2026-10-01 真跑的 `exp-20261001132645` + 2026-10-02 对照实验的 4 轮 + v11 单臂 `exp-20261002055817` + 直连 `exp-20261002080446` + 计时轮 `exp-20261002094817` + v12 单臂 `exp-20261002115126` + `rapfi@1s` 轮 `exp-20261002121700` + `rapfi@2s` 轮 `exp-20261002123631` + v13 `rapfi@1s` 轮 `exp-20261002160819`；被打断的 `exp-20261002154056` 无行、只在棋谱里 + 2026-10-03 SSH 远端两轮 `exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1`，**无 `experiments` 统计行**（remote worker 只写 games 表，见 ADR-0018「后果」） |
 | payload 总量 | 845578 B（54 局导入部分；最大单局 68.7 KB，远低于 512 KB 上限） |
 | 设备 | 0（历史导入与实验归档都不带设备 id；`device_id` 为 NULL） |
-| 一致性 | `game_uid` 去重后 169、孤儿 `game_moves` 0 行；`game_moves` 里 `v10-live3` 1186 手、`v11-vct` 983 手、`v9-vcf-sound` 1104 手、`v8-vcf-try` 765 手、`v12-vct-def` 800 手、`v13-pressure-gate` 328 手、`v0-off` 13 手、无声明 6131 手（= Rapfi/人类侧与历史导入），各组手数分别等于对应臂的 Jev 侧手数合计（与脚本统计交叉一致） |
+| 一致性 | `game_uid` 去重后 169、孤儿 `game_moves` 0 行；`game_moves` 里 `v10-live3` 1186 手、`v11-vct` 983 手、`v9-vcf-sound` 1104 手、`v8-vcf-try` 765 手、`v12-vct-def` 800 手、`v13-pressure-gate` 328 手、`v0-off` 13 手、无声明 6131 手（= Rapfi/人类侧与历史导入），各组手数分别等于对应臂的 Jev 侧手数合计（与脚本统计交叉一致）。**2026-10-03 远端两轮（rapfi1/smoke1，+707 手）的逐手 `tactics_version` 明细未在此复算**：远端 worker 落盘的 games JSON 是 trimmed 形式（moves 只有 ply/side/notation），明细在 D1 `game_moves` 表 |
 
 - **真实验（2026-10-01，proxy 渠道，4 局全和棋）**：`node scripts/experiment-run.mjs --games 4` 跑满
   A=`proxy/v9-vcf-sound` vs B=`proxy/v8-vcf-try`，902 次上游调用 / 输入 2586521 token / 输出 438798 token /
@@ -156,6 +157,21 @@
   ⚠️ 负局只有 3 局 / 111 个 Jev 回合，`v14-shape-probe` 的「316/222 回合」是**双方手数**，与其余探针的
   Jev 回合口径不可互引。全文与证据清单见 [plans/2026-10-03-tactics-v14-evidence.md](plans/2026-10-03-tactics-v14-evidence.md)；
   证据 `.work/v14-*.log`、`.work/review-v14-control.log`、`.work/review-live3-gift.log`（都不入库）。
+
+- **SSH 远端批量实验设施首跑（2026-10-03，ADR-0018）**：新工具 `scripts/experiment-batch.mjs`
+  （本地编排 submit/resume/status/pull/elo，远端 worker 纯 Node 跑对弈回路、nohup 脱离 ssh、
+  文件 checkpoint 支持 kill -9 续跑）在空闲主机 `qijia`（185.242.234.48）上完成两轮：
+  - `rapfi@500ms` vs `random/v13` ×12（tag `exp-20261003042812-rapfi1-r1`，约 52s/局）：
+    **各 6 胜 0 和 6 负**（黑方视角 4-0-2 与 4-0-2 镜像），Elo（K=16，身份 `rapfi|-|500`）
+    **1503.1** vs（`random|v13-pressure-gate|0`）**1496.9** ⇒ 12 局内无差异，⚠<50 局只作相对参考。
+  - `proxy/v13` vs `random/v13` ×2 真上游冒烟（tag `exp-20261003052056-smoke1-r1`）：
+    2/2 归档成功（archivedId 269/270，GET `?tag=` 核对 verified=true），winner=black(41 手)/white(66 手)。
+  - **Node rapfi 臂与浏览器同资产同输入逐手一致**（自对弈 12/12、重放归档局 12/12）；
+    对浏览器归档逐手 85.9% 的残差经 Node↔Edge 双向重放定位为**浏览器运行时墙钟抖动**
+    （不一致手上 Edge 与 Node 给出相同着法、都不等于归档）⇒ rapfi 臂绝对着法不可逐字复现，
+    实验结论只认聚合口径。
+  - 产物 `.work/remote/<batch>/`（plan/checkpoint/games/round-summary）不入库；工具自身
+    29 例单测（`npm run test:scripts`）+ 全量 `npm test` 366 例 / `tsc --noEmit` 干净。
 
 - **战术层耗时口径（2026-10-02 起）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms`
   单独记 `computeTactics` + `pickSafestParry` 的耗时（`game_moves.ms` 是「战术 + 上游」总耗时，

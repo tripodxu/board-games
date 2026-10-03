@@ -1,9 +1,10 @@
 # 计划与执行记录：SSH 远程批量实验工具（纯 Node 对弈回路 + Elo 自动排名）
 
-> 类型：**工具/架构轮**（新增脚本与测试接线，不改 `src/core`、`src/ui`、`src/app`、worker 行为；`tactics-versions.ts` 只读白名单引用）。状态：**计划已写好，待项目所有者批准后执行**。
+> 类型：**工具/架构轮**（新增脚本与测试接线，不改 `src/core`、`src/ui`、`src/app`、worker 行为；`tactics-versions.ts` 只读白名单引用）。状态：**✅ 已完成（2026-10-03；P0–P4 已执行并留痕于 §8，P5 收口中）**。
 > 触发：项目所有者要求（2026-10-03，paraphrased）：「建新 worktree；②建一个批量实验工具，跑在空闲的 SSH 主机上——现在实验太费时间，要解放本机；自由选择比拼双方（渠道/思考档强度/战术档）、等待时间；时间允许时自动跑 Elo 排名。先给出你的计划。」
 > 工作分支：`feat/ssh-batch-experiments`（worktree `.worktrees/feat-ssh-batch-experiments`，HEAD `dd8f657`，基线 `npm test` 337 全过）。
 > 配套审计：同目录 [2026-10-03-tactics-coupling-audit.md](2026-10-03-tactics-coupling-audit.md)（需求①的答案；本计划 D2/D4 直接消费它的结论）。
+> 架构决策落档：[ADR-0018](../adr/0018-remote-batch-experiments.md)；踩坑备忘见 [MEMORY.md](../memory/MEMORY.md) 2026-10-03 置顶条目。
 
 ---
 
@@ -136,20 +137,74 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
 
 ---
 
-## 8. P0 远程执行记录（模板，执行时逐条回填命令与输出）
+## 8. 执行记录（2026-10-03，全部回填）
 
+### P0 远程地基（已完成）
 ```
-[P0.1] curl -o /tmp/node.tar.xz https://nodejs.org/dist/v24.9.0/node-v24.9.0-linux-x64.tar.xz
-[P0.2] mkdir -p /opt/node && tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1
-[P0.3] echo 'export PATH=/opt/node/bin:$PATH' > /etc/profile.d/node.sh && source /etc/profile.d/node.sh && node -v   # 期望 v24.9.0
-[P0.4] sed -i 's/^PubkeyAuthentication no/PubkeyAuthentication yes/' /etc/ssh/sshd_config && systemctl reload ssh
-[P0.5] cat ~/.ssh/id_ed25519.pub(本机) >> /root/.ssh/authorized_keys（600）
-[P0.6] cd ~ && git clone https://github.com/tripodxu/board-games.git && cd board-games && git checkout feat/ssh-batch-experiments
-[P0.7] node -e "import('./src/core/registry.ts').then(m=>console.log(m.ids.join(',')))"   # 期望 gomoku,gomoku-pro,go,xiangqi,chess,checkers,cc
-[P0.8] printf 'export JEV_API_KEY=…\n' > /root/.config/jev-batch.env && chmod 600 /root/.config/jev-batch.env
+[P0.1-3] node v24.9.0 → /opt/node + /etc/profile.d/node.sh；另补 /usr/local/bin/{node,npm,npx} 软链
+         （非登录 shell 找不到 node）
+[P0.4-5] PubkeyAuthentication yes + authorized_keys。坑：经 ssh_exec 内联 echo 写入会把 base64 改一位
+         ⇒ 改本机 .pub → ssh_upload → 远端 printf 落盘（见 MEMORY 2026-10-03 条目）
+[P0.6] clone https://github.com/tripodxu/board-games.git -b feat/ssh-batch-experiments → dd8f657，
+         之后每轮 git pull 跟进（box 无 github key，只能 https 拉）
+[P0.7] node -e "import('./src/core/registry.ts')…" 通过（七棋种）
+[P0.8] key 方案改为 /root/.jev-key（chmod 600，仓库外），worker 启动命令 set -a; . /root/.jev-key; set +a 注入
 ```
 
-## 9. 明确不做（本轮范围外）
+### P1 对弈回路（已完成）
+- worker + `scripts/lib/batch-common.mjs`（20 例单测）+ vitest 第 4 project `scripts`。
+- 验收：本机 dry-run mock vs random ×4（22/21/23/11 手全 ok-dry，71s）、rapfi::500 vs random ×2 ok-dry；
+  产物字段与浏览器归档同构（每手 meta 带渠道与 `ai.tv`）。
+- 坑（均已修）：`VERSIONS` 是数组 ⇒ 用 `ids()`；`.mjs` 禁 TS `as` 断言；ROOT 路径；
+  estimateBudget 是位置参不是对象；`args._` 已去掉子命令。
+
+### P2 编排层（已完成）
+- `scripts/experiment-batch.mjs` submit/resume/status/pull/elo + `scripts/lib/batch-elo.mjs`（9 例）。
+- 验收：box 上 dry-run e2e（36s/轮）；**kill -9 续跑实测通过**（kk1：跑到 3/6 时 kill -9，
+  resume 后 1-3 skipped、4-6 续跑，6/6 完成）。
+- 坑（均已修）：scp 不吃 `-n`（拆 SSH_OPTS/SSH_LAUNCH_OPTS）；ssh 被 nohup 拖住
+  （`nohup … </dev/null & echo` ≈2.4s vs setsid ≈10s）；目录名 checkpoint 单数；pull 前先删本地同名目录。
+
+### P3 真上游小闭环（已完成，验收口径有修正）
+- **实际执行**：`--a proxy:v13-pressure-gate:0 --b random:v13-pressure-gate:0 --games 2`（dryRun=false，
+  tag `exp-20261003052056-smoke1-r1`）⇒ 2/2 ok（41 手 winner=black / 66 手 winner=white），
+  checkpoint `archivedId=269/270`、**verified=true**（POST 成功 + GET `?tag=` 按 `gameUid` 核对）。
+- **与计划原文的偏差**：原计划写「2 局 official(v13) vs rapfi（浏览器口径）」——box 上无浏览器，
+  「浏览器侧对照」改为已完成的离线程查（b12：Node↔Edge 命令流 12/12 一致），真上游闭环改由
+  proxy 臂承担（proxy 与 official 走同一条 decide 上游路径，差别只在 endpoint/key）。
+- 过程中修掉三个归因缺陷（settings.apiKey 透传 / camelCase 归档核对 / blackThink·whiteThink 补写），
+  详见 MEMORY 2026-10-03 条目。
+
+### P4 rapfi Node 臂 + 强度 gate（已完成，判据按证据修正）
+- **gate 判据修正**：原判据「对浏览器归档逐手 ≥99%」**不可达**——Node↔Edge 命令流重放 12/12 一致，
+  但对归档逐手 165/192=85.9%，且不一致手上 Edge 给出与 Node **相同**的着法（都不等于归档）
+  ⇒ 残差是浏览器运行时墙钟抖动（Eval 0 平局多重），不是 Node 退化。修正为
+  **「Node↔Edge 命令流一致 + Node 自身可复现」**，并在 ADR-0018「验证」§4 记录完整证据链。
+- **12 局正式实验**：`--a rapfi::500 --b random:v13-pressure-gate:0 --games 12`（tag `exp-20261003042812-rapfi1-r1`）
+  ⇒ 12/12 ok、约 52s/局、checkpoint 全 verified=true。
+- **追加一轮（Elo 样本）**：`--a proxy:v13-pressure-gate:0 --b rapfi::500 --games 12`
+  （tag `exp-20261003052604-x1-r1`）执行中（约 70 分钟），完成后合并出总表。
+
+### P5 文档收口（进行中）
+- 计划本篇执行记录、ADR-0018、`docs/README.md` 索引（adr 0018 + 两个 plans 行）、AGENTS.md §4 命令、
+  MEMORY.md 置顶条目、status.md 数据现状。
+- commit 拆分：feat(scripts) P1 / fix(scripts) P2 收尾 / feat(scripts) P4 rapfi loader+probe /
+  fix(scripts) 三处归因修正 / fix(scripts) key 预检改提示 / docs(adr) 0018 / docs(plans) 两篇。
+- 终验：`npm test` 全量 + `npm run typecheck` + `npm run check:docs`。
+
+## 9. 未闭环 / 遗留
+
+- **Elo 样本 < 50 局/档**：官方口径下所有身份都标 ⚠；x1 轮完成后总样本 26 局/档，仍属噪声内，
+  只可作相对参考，不可作结论。
+- **Node rapfi vs 浏览器归档不可逐字复现**：墙钟属性，聚合口径（胜/和/负 + 不败率）不受影响；
+  若要单局复盘对齐，需要浏览器侧固定随机源（超出本计划范围）。
+- `experiments` 统计表行仍只由浏览器实验器写（`/api/experiments`），本工具的局只进 `games` 表 +
+  归档核对；若要让远端轮次也进统计表，需在 worker 里补 experiments upsert（独立小轮次）。
+- `--parallel 2..3` 未实装（当前每轮串行起 1 个 worker、局内串行）；单上游臂场景够用，
+  双上游臂必须串行（限流）。
+- `.work/` 产物（plan/日志/checkpoint/games）留在本机与 box，入库只含结论数字。
+
+## 10. 明确不做（本轮范围外）
 
 - 五子棋以外棋种（战术层只覆盖五子棋，`tactics_version` 归因只对它有意义）。
 - 浏览器路径改造（`--no-sandbox`/`--port` 参数化留给真要并行浏览器时再做）。
