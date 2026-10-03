@@ -34,6 +34,19 @@
   （与 v13 同档的 9 胜 0 和 3 负差一局，而同档轮间方差实测 17.5 个百分点）；
   计划 [docs/plans/2026-10-03-tactics-v14-fresh-live3.md](docs/plans/2026-10-03-tactics-v14-fresh-live3.md)、
   ADR [0018](docs/adr/0018-live3-fresh-correction.md)（修正 ADR-0014 的 L3 定义）。
+  **抬高档位的第二轮（2026-10-03，单臂 20 局 vs `rapfi@2000ms`，tag `exp-20261003050139`，
+  用时 3453 s、上游 760 次调用全 200 / HTTP 错 0，Rapfi 侧 `black_think`/`white_think` = 2000 已落库）**：
+  **9 胜 3 和 8 负（得分率 52.5% · 不败率 60.0%；执黑 5-3-2 / 执白 4-0-6）**，平均 76 手，
+  三个和局全是 **225 ½手满盘互拆**。逐手接管 760 手 = 无接管 266 / `live3Attack` 99 / `block` 94 /
+  `vcfDefense` 67 / `live3Defense` 66 / `vctAttack` 57 / `parry4` 34 / `pressureGate` 25 / `parry3` 17 /
+  `open4` 9 / `win` 9 / `vcfAttack` 8 / `parry` 5 / `vctDefense` 4。成本：`tac_ms` 中位 **199** /
+  均值 **627** / p90 1955 / 最坏 6441 ms，单步墙钟均值 1176 ms ⇒ 占单步均值 **53.3%**（Rapfi 固定 2000 ms/手）。
+  **规则 11 的败局交代**：760 回合里我方有杀 74、防守机会 187、真救 0，**拆不掉的 34 手逐条都是
+  「全盘没有拆点」**；**8 个负局全部「我方有杀 0」**（与 1 s 轮同一种失效模式，不是新回归）。
+  链首现：胜局我方链首现 9/9（13.6 ½手）、负局 3/8（74.7 ½手）、和局 0/3（压力领先占比 66.4%）。
+  **读法**：档位从 1 s 抬到 2 s 后比分下降（79.2% → 52.5%）不等于棋力退步——和局 1 → 3、负局更长、
+  失效模式不变；**跨档位比分同样不是曲线**（同档轮间方差实测 17.5 个百分点）。
+  文档回填见 `docs/status.md` 与 [docs/plans/2026-10-02-tactics-v13-pressure-gate.md](docs/plans/2026-10-02-tactics-v13-pressure-gate.md)。
 
 - **战术 v13 `v13-pressure-gate`「压力闸门」（十四级保险）**：对手的「做四点」数压过我们时，
   先削他的点，而不是抢自己的活三。三条硬数据（`.work/v13-pressure-probe.mjs`，六轮 rapfi 对照
