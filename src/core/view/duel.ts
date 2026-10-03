@@ -4,7 +4,7 @@
  * 因此 Node 下可直接回归；同时是「注入防御」的第一道闸（代号会被写进路径）。
  */
 import { assert } from '../assert.ts';
-import { resolve } from '../tactics-versions.ts';
+import { resolve, tryResolve } from '../tactics-versions.ts';
 import type { SideConfig } from '../persist.ts';
 
 /* 单边配置**只有一份定义**（`persist.ts` 的 `SideConfig`）：设置抽屉、对比实验、驾驶舱
@@ -25,11 +25,19 @@ export const CH_EN: Record<string, string> = {
   proxy: 'jev', openrouter: 'jev', official: 'jev', mock: 'mock', rapfi: 'rapfi', random: 'ran',
 };
 
-/** 战术档 id → 短版本号（v3-make2 → v3）。 */
+/** 战术档 id → 短版本号（v3-make2 → v3）。
+ *
+ *  P0/D2 起 `resolve()` 对未知档号抛错，而这里是**展示**路径（棋谱名、分享文案、
+ *  归档里登记表外的历史值）⇒ 用 `tryResolve()`：认得出就归一到登记表 id，
+ *  认不出就照抄原字符串（不许冒充当前档）。空值仍按老口径走当前档（「没指定」= 跟随默认）。
+ */
 export function versionTag(id?: string): string {
-  const v = resolve(id);
-  const m = /^v(\d+)/.exec(v.id);
-  return m ? 'v' + m[1] : v.id;
+  const raw = String(id ?? '').trim();
+  const v = raw ? tryResolve(raw) : resolve('');
+  const src = v ? v.id : raw;
+  const m = /^v\d+/.exec(src);
+  if (m) return m[0]!;
+  return v ? v.id : (raw || '未知');
 }
 
 /** 展示名：'我' / '演示' / 'Jev·v10' / '随机·v4' / 'Rapfi(3s)'（代理侧的短号跟登记表当前档走）。 */

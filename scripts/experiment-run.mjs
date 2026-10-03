@@ -41,7 +41,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CURRENT } from '../src/core/tactics-versions.ts';
+import { CURRENT, ids, nearestId } from '../src/core/tactics-versions.ts';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const argv = process.argv.slice(2);
@@ -82,6 +82,14 @@ if (!Number.isFinite(GAMES) || GAMES < 1 || GAMES > 50) {
 }
 if (NEEDS_KEY && !API_KEY) {
   console.error('缺少 JEV_API_KEY：A/B 用到 proxy/official/openrouter 时必须给 key（只从环境变量读，不写盘）。');
+  process.exit(2);
+}
+/* P0/D2：档位必须在登记表白名单里。过去未知档号会被 `resolve()` 静默换成 CURRENT
+   （页面下拉里根本选不中那个值），于是命令行的 `--tacA v12-vct-de` 会「像成功一样」跑成 v14，
+   A/B 的单变量假设直接失效。这里显式拒绝，并把最接近的合法档位一起打出来。 */
+for (const [name, value] of [['--tacA', TAC_A], ['--tacB', TAC_B]]) {
+  if (ids().includes(value)) continue;
+  console.error(`未知战术档位：${name} ${value}\n  最接近的合法档位：${nearestId(value) ?? '（无）'}\n  全部合法档位：${ids().join(', ')}`);
   process.exit(2);
 }
 

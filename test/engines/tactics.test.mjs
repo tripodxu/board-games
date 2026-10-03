@@ -114,10 +114,20 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   }
 });
 
-S.t('版本登记表：resolve 回退与 allows 闸门', () => {
+S.t('版本登记表：resolve 严格（P0/D2）与 allows 闸门', () => {
   eq(R.resolve('').id, R.CURRENT, '空 id 应回退当前档');
   eq(R.resolve(null).id, R.CURRENT, 'null 应回退当前档');
-  eq(R.resolve('v99-nope').id, R.CURRENT, '未知 id 应回退当前档');
+  /* P0/D2：未知档号**抛错**，绝不静默回落 —— 否则「贴 v12 标签跑 v14」的实验数据没人看得出来 */
+  let threw = null;
+  try { R.resolve('v99-nope'); } catch (e) { threw = e; }
+  ok(threw instanceof Error, '未知 id 应抛错（不再是回退当前档）');
+  ok(/v99-nope/.test(threw.message), '错误信息应含原 id：' + threw.message);
+  ok(/v\d+-/.test(threw.message), '错误信息应含最接近的合法档位：' + threw.message);
+  eq(R.nearestId('v12-vct-de'), 'v12-vct-def', 'typo 应指向 v12-vct-def（P0 验收用例）');
+  eq(R.nearestId(''), null, '空串没有「最接近」');
+  eq(R.tryResolve('v99-nope'), null, 'tryResolve 对未知 id 返回 null（展示路径用）');
+  eq(R.tryResolve('v4-parry3').id, 'v4-parry3', 'tryResolve 对已知 id 正常返回');
+  eq(R.tryResolve(''), null, 'tryResolve 对空值返回 null（由调用方决定怎么显示）');
   eq(R.resolve('v4-parry3').id, 'v4-parry3', '已知 id 应原样返回');
   ok(R.allows(R.resolve('v1-facts'), 'win'), 'v1 应有 win 层');
   ok(!R.allows(R.resolve('v1-facts'), 'open4'), 'v1 不应有 open4 层');
@@ -451,15 +461,17 @@ S.t('版本闸门：决策级 v8 接管 / v7 不接管 / 缺省与未知收敛�
     () => decide(gomoku, st12h, st12h.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v7-vcf' }));
   ok(d7.meta.tactics !== 'vcfDefense' && d7.meta.tacticsVersion === 'v7-vcf',
     'v7 下 vcfDefense 为空不得接管（可回落其它层），实际：' + d7.meta.tactics + '/' + d7.meta.tacticsVersion);
-  /* 缺省/未知 id 都收敛到当前档（老调用方零感知） */
+  /* 缺省 id 收敛到当前档；**未知 id 收敛到 v0-off（空机制集）**，绝不回落全开（P0/D2） */
   const stx = play(gomoku, ['H8', 'A1', 'I8', 'C2', 'J8', 'E3', 'K8', 'G5']);
   const crit = critOf(gomoku, stx);
   const legal = gomoku.getLegalMoves(stx);
   const cur = computeTactics(gomoku, stx, legal, crit, R.CURRENT);
   const def = computeTactics(gomoku, stx, legal, crit);
+  const off = computeTactics(gomoku, stx, legal, crit, 'v0-off');
   const bogus = computeTactics(gomoku, stx, legal, crit, 'v99-nope');
   eq(JSON.stringify(def), JSON.stringify(cur), '缺省 tacticsVersion 必须按当前档跑（' + R.CURRENT + '）');
-  eq(JSON.stringify(bogus), JSON.stringify(cur), '未知 tacticsVersion 必须按当前档跑');
+  ok(JSON.stringify(off) !== JSON.stringify(cur), 'v0-off 与当前档的输出应有差异（否则下一条断言没有区分力）');
+  eq(JSON.stringify(bogus), JSON.stringify(off), '未知 tacticsVersion 必须收敛到 v0-off（空机制集），不得回落全开');
 });
 
 /* ------------------------------------------------------------------ *

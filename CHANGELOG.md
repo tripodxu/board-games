@@ -6,7 +6,33 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **战术档位不再静默换档（P0/D2，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
+  `src/core/tactics-versions.ts` 的 `resolve()` 过去对未知档号**静默回落到当前档**——
+  「下拉里写着 v12、实际跑 v14」这种单变量破坏谁都看不见，实验结论会归因到错档位。
+  现在 `resolve()` 抛 `UnknownTacticsVersion`（消息含**最接近的合法 id**，用莱文斯坦距离算，
+  同距离取登记表靠前），展示/陈旧存档改用新增的 `tryResolve()`；`src/core/tactics.ts` 的
+  `resolveVersion()` 兜底从「全机制集」改成 **`v0-off` 空机制集**（宁可战术层空转，也不许悄悄变成别的档位）。
+  三个入口各自核对白名单：`scripts/experiment-run.mjs`（`--tacA v12-vct-de` ⇒ 打印
+  「最接近的合法档位：v12-vct-def」+ 15 档全列表、**exit 2**）、远端批量 `parseSpec()`、
+  UI `startExperiment()`（toast「实验未启动：无法识别的战术档位 A=…」并拒绝启动）。
+  展示面一律宽容：`src/core/view/duel.ts` 的 `versionTag()` 认不出就照抄原串（不再冒充当前档）、
+  归档面板对登记表外的历史值显示「登记表外的档位：X（原样显示）」、`src/core/persist.ts`
+  在 `loadSettings()` 边界就地净化陈旧 localStorage（未知档号丢弃、侧配置清空）。
+- **实验面两条防污染闸门（P0，卫生包①②）**：`scripts/lib/batch-common.mjs` 新增
+  `productionGate()`（`submit` 不给 `--origin` 时必须显式 `--allow-production`，否则 exit 2 并提示
+  「更推荐 --origin 指向独立 Worker + 独立 D1」）与 `parallelGate()`（`--parallel` 只允许双本地臂，
+  含 `official`/`openrouter`/`proxy` 任一侧即拒绝并点名 `A=…/B=…`、说明会撞限流且污染对照）。
+
 ### 新增
+
+- **实验报表带上不确定度（P0b）**：`scripts/lib/batch-elo.mjs` 新增 `wilson(hits, n, z=1.96)`
+  （得分率的 Wilson 95% 区间），`rankTable()` 每行带 `rate/ci/halfPt`，`formatRankTable()` 印
+  「95% 区间(Wilson)」列并在样本 < 50 局时追加 `±XX.Xpt ⚠` 与读数纪律注：**20 局/对半宽 ≈ ±20 pt**
+  （教科书那条 Wald 写法给 ±22 pt，且 0 胜/全胜会越界），同档轮间方差 17.5 pt > 档位差
+  ⇒ 区间重叠就写「不可判」。口径写死在 [docs/agents/playbooks.md](docs/agents/playbooks.md) §7 第 12 条
+  （只准聚合口径；单局逐手对齐只允许同机同进程内做）。
 
 - **候选点三数可观测（C0，plan `2026-10-03-cands-metric-and-provider-failover`）**：以前只有 `game_moves.cands`
   （模型给了概率且合法的点数），看不出**战术层到底把几个点交给了 Jev**。现在逐手同时记三数：

@@ -19,6 +19,42 @@
 
 ---
 
+## 2026-10-03 · P0/P0b 落地：静默换档封死 + 实验面两道防污染闸门 + 报表带 Wilson 区间
+
+- **做了什么（P0，plan `2026-10-03-tactics-fidelity-and-elo-ladder` D2 + 卫生包①②）**：
+  ① `src/core/tactics-versions.ts`：`resolve()` 对未知档号**抛 `UnknownTacticsVersion`**（新增私有
+  `editDistance()` 莱文斯坦 + `nearestId()`；消息含最接近的合法 id），新增 `tryResolve()` 供展示用；
+  `src/core/tactics.ts` 的 `resolveVersion()` 兜底由「全机制集」改成 **`v0-off` 空机制集**。
+  ② 三个入口白名单校验：`scripts/experiment-run.mjs`（`--tacA v12-vct-de` ⇒ 打印最接近项 + 15 档全列表、
+  exit 2）、`scripts/lib/batch-common.mjs parseSpec()`（错误含「最接近：…」）、UI `startExperiment()`
+  （toast「实验未启动：无法识别的战术档位 A=…」并拒绝启动；`test/app/experiment-start.spec.ts` 2 例：
+  拒绝 + 正对照）。③ `batch-common.mjs` 新增 `PRODUCTION_ORIGIN` / `productionGate()` / `parallelGate()`。
+- **「边界严格、展示宽容」是这次的分诊原则**（23 处 `resolve()` 调用点逐个分诊）：下拉/沿革条回调这类
+  「值只可能来自白名单」的地方保持严格；**展示与陈旧存档一律走 `tryResolve()`** ——
+  `src/core/view/duel.ts versionTag()`（认不出照抄原串，空值仍按当前档）、`src/app/records.ts`（归档分组头
+  显示「登记表外的档位：X（原样显示，未归档到沿革条）」）、`src/app/modes.ts:344/349`、
+  `src/core/persist.ts loadSettings()`（**净化点**：未知 `tacticsVersion` 回落默认、`sideConfig.*.tactics`
+  未知值就地清空）、`effSide()`（陈旧档号不许让开局路径崩）。
+- **做了什么（P0b）**：① 三条历史远端 tag（`exp-20261003042812-rapfi1-r1` / `…052056-smoke1-r1` /
+  `…052604-x1-r1`，共 26 局）回填 `device_id='ssh-batch'` —— **先补 `devices` 行**，因为
+  `games.device_id REFERENCES devices(device_id)`，直接 update 会 `SQLITE_CONSTRAINT_FOREIGNKEY`；
+  `code_version` 保持 `dev+nogit`（不猜 sha）。② `scripts/lib/batch-elo.mjs` 新增 `wilson(hits,n,z=1.96)`，
+  `rankTable()` 带 `rate/ci/halfPt`，`formatRankTable()` 印区间列 + 样本 < 50 时 `±XX.Xpt ⚠` + 读数纪律注。
+  ③ `docs/agents/playbooks.md` §7 新增第 12 条「报表只准聚合口径」，第 11 条补回填 SQL 与
+  「NULL `device_id` ≠ 远端局」的提醒。
+- **数字**：`resolve()` 严格化后 `npx vitest run` **38 文件 / 399 例**（+14：闸门 7 + Wilson 5 + UI 拒绝 2）、
+  引擎自检 **144/144**、`npx tsc --noEmit` 0 错；`device_id='ssh-batch'` 计数 **26**（`code_version` 26 局仍是
+  `dev+nogit`）；Wilson 20 局/对半宽 **±20.1 pt**（**教科书 Wald 写法给 ±22 pt 且 0 胜/全胜会越界** ——
+  计划里原先写的 ±22 pt 即由此改成 ±20 pt）。
+- **教训**：静默回落是「实验结论归因到错档位」这类事故的温床，而它平时**完全不可见**（报表照出数）；
+  对策不是加日志，而是让非法值在边界上就**失败并指出最接近的合法值**。展示路径不能跟着严格化，
+  否则归档里的历史档位、陈旧 localStorage 会把老数据变成崩溃源（`versionTag(undefined)` 曾让 3 条
+  duel 引擎用例红：空值必须仍按当前档显示）。
+- **顺带**：`devices` 表原本一行都没有（浏览器也不发 `X-Device-Id`），所以 D1 里 286 局 `device_id` 仍是 NULL
+  —— 判「设施产物」要按 tag 或 `ssh-batch`，**别按 NULL 判**。
+
+---
+
 ## 2026-10-03 · C0 落地：候选点三数（发 / 评 / 标）逐手入库 + 报表三列
 
 - **做了什么**：`game_moves` 追加 `cands_sent`（**交给 Jev 决定的点数** = 请求 `criteria` 的键数）与

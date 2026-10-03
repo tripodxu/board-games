@@ -17,6 +17,9 @@ import {
   identityOf,
   gameRecordName,
   estimateBudget,
+  PRODUCTION_ORIGIN,
+  productionGate,
+  parallelGate,
 } from '../../scripts/lib/batch-common.mjs';
 
 describe('parseSpec', () => {
@@ -40,8 +43,9 @@ describe('parseSpec', () => {
     }
   });
 
-  it('未知战术档 throw——这是 resolve() 静默回落 CURRENT 的唯一护栏', () => {
+  it('未知战术档 throw，并给出最接近的合法档位（P0：这是「不静默换档」的第一道闸）', () => {
     expect(() => parseSpec('official:v99-nope')).toThrow(/未知战术档/);
+    expect(() => parseSpec('official:v12-vct-de')).toThrow(/最接近：v12-vct-def/);
     expect(TACTICS_IDS).toContain('v13-pressure-gate');
     expect(TACTICS_IDS).toContain('v0-off');
   });
@@ -142,5 +146,49 @@ describe('estimateBudget', () => {
 
   it('UPSTREAM_CHANNELS 口径', () => {
     expect(UPSTREAM_CHANNELS).toEqual(['official', 'openrouter', 'proxy']);
+  });
+});
+
+/* P0 卫生包①②：两条闸门都是纯函数，闸门文案本身就是验收物（谁被拦、为什么被拦、怎么放行） */
+describe('productionGate（P0 卫生包①）', () => {
+  it('不给 --origin 且不给 --allow-production ⇒ 拒绝，并说明「这会写生产 D1」与放行方式', () => {
+    const msg = productionGate({});
+    expect(msg).toMatch(/未给 --origin/);
+    expect(msg).toContain(PRODUCTION_ORIGIN);
+    expect(msg).toMatch(/--allow-production/);
+  });
+
+  it('给了 --origin（任意外域）⇒ 放行', () => {
+    expect(productionGate({ origin: 'https://staging.example.com' })).toBeNull();
+  });
+
+  it('显式 --allow-production ⇒ 放行（认了「就写生产库」）', () => {
+    expect(productionGate({ allowProduction: true })).toBeNull();
+  });
+
+  it('空串 origin 视同没给（不能靠 --origin "" 绕过闸门）', () => {
+    expect(productionGate({ origin: '   ' })).toMatch(/未给 --origin/);
+  });
+});
+
+describe('parallelGate（P0 卫生包②）', () => {
+  const spec = (s) => parseSpec(s);
+  it('没给 --parallel 一律放行', () => {
+    expect(parallelGate({ parallel: false, a: spec('proxy'), b: spec('rapfi::1000') })).toBeNull();
+    expect(parallelGate({})).toBeNull();
+  });
+
+  it('双本地臂（rapfi vs rapfi）⇒ 放行', () => {
+    expect(parallelGate({ parallel: true, a: spec('rapfi::1000'), b: spec('rapfi::2000') })).toBeNull();
+    expect(parallelGate({ parallel: true, a: spec('mock'), b: spec('random') })).toBeNull();
+  });
+
+  it('含上游臂 ⇒ 拒绝，并点名是哪个臂、说清「撞限流 + 污染对照」', () => {
+    const msg = parallelGate({ parallel: true, a: spec('proxy'), b: spec('rapfi::1000') });
+    expect(msg).toMatch(/只允许双本地臂/);
+    expect(msg).toMatch(/A=proxy/);
+    expect(msg).toMatch(/撞限流/);
+    expect(msg).toMatch(/污染对照/);
+    expect(parallelGate({ parallel: true, a: spec('official'), b: spec('openrouter') })).toMatch(/official\/openrouter/);
   });
 });

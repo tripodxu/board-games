@@ -181,8 +181,11 @@ node scripts/experiment-run.mjs --games 4         # 干净 profile 的 Chrome �
 
 # SSH 远端批量（纯 Node 对弈回路，空闲主机 nohup 跑；ADR-0019）
 node scripts/experiment-batch.mjs submit --host <ip> --user root \
-  --a proxy:v14-live3-fresh --b rapfi::1000 --rounds 2 --games 20   # 轮次自动串行；--origin 可换独立 Worker
+  --a proxy:v14-live3-fresh --b rapfi::1000 --rounds 2 --games 20 --allow-production
 node scripts/experiment-batch.mjs status --batch <batchId>          # 进度；resume 断点续跑，pull 取回产物，elo 出评分表
+# 两道闸门：不给 --origin 必须显式 --allow-production（否则 exit 2，推荐改指独立 Worker + 独立 D1）；
+# --parallel 只允许双本地臂（含 official/openrouter/proxy 就拒绝：撞限流 + 共享上游延迟污染对照）。
+# `elo` 的评分表带 Wilson 95% 区间，样本 < 50 局打 `±XX.Xpt ⚠`（20 局/对半宽 ≈ ±20 pt ⇒ 区间重叠写「不可判」）。
 ```
 
 ## 部署

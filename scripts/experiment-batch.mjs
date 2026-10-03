@@ -5,6 +5,8 @@
 //   submit  --a 渠道[:战术档[:思考ms]] --b 同左 [--games 12] [--rounds 1]
 //           [--pause 2500] [--seed N] [--dry-run] [--force] [--batch 名]
 //           [--host IP] [--repo 远端仓根] [--user root] [--key-file 路径]
+//           [--origin https://…]（不给 origin 时必须 --allow-production 才写生产 D1）
+//           [--parallel]（仅双本地臂）
 //     → 本地生成每轮 plan.json → scp 到远端 → nohup 起 worker，后台跑
 //       （--key-file 默认 /root/.jev-key：远端 shell source 它把 key 注入 worker 环境）
 //   status  [--batch 名]           → scp 回 batch 目录，打印每轮进度/最新日志
@@ -25,6 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseSpec, formatSpec, sanitizeBatchId, batchTag, estimateBudget, UPSTREAM_CHANNELS,
+  PRODUCTION_ORIGIN, productionGate, parallelGate,
 } from './lib/batch-common.mjs';
 import { loadRecords, rankTable, formatRankTable, computeElo, MIN_GAMES } from './lib/batch-elo.mjs';
 
@@ -105,11 +108,20 @@ async function cmdSubmit(args) {
   const repo = String(args.repo || DEFAULT_REPO);
   const keyFile = String(args['key-file'] || '/root/.jev-key');
   /* H1：origin 可换（plan.origin 全程透传给 worker 的 POST/GET）⇒ 想彻底隔离就指向独立
-     Worker + 独立 D1，不必再往生产库里写实验局。 */
-  const origin = String(args.origin || 'https://jevqipan.logicc.top');
-  if (args.origin && origin !== 'https://jevqipan.logicc.top') {
+     Worker + 独立 D1，不必再往生产库里写实验局。
+     P0 卫生包①：没给 --origin 时**必须**显式 --allow-production —— 缺省 origin 就是生产域，
+     默认放行等于默认往生产库写实验局（见 batch-common.mjs productionGate）。 */
+  const originGate = productionGate({ origin: args.origin, allowProduction: args['allow-production'] });
+  if (originGate) die(originGate);
+  const origin = String(args.origin || PRODUCTION_ORIGIN);
+  if (args.origin && origin !== PRODUCTION_ORIGIN) {
     console.log(`注意：origin 已改为 ${origin}（不再写生产 D1）`);
+  } else if (!args.origin) {
+    console.log(`注意：--allow-production 已给 —— 本轮会写生产 D1（${origin}）。`);
   }
+  /* P0 卫生包②：--parallel 仅双本地臂（上游臂并行会撞限流、并污染对照） */
+  const parGate = parallelGate({ parallel: args.parallel, a, b });
+  if (parGate) die(parGate);
   const maxPlies = args['max-plies'] ? Number(args['max-plies']) : 225;
   const topK = args.topk ? Number(args.topk) : 3;
   const timeoutMin = args['timeout-min'] ? Number(args['timeout-min']) : 180;
@@ -177,7 +189,10 @@ async function cmdSubmit(args) {
   }
 
   /* M2：轮次必须**串行**（起一轮 → 等它退出 → 再起下一轮）。早先 for 循环一口气 nohup 全部轮次，
-     与「限流口径下串行」的闸门文案、ADR 与计划互相矛盾，还会把上游速率/D1 写入按轮数翻倍。 */
+     与「限流口径下串行」的闸门文案、ADR 与计划互相矛盾，还会把上游速率/D1 写入按轮数翻倍。
+     P0 卫生包②：唯一的例外是 `--parallel`，且只对双本地臂放行（上游臂在 cmdSubmit 前段已拒绝）。 */
+  const serial = !args.parallel;
+  if (!serial) console.log(`双本地臂 + --parallel：${plans.length} 轮一次起（不再逐轮等待）。`);
   const remoteBatchDir = `${repo}/.work/remote/${batchId}`;
   for (let i = 0; i < plans.length; i++) {
     const p = plans[i];
@@ -192,7 +207,7 @@ async function cmdSubmit(args) {
       20000, SSH_LAUNCH_OPTS, true);
     if (!ok) die(`round-${p.round} worker 启动失败`);
     console.log(`  round-${p.round} 已启动（pid 见 ${pidPath}）`);
-    if (i < plans.length - 1) {
+    if (serial && i < plans.length - 1) {
       console.log(`  等待 round-${p.round} 跑完再起下一轮（串行）…`);
       // 轮询 pid（最多 12 h，每 30 s 一次）；本地 ssh 断开不算失败，用 status 复核即可
       ssh(host, user,
@@ -320,9 +335,11 @@ function main() {
   else {
     console.log('用法：node scripts/experiment-batch.mjs <submit|resume|status|pull|elo> [选项]');
     console.log('  submit --a <spec> --b <spec> [--games 12] [--rounds 1] [--pause 2500] [--seed N] [--force] [--key-file 路径]');
-    console.log('         [--batch 名] [--host IP] [--user 用户] [--repo 远端仓路径] [--origin https://…]（默认生产域；换域即不写生产 D1）');
+    console.log('         [--batch 名] [--host IP] [--user 用户] [--repo 远端仓路径]');
+    console.log('         [--origin https://…]（换域即不写生产 D1）| 不给 --origin 时必须显式 --allow-production（写生产 D1 的闸门）');
     console.log('         [--max-plies 225] [--topk 3] [--timeout-min 180] [--stall-min 15] [--dry-run]');
     console.log('         多轮（--rounds>1）**串行**：起一轮 → 等它退出 → 再起下一轮（限流口径要求 concurrency=1）');
+    console.log('         [--parallel] 只对**双本地臂**放行（两侧都不是 proxy/official/openrouter）：不再逐轮等待，一次起全部轮次');
     console.log('  resume --batch 名 [--round N] [--key-file 路径]   按 checkpoint 续跑某一轮（kill 后恢复用）');
     console.log('  status [--batch 名]    拉回并显示每轮进度（先拉临时目录再整体替换，失败不动本地旧副本）');
     console.log('  pull   --batch 名      拉回远端产物');

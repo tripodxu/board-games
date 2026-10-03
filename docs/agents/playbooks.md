@@ -194,6 +194,30 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v14-live3-fresh 
     （Node 直载没有构建注入）、`device_id` 为 NULL ⇒ **不能与浏览器轮的 `1.0.0+<sha>` 放同一条归因链**。
     此后 worker 会带 `X-Device-Id: ssh-batch`（可 `BATCH_DEVICE_ID` 覆盖）并把提交自报进 `meta.code`
     （`dev+nogit+<sha>`）：**要单独筛远端轮次用 `device_id='ssh-batch'`**，或用
-    `code_version LIKE 'dev+nogit+%'`。历史那 26 局仍然只能按 tag 认。
+    `code_version LIKE 'dev+nogit+%'`。
+    那 26 局已于 2026-10-03 按 tag 回填 `device_id='ssh-batch'`（P0b 数据卫生，`device_id` 是唯一改动，
+    **`code_version` 保持 `dev+nogit` 不动**——不猜 sha）：回填前先补 `devices` 行，因为
+    `games.device_id REFERENCES devices(device_id)`，直接 update 会撞 `SQLITE_CONSTRAINT_FOREIGNKEY`：
+    ```sql
+    insert into devices (device_id, first_seen, last_seen, label, ua)
+      values ('ssh-batch', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+              'SSH 远端批量对弈（ADR-0019）', 'scripts/experiment-worker.mjs')
+      on conflict(device_id) do nothing;
+    update games set device_id='ssh-batch' where device_id is null and experiment_tag in
+      ('exp-20261003042812-rapfi1-r1','exp-20261003052056-smoke1-r1','exp-20261003052604-x1-r1');
+    select count(*) from games where device_id='ssh-batch';   -- 期望 26（+ 此后新跑的远端局）
+    ```
+    注意 `devices` 里本来一行都没有（浏览器轮也不写 `X-Device-Id`），所以 `device_id` 为 NULL **不等于**
+    「远端局」：只有这三个 tag 是设施产物，按 tag 认、别按 NULL 认。
     **按 `experiment_tag` 过滤的分析不受影响**；`scripts/smoke-live.mjs` 已把「全局计数恰好 +1」的
     断言放宽为「至少 +1」。
+12. **报表只准聚合口径（P0b / §3.1 第 5 条，2026-10-03 起写死）**：
+    ① **允许的**：胜 / 和 / 负、不败率、得分率 + **Wilson 95% 区间**、接管直方图（`tactics_hist` 计数）、
+    成本三口径（`tac_ms` 中位/均值/最坏、单步墙钟 `ms`、上游 token/美元）、开局分层、Elo（`batch-elo.mjs`）。
+    ② **不允许的**：跨机「逐手对齐」、把某一局的第 k 手两边摆在一起比、用 Node 侧复算去核对浏览器归档的
+    单步耗时。原因见 ADR-0019「后果」：Node rapfi 与浏览器归档的推理路径/浮点/时机都不同，
+    **逐手比对不可复现，拿它当证据就是伪证据**；单局逐手对齐只允许在**同机同进程**内做（引擎自检、
+    `.work/` 的同进程探针）。
+    ③ **每个数都要带样本量与区间**：样本 < 50 局时 `formatRankTable()` 印 `±XX.Xpt ⚠`
+    （20 局/对 ≈ ±20 pt），同档轮间方差实测 17.5 pt > 档位之间的差 ⇒ **跨档位比分不是曲线**，
+    一句「这一档更强」在没有配对样本（同开局双跑）之前不成立。区间重叠就写「不可判」。

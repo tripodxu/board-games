@@ -35,6 +35,7 @@ import { createExpHistoryStore, newEntryFromRun, recordExperiment as recordExper
 import { byId, clear } from '../ui/dom.ts';
 import type { SelectEl } from '../ui/dom.ts';
 import type { GameStatus } from '../core/types.ts';
+import { nearestId, tryResolve } from '../core/tactics-versions.ts';
 import { refreshServerExperiments } from './backend.ts';
 import type { AppCtx } from './ctx.ts';
 import { startGame } from './loop.ts';
@@ -67,8 +68,19 @@ export function renderExpHistoryPanel(ctx: AppCtx): void {
 export function startExperiment(ctx: AppCtx): void {
   const state = ctx.exp;
   if (state.running) return;
+  const cfg = readExperimentConfig();
+  /* P0/D2：下拉值必须在登记表白名单里。过去 `resolve()` 对未知档号静默回落 CURRENT，
+     于是「DOM 里写着 v12、实际跑 v14」这种单变量破坏谁都看不见；现在直接拒绝启动，
+     并把最接近的合法档位一起说清楚（值都在白名单里时这条不会触发）。 */
+  const bad = ([['A', cfg.tacA], ['B', cfg.tacB]] as const)
+    .filter(([, id]) => !!id && !tryResolve(id))
+    .map(([side, id]) => `${side}=${id}（最接近 ${nearestId(id) ?? '无'}）`);
+  if (bad.length) {
+    toast('实验未启动：无法识别的战术档位 ' + bad.join('、'), true);
+    return;
+  }
   borrowSideCfg(ctx); // 借走 sideConfig，跑完还原用户抽屉里的配置
-  beginRun(state, readExperimentConfig(), expTag());
+  beginRun(state, cfg, expTag());
   clear(byId('expResults'));
   renderModeSwitch('ai-ai', true);
   syncFoeEnabled(ctx);

@@ -24,6 +24,38 @@ export { identityOf };
 /** 少于这个局数的身份在排行里标注「样本不足」。 */
 export const MIN_GAMES = 50;
 
+/** 报表用的置信水平（95% ⇒ z = 1.96）。 */
+export const Z95 = 1.96;
+
+/**
+ * 得分率的 **Wilson 95% 区间**（P0b / §3.1 第 4 条）。
+ *
+ * 为什么不用教科书那个 `p ± 1.96·√(p(1-p)/n)`：小样本 + 极端比例（0 胜、全胜）时它会算出
+ * 越界区间甚至宽度 0——而阶梯实验恰恰经常只有 12～20 局、还常出现 9-1-2 这种偏斜。
+ * Wilson 是「得分率这个二项比例的区间估计」的标准解，天然落在 [0,1] 内、n 小的时候自动变宽。
+ *
+ * 读数纪律（写进报表的原因）：**20 局/对的半宽约 ±20 pt**（Wilson；教科书那条 Wald 写法给
+ * ±22 pt 且极端比例会越界），即 50% 与 70% 的区间大面积重叠 ——
+ * 「这一档更强」在 20 局规模上根本不可判。区间必须与点估计并排出现，否则报告读起来像「已证明」。
+ * 和棋记 0.5（`hits = w + d/2`），与 `rankTable` 的得分率同口径。
+ */
+export function wilson(hits, n, z = Z95) {
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const p = hits / n;
+  const d = 1 + (z * z) / n;
+  const center = (p + (z * z) / (2 * n)) / d;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return {
+    p,
+    lo: Math.max(0, center - half),
+    hi: Math.min(1, center + half),
+    /* 半宽（比例）：报表里印成 ±XX.X pt —— 它就是「这个数能分辨多大的差」 */
+    half,
+    n,
+    z,
+  };
+}
+
 /** 从一个棋谱 export JSON 提取一局记录（黑/白身份 + 黑方得分）。 */
 export function gameRecord(exportJson) {
   const g = typeof exportJson === 'string' ? JSON.parse(exportJson) : exportJson;
@@ -115,7 +147,7 @@ export function computeElo(records, K = 16) {
   return { rating, games, matrix, k: K };
 }
 
-/** 排行行：Elo + 总局数 + 胜/和/负 + 样本不足标注。 */
+/** 排行行：Elo + 总局数 + 胜/和/负 + 得分率 + Wilson 95% 区间 + 样本不足标注。 */
 export function rankTable(records, K = 16) {
   const { rating, games } = computeElo(records, K);
   const sides = new Map(); // id -> {w,d,l}
@@ -128,23 +160,47 @@ export function rankTable(records, K = 16) {
   return [...games.keys()].map((id) => {
     const s = sides.get(id);
     const n = games.get(id);
-    return { identity: id, rating: Math.round(rating.get(id) * 10) / 10, games: n, ...s, enough: n >= MIN_GAMES };
+    /* 得分率 = (胜 + 和/2) / 局数，与 formatRankTable 打印的那个数同口径 */
+    const ci = wilson(s.w + s.d * 0.5, n);
+    return {
+      identity: id,
+      rating: Math.round(rating.get(id) * 10) / 10,
+      games: n,
+      ...s,
+      rate: ci ? ci.p : null,
+      ci,
+      /* 半宽的百分点（报表里的 ±XX.Xpt）：n=20 时约 22 ⇒ 直接看去能不能分辨差异 */
+      halfPt: ci ? Math.round(ci.half * 1000) / 10 : null,
+      enough: n >= MIN_GAMES,
+    };
   }).sort((a, b) => b.rating - a.rating || b.games - a.games);
 }
 
-/** 人读报表（页宽 96）。 */
+/** 人读报表（页宽 96）。区间与样本量并排印：小样本先看 ±XX.Xpt，再看点估计。 */
 export function formatRankTable(rows) {
   const lines = [];
-  lines.push('身份（渠道|战术档|思考ms）'.padEnd(40) + 'Elo'.padStart(7) + '局数'.padStart(6) + '胜'.padStart(5) + '和'.padStart(5) + '负'.padStart(5) + '得分率'.padStart(8) + (rows.some((r) => !r.enough) ? '  ⚠样本不足(<' + MIN_GAMES + ')' : ''));
+  const warn = rows.some((r) => !r.enough);
+  lines.push(
+    '身份（渠道|战术档|思考ms）'.padEnd(40) + 'Elo'.padStart(7) + '局数'.padStart(6) +
+    '胜'.padStart(5) + '和'.padStart(5) + '负'.padStart(5) + '得分率'.padStart(8) +
+    '95% 区间(Wilson)'.padStart(19) + (warn ? '  ⚠样本不足(<' + MIN_GAMES + ')' : ''),
+  );
   for (const r of rows) {
     const rate = ((r.w + r.d * 0.5) / r.games * 100).toFixed(1) + '%';
+    const ci = r.ci
+      ? '[' + (r.ci.lo * 100).toFixed(1) + '–' + (r.ci.hi * 100).toFixed(1) + ']'
+      : '—';
     lines.push(
       r.identity.padEnd(40) +
       String(r.rating).padStart(7) +
       String(r.games).padStart(6) + String(r.w).padStart(5) + String(r.d).padStart(5) + String(r.l).padStart(5) +
-      rate.padStart(8) +
-      (r.enough ? '' : '  ⚠'),
+      rate.padStart(8) + ci.padStart(19) +
+      (r.enough ? '' : '  ±' + (r.halfPt == null ? '?' : r.halfPt.toFixed(1)) + 'pt ⚠'),
     );
+  }
+  if (warn) {
+    lines.push('注：样本 < ' + MIN_GAMES + " 局时得分率的 Wilson 95% 区间半宽常在 ±15～±25 pt —— " +
+      '区间大面积重叠就不能读作「更强」；跨档位比分不是曲线，要判机制收益得上配对样本。');
   }
   return lines.join('\n');
 }

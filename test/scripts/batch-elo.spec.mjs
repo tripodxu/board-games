@@ -1,7 +1,7 @@
 // batch-elo.spec.mjs — 身份归一 / Elo 顺序迭代 / 排行标注
 import { describe, it, expect } from 'vitest';
 import {
-  identityOf, gameRecord, loadRecords, computeElo, rankTable, formatRankTable, MIN_GAMES,
+  identityOf, gameRecord, loadRecords, computeElo, rankTable, formatRankTable, MIN_GAMES, wilson,
 } from '../../scripts/lib/batch-elo.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -75,11 +75,68 @@ describe('computeElo / rankTable', () => {
     expect(a.enough).toBe(false); // 3 局 < 50
     expect(MIN_GAMES).toBe(50);
   });
-  it('formatRankTable 输出表头与每身份一行', () => {
+  it('formatRankTable 输出表头与每身份一行（含 Wilson 区间列与 ±pt 警告）', () => {
     const text = formatRankTable(rankTable([rec(1, 1)]));
     expect(text).toContain('a|v1-facts|0');
     expect(text).toContain('b|v1-facts|0');
     expect(text).toContain('Elo');
+    expect(text).toContain('95% 区间(Wilson)');
+    expect(text).toMatch(/\[\d+\.\d+–\d+\.\d+\]/); // 区间与点估计并排印
+    expect(text).toMatch(/±\d+\.\dpt ⚠/);        // 1 局 ⇒ 样本不足，必须印半宽
+    expect(text).toContain('不能**读作「更强」'.replace(/\*\*/g, '')); // 读数纪律那段注
+  });
+});
+
+/* P0b / §3.1 第 4 条：20 局/对的半宽 ≈ ±20 pt —— 这个数是「别把小样本读成已证明」的量化依据，
+   所以用例把它钉死；将来有人把 z 或公式换掉，这条会立刻红。
+   （教科书那条 Wald 写法 `p ± 1.96√(p(1-p)/n)` 在 n=20 时给 ±22 pt，且 0 胜/全胜会越界——
+   正是不用它的原因，见 `wilson()` 注释。） */
+describe('wilson（Wilson 95% 区间）', () => {
+  it('20 局 10 胜 ⇒ 半宽 ≈ 20 pt（阶梯实验的常态规模）', () => {
+    const c = wilson(10, 20);
+    expect(c.p).toBeCloseTo(0.5, 6);
+    expect(Math.round(c.half * 100)).toBe(20);
+    expect(c.hi - c.lo).toBeCloseTo(0.4014, 3);
+    expect(c.half).toBeGreaterThan(wilson(9, 20).half); // p 越偏，区间越窄（同为 20 局）
+  });
+
+  it('区间永远落在 [0,1] 内（极端比例也不越界：0 胜 / 全胜）', () => {
+    const zero = wilson(0, 5);
+    expect(zero.lo).toBe(0);
+    expect(zero.hi).toBeGreaterThan(0);
+    expect(zero.hi).toBeLessThan(1);
+    const full = wilson(5, 5);
+    expect(full.hi).toBe(1);
+    expect(full.lo).toBeGreaterThan(0);
+  });
+
+  it('n 变大则区间单调收窄，且始终包含点估计', () => {
+    const h = (n) => wilson(n / 2, n).half;
+    expect(h(20)).toBeGreaterThan(h(50));
+    expect(h(50)).toBeGreaterThan(h(200));
+    const c = wilson(9, 20);
+    expect(c.lo).toBeLessThan(c.p);
+    expect(c.hi).toBeGreaterThan(c.p);
+  });
+
+  it('n ≤ 0 或非数 ⇒ null（0 局身份不进排行，不印假区间）', () => {
+    expect(wilson(0, 0)).toBeNull();
+    expect(wilson(3, -2)).toBeNull();
+    expect(wilson(3, Number.NaN)).toBeNull();
+  });
+
+  it('rankTable 每行带 rate/ci/halfPt，和棋按 0.5 计（与得分率同口径）', () => {
+    const rec = (n, blackScore) => ({
+      tag: 'exp-x', exported: `2026-10-03T00:00:0${n}Z`, gameUid: `g${n}`,
+      black: 'a|v1-facts|0', white: 'b|v1-facts|0', blackScore, result: 'x', reason: '', plies: 10,
+    });
+    const rows = rankTable([rec(1, 1), rec(2, 0.5), rec(3, 0)]);
+    const a = rows.find((r) => r.identity === 'a|v1-facts|0');
+    expect(a.rate).toBeCloseTo(0.5, 6); // (1 + 0.5) / 3
+    expect(a.ci.lo).toBeLessThan(0.5);
+    expect(a.ci.hi).toBeGreaterThan(0.5);
+    expect(a.halfPt).toBeGreaterThan(30); // 3 局 ⇒ 区间极宽（37.5pt），必须显眼
+    expect(rows.every((r) => r.ci != null && r.halfPt != null)).toBe(true);
   });
 });
 

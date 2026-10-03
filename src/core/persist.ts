@@ -13,7 +13,7 @@
  * 另注：旧实现**没有**「画像 / profile / deviceId」持久化（js/ 下 grep 零命中），
  * 因此本模块不提供 loadProfile/saveProfile；设备标识在 P7 由 Worker 侧下发。
  */
-import { CURRENT, resolve } from './tactics-versions.ts';
+import { CURRENT, tryResolve } from './tactics-versions.ts';
 
 /** 旧实现的设置键（js/app.js:7）。**不要改**：改了就丢用户现有设置。 */
 export const STORE_KEY = 'jev_qiguan_settings_v2';
@@ -106,6 +106,16 @@ function freshDefaults(): Settings {
   };
 }
 
+/** 单边配置里的战术 id 也在这里验（P0/D2）：登记表外的值一律清空 = 跟随全局档。
+ *
+ *  为什么在**边界**做而不是让下层宽容：`resolve()` 现在对未知档号抛错，若陈旧 localStorage
+ *  里的档位一路传到 `effSide()`/对局循环，开局就会炸；而「悄悄回落当前档」正是 P0 要堵的
+ *  那类错误。夹在中间的做法是：读盘时就地丢弃认不出的值（可观测、可解释），下层因此
+ *  永远拿不到未知 id。 */
+function dropUnknownTactics(c: SideConfig): SideConfig {
+  return c.tactics && !tryResolve(c.tactics) ? { ...c, tactics: '' } : c;
+}
+
 /** 读设置（旧 `loadSettings()` 的纯逻辑部分，js/app.js:20-51）。
  *
  *  逐字语义：浅合并（`Object.assign`）覆盖默认值 → `endpoints` 缺失补 `{}`
@@ -121,11 +131,12 @@ export function loadSettings(storage: StorageLike): Settings {
     if (raw) Object.assign(s, JSON.parse(raw));
     if (!s.endpoints) s.endpoints = {};
   } catch (_) { /* 存储不可用/内容损坏：按默认值继续 */ }
-  if (!s.tacticsVersion) s.tacticsVersion = DEFAULT_TACTICS_VERSION;
+  /* 档位净化（P0/D2）：空 → 当前档；认不出的历史值 → 当前档（并丢弃，不再往上层传） */
+  if (!tryResolve(s.tacticsVersion)) s.tacticsVersion = DEFAULT_TACTICS_VERSION;
   const sc = (s.sideConfig || {}) as Record<string, unknown>;
   s.sideConfig = {
-    black: normalizeSideConfig(sc.black),
-    white: normalizeSideConfig(sc.white),
+    black: dropUnknownTactics(normalizeSideConfig(sc.black)),
+    white: dropUnknownTactics(normalizeSideConfig(sc.white)),
   };
   return s;
 }
@@ -181,7 +192,9 @@ export function effSide(
   const cfg = (settings.sideConfig && settings.sideConfig[side]) || normalizeSideConfig(null);
   return {
     channel: effectiveChannelOf(settings, cfg.channel || settings.channel, opts),
-    tactics: resolve(cfg.tactics || settings.tacticsVersion).id,
+    /* 读盘已净化过（loadSettings），这里再兜一层：万一有调用方拿手搓的 settings 进来，
+       宁可回到当前档也不抛错（开局路径不能因为一个陈旧档号崩掉）。 */
+    tactics: tryResolve(cfg.tactics || settings.tacticsVersion)?.id ?? CURRENT,
     rapfiThinkMs: +(cfg.rapfiThinkMs || settings.rapfiThinkMs) || settings.rapfiThinkMs,
   };
 }

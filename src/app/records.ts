@@ -12,7 +12,7 @@
  */
 import { listGames, gameUrl } from '../core/api/client.ts';
 import { getGame } from '../core/registry.ts';
-import { VERSIONS, resolve } from '../core/tactics-versions.ts';
+import { VERSIONS, tryResolve } from '../core/tactics-versions.ts';
 import { byId, el, setText, clear } from '../ui/dom.ts';
 import { renderLatestGames, type LatestGameRow } from '../ui/panels/experiment-report.ts';
 import { sideAttribution } from '../ui/panels/options.ts';
@@ -167,13 +167,17 @@ function renderArchive(ctx: AppCtx, box: HTMLElement): void {
 
   const frag = document.createDocumentFragment();
   for (const key of keys) {
-    const known = key === '__none' ? null : resolve(key);
-    const knownId = typeof known?.id === 'string' ? known.id : null;
+    /* 归档行里的 `tacticsVersion` 可能是登记表外的值（改名前的老档、导入的外部棋谱）：
+       展示路径用宽容解析（P0/D2），认不出就把原始 id 原样列出来 —— 不许冒充当前档。 */
+    const known = key === '__none' ? null : tryResolve(key);
+    const knownId = typeof known?.id === 'string' ? known.id : (key === '__none' ? null : key);
     const items = (groups.get(key) as ArchiveRow[]).slice().sort((a, b) =>
       String(b.createdAt || b.rowAt || b.name || '').localeCompare(String(a.createdAt || a.rowAt || a.name || '')));
-    const head = knownId
-      ? knownId + ' · ' + String(known?.name || '') + '（' + String(known?.commitAt || '') + ' 引入）'
-      : '未标注战术版本（行里没有 tactics_version）';
+    const head = known
+      ? knownId + ' · ' + String(known.name || '') + '（' + String(known.commitAt || '') + ' 引入）'
+      : (key === '__none'
+        ? '未标注战术版本（行里没有 tactics_version）'
+        : '登记表外的档位：' + key + '（原样显示，未归档到沿革条）');
     frag.appendChild(el('div', { class: 'arc-group' }, [
       el('div', { class: 'arc-head' }, [head, el('span', { class: 'arc-count' }, items.length + ' 局')]),
       ...items.map((g) => el('div', { class: 'arc-row' }, [

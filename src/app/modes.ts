@@ -22,7 +22,7 @@
  * 刻意**不** import `./loop.ts`：`switchGame()` 需要的 `resetSession` 由调用方作为参数传入，
  * 这样 loop → modes 单向依赖，避免模块环。
  */
-import { VERSIONS, resolve } from '../core/tactics-versions.ts';
+import { VERSIONS, resolve, tryResolve } from '../core/tactics-versions.ts';
 import { effectiveChannelOf, isValidMode, stashEndpoint } from '../core/persist.ts';
 import type { AppMode, SideConfig } from '../core/persist.ts';
 import { getGame } from '../core/registry.ts';
@@ -340,14 +340,16 @@ export function renderFoe(ctx: AppCtx): void {
     /* 旧实现「首次追加「跟随全局」」——这里每次都重建，效果等价且幂等 */
     const opts: [string, string][] = [['', '跟随全局']];
     for (const o of tacticsOptions(VERSIONS)) opts.push([o[0], o[1]]);
-    fillSelect(tacSel, opts, cfg.tactics ? resolve(cfg.tactics).id : '');
+    /* 草稿里的档位可能来自旧会话：展示路径用宽容解析，认不出就回落「跟随全局」（P0/D2） */
+    fillSelect(tacSel, opts, tryResolve(cfg.tactics)?.id ?? '');
   }
   if (thinkSel) fillSelect(thinkSel, THINK_OPTS, cfg.rapfiThinkMs ? String(cfg.rapfiThinkMs) : '');
 
   const eff = effFor(ctx, machineFoeSideId(ctx));
-  const tv = resolve(eff.tactics);
+  const tv = tryResolve(eff.tactics);
   setText(byId('foeHint'),
-    '当前生效：' + (CHANNEL_NAMES[eff.channel] || eff.channel) + ' · ' + tv.id + ' ' + tv.name +
+    '当前生效：' + (CHANNEL_NAMES[eff.channel] || eff.channel) + ' · ' +
+    (tv ? tv.id + ' ' + tv.name : String(eff.tactics || '—')) +
     (eff.rapfiThinkMs ? ' · ' + (eff.rapfiThinkMs / 1000) + 's' : '') +
     '。留空 = 跟随全局设置；改动只影响机器方，不动你自己的引擎。' +
     'Rapfi 思考期间界面会短暂卡住（ADR-0006）。');

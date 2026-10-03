@@ -11,7 +11,7 @@
  *     若不在入口拦住，A/B 实验写错档号会静默变成 v13 且事后不可检出（耦合审计报告 §4 坑 1）。
  */
 
-import { ids, CURRENT } from '../../src/core/tactics-versions.ts';
+import { ids, CURRENT, nearestId } from '../../src/core/tactics-versions.ts';
 
 /** decide() 认得的全部渠道：3 个上游 + mock/random/rapfi 三特判。 */
 export const KNOWN_CHANNELS = ['mock', 'random', 'rapfi', 'official', 'openrouter', 'proxy'];
@@ -19,11 +19,38 @@ export const KNOWN_CHANNELS = ['mock', 'random', 'rapfi', 'official', 'openroute
 /** 需要真实上游 key 的渠道（submit 时据此估算配额与限流）。 */
 export const UPSTREAM_CHANNELS = ['official', 'openrouter', 'proxy'];
 
-/** 战术档 id 白名单（tactics-versions.ts 的 ids()：14 档含 v0-off 基线）。 */
+/** 战术档 id 白名单（tactics-versions.ts 的 ids()：14 个战术版本 + v0-off 基线 = 15 档）。 */
 export const TACTICS_IDS = ids();
 
 /** 当前档（spec 省略战术档时的缺省，与面板 `CURRENT` 默认一致）。 */
 export const DEFAULT_TACTICS = CURRENT;
+
+/** 生产域：`--origin` 缺省值（也是 submit 唯一会写生产 D1 的去处）。 */
+export const PRODUCTION_ORIGIN = 'https://jevqipan.logicc.top';
+
+/** P0 卫生包①：生产闸门 —— 没给 `--origin` 时必须显式 `--allow-production`。
+ *
+ *  为什么：`--origin` 缺省就是生产域，等于「默认往生产库写实验局」。默认安全比默认方便重要
+ *  （免费额度、站点棋谱与研究数据混在一起）。返回 null = 放行；返回字符串 = 拒绝理由。 */
+export function productionGate({ origin, allowProduction } = {}) {
+  if (String(origin ?? '').trim()) return null;   // 显式给 origin：写的是别人家的库，放行
+  if (allowProduction) return null;               // 明确认了「就写生产库」
+  return `未给 --origin：这会写生产 D1（${PRODUCTION_ORIGIN}）。` +
+    `确认要写就加 --allow-production；更推荐 --origin 指向独立 Worker + 独立 D1。`;
+}
+
+/** P0 卫生包②：`--parallel` 仅双本地臂放行（两侧都不是上游渠道）。
+ *
+ *  为什么：双上游臂并行必踩限流，且共享上游延迟会污染对照（对照实验里**唯一**要控的变量
+ *  就是战术档）；rapfi-vs-rapfi 这类本地臂才是它的合理用途。返回 null = 放行。 */
+export function parallelGate({ parallel, a, b } = {}) {
+  if (!parallel) return null;
+  const up = [a, b].filter((s) => s && UPSTREAM_CHANNELS.includes(s.channel));
+  if (!up.length) return null;
+  return `--parallel 只允许双本地臂（两侧都不是 ${UPSTREAM_CHANNELS.join('/')}）：` +
+    `当前 A=${a?.channel ?? '?'} B=${b?.channel ?? '?'}，其中 ${up.map((s) => s.channel).join('/')} 是上游臂 —— ` +
+    `并行会撞限流，且共享上游延迟会污染对照。上游臂请去掉 --parallel 串行跑。`;
+}
 
 /** tag 里 batchId 的合法字符（D1 目录/未来文件名安全）。 */
 const BATCH_ID_RE = /^[a-z0-9][a-z0-9-]{0,15}$/;
@@ -46,7 +73,8 @@ export function parseSpec(text) {
   }
   let tactics = (parts[1] || '').trim();
   if (tactics && !TACTICS_IDS.includes(tactics)) {
-    throw new Error(`未知战术档 "${tactics}"，合法值：${TACTICS_IDS.join(', ')}（spec=${raw}）`);
+    const near = nearestId(tactics);
+    throw new Error(`未知战术档 "${tactics}"，最接近：${near ?? '（无）'}，合法值：${TACTICS_IDS.join(', ')}（spec=${raw}）`);
   }
   if (!tactics) tactics = DEFAULT_TACTICS;
   let thinkMs = 0;

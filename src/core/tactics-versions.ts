@@ -96,10 +96,65 @@ export const CURRENT = 'v14-live3-fresh';
 const BY_ID: Record<string, TacticsVersion> = {};
 VERSIONS.forEach((v) => { BY_ID[v.id] = v; });
 
-/** 解析档位：falsy → 当前档；未知 id → 当前档（写错档号静默回退，联名/对局都不能因它崩）。 */
+/** 未知档位（P0/D2）：显式失败，绝不静默回落当前档。
+ *
+ *  为什么改：过去 `resolve()` 对写错的档号静默返回 CURRENT，于是「贴 v12 标签跑 v14」
+ *  在归档、报表与 A/B 对照里都看不出异常 —— 单变量假设被无声破坏，是最贵的一类错误
+ *  （审计风险 1/2）。展示与陈旧存档处改用 `tryResolve()` 自己决定怎么宽容。
+ */
+export class UnknownTacticsVersion extends Error {
+  readonly id: string;
+  readonly nearest: string | null;
+  constructor(id: string) {
+    const near = nearestId(id);
+    super(`未知战术档位 "${id}"（最接近：${near ?? '无'}；合法档位：${ids().join(', ')}）`);
+    this.name = 'UnknownTacticsVersion';
+    this.id = id;
+    this.nearest = near;
+  }
+}
+
+/** 编辑距离（只用来给错档号挑一个「最接近」提示，不参与任何行为判定）。 */
+function editDistance(a: string, b: string): number {
+  const prev = new Array<number>(b.length + 1);
+  const cur = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = cur[j]!;
+  }
+  return prev[b.length]!;
+}
+
+/** 最接近的合法档位 id（同距离时取登记表里靠前的那个）；空 id 或完全无法判断时返回 null。 */
+export function nearestId(id?: string | null): string | null {
+  const s = String(id ?? '').trim();
+  if (!s) return null;
+  let best: string | null = null;
+  let bestD = Infinity;
+  for (const v of VERSIONS) {
+    const d = editDistance(s, v.id);
+    if (d < bestD) { bestD = d; best = v.id; }
+  }
+  return best;
+}
+
+/** 解析档位（严格）：falsy → 当前档；未知 id → **抛 `UnknownTacticsVersion`**。 */
 export function resolve(id?: string | null): TacticsVersion {
   if (id == null || id === '') return BY_ID[CURRENT]!;
-  return BY_ID[String(id)] || BY_ID[CURRENT]!;
+  const v = BY_ID[String(id)];
+  if (!v) throw new UnknownTacticsVersion(String(id));
+  return v;
+}
+
+/** 宽容解析：只给「展示 / 陈旧存档」用。falsy 或未知 id → null（调用方自己决定怎么显示）。 */
+export function tryResolve(id?: string | null): TacticsVersion | null {
+  if (id == null || id === '') return null;
+  return BY_ID[String(id)] ?? null;
 }
 
 /* ---------- 已退役：文件名时间窗归版（WINDOWS / versionForFileStamp）----------

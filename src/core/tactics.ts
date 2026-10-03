@@ -21,7 +21,7 @@
  * 纯逻辑：只依赖 engine 接口 + 版本登记表；无 DOM、无网络。异步仅出现在 callRaw 一侧。
  */
 import { weightedPick } from './weighted.ts';
-import { resolve } from './tactics-versions.ts';
+import { ids, resolve } from './tactics-versions.ts';
 import type { TacticsVersion } from './tactics-versions.ts';
 import type { Engine, JevSerialized, Move } from './types.ts';
 
@@ -124,13 +124,18 @@ function flipTurn<S>(st: S, sideId: string): S {
   return Object.assign({}, st as object, { turn: sideId }) as S;
 }
 
-/** 解析战术版本：无登记表时用全开桩（保证引擎自检不因缺表而崩）。 */
+/** 解析战术版本（P0/D2）：未知档号回落 **`v0-off`（空机制集）**，绝不回落「全开」。
+ *
+ *  过去 catch 后返回 `ALL_MECH`：一个写错的档号会让这一手跑满全部机制 —— 标签还写着
+ *  那个错档号，既不是它、也不是当前档，实验数据直接失真。现在只允许「什么都不做」：
+ *  宁可战术层空转（可观测、可解释），也不许悄悄变成别的档位。登记表本身不可用时同理。
+ */
 function resolveVersion(versionId?: string | null): { id: string; mech: Record<string, boolean> } {
   try {
     const v: TacticsVersion = resolve(versionId);
-    if (v && v.id) return { id: v.id, mech: (v.mech || ALL_MECH) as Record<string, boolean> };
-  } catch (_) { /* 登记表不可用时按全开处理 */ }
-  return { id: versionId || 'unregistered', mech: ALL_MECH };
+    if (v && v.id) return { id: v.id, mech: (v.mech || {}) as Record<string, boolean> };
+  } catch (_) { /* 未知档号 / 登记表不可用：按空机制集处理（见上） */ }
+  return { id: ids()[0] || 'v0-off', mech: {} };
 }
 
 /* ------------------------------------------------------------------ *

@@ -1,6 +1,6 @@
 # 计划：战术「任意版本可回溯」语义冻结 + 远端 Elo 能力阶梯
 
-> 类型：**实施计划（未开工，等业主确认范围）**。状态：**📋 待批（2026-10-03 起草，同日按业主补充要求修订：并入卫生包五条 + 新增 G3 运行面独立）**。
+> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 + P0b 数据卫生与报表口径已完成，P1 起待做）**。
 > 触发：项目所有者要求（2026-10-03，逐字）：「参考 …/2026-10-03-tactics-coupling-audit.md，这些问题怎么办，我需要战术可以回溯到任意版本，我想要让机器在远端跑 elo 比较各版本的战术以及 rapfi@不同时间真正的能力，给出计划」。
 > 补充要求（2026-10-03 同日，逐字）：「这些也要包含到计划里，可以让这个测试全在云端服务器上本地跑，不连接我自己的 cf worker，减少连接数，但我可以通过 ssh 来检验进度，最终将结果上传到桶中」⇒ ① 上一轮给的「建议打包（五条）」**并入本计划**（见 §3.1）；② 新增 **G3 运行面独立**（见 §1、§4、§6 P4/P4b）。
 > 上游输入：耦合性审计 [2026-10-03-tactics-coupling-audit.md](2026-10-03-tactics-coupling-audit.md)（12 条耦合风险 + §4 两条静默回退坑 + §5 四类不按版本裁剪的漂移）、
@@ -96,9 +96,9 @@
 |---|---|---|---|---|
 | P0 | `submit` 不给 `--origin` 时**必须**显式 `--allow-production` 才放行，否则 exit 2 | P0（与 D11 闸门同一处） | ~10 行 + 1 例测试 | 上一轮审查的 5 条残留里唯一「会污染生产库」的一条；默认安全比默认方便重要 |
 | P0 | `--parallel` **仅双本地臂**（两侧都不是 `proxy`）放行，否则拒绝并说明冲突 | P0 | ~15 行 + 1 例测试 | 双 proxy 并行必踩上游限流、且共享上游延迟会污染对照；rapfi-vs-rapfi 才是它的合理用途（box 40 核，本地 CPU 不是瓶颈） |
-| P1 | 三条历史 tag（`exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1` / `exp-20261003052604-x1-r1`）回填 `device_id='ssh-batch'` | P0b（数据卫生，先 `pragma_table_info('games')` 确认列名） | 1 条 SQL + playbook 补一句 | 26 局 `device_id` 为 NULL 只能按 tag 认；回填后「哪些局是设施产物」一条 where 就能查（**只回填设备归属，不改 `code_version`**，不猜 sha） |
-| P1 | 报表加 **Wilson 95% 区间** + 「样本 < 50 局」标注 | P5（`batch-elo.mjs` 报表 + `.work/` 脚本） | 报表侧，不动核心逻辑 | 20 局/对的 ±22 pt 必须印在数字旁边，否则报告读起来像「已证明」 |
-| P2 | 文档写死口径：**只准聚合口径**（胜/和/负 + 不败率 + 接管直方图 + 成本三口径）；单局逐手对齐只允许在**同机同进程**内做 | P3（写进 `docs/agents/playbooks.md` §7 + 本计划 §7 报表） | 一段话 | Node rapfi 与浏览器归档不可逐字复现（ADR-0019「后果」），跨机逐手比对本就是伪证据 |
+| P1 | ✅ **已做（P0b，2026-10-03）** 三条历史 tag（`exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1` / `exp-20261003052604-x1-r1`）回填 `device_id='ssh-batch'` | P0b（数据卫生） | 1 条 SQL + playbook 补一句 | 26 局 `device_id` 为 NULL 只能按 tag 认；回填后「哪些局是设施产物」一条 where 就能查（**只回填设备归属，不改 `code_version`**，不猜 sha）。实测：先补 `devices` 行（`games.device_id REFERENCES devices(device_id)`，否则 `SQLITE_CONSTRAINT_FOREIGNKEY`）→ `update … where device_id is null and experiment_tag in (…)` → `count(*) where device_id='ssh-batch'` = **26**，26 局的 `code_version` 仍是 `dev+nogit` |
+| P1 | ✅ **已做（P0b，2026-10-03）** 报表加 **Wilson 95% 区间** + 「样本 < 50 局」标注 | P0b（`scripts/lib/batch-elo.mjs`） | 报表侧，不动核心逻辑 | 20 局/对的半宽 **±20 pt**（Wilson；教科书那条 Wald 写法给 ±22 pt 且 0 胜/全胜会越界）必须印在数字旁边，否则报告读起来像「已证明」 |
+| P2 | ✅ **已做（P0b，2026-10-03）** 文档写死口径：**只准聚合口径**（胜/和/负 + 不败率 + 接管直方图 + 成本三口径）；单局逐手对齐只允许在**同机同进程**内做 | `docs/agents/playbooks.md` §7 第 12 条 | 一段话 | Node rapfi 与浏览器归档不可逐字复现（ADR-0019「后果」），跨机逐手比对本就是伪证据 |
 
 ---
 
@@ -172,8 +172,8 @@
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| **P0 闸门收紧**（~120 行） | D2：`resolve()` 抛错 + `resolveVersion` 回落 `v0-off` + 三个入口（worker / `experiment-run.mjs` / UI 下拉）白名单校验，错误信息含最接近合法 id；**并入 §3.1 第 1、2 条**：`--allow-production` 闸门 + `--parallel` 仅双本地臂 | `npx vitest run` 全绿（改后的用例断言抛错）；手工跑 `--tacA v12-vct-de` ⇒ **exit 2 且打印候选**；`submit` 不给 `--origin` ⇒ exit 2 并提示 `--allow-production`；`--parallel` + 含 `proxy` 臂 ⇒ 拒绝并说明；UI 下拉仍能跑（值都在白名单里） |
-| **P0b 数据卫生与报表口径**（~40 行 + 1 条 SQL + 文档） | §3.1 第 3–5 条：三条历史 tag 回填 `device_id='ssh-batch'`（先 `pragma_table_info('games')` 确认列名，**不动 `code_version`**）；`batch-elo.mjs` 报表加 **Wilson 95% 区间**与「样本 < 50」标注；`docs/agents/playbooks.md` §7 写入「只准聚合口径」段 | 回填后 `select count(*) from games where device_id='ssh-batch'` = 29（26 历史 + 本轮若已跑）；报表在 20 局/对上打印 `[±22 pt]` 警告；`check:docs` 绿 |
+| **P0 闸门收紧** ✅ **已完成（2026-10-03）**（~120 行） | D2：`resolve()` 抛错 + `resolveVersion` 回落 `v0-off` + 三个入口（脚本 / UI 下拉 / 远端批量 `parseSpec`）白名单校验，错误信息含最接近合法 id；**并入 §3.1 第 1、2 条**：`--allow-production` 闸门 + `--parallel` 仅双本地臂 | 实测全过：① `node test/engines/run.mjs` **144/144**；② `npx vitest run` **38 文件 / 399 例**（+14：两道闸门 7 例 + Wilson 5 例 + UI 拒绝启动 2 例）；③ `--tacA v12-vct-de` ⇒ 打印「最接近的合法档位：v12-vct-def」+ 15 档全列表、**exit 2**；④ `submit` 不给 `--origin` ⇒ exit 2 并提示 `--allow-production`；⑤ `--parallel` + 含 `proxy` 臂 ⇒ 点名 `A=proxy` 拒绝；⑥ UI 下拉值都在白名单时照常开跑（`test/app/experiment-start.spec.ts` 正对照）。**「边界严格、展示宽容」**：`resolve()` 只在白名单来源处调用，展示/陈旧存档走 `tryResolve()`（`src/core/view/duel.ts` `versionTag`、`src/app/records.ts` 归档分组头、`src/core/persist.ts` `loadSettings()` 就地净化） |
+| **P0b 数据卫生与报表口径** ✅ **已完成（2026-10-03）**（~40 行 + 3 条 SQL + 文档） | §3.1 第 3–5 条 | 实测全过：① 三条历史 tag 回填前先补 `devices` 行（`games.device_id REFERENCES devices(device_id)`）⇒ `update … where device_id is null and experiment_tag in (…)` ⇒ `select count(*) from games where device_id='ssh-batch'` = **26**，26 局 `code_version` 仍为 `dev+nogit`（未猜 sha）；② `wilson()` 落 `scripts/lib/batch-elo.mjs`，20 局/对半宽 **±20.1 pt**，`formatRankTable()` 每行印 `95% 区间(Wilson)` 列 + 样本 < 50 时印 `±XX.Xpt ⚠` 与读数纪律注（用例把 ±20 pt 钉死）；③ `docs/agents/playbooks.md` §7 新增第 12 条「报表只准聚合口径」+ 第 11 条补齐回填 SQL；④ `npm run check:docs` 绿 |
 | **P1 冻结层**（~250 行） | D1/D3/D4/D5：`tactics-budget.ts` + 预算下传 + `sound` 活键 + `openingMin` + `attachFacts` 按 mech | **零行为变更对照**：15 档 × 120 局面，逐档落点/层与改前**逐字一致**（脚本比对，作为 P1 的证据）；`node test/engines/run.mjs` 142 例全绿 |
 | **P2 指纹设施**（~250 行） | D6/D7 + `version-freeze.test.mjs` + CI 接线 | 首次 `--write` 生成基线；**故意改一处 `vcfWin` 预算试红**（证明测试有效，随后还原）；`npm test`、`npm run typecheck`、`check:docs` 全绿 |
 | **P3 回放 + 考古**（~220 行 + 文档） | `tactics-replay.mjs`；逐 commit diff 填 `budget/sound/openingMin`/`fidelity`；产出考古文档 | 回放工具在 `exp-20261003082805` 上跑出「与实走一致率」并列出会变的手；考古表 14 档无空缺（每格要么有证据 commit，要么标 `approximate` + 缺口描述） |

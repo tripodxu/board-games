@@ -32,6 +32,10 @@
 > `code_version = dev+nogit`（Node 直载无构建注入）、`device_id` 为 NULL，所以**不能与浏览器轮的
 > `1.0.0+<sha>` 放在同一条归因链上**。2026-10-03 收口批起，worker 会带 `X-Device-Id: ssh-batch`
 > 并把提交自报进 `meta.code`（`dev+nogit+<sha>`）⇒ 之后的远端轮次可按 `device_id='ssh-batch'` 单独筛出。
+> **2026-10-03 P0b 数据卫生**：那 26 局已按 tag 回填 `device_id='ssh-batch'`（先补 `devices` 行，因为
+> `games.device_id REFERENCES devices(device_id)`；**只改设备归属，`code_version` 仍是 `dev+nogit`**，不猜 sha）
+> ⇒ 现在 `select count(*) from games where device_id='ssh-batch'` = **26**。注意 NULL `device_id` **不等于**
+> 远端局（浏览器轮也不发 `X-Device-Id`，D1 里仍有 286 局为 NULL）：判设施产物要按 tag 或按 `ssh-batch`。
 > 按 `experiment_tag` 过滤的分析不受影响；但「全局计数恰好 +N」这类断言会假红（`scripts/smoke-live.mjs` 已放宽为「至少 +1」）。
 
 | 项 | 值 |
@@ -39,7 +43,7 @@
 | 棋谱 | **310 局 / 19249 手** = 导入基线 54 局 / 4379 手（全部五子棋；日期 2026-09-29 与 2026-09-30）**+ 4 局 proxy-vs-proxy 真实验**（2026-10-01，各 225 手，tag `exp-20261001132645`）**+ 24 局 v10 对照实验**（2026-10-02，tag `exp-20261001174212` / `…174837` / `…181244` / `…182552`）**+ 12 局 v11 对照实验**（2026-10-02，408 手，tag `exp-20261002055817`）**+ 12 局 v10 直连 v11**（2026-10-02，1202 手，tag `exp-20261002080446`）**+ 12 局 v11 计时轮**（2026-10-02，347 手，tag `exp-20261002094817`）**+ 12 局 v12 对照实验**（2026-10-02，390 手，tag `exp-20261002115126`）**+ 12 局 v12 vs `rapfi@1000ms`**（2026-10-02，474 手，tag `exp-20261002121700`）**+ 12 局 v12 vs `rapfi@2000ms`**（2026-10-02，725 手，tag `exp-20261002123631`）**+ 12 局 v13 vs `rapfi@1000ms`**（2026-10-02，535 手，tag `exp-20261002160819`）**+ 3 局被打断的 v13 首轮**（2026-10-02，119 手，tag `exp-20261002154056`，**无 `experiments` 行**，不计入实验轮）**+ 20 局 v13 vs `rapfi@1000ms`**（2026-10-03，937 手，tag `exp-20261003003108`）**+ 20 局 v13 vs `rapfi@2000ms`**（2026-10-03，1193 手，tag `exp-20261003020720`）**+ 12 局 v14 vs `rapfi@1000ms`**（2026-10-03，629 手，tag `exp-20261003035953`）**+ 2 局落库验证**（2026-10-03，118 手，tag `exp-20261003044054`，用来确认 `black_think`/`white_think` 与 `code_version` 归因）**+ 20 局 v14 vs `rapfi@2000ms`**（2026-10-03，1518 手，tag `exp-20261003050139`，用时 3453s）**+ 12 局 SSH 远端 `rapfi@500ms` vs `random/v13`**（2026-10-03，600 手，tag `exp-20261003042812-rapfi1-r1`）**+ 2 局 SSH 远端 `proxy/v13` vs `random/v13` 真上游冒烟**（2026-10-03，107 手，tag `exp-20261003052056-smoke1-r1`）**+ 12 局 SSH 远端 `proxy/v13` vs `rapfi@500ms`**（2026-10-03，957 手，tag `exp-20261003052604-x1-r1`，含 2 局 225 手满盘和棋）**+ 20 局 v14 vs `rapfi@3000ms`**（2026-10-03，881 手，tag `exp-20261003075310`，用时 2089s）**+ 20 局 v14 vs `rapfi@5000ms`**（2026-10-03，990 手，tag `exp-20261003082805`，用时 2898s）**+ 1 局未挂 tag 的 9 手 proxy-vs-proxy 短局**（2026-10-03，uid `ad0ca92a`）；54 份归档源仍是 [games/](../games) 那 54 局 |
 | 实验轮 | 28（导入 6 轮 + 2026-10-01 真跑的 `exp-20261001132645` + 2026-10-02 对照实验的 4 轮 + v11 单臂 `exp-20261002055817` + 直连 `exp-20261002080446` + 计时轮 `exp-20261002094817` + v12 单臂 `exp-20261002115126` + `rapfi@1s` 轮 `exp-20261002121700` + `rapfi@2s` 轮 `exp-20261002123631` + v13 `rapfi@1s` 轮 `exp-20261002160819` + 2026-10-03 的 20 局档位复核 `exp-20261003003108`（v13 vs `rapfi@1000ms`）与 `exp-20261003020720`（v13 vs `rapfi@2000ms`）+ v14 `rapfi@1s` 轮 `exp-20261003035953` + 落库验证轮 `exp-20261003044054`（2 局）+ v14 `rapfi@2s` 轮 `exp-20261003050139`（20 局）+ 远端批量三轮 `exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1` / `exp-20261003052604-x1-r1` + v14 `rapfi@3s` 轮 `exp-20261003075310`（20 局）+ v14 `rapfi@5s` 轮 `exp-20261003082805`（20 局），均已补 `/api/experiments` 行；被打断的 `exp-20261002154056` 无行、只在棋谱里；本仓库的 distinct tag 是 29 个） |
 | payload 总量 | 845578 B（54 局导入部分；最大单局 68.7 KB，远低于 512 KB 上限） |
-| 设备 | 0（历史导入与实验归档都不带设备 id；`device_id` 为 NULL。2026-10-03 收口批起远端 worker 带 `ssh-batch`，下一轮远端实验会首次建出该设备行） |
+| 设备 | **1**（`ssh-batch`，26 局历史远端局回填而来，见上「口径说明」；其余归档都不带设备 id，`device_id` 为 NULL。2026-10-03 收口批起远端 worker 自己带 `ssh-batch`，此后新跑的远端轮次会直接挂上这个设备行） |
 | 一致性 | `game_uid` 去重后 310、孤儿 `game_moves` 0 行；`game_moves` 里 `v13-pressure-gate` 2282 手、`v14-live3-fresh` 3006 手、`v10-live3` 1186 手、`v11-vct` 983 手、`v9-vcf-sound` 1104 手、`v8-vcf-try` 765 手、`v12-vct-def` 800 手、`v0-off` 17 手、无声明 9106 手（= Rapfi/人类侧、历史导入与远端批量的 rapfi/random 侧），各组手数分别等于对应臂的 Jev 侧手数合计（与脚本统计交叉一致；九类相加 = 19249 手）。⚠️ 远端批量三轮（+1664 手）的 games JSON 是 trimmed 形式（moves 只有 ply/side/notation），其逐手明细只在 D1 `game_moves` 表里 |
 
 - **真实验（2026-10-01，proxy 渠道，4 局全和棋）**：`node scripts/experiment-run.mjs --games 4` 跑满
@@ -253,7 +257,7 @@
     `winner==='draw'` ⇒ x1 两局 225 手满盘和棋被当「未终局」整局丢掉（Elo 只算 22/24 局、
     和棋列全 0）。改为按 result 串判和棋（与 parseResult 同形正则）——铁律 11 落实：胜/和/负同报。
   - 产物 `.work/remote/<batch>/`（plan/checkpoint/games/round-summary）不入库；工具自身
-    **44 例单测**（`npm run test:scripts`）+ 全量 `npm test` **385 例 / 37 文件** / `tsc --noEmit` 干净。
+    **57 例单测**（`npm run test:scripts`，含 P0 两道闸门 7 例与 Wilson 区间 6 例）+ 全量 `npm test` **399 例 / 38 文件** / `tsc --noEmit` 干净。
   **合入时的审查（独立子代理，只读）**：设施方向与密钥纪律无问题、`src/**` 零改动、38 例单测真绿；
   但报了 5 条合并阻断项（`think=0` 越权写、`--rounds>1` 并发起 worker、续跑 skipped 计 0 + `resume` 缺 key 注入、
   `batchId` 同日撞车 + checkpoint 不比 tag、归档阶段无重试/超时/非幂等）⇒ **已在合入后同一批修掉**；
@@ -288,6 +292,26 @@
   2026-10-01 下午起该脚本改为 **30 项**，且总量断言一律**相对基线**（`stats.byGame` 只断言键是中文棋种名，`/api/experiments` 断言轮次 ≥ 6，写入后断言「基线 + 1」）——真实验一多，写死 54/6/55 就会天天空红（实测 `58 → 59` 通过；负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1）。
 - **引擎行为不变**（2026-10-01 实跑 `node test/engines/run.mjs`）：金样自对弈逐手一致 —— 五子棋 17 / 五子棋·禁手 15 / 围棋 89 / 象棋 600 / 国象 169 / 跳棋 103 / 中国跳棋 138；归档 **54 局 / 4379 手逐手一致**。唯一已知不一致是 `games/2026-09-30/jev-v9-vs-jev-v8-20260930153334.json`（归档记「黑方 获胜（认输）」，引擎判 `null`）——引擎不建模认输，属预期，只记录不阻断。
 - **文档卫生**（2026-10-01 实跑 `npm run check:docs`）：41 个 md 的相对链接全部可解析，MEMORY 置顶正确，status 日期在 30 天内。
+- **静默换档已封死**（2026-10-03，[能力阶梯计划](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md) P0/D2）：
+  `src/core/tactics-versions.ts` 的 `resolve()` 过去对未知档号**静默回落到当前档**（`v14-live3-fresh`），
+  「DOM 里写着 v12、实际跑 v14」这种单变量破坏谁都看不见 ⇒ 现在 `resolve()` 抛 `UnknownTacticsVersion`
+  （消息含最接近的合法 id），展示/陈旧存档走新增的 `tryResolve()`；`src/core/tactics.ts` 的
+  `resolveVersion()` 兜底从「全机制集」改成 **`v0-off` 空机制集**（宁可空转也不许悄悄变成别的档位）。
+  三个入口各自核对白名单：`scripts/experiment-run.mjs`（`--tacA v12-vct-de` ⇒ 打印
+  「最接近的合法档位：v12-vct-def」+ 15 档全列表、**exit 2**）、`scripts/lib/batch-common.mjs`
+  `parseSpec()`（远端批量提交）、UI `startExperiment()`（toast「实验未启动：无法识别的战术档位」并拒绝启动，
+  `test/app/experiment-start.spec.ts` 两例钉住拒绝与正对照）。陈旧 localStorage 在
+  `src/core/persist.ts` 的 `loadSettings()` 边界就地净化（未知档号丢弃、侧配置清空），归档面板对
+  登记表外的历史档位显示「登记表外的档位：X（原样显示）」而不是冒当前档。
+- **实验面两条防污染闸门**（2026-10-03 同上）：`scripts/lib/batch-common.mjs` 新增
+  `productionGate()`（不给 `--origin` 时必须显式 `--allow-production`，否则 exit 2）与
+  `parallelGate()`（`--parallel` 只允许双本地臂，含 `official`/`openrouter`/`proxy` 任一侧即拒绝并点名），
+  单元测试 7 例 + 三条手工验收（`submit` 无 origin / `--parallel` + proxy / `--tacA` 非法值）全部按预期 exit 2。
+- **报表带上不确定度**（2026-10-03，P0b）：`scripts/lib/batch-elo.mjs` 新增 `wilson(hits, n, z=1.96)`
+  （得分率的 Wilson 95% 区间），`rankTable()` 每行带 `rate/ci/halfPt`，`formatRankTable()` 印出
+  「95% 区间(Wilson)」列并在样本 < 50 时追加 `±XX.Xpt ⚠` 与读数纪律注 —— **20 局/对的半宽 ≈ ±20 pt**
+  （教科书那条 Wald 写法给 ±22 pt 且 0 胜/全胜会越界），同档轮间方差 17.5 pt > 档位差
+  ⇒ 区间重叠就写「不可判」。
 - 迁移各阶段的实测数字与偏差裁决见计划 P0–P8 执行记录（含本地导入 4440 changes、7 张表、线上部署版本号等）。
 
 ## 设计例外（有意保留，不是遗漏）
@@ -369,7 +393,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **144 个用例** + vitest **37 个测试文件 / 385 个用例**（含新增的 `scripts` project：`test/scripts/**` 44 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **144 个用例** + vitest **38 个测试文件 / 399 个用例**（含 `scripts` project：`test/scripts/**` 57 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
@@ -403,6 +427,19 @@
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
 3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0018；`npm run check:docs` 绿（52 个 md / 348 个链接）。
 4. **下一版入口由两条方向约束决定**（2026-10-02，[AGENTS.md](../AGENTS.md) §2 规则 10–11）：v10/v11 的败局都出在「算不出强制胜」的局面，所以优先做**无强制胜时的防守与长线取势**——要求是简单规则、快而不依赖长思考；**不**把 VCT 挖得更深。同一批待决项里，`live3After` 的语义纠偏（判「本手新造」而非「盘面上存在」）属于允许的「减法/纠偏」，**已于 2026-10-03 作为 v14 上线**（`b6c6921`）。**仍未闭环**：A 型速败（≤35 ½手被速杀）的「早盘为什么织不起活三网」属进攻侧开局形状问题（`docs/plans/2026-10-03-tactics-v14-fresh-live3.md` §8），以及 B 型长局（≥50 ½手、压力领先却换不了杀）——后者的两负实测都是「全程我方有杀 0」。**2026-10-03 更新**：v14 已按 m08704 抬档复核——`rapfi@1000ms` 12 局 9-1-2、`rapfi@2000ms` 20 局 **9-3-8**（不败率 60.0%）；**A 型的机制线在规则 10 之下判定收口**（静默普查 §4.3：早盘 72–95% 回合双方都没有 `vcf7`/`vct9` 胜，制造点 1.38 vs 0.42–0.45 是唯一指征，要抬它必须做 2-ply 以上规划 ⇒ 明令不做），剩下的杠杆是**配对样本**（同开局双跑）、模型侧提示、继续抬档看鲁棒性。**2026-10-03 收口（项目所有者）**：继续抬档已跑完（3 s 15-1-4、5 s 12-1-7，四档比分非单调）⇒ **机制线暂停、不再开新机制**（v14 是最后一版），只留维护、数据卫生与配对样本设计；恢复条件是「先有能分辨 5 pt 以内差异的配对样本口径」（详见 [v14 计划](plans/2026-10-03-tactics-v14-fresh-live3.md) §8 末尾的收口引块）。
+
+5. **两份新计划的推进状态**（2026-10-03 起，业主 m13862「两个计划一起开工，可以先进行探测」）：
+   ① [候选点三数 + 上游兜底](plans/2026-10-03-cands-metric-and-provider-failover.md)：**C0 已完成并部署**
+   （`cands_sent`/`cands_labeled` 逐手落库 + `migrations/0003_move_cands.sql` + 报表「候选发评标」列，
+   部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
+   ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
+   ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧与
+   P0b 数据卫生/报表口径已完成**（见上「已验证」两条），**下一步 P1 冻结层**（`tactics-budget.ts` + `sound`
+   活键 + `openingMin`，验收 = 15 档 × 120 局面零行为变更对照）→ P2 指纹设施（`test/parity/tactics-fingerprints.json`
+   + 故意改预算试红）→ P3 回放/考古 → P4/P4b 离线运行面（`--store local` + `--upstream direct` + 桶留档，
+   零 CF 触碰验收）→ P5 Elo 升级（BT + bootstrap CI）→ P6 阶梯编排。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
+   第一晚 L3 是否含 `rapfi@5000`、P7 `--rev` 是否做、**对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws
+   ⇒ 纯 Node SigV4）、兜底是否进生产 Worker 路径。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
 > 已核验（2026-10-02）：Cron `17 3 * * *` 的首次落库 —— `stats_cache` 有且只有一行 `daily:2026-10-02`，`updated_at = 2026-10-02T03:17:56.373Z`（调度时刻），`value` 报 `rateLimitsDeleted: 139`、`games: 82`、`moves: 7110`、`experiments: 11`，与 D1 当时的行数一致 ⇒ 定时维护真实执行、口径正确。
