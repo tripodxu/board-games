@@ -1063,7 +1063,7 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .exp-agg { margin-bottom: 12px; }
 .exp-agg-head, .exp-agg-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px 30px 30px 52px 92px;
+  grid-template-columns: minmax(0, 1fr) 30px 30px 30px 52px 84px 92px;
   align-items: center;
   gap: 6px;
 }
@@ -1083,6 +1083,8 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .exp-agg-num { text-align: right; color: var(--ink-mute); }
 /* 战术层平均耗时（只有真过了战术层的手才有样本；Rapfi/mock 显示 —） */
 .exp-agg-tac { font-size: 11px; white-space: nowrap; }
+/* 候选点三数（C0/m13627）：发（交给 Jev）/ 评（模型给了概率）/ 标（带战术标签） */
+.exp-agg-cands { font-size: 11px; white-space: nowrap; }
 .exp-agg-rate { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .exp-agg-rate b { font-size: 11px; }
 .exp-agg-bar, .exp-bar { flex: 0 0 auto; height: 6px; border-radius: 999px; background: var(--bg3); overflow: hidden; }

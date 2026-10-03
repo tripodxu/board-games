@@ -14,6 +14,7 @@
  */
 import { saveExperiment } from '../core/api/client.ts';
 import { aiGameMeta } from '../core/meta.ts';
+import type { CandsStat } from '../core/meta.ts';
 import { sideAttribution } from '../ui/panels/options.ts';
 import {
   beginRun,
@@ -140,21 +141,23 @@ export function cancelExpTimer(ctx: AppCtx): void {
 }
 
 /**
- * 逐侧的**战术层平均耗时**（ms）与样本手数（m07650 的新口径）。
+ * 逐侧的**战术层平均耗时**（ms）与**候选点三数**（C0/m13627 的新口径）。
  *
- * 口径与归档里的 `meta.tacticsMs` 完全一致（同一个 `aiGameMeta()`）：只统计 `meta.tacticsMs`
- * 有值的手 —— Rapfi/mock 渠道刻意不过战术层（`core/jev/client.ts` 的渠道短路），它们记 null
- * 而不是 0，于是「Jev vs Rapfi」这类混合对局的均值不会被 Rapfi 侧拉低。
+ * 口径与归档里的 `meta.tacticsMs` / `meta.candStats` 完全一致（同一个 `aiGameMeta()`）：
+ * 只统计真有值的手 —— Rapfi/mock 渠道刻意不过战术层、也不过 Jev 候选集
+ * （`core/jev/client.ts` 的渠道短路），它们记 null 而不是 0，于是「Jev vs Rapfi」这类混合
+ * 对局的均值不会被 Rapfi 侧拉低。
  */
-function sideTactics(ctx: AppCtx): {
-  black: { avg: number | null; n: number };
-  white: { avg: number | null; n: number };
+function sideStats(ctx: AppCtx): {
+  black: { avg: number | null; n: number; cands: CandsStat | null };
+  white: { avg: number | null; n: number; cands: CandsStat | null };
 } {
   const firstId = ctx.engine.sides[0]?.id ?? 'black';
   const pick = (isBlack: boolean) => {
     const mine = ctx.session.history.filter((h) => ((h.meta?.side ?? h.side) === firstId) === isBlack);
-    const t = aiGameMeta(mine).tacticsMs;
-    return { avg: t ? t.avg : null, n: t ? t.n : 0 };
+    const g = aiGameMeta(mine);
+    const t = g.tacticsMs;
+    return { avg: t ? t.avg : null, n: t ? t.n : 0, cands: g.candStats ?? null };
   };
   return { black: pick(true), white: pick(false) };
 }
@@ -169,7 +172,7 @@ export function onExperimentGameEnd(ctx: AppCtx, g: GameStatus): void {
   const info = ctx.session.expInfo;
   /* A/B 归属必须在 pushResult()（会自增 idx）之前算：它依赖当前局号 */
   const winnerChan = winnerSideOf(state.idx + 1, g.winner ?? null, ctx.engine.sides[0].id);
-  const tac = sideTactics(ctx);
+  const tac = sideStats(ctx);
   pushResult(state, {
     blackChan: info ? info.blackChannel : '',
     whiteChan: info ? info.whiteChannel : '',
@@ -186,6 +189,9 @@ export function onExperimentGameEnd(ctx: AppCtx, g: GameStatus): void {
     whiteTacMs: tac.white.avg,
     blackTacN: tac.black.n,
     whiteTacN: tac.white.n,
+    /* 候选点三数（C0/m13627）：交给 Jev 决定的点数 / 模型评了几个 / 其中战术层标了几个 */
+    blackCands: tac.black.cands,
+    whiteCands: tac.white.cands,
   });
   renderExpStatus(state);
   renderExpResults(state);

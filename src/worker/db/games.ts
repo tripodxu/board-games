@@ -42,6 +42,9 @@ export interface GameMoveInput {
   /** 战术层耗时（ms）；Rapfi/mock 不过战术层 ⇒ null（`0002_tactics_timing.sql`） */
   tacMs?: number | null;
   cands?: number | null;
+  /** 交给 Jev 决定的候选点数 / 其中带战术标签的点数（`0003_move_cands.sql`）；非 Jev 侧 ⇒ null */
+  candsSent?: number | null;
+  candsLabeled?: number | null;
 }
 
 /** 落库输入：column-aligned，未给出的可空列一律写 NULL。 */
@@ -174,6 +177,8 @@ export interface GameMove {
   ms: number | null;
   tacMs: number | null;
   cands: number | null;
+  candsSent: number | null;
+  candsLabeled: number | null;
 }
 
 /** 列表过滤条件：全部可选，给出即按 AND 叠加。 */
@@ -223,11 +228,14 @@ const GAME_COLUMNS = `id, game_uid AS gameUid, created_at AS createdAt, day, gam
   device_id AS deviceId, source, payload_bytes AS payloadBytes, row_at AS rowAt`;
 
 const GAME_MOVE_COLUMNS = `ply, side, notation, tactics, tactics_version AS tacticsVersion,
-  channel, model, confidence, prob, rank, ms, tac_ms AS tacMs, cands`;
+  channel, model, confidence, prob, rank, ms, tac_ms AS tacMs, cands,
+  cands_sent AS candsSent, cands_labeled AS candsLabeled`;
 
 const GAME_MOVE_INSERT = `INSERT INTO game_moves
-  (game_id, ply, side, notation, tactics, tactics_version, channel, model, confidence, prob, rank, ms, cands, tac_ms)
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`;
+  (game_id, ply, side, notation, tactics, tactics_version, channel, model, confidence, prob, rank, ms, cands, tac_ms,
+   -- 0003 追加列：与 games 表同款，ALTER 只能加在末尾，SQL 里也放末尾好对照
+   cands_sent, cands_labeled)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`;
 
 const GAME_INSERT = `INSERT INTO games
   (game_uid, dedup_key, created_at, day, game, game_id, mode, result, winner, end_reason, end_by,
@@ -317,6 +325,9 @@ function moveStatement(db: D1Database, gameId: number, ply: number, move: GameMo
       move.ms ?? null,
       move.cands ?? null,
       move.tacMs ?? null,
+      /* 0003 追加列（C0/m13627）：缺失写 NULL，不写 0 */
+      move.candsSent ?? null,
+      move.candsLabeled ?? null,
     );
 }
 

@@ -137,6 +137,37 @@ S.t('meta：缺字段的老/降级响应一律 null，且不抛错', () => {
     '残缺 meta 应降级为 null 字段：' + JSON.stringify(m4));
 });
 
+S.t('meta：候选点三数（candsSent/candsLabeled）只在有值时写出，缺失不冒 0', () => {
+  /* C0/m13627：`cands` 是历史口径（模型给了概率的点数）；`candsSent` = 交给 Jev 决定的点数、
+     `candsLabeled` = 其中带战术标签的点数。缺失（Rapfi/mock 侧、老归档）必须**整键省略**——
+     写 0 会被报表读成「交了 0 个候选点」这种不存在的状态。 */
+  const m = aiMoveMeta('H8', aiM('H8', { candidates: 58, candsSent: 64, candsLabeled: 21 }));
+  ok(m.cands === 58 && m.candsSent === 64 && m.candsLabeled === 21,
+    '候选点三数应逐字透出：' + JSON.stringify(m));
+  const none = aiMoveMeta('H8', aiM('H8'));
+  ok(!('candsSent' in none) && !('candsLabeled' in none),
+    '没有这两个数时不该写出键：' + JSON.stringify(none));
+});
+
+S.t('meta：一局候选点三数逐项按手求均值（样本只数有值的手）', () => {
+  setSeed(null);
+  const items = [
+    { meta: aiM('H8', { candidates: 60, candsSent: 64, candsLabeled: 20 }) },
+    { meta: aiM('G8', { candidates: 55, candsSent: 62, candsLabeled: 18 }) },
+    /* 老形状（0003 之前归档的手）：只有历史口径，进 graded 样本、不进 sent/labeled 样本 */
+    { meta: aiM('H7', { candidates: 40 }) },
+    { meta: { human: true } },
+  ];
+  const gm = aiGameMeta(items, {});
+  ok(gm.candStats, '有候选点样本时应写出 candStats：' + JSON.stringify(gm.candStats));
+  eq(gm.candStats.sent, 63, 'sent 均值应为 (64+62)/2：' + gm.candStats.sent);
+  eq(gm.candStats.graded, 51.7, 'graded 均值应为 (60+55+40)/3：' + gm.candStats.graded);
+  eq(gm.candStats.labeled, 19, 'labeled 均值应为 (20+18)/2：' + gm.candStats.labeled);
+  eq(gm.candStats.n, 2, '样本手数应以 candsSent 有值的手为准：' + gm.candStats.n);
+  /* 没有候选点样本（空局 / 全 Rapfi 手）时整键省略，历史归档的往返一致性靠它 */
+  eq(aiGameMeta([], {}).candStats, undefined, '空局不该写出 candStats');
+});
+
 S.t('meta：全局汇总（延迟/置信度/token/战术分布/成本）', () => {
   setSeed(null); /* 显式清种：本文件前面跑过 rng 用例，会留下 _seed */
   const items = [

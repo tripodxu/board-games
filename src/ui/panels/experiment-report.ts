@@ -28,6 +28,7 @@
  */
 import type { StorageLike } from '../../core/persist.ts';
 import { tacticsLabel } from '../../core/view/duel.ts';
+import type { CandsStat } from '../../core/meta.ts';
 import { el, qs, replaceChildren, setText, type UiRoot } from '../dom.ts';
 import { expTag, type ExperimentState } from './experiment.ts';
 import { JEV_CHANNELS, sideAttribution } from './options.ts';
@@ -58,6 +59,9 @@ export interface ExpHistoryGame {
   whiteTacMs?: number | null;
   blackTacN?: number;
   whiteTacN?: number;
+  /** 该局黑/白方的候选点三数（C0/m13627）；非 Jev 侧不过候选集 ⇒ null（不是 0） */
+  blackCands?: CandsStat | null;
+  whiteCands?: CandsStat | null;
 }
 
 /** 一轮实验的战报（旧 entry，js/app.js:1307-1319）。 */
@@ -207,6 +211,13 @@ export interface ExpTotals {
   tacAvgMs: number | null;
   /** 上面那个平均值的样本手数 */
   tacMoves: number;
+  /** 候选点三数均值（C0/m13627）：`sent` = 交给 Jev 决定的点数、`graded` = 模型给了概率的点数、
+   *  `labeled` = 其中带战术标签的点数。样本 = 真过了 Jev 候选集的手（非 Jev 侧记 null）。 */
+  candsSent: number | null;
+  candsGraded: number | null;
+  candsLabeled: number | null;
+  /** 上面三个平均值的样本手数 */
+  candsMoves: number;
 }
 
 /** 旧 `renderExpHistory()` 的累计行口径（js/app.js:1347-1390）。 */
@@ -217,6 +228,11 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
   let effective = 0;
   let tacSum = 0;
   let tacMoves = 0;
+  /* 候选点三数（C0/m13627）同款加权：权重取该侧的样本手数 `n`。`graded`/`labeled` 可能与
+   * `sent` 的样本不同（历史手只有 graded），按各自非空值累加，不互相冒充。 */
+  let csSum = 0, csMoves = 0;
+  let cgSum = 0, cgMoves = 0;
+  let clSum = 0, clMoves = 0;
   /* 战术层耗时按「手」加权：一局里两边的样本合起来算，权重是该侧的样本手数 */
   const addTac = (avg: number | null | undefined, n: number | undefined) => {
     if (typeof avg !== 'number') return;
@@ -224,12 +240,20 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
     tacSum += avg * cnt;
     tacMoves += cnt;
   };
+  const addCands = (c: CandsStat | null | undefined) => {
+    if (!c || !(c.n > 0)) return;
+    if (typeof c.sent === 'number') { csSum += c.sent * c.n; csMoves += c.n; }
+    if (typeof c.graded === 'number') { cgSum += c.graded * c.n; cgMoves += c.n; }
+    if (typeof c.labeled === 'number') { clSum += c.labeled * c.n; clMoves += c.n; }
+  };
   list.forEach((e) => {
     (e.games || []).forEach((g) => {
       if (g.dup) return;
       effective++;
       addTac(g.blackTacMs, g.blackTacN);
       addTac(g.whiteTacMs, g.whiteTacN);
+      addCands(g.blackCands);
+      addCands(g.whiteCands);
       const wside = g.winnerChan ?? null;
       const wchan = wside ? (wside === 'A' ? e.chanA : e.chanB) : null;
       if (!wside) draws++;
@@ -246,6 +270,10 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
     effective,
     tacAvgMs: tacMoves ? Math.round(tacSum / tacMoves) : null,
     tacMoves,
+    candsSent: csMoves ? Math.round((csSum / csMoves) * 10) / 10 : null,
+    candsGraded: cgMoves ? Math.round((cgSum / cgMoves) * 10) / 10 : null,
+    candsLabeled: clMoves ? Math.round((clSum / clMoves) * 10) / 10 : null,
+    candsMoves: csMoves,
   };
 }
 
@@ -302,6 +330,17 @@ export interface SideStat extends SideIdentity {
   tacMoves: number;
   /** 战术层平均耗时（ms）；没有样本（Rapfi/mock 身份）时为 null */
   tacAvgMs: number | null;
+  /* 候选点三数（C0/m13627）：三个数各有自己的样本手数（历史手只有 graded） */
+  candSentSum: number;
+  candSentMoves: number;
+  candGradedSum: number;
+  candGradedMoves: number;
+  candLabeledSum: number;
+  candLabeledMoves: number;
+  /** 候选点三数均值；非 Jev 身份（Rapfi/mock）没有样本 ⇒ null */
+  candsSent: number | null;
+  candsGraded: number | null;
+  candsLabeled: number | null;
 }
 
 /** 把一局的战术层耗时（某一侧）并进身份统计；`null` = 该侧没过战术层，不进样本。 */
@@ -312,13 +351,23 @@ function addSideTac(s: SideStat, avg: number | null | undefined, n: number | und
   s.tacMoves += cnt;
 }
 
+/** 把一局的候选点三数（某一侧）并进身份统计；`null`/样本为 0 = 该侧不过 Jev 候选集。 */
+function addSideCands(s: SideStat, c: CandsStat | null | undefined): void {
+  if (!c || !(c.n > 0)) return;
+  if (typeof c.sent === 'number') { s.candSentSum += c.sent * c.n; s.candSentMoves += c.n; }
+  if (typeof c.graded === 'number') { s.candGradedSum += c.graded * c.n; s.candGradedMoves += c.n; }
+  if (typeof c.labeled === 'number') { s.candLabeledSum += c.labeled * c.n; s.candLabeledMoves += c.n; }
+}
+
 /** 按身份聚合出战绩表：局数降序 → 得分率降序 → 名称。`dup` 局不计（与 `expTotals()` 一致）。 */
 export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
   const map = new Map<string, SideStat>();
   const bucket = (id: SideIdentity): SideStat => {
     let s = map.get(id.key);
     if (!s) {
-      s = { ...id, games: 0, wins: 0, draws: 0, losses: 0, rate: 0, tacSum: 0, tacMoves: 0, tacAvgMs: null };
+      s = { ...id, games: 0, wins: 0, draws: 0, losses: 0, rate: 0, tacSum: 0, tacMoves: 0, tacAvgMs: null,
+            candSentSum: 0, candSentMoves: 0, candGradedSum: 0, candGradedMoves: 0,
+            candLabeledSum: 0, candLabeledMoves: 0, candsSent: null, candsGraded: null, candsLabeled: null };
       map.set(id.key, s);
     }
     return s;
@@ -332,6 +381,8 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
       white.games++;
       addSideTac(black, g.blackTacMs, g.blackTacN);
       addSideTac(white, g.whiteTacMs, g.whiteTacN);
+      addSideCands(black, g.blackCands);
+      addSideCands(white, g.whiteCands);
       if (!g.winnerChan) {
         black.draws++;
         white.draws++;
@@ -353,6 +404,10 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
   rows.forEach((s) => {
     s.rate = s.games ? (s.wins + s.draws / 2) / s.games : 0;
     s.tacAvgMs = s.tacMoves ? Math.round(s.tacSum / s.tacMoves) : null;
+    const r1 = (sum: number, moves: number) => (moves ? Math.round((sum / moves) * 10) / 10 : null);
+    s.candsSent = r1(s.candSentSum, s.candSentMoves);
+    s.candsGraded = r1(s.candGradedSum, s.candGradedMoves);
+    s.candsLabeled = r1(s.candLabeledSum, s.candLabeledMoves);
   });
   rows.sort((x, y) => y.games - x.games || y.rate - x.rate || x.label.localeCompare(y.label));
   return rows;
@@ -391,6 +446,12 @@ export function pct(rate: number): string {
   return (Number.isInteger(v) ? String(v) : v.toFixed(1)) + '%';
 }
 
+/** 候选点均值 → 单元格文本：`58` / `58.3`，没有样本用 `—`（C0/m13627）。 */
+function fmtCands(v: number | null): string {
+  if (v == null) return '—';
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
 /** 一条轨道 + 填充（与排行榜 `.lb-bar` 同构，类名分开以免互相牵连）。 */
 function rateBar(rate: number, label: string, cls: string): HTMLElement {
   return el('span', { class: cls, role: 'img', 'aria-label': label + ' ' + pct(rate) }, [
@@ -411,6 +472,10 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     tacs.size ? ` · 战术版本 ${tacs.size} 档` : null,
     /* 战术层平均耗时（口径见 expTotals）：上这一行是为了「这层保险值不值」一眼可见 */
     t.tacAvgMs == null ? null : ` · 战术层均值 ${t.tacAvgMs}ms（${t.tacMoves} 手）`,
+    /* 候选点三数（C0/m13627）：发 = 交给 Jev 决定、评 = 模型给了概率、标 = 其中带战术标签 */
+    t.candsSent == null
+      ? null
+      : ` · 候选点均值 发 ${t.candsSent} / 评 ${fmtCands(t.candsGraded)} / 标 ${fmtCands(t.candsLabeled)}（${t.candsMoves} 手）`,
   ]);
   const head = el('div', { class: 'exp-agg-head' }, [
     el('span', { text: '渠道 · 战术' }),
@@ -418,6 +483,7 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     el('span', { text: '胜' }),
     el('span', { text: '和' }),
     el('span', { title: '战术层平均耗时（只统计真过了战术层的手）', text: '战术' }),
+    el('span', { title: '候选点均值：发（交给 Jev 决定）/ 评（模型给了概率）/ 标（带战术标签）', text: '候选发评标' }),
     el('span', { text: '胜率' }),
   ]);
   const rowEls = rows.map((r) =>
@@ -434,6 +500,15 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
             : '战术层平均耗时 · 样本 ' + r.tacMoves + ' 手',
         text: r.tacAvgMs == null ? '—' : r.tacAvgMs + 'ms',
       }),
+      el('span', {
+        class: 'mono exp-agg-num exp-agg-cands',
+        title:
+          r.candsSent == null
+            ? '该身份不过 Jev 候选集（Rapfi/mock），没有候选点样本'
+            : '候选点均值：发 ' + r.candsSent + '（交给 Jev 决定）· 评 ' + fmtCands(r.candsGraded) +
+              '（模型给了概率）· 标 ' + fmtCands(r.candsLabeled) + '（带战术标签）',
+        text: r.candsSent == null ? '—' : r.candsSent + '/' + fmtCands(r.candsGraded) + '/' + fmtCands(r.candsLabeled),
+      }),
       el('span', { class: 'exp-agg-rate' }, [
         rateBar(r.rate, r.label + ' 得分率', 'exp-agg-bar'),
         el('b', { class: 'mono', text: pct(r.rate) }),
@@ -444,7 +519,7 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     total,
     head,
     rowEls,
-    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。「战术」= 战术层平均耗时，Rapfi/mock 刻意不过战术层故记 —。' }),
+    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。「战术」= 战术层平均耗时，「候选发评标」= 候选点均值（发给 Jev / 模型给了概率 / 带战术标签），Rapfi/mock 刻意不过战术层与候选集故记 —。' }),
   ]);
 }
 
@@ -527,7 +602,9 @@ export function renderExpHistory(list: readonly ExperimentEntry[], root?: UiRoot
      实验（v8 vs v9）都算进「Jev」，是会误导人的口径，已由 .exp-agg 的分桶表取代。 */
   setText(
     qs(r, '#expReportNote'),
-    `${list.length} 轮实验 · ${t.effective} 局有效` + (t.tacAvgMs == null ? '' : ` · 战术层均值 ${t.tacAvgMs}ms`),
+    `${list.length} 轮实验 · ${t.effective} 局有效` + (t.tacAvgMs == null ? '' : ` · 战术层均值 ${t.tacAvgMs}ms`)
+      /* 候选点均值（C0/m13627）：只报「交给 Jev 几个点」这一个数，明细在分桶表里 */
+      + (t.candsSent == null ? '' : ` · 候选点均值 发 ${t.candsSent}`),
   );
 }
 
@@ -636,6 +713,9 @@ export function newEntryFromRun(state: ExperimentState, date: string = new Date(
       whiteTacMs: typeof g.whiteTacMs === 'number' ? g.whiteTacMs : null,
       blackTacN: g.blackTacN || 0,
       whiteTacN: g.whiteTacN || 0,
+      /* 候选点三数（C0/m13627）：非 Jev 侧没有样本 ⇒ null（不是 0） */
+      blackCands: g.blackCands ?? null,
+      whiteCands: g.whiteCands ?? null,
     })),
     note: '',
   };

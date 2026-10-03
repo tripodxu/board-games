@@ -188,10 +188,14 @@ describe('record-map：解析与边界', () => {
       winner: 'white',
       endReason: '将杀',
       endBy: 'human',
-      notation: 'e2e4,',
+      notation: 'e2e4,e7e5,',
       mock: true,
       deviceId: 'dev-1',
-      moves: [{ ply: 1, side: '白方', notation: 'e2e4', ai: { ch: 'proxy', mdl: 'm', conf: 0.5, p: 0.25, rank: 1, cands: 8, ms: 900, tv: 'v9-vcf-sound', tac: 'block' } }],
+      moves: [
+        { ply: 1, side: '白方', notation: 'e2e4', ai: { ch: 'proxy', mdl: 'm', conf: 0.5, p: 0.25, rank: 1, cands: 8, candsSent: 12, candsLabeled: 3, ms: 900, tv: 'v9-vcf-sound', tac: 'block' } },
+        /* 老归档形状（0003 之前）：没有两个新键 ⇒ 必须映射成 null，不许冒 0 */
+        { ply: 2, side: '黑方', notation: 'e7e5', ai: { ch: 'proxy', mdl: 'm', conf: 0.4, p: 0.2, rank: 1, cands: 6, ms: 800, tv: 'v9-vcf-sound' } },
+      ],
     };
     const { row, moves, warnings } = mapGameRecord(payload, { gameUid: 'uid-1', dedupKey: 'dk' }, { deviceId: 'dev-1' });
     expect(warnings).toEqual([]);
@@ -203,8 +207,11 @@ describe('record-map：解析与边界', () => {
     expect(row.mode).toBe('human-ai');
     expect(row.mock).toBe(1);
     expect(row.device_id).toBe('dev-1');
-    expect(row.opening_prefix).toBe('e2e4');
+    expect(row.opening_prefix).toBe('e2e4,e7e5');
     expect(moves[0]).toMatchObject({ side: 'white', channel: 'proxy', model: 'm', confidence: 0.5, prob: 0.25, rank: 1, cands: 8, ms: 900, tactics_version: 'v9-vcf-sound', tactics: 'block' });
+    /* 候选点三数（C0/m13627）：新键透出，老归档形状落 null */
+    expect(moves[0]).toMatchObject({ cands_sent: 12, cands_labeled: 3 });
+    expect(moves[1]).toMatchObject({ cands: 6, cands_sent: null, cands_labeled: null });
   });
 
   it('脏输入只记 warning 不抛：无 moves / 未知棋种 / 未知 mode / 超限 payload', () => {

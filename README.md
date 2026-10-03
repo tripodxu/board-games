@@ -153,7 +153,7 @@ npm run deploy           # 构建 + wrangler deploy（需 CLOUDFLARE_API_TOKEN�
 npm run typecheck        # tsc --noEmit
 
 # 测试（npm test 是最省事的总闸）
-npm test                 # test:engines + test:new（= 37 个文件 / 382 用例；**不含 test:tactics**）
+npm test                 # test:engines + test:new（= 37 个文件 / 385 用例；**不含 test:tactics**）
 npm run test:engines     # 纯 Node：七引擎 selfTest + 战术 + 54 局金样逐手差分
 npm run test:tactics     # 战术层单测（要单独跑）
 npm run test:new         # vitest 全部 project（worker / core / ui / scripts）
@@ -235,6 +235,9 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
    并按 tag upsert。
 9. **实验报告的分桶对比**：按「渠道 · 战术版本 · 思考深度」拆成独立身份统计局/胜/和/得分率
    （和棋按半分），两侧同渠道时不再并成一桶；每轮另给 A/B 单轮得分率条。
+   同一张表还给出「候选发评标」（每手均值：发给 Jev 决定的点数 / 模型给了概率的点数 / 其中带战术标签的点数）
+   与累计行的「候选点均值 发 X / 评 Y / 标 Z（N 手）」；**非 Jev 身份记 `—`**（Rapfi/人类侧不过 Jev 候选集，缺失不是 0），
+   口径见 [docs/status.md](docs/status.md) 与 [cands 计划](docs/plans/2026-10-03-cands-metric-and-provider-failover.md) §4.1。
 10. **最新棋谱**：实验报告顶部列出归档里最新的 10 局（新 → 旧，含**没挂实验 tag 的机机对局**——
    以前这些局永远进不了轮次卡），每行带时间/棋种/手数/双方归因与结果，一键送进回放器。
 11. **随机度**：`topK` 滑杆控制采样（1 = 最强手，k>1 = 前 k 名概率加权随机）。

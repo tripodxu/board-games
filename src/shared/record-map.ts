@@ -13,6 +13,7 @@
  *  - `notation` 是逗号连接的着法串（末尾带逗号），`moves[]` 才是结构化的逐手明细；
  *  - 逐手 `ai` 只有 `{ch,mdl,conf,p,rank,cands,ms,tv}`——**没有**每手战术标记，
  *    战术分布只存在于 `meta.tactics` 直方图 → `game_moves.tactics` 导入后恒为 NULL；
+ *    （0002/0003 追加的 `tacMs`/`candsSent`/`candsLabeled` 不在历史归档里，新前端才有）
  *  - `cal` 是**数字数组**（非对象），`firstWin` 是布尔（33 份有 cal，26 份有二元真值）；
  *  - `result` 只有四种串：`黑方 获胜（五连）`/`白方 获胜（五连）`/`黑方 获胜（认输）`/`和棋（棋盘已满）`。
  */
@@ -60,6 +61,10 @@ export type MoveAiMeta = {
   ms?: number | null;
   /** 战术层耗时（ms）；Rapfi/mock 不过战术层 ⇒ 记 null，历史棋谱也没有 */
   tacMs?: number | null;
+  /** 交给 Jev 决定的候选点数（= 请求里 criteria 键数）；老归档与非 Jev 侧没有这个键（C0/m13627） */
+  candsSent?: number | null;
+  /** 其中带战术标签的点数；同上（C0/m13627） */
+  candsLabeled?: number | null;
   tv?: string | number | null;
   /** 新前端补的每手保险标记（win/block/vcfAttack…）；历史棋谱没有这个字段 */
   tac?: string | null;
@@ -191,6 +196,9 @@ export type MoveRow = {
   ms: number | null;
   tac_ms: number | null;
   cands: number | null;
+  /** 交给 Jev 决定的候选点数 / 其中带战术标签的点数（0003 追加列） */
+  cands_sent: number | null;
+  cands_labeled: number | null;
 };
 
 /** `experiments` 表的 upsert 行。 */
@@ -417,6 +425,9 @@ export function mapGameRecord(
       ms: ai ? num(ai.ms) : null,
       tac_ms: ai ? num(ai.tacMs) : null,
       cands: ai ? num(ai.cands) : null,
+      /* 0003 追加列：老归档没有这两个键 ⇒ null（与 tac_ms 同款，不许写 0 冒充缺失） */
+      cands_sent: ai ? num(ai.candsSent) : null,
+      cands_labeled: ai ? num(ai.candsLabeled) : null,
     };
   });
 

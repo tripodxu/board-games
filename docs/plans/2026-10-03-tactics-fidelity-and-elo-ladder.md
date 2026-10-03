@@ -45,6 +45,30 @@
 
 **一句话诊断**：归因链已经能回答「是哪一档跑的」，但**回答不了「那一档当时是什么」**（§5 四类漂移）；能力测量又因为**开局运气 + 上游采样方差**而分辨不出 < 17 pt 的差异。本计划两半正对这两件事。
 
+### 2.1 探针记录（2026-10-03，开工前两项探针已完成）
+
+**探针 A：Rapfi 的确定性搜索预算（`INFO max_node <n>` 可用）** —— 结论：**有与墙钟无关的硬上限**，但**没有种子/随机性控制**。
+
+- 选项清单的字符串表**不在** `public/rapfi/rapfi-single-simd128.js`（37,972 B，只有 Emscripten 锅炉代码），而在两处：`.data` 前 6713 B 是内嵌 `config.toml`（导出为 `.work/rapfi-config.toml`）；`.wasm` 里是长度前缀 token 池（`MAX_NODE`/`TOTALTIME`/`THREAD_NUM`/`START_DEPTH`/`STRENGTH`/`YXHASHCLEAR`/`YXSHOWINFO` 等）。
+- 运行时 `INFO` 参数（每个都用**全新引擎实例**单独验证，名字大小写不敏感）：
+  - **接受（静默）**：`timeout_turn`、`timeout_match`、`time_left`、`time_increment`、**`max_node`**、**`max_depth`**、`max_memory`、`thread_num`、`show_detail`、`hash_size`、`strength`、`checkmate`、`start_depth`、`thread_split_depth`
+  - 接受但校验值：`search_type`（`ERROR Unknown search type: 0, must be one of [alphabeta, mcts]`）、`max_memory`（`ERROR Max memory too small, might exceeds memory limits`）
+  - **拒绝**（`MESSAGE Unknown Info Parameter: X` + `ERROR Unknown command: <v>`）：**`seed`、`random`**、`max_hash_size`、`turn`、`seldepth`、`totalnodes`、`bestline`、`num_pv`、`speed`、`cau_factor`、`drawrate`、`swap`、`trace_search`、`traceboard`、`lang`、`reloadconfig` ⇒ **没有任何种子/随机性控制选项**（`BATCH_PAIRED` 若要靠引擎种子做配对，只能改用「固定节点预算 + 固定开局」这条路，见下）。
+  - 陷阱：一次连发多参数时部分拒绝消息会被长流截断（清单以单实例逐参数验证为准）。
+- **固定预算演示**（`.work/rapfi-budget.mjs MAX_NODE 200000 3`，固定局面、每轮全新引擎）：三轮 `move=3,11`、`Depth 26-25`、`Node 200K` **全同**，只有墙钟浮动（380/400/415 ms）。缩放：100K → Depth 23-23；1M → Depth 31-36；1K → Node 1021（小预算 ≤ ~2% 超调）。同实例重复同一 `BOARD`（先 `YXHASHCLEAR` → `MESSAGE Transposition table cleared.`）：着法与 Node 恒定，**第 2 次的 Depth 会因置换表命中变浅**（写报告时要注明）。
+- **反例（墙钟不确定）**：`timeout_turn 1000` ×4 → Node `455K/344K/344K/344K`、Depth `29-28` vs `28-25` ⇒ 现有 `INFO timeout_turn <ms>` 口径**不可复现**。
+- 上限**按手重置**（`timeout_turn 2000` + `max_node 20000` 连走 4 手 → 每手 Node 20K，42–53 ms/手）；`thread_num 4` 与 `1` 完全无差异（单线程 wasm 构建，无并行不确定性）；`max_depth 12` 同样生效（Node 1890 恒定）。
+- 落地改动点：`src/core/jev/rapfi.ts:240` 现硬编码 `INFO timeout_turn <ms>`；节点数只能从 `INFO show_detail 1` 的 `MESSAGE` 行读；core 的 `parseMoveLine` 只认 `^\d+,\d+$`，**不会把 `MESSAGE` 行误判成着法**。
+- 吞吐（本机 i7-12700H，单线程 wasm）：1000 ms 决策实测 wall `791/833/855/939 ms`、Node `299K/427K/437K/474K` ⇒ **平均 854 ms/手、409K 节点/手 ≈ 1.17 手/秒 ≈ 0.48M 节点/秒**；固定预算换算 **200K 节点 ≈ 380–415 ms、1M 节点 ≈ 1.8–2.0 s**。
+- Caveat：每次 stdout 开头固定三行 `ERROR Unable to open model file: "model210901.bin"` / `Failed to load config: failed to load classic model file` / `Failed to load config, please check if config is correct.`（config.toml 的 classic model 不在包内，引擎改用 `.data` 里的 mix9svq NNUE）——**是否影响棋力基线未做对照**，P2 记录口径时照抄现象，不改包。
+
+**探针 B：上游（`/systemone` 与 commandcode 同形）的采样可控性** —— 结论：**请求级不可控，`choice` 是唯一较可复现的信号**。
+
+- 同一请求体连发 3 次：概率图**不是**逐字节一致（`F6` 0.02/0.02/0.03、`G8` 0.32/0.30/0.30、`confidence` 0.18/0.16/0.16），**top-1 稳定为 `G8`**。
+- `temperature: 0.0`、`top_p: 1.0`、`seed: 12345`（以及三者同送）**一律 HTTP 200、无错误体、`usage` 不变（588 in / 97 out）、抖动照旧** ⇒ 参数被静默忽略，**不要做 `--model-params` 管线（那是 no-op）**。
+- 请求形状硬约束：`questions.move.criteria` **必须是 record**（键 = 着法记法）；送数组 → 400 `Invalid input: expected record, received array`（`param: questions.move.criteria`）。只给顶层 `options` 而不给 `criteria` 时，模型会回标签词（如 `blocking`）而不是着法 ⇒ 现有 `src/core/engines/gomoku.ts:1080` 的 criteria-record 写法是对的，别动。
+- 对 D9 配对设计的影响：**配对只能配「开局 + 局面」，不能配「同一次采样」**；报告里 `choice` 之外的概率差异一律当噪声（±1–2 pt 概率 / ±0.01–0.03 置信度），这也正是「同档两轮差 17.5 pt」的上游来源。
+
 ---
 
 ## 3. 决策表（D1–D14）

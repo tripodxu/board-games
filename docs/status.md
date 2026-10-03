@@ -253,7 +253,7 @@
     `winner==='draw'` ⇒ x1 两局 225 手满盘和棋被当「未终局」整局丢掉（Elo 只算 22/24 局、
     和棋列全 0）。改为按 result 串判和棋（与 parseResult 同形正则）——铁律 11 落实：胜/和/负同报。
   - 产物 `.work/remote/<batch>/`（plan/checkpoint/games/round-summary）不入库；工具自身
-    **44 例单测**（`npm run test:scripts`）+ 全量 `npm test` **382 例 / 37 文件** / `tsc --noEmit` 干净。
+    **44 例单测**（`npm run test:scripts`）+ 全量 `npm test` **385 例 / 37 文件** / `tsc --noEmit` 干净。
   **合入时的审查（独立子代理，只读）**：设施方向与密钥纪律无问题、`src/**` 零改动、38 例单测真绿；
   但报了 5 条合并阻断项（`think=0` 越权写、`--rounds>1` 并发起 worker、续跑 skipped 计 0 + `resume` 缺 key 注入、
   `batchId` 同日撞车 + checkpoint 不比 tag、归档阶段无重试/超时/非幂等）⇒ **已在合入后同一批修掉**；
@@ -269,6 +269,14 @@
   已有样本的是计时轮（v11 侧 175 手，战术层均值 402 ms / 最坏 4474 ms）与 v12 的三轮
   （500 ms 轮 198 手均值 381 / 最坏 4161、1 s 轮 239 手均值 695 / 最坏 6843、2 s 轮 363 手均值 815 / 最坏 5362 ms），报告面板的「战术」列与轮次注脚会给战术层均值，
   playbooks §7 有取证 SQL。
+- **候选点三数口径（2026-10-03 起，C0）**：逐手 `game_moves.cands`（历史列：模型给了概率且合法的点数）、
+  `cands_sent`（**交给 Jev 决定的点数** = criteria 键数）、`cands_labeled`（其中带战术标签的点数）；
+  后两列由追加迁移 [`migrations/0003_move_cands.sql`](../migrations/0003_move_cands.sql) 引入。
+  与 `tac_ms` 同纪律：**Rapfi / mock / 人类侧根本不过 Jev 候选集，记 NULL 而不是 0**（写 0 会把均值拉低），
+  0003 之前的老归档也全是 NULL（**缺失 ≠ 0**）。游戏级汇总写在 payload 的 `meta.candStats`
+  （`{graded, sent, labeled, n}`，无样本整键省略，保持往返一致性），报告面板给按手加权的「发 / 评 / 标」均值、
+  分桶表新列「候选发评标」（非 Jev 身份 `—`）与轮次注脚「候选点均值 发 X」；实现与验证见
+  [plans/2026-10-03-cands-metric-and-provider-failover.md](plans/2026-10-03-cands-metric-and-provider-failover.md) §4.1。
 - 源归档 [games/](../games) **冻结只读**：它是金样、对账与归因用例的源数据，不再写入（说明见 [games/README.md](../games/README.md)）。
 - 迁移期导入 SQL 在 [migrations/import/](../migrations/import)（`manifest.json` + `0001_games.sql`）。
 - 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物，1.9 MB / 7 张表，含 wrangler 的 `d1_migrations` 记账表；`backups/` 不入库，需要时重新导出）。
@@ -361,7 +369,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **142 个用例** + vitest **37 个测试文件 / 382 个用例**（含新增的 `scripts` project：`test/scripts/**` 44 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **144 个用例** + vitest **37 个测试文件 / 385 个用例**（含新增的 `scripts` project：`test/scripts/**` 44 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
@@ -424,3 +432,14 @@
 8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
 9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0015，`npm run check:docs` 绿（45 个 md / 277 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。
 10. **Rapfi 的 10 MB 资产仍由页面在局中现抓**（慢链路上会假死，见「仍存在」第 5 条）：本轮只修了工具链（本地供给），应用侧的重试/报错面与预取都未做——这是一条**已知未闭环**的风险，不是已修项。
+11. **在 DSH 里直接跑 wrangler 会被参数解析坑掉（2026-10-03 实测）**：DSH 的 `node` 跑在 Electron 里，yargs 的 `hideBin()` 判定成「打包版 Electron 应用」而多切片一位，报 `X [ERROR] Unknown arguments: remote, …\wrangler-dist\cli.js, d1, …`；直接 `node node_modules/wrangler/wrangler-dist/cli.js …` 又会因为 `require.main === module` 守卫静默什么都不做（exit 0、无输出）。绕行包装（`.work/wrangler-run.cjs`，不入库）：
+
+    ```js
+    process.defaultApp = true;                 // 让 yargs 按「非打包 Electron」取 argv
+    const Module = require('module'), path = require('path');
+    const cli = path.resolve(__dirname, '../node_modules/wrangler/wrangler-dist/cli.js');
+    process.argv = [process.argv[0], cli, ...process.argv.slice(2)];
+    Module._load(cli, null, true);             // isMain=true ⇒ cli.js 里 require.main === module 成立
+    ```
+
+    用法 `node .work/wrangler-run.cjs <args…>`（`npm run db:migrate:remote` 等脚本在当前环境同样受影响）。

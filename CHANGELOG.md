@@ -8,6 +8,17 @@
 
 ### 新增
 
+- **候选点三数可观测（C0，plan `2026-10-03-cands-metric-and-provider-failover`）**：以前只有 `game_moves.cands`
+  （模型给了概率且合法的点数），看不出**战术层到底把几个点交给了 Jev**。现在逐手同时记三数：
+  `cands_sent`（交给 Jev 决定的点数 = 请求 `criteria` 的键数）、`cands_labeled`（其中带战术标签的点数）、
+  `cands`（历史口径不动），由追加迁移 [`migrations/0003_move_cands.sql`](migrations/0003_move_cands.sql) 引入。
+  纪律与 `tac_ms` 相同：**Rapfi / mock / 人类侧不过 Jev 候选集 ⇒ 记 NULL 而不是 0**（否则均值被拉低），
+  0003 之前的老归档也全为 NULL（缺失 ≠ 0）。游戏级汇总写进 payload 的 `meta.candStats`
+  （`{graded, sent, labeled, n}`，无样本整键省略），实验报告的分桶表新增「候选发评标」列、
+  累计行给「候选点均值 发 X / 评 Y / 标 Z（N 手）」、轮次注脚给「候选点均值 发 X」。
+  验证：`tsc` 0 错、引擎自检 **144 例**、vitest **37 文件 / 385 例**（新增 worker「候选点三数落库」与
+  ui「按手加权分桶，非 Jev 身份记 —」两例）、黄金零漂移；实现记录见计划 §4.1。
+
 - **战术 v14 `v14-live3-fresh`（活三判据纠偏：制造点必须由这一手新造）**：`live3After` 自 v10 上线起
   只要求「落子后本方存在 ≥2 个活四制造点（L2）」，**没要求这些点由这一手新造** ⇒ 本方已握 ≥2 个制造点时，
   **任何一步闲棋**都被判成「制造活三」，再叠上 `live3Deny` 的 best 就成了一条无据的接管面。

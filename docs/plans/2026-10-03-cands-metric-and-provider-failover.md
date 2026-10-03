@@ -1,6 +1,6 @@
 # 计划：候选点数可观测（`cands` 家族）+ 上游 key 用尽自动兜底（commandcode 网关）
 
-- 状态：📋 待批（2026-10-03）
+- 状态：🚧 实施中（2026-10-03；**C0 已完成**，见 §4.1 与 §5；C1 探针已完成；C2 起待批）
 - 来源：用户 2026-10-03（m13627）
 - 引块（逐字，含用户贴的第三方 token，按密钥纪律不入库、不写文档）：
 
@@ -66,6 +66,13 @@
 - 实测延迟：最小示例 3.2–4.9 s（121 B）；我方三问 1.4 s（510 B）；三轮共 3 次调用**全部 200，无 429**。
 - ⚠️ 未覆盖：真实一局（~1.2K 输入 token × 40+ 手）下的**配额与并发**未知；`usage` 里同样有 `input_tokens`/`output_tokens`（成本口径不变）。
 
+### 2.2 C1b 采样可控性探针（已完成，2026-10-03；详细版见阶梯计划 §2.1 探针 B）
+
+- 同一请求体连发 3 次，概率图**不逐字节一致**（抖动 0.01–0.03），**top-1 稳定**；`temperature: 0.0` / `top_p: 1.0` / `seed: 12345`（及三者同送）一律 **200、`usage` 不变、抖动照旧** ⇒ 参数被静默忽略。
+- 对 G-B 的含义：**兜底提供方不提供任何可复现性保证**，`provider` 分桶比分时要连带说明「备用桶本身有 ±1–2 pt 概率抖动」；也因此 `probSource='derived'`（无逐点概率时的降级）必须有独立标记，不能与主提供方混桶比。
+- 请求形状约束（主/备两路共用）：`questions.move.criteria` **必须是 record**（键=着法记法），送数组 → 400 `Invalid input: expected record, received array`；只给顶层 `options` 时模型会回标签词而不是着法。C2 的离线夹具要**照抄真实响应形状**（`{"model","answers":{"move","edge","position"},"usage"}`），别自己发明。
+- 探针脚本 `.work/probe-sampling.mjs`、`.work/probe-shape.mjs`（gitignored；跑一次约 1.3K tokens，用完可删以免继续计费）。
+
 ---
 
 ## 3 决策
@@ -108,13 +115,28 @@
 | `test/engines/*`（自检） + `test/ui/experiment-report.spec.ts` + `test/scripts/*`（provider 表纯单测、SigV4 无关） | 覆盖 A1/A4 与 D-B1/D-B3 | ~140 行 |
 | 文档 | 本计划 + `docs/status.md` 口径行 + `README.md` 数据/命令 + `CHANGELOG.md` + `docs/memory/MEMORY.md`；B 部分是否单开 `docs/adr/0020-provider-failover.md` 待批 | ~60 行 |
 
+### 4.1 C0 实施记录（2026-10-03，已完成）
+
+改动体量：15 文件 / +352 / −24，另新增 `migrations/0003_move_cands.sql`。落地口径与 §3 A 部分一致（三数一起记、非 Jev 侧 NULL、老归档 NULL）：
+
+| 落点 | 实际实现 |
+| --- | --- |
+| `migrations/0003_move_cands.sql` | `cands_sent INTEGER` + `cands_labeled INTEGER` 两列；注释写明 NULL 两义（0003 之前的老归档；Rapfi/mock/人类侧根本不过 Jev 候选集——**写 0 会把均值拉低**）与一句按轮 SQL 范例 |
+| `src/core/jev/client.ts` | `cands = entries.map(([n]) => n)`、`candsSent = entries.length`、`candsLabeled = entries.filter(([, label]) => typeof label === 'string' && label.length > 0).length`；两个返回点（回退分支 `candidates: 0`、主分支 `candidates: pairs.length`）都带三键；`cands` 历史口径不动 |
+| `src/core/meta.ts` | `AiMoveMeta` 两可选键（「是 number 才写」）；新增 `CandsStat { graded, sent, labeled, n }` 与 `AiGameMeta.candStats`，`aiGameMeta()` 按手累加（无样本整键省略） |
+| `src/shared/record-map.ts` | `MoveRow.cands_sent/cands_labeled` + `ai ? num(ai.candsSent) : null` |
+| `src/worker/lib/record-input.ts` · `src/worker/db/games.ts` | 入参白名单；`GAME_MOVE_COLUMNS` 加两列、`GAME_MOVE_INSERT` 扩到 `?15, ?16`、bind 追加 `?? null` |
+| `src/app/experiment.ts` · `src/ui/panels/experiment.ts` · `src/ui/panels/experiment-report.ts` · `styles/style.css:1066` | `sideTactics()` → `sideStats()`（一次 `aiGameMeta` 同取耗时与候选）；`ExpResult`/`ExpHistoryGame` 透传 `blackCands`/`whiteCands`；`ExpTotals` + `SideStat` 三个按手加权均值与新列「候选发评标」（非 Jev 身份 `—`）；累计行「候选点均值 发 X / 评 Y / 标 Z（N 手）」 |
+
+验证：`npx tsc --noEmit` 0 错；`node test/engines/run.mjs` **144 例**（原 142 + 2，含 `candStats` 均值 `sent=63 / graded=51.7 / labeled=19 / n=2`）；`npx vitest run` **37 文件 / 385 例**（原 382；新增 worker「候选点三数落库」（第一手 58/64/21、第二手 Rapfi 三列全 NULL）与 ui「候选点三数：按手加权分桶，非 Jev 身份记 —」（63/55/19，`rapfi||1000` 行 `—`））；`test/parity` 黄金零漂移（未动引擎与既有键）。
+
 ---
 
 ## 5 阶段与验收
 
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
-| **C0**（~0.5 天） | A 部分：三数落库 + D1 迁移 + 报表列 + 测试 | `tsc` 0 错；引擎自检 + vitest 全绿；`test/parity` 黄金零漂移；D1 新列在下一局非空、老局仍 NULL |
+| **C0**（✅ 已完成 2026-10-03） | A 部分：三数落库 + D1 迁移 + 报表列 + 测试 | ✅ `tsc` 0 错；引擎自检 144 例 + vitest 37 文件 / 385 例全绿；黄金零漂移；D1 新列对 Jev 手非空、对 Rapfi 手与老归档 NULL（`test/worker/routes.spec.ts` 往返用例钉住）；报表新列与累计行见 §4.1 |
 | **C1**（✅ 已完成 2026-10-03） | 只读探针：端点、协议同形、逐点概率、配额线索 | 结论见 §2.1 表与探针记录（`/systemone` + `typesafe/jev` → 200，`answers.move.probabilities` 存在；`/chat/completions` 不接受 Jev 模型；无限流头） |
 | **C2**（~0.5 天，无适配器） | B 部分：`providers.ts` + Worker 接线 + Node/box 直连路径共用同一策略 | 坏主 key 跑 4 局全部终局；`provider` 逐手可辨；切换有日志；单测覆盖 401/429/5xx 三条触发 |
 | **C3**（~0.5 天） | 归因与报表：`provider`/`prob_source` 落库 + 报表分桶 + 文档 | 报表能给出「兜底手 N 手 + 未计入主口径」一行；status 口径更新 |

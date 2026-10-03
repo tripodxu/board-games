@@ -28,6 +28,7 @@
  *  5. `EXP.results` 的 `winner` 字段保留旧语义（胜方 side id 字符串 / null），不是布尔。
  *  6. 默认战术档用 `CURRENT`（随 core 常量走，v14 起为 'v14-live3-fresh'）而不是硬编码字符串。
  */
+import type { CandsStat } from '../../core/meta.ts';
 import type { SideConfig } from '../../core/persist.ts';
 import type { SessionExportInfo } from '../../core/session.ts';
 import { CURRENT, type TacticsVersion } from '../../core/tactics-versions.ts';
@@ -76,6 +77,10 @@ export interface ExpResult {
   whiteTacMs?: number | null;
   blackTacN?: number;
   whiteTacN?: number;
+  /** 该局黑/白方的**候选点三数**（均值 + 样本手数，C0/m13627）：`sent` = 交给 Jev 决定的点数、
+   *  `graded` = 模型给了概率的点数、`labeled` = 其中带战术标签的点数。非 Jev 侧不过候选集 ⇒ null。 */
+  blackCands?: CandsStat | null;
+  whiteCands?: CandsStat | null;
 }
 
 /** 旧 `EXP` 全量（js/app.js:1139）。 */

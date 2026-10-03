@@ -19,6 +19,26 @@
 
 ---
 
+## 2026-10-03 · C0 落地：候选点三数（发 / 评 / 标）逐手入库 + 报表三列
+
+- **做了什么**：`game_moves` 追加 `cands_sent`（**交给 Jev 决定的点数** = 请求 `criteria` 的键数）与
+  `cands_labeled`（其中带战术标签的点数），`cands` 保持历史口径（模型给了概率且合法的点数）；
+  迁移 `migrations/0003_move_cands.sql`（只加列）。游戏级汇总进 payload `meta.candStats`
+  `{graded, sent, labeled, n}`（无样本整键省略）；报告分桶表加「候选发评标」列、累计行加
+  「候选点均值 发 X / 评 Y / 标 Z（N 手）」、注脚加「候选点均值 发 X」。
+- **口径纪律（沿用 `tac_ms` 那套，别改）**：Rapfi / mock / 人类侧**根本不过 Jev 候选集 ⇒ 记 NULL 而不是 0**；
+  0003 之前的老归档也是 NULL（缺失 ≠ 0）。写 0 会把「发给模型几个点」的均值拉低，这是这一列唯一的坑。
+- **验证**：`tsc` 0 错；引擎自检 144 例（+2）；vitest 37 文件 / 385 例（+3：worker 候选三数落库往返、
+  ui 按手加权分桶与非 Jev 身份 `—`、core 老归档形状映射 null）；黄金零漂移。改动 15 文件 / +352 / −24。
+- **教训**：候选数在客户端早就有了（`cands` 对 Jev 手 100% 有值：proxy 9724/9724），缺的一直是
+  「交出去几个」；**先量出来再谈优化**，别凭感觉说「候选太多/太少」。
+- 计划：`docs/plans/2026-10-03-cands-metric-and-provider-failover.md`（§4.1 实施记录）；C1 探针（commandcode
+  `/systemone` 与本协议同形）已完成，C2 起待批。
+- **环境坑（会再遇到）**：DSH 的 `node` 跑在 Electron 里，`npx wrangler …` 会被 yargs 的 `hideBin()` 误判成打包版
+  Electron 而多切一位参数（`Unknown arguments: remote, …cli.js, d1, …`）；绕行包装 `.work/wrangler-run.cjs`
+  （`process.defaultApp = true` + `Module._load(cli, null, true)`）在，`node .work/wrangler-run.cjs <args>` 可用；
+  `npm run db:migrate:remote` 等脚本会踩同一个坑。远程 D1 已应用 `0003`（新列 2 / 历史非空 0 / 共 19298 手）。
+
 ## 2026-10-03 · 机制线收口：暂停新机制（v14 是最后一版），只留维护 + 数据卫生 + 配对样本设计
 
 - **决定（项目所有者，2026-10-03）**：不再开新机制。理由两条，都是实测结论而非感觉：

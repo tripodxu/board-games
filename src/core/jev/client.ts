@@ -305,10 +305,23 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   let tacticsMs = 0;
   /* 候选点记法：2-ply 外层只扫候选（省时间），取自序列化 questions.move.criteria 的键 */
   let cands: string[] | null = null;
+  /* 候选点三数（C0 / m13627）——三个数回答三个不同问题，不合并：
+   *   candsSent    = 战术层之后**交给 Jev 决定**的候选点数（= criteria 键数 = 请求里 options 长度，引擎上限 64）
+   *   candsLabeled = 其中 `labelPoint` 给过战术标签的点数（criteria 的值非空）
+   *   cands        = 模型**给了概率且合法**的点数，在下面按响应统计（历史口径，不动）
+   * 二者可以差很多（模型可能对 40 个点只给 8 个概率），所以必须分开记。
+   * 缺失一律写 null，不写 0：0 是「交了 0 个候选点」这个不存在的状态。 */
+  let candsSent: number | null = null;
+  let candsLabeled: number | null = null;
   try {
     const q = ser.questions as Record<string, JevQuestion> | undefined;
     const crit = q && q.move && q.move.criteria;
-    if (crit && typeof crit === 'object') cands = Object.keys(crit as Record<string, unknown>);
+    if (crit && typeof crit === 'object') {
+      const entries = Object.entries(crit as Record<string, unknown>);
+      cands = entries.map(([n]) => n);
+      candsSent = entries.length;
+      candsLabeled = entries.filter(([, label]) => typeof label === 'string' && label.length > 0).length;
+    }
   } catch (_) { /* 降级为全量 */ }
   { /* 块级作用域：tt 只是这一段的秒表，别漏到函数作用域里 */
     const tt = Date.now();
@@ -346,7 +359,8 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     return {
       notation: fallback.notation, move: fallback,
       meta: { channel, model: modelName, latencyMs, tacticsMs, usage, costUsd, confidence: 0, top: [],
-              candidates: 0, warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
+              candidates: 0, candsSent, candsLabeled,
+              warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
               tactics: null, tacticsVersion: ver.id },
     };
   }
@@ -534,7 +548,9 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     meta: {
       channel, model: modelName, latencyMs, tacticsMs, usage, costUsd, confidence: conf,
       top: pairs.slice(0, 8).map(([n, p]) => ({ notation: n, p })),
-      candidates: pairs.length, /* 合法候选总数 */
+      candidates: pairs.length, /* 合法候选总数（模型给了概率且合法的点数，历史口径不动） */
+      candsSent, /* 交给 Jev 决定的候选点数（C0） */
+      candsLabeled, /* 其中带战术标签的点数（C0） */
       restProb: pairs.slice(8).reduce((s, x) => s + x[1], 0), /* 第 9 名以后的概率合计 */
       noul: answers.edge ? (answers.edge as Record<string, unknown>).noul : undefined,
       score: answers.position ? (answers.position as Record<string, unknown>).score : undefined,

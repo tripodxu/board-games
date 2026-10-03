@@ -50,6 +50,9 @@ export function moveRowToInput(move: MoveRow): GameMoveInput {
     ms: move.ms,
     tacMs: move.tac_ms,
     cands: move.cands,
+    /* 0003 追加列（C0/m13627）：两个都显式搬运，别让 camelize 漏掉 */
+    candsSent: move.cands_sent,
+    candsLabeled: move.cands_labeled,
   };
 }
 

@@ -139,9 +139,10 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
     const rows = [...h.querySelectorAll('.exp-agg-row')];
     expect(rows.length).toBe(2);
     expect(rows.map((r) => (r as HTMLElement).dataset.key)).toEqual(['proxy|v8|0', 'proxy|v9|0']);
+    /* 局 / 胜 / 和 / 战术（这轮没记战术层耗时 ⇒ —）/ 候选（这轮的种子棋盘没记候选点 ⇒ —） */
     expect(
       [...need(rows[0], 'v8 行').querySelectorAll('.exp-agg-num')].map((n) => n.textContent),
-    ).toEqual(['4', '2', '1', '—']);
+    ).toEqual(['4', '2', '1', '—', '—']);
     expect(rows[0]!.querySelector('.exp-agg-rate b')!.textContent).toBe('62.5%');
     const bar = need(rows[0]!.querySelector('.exp-agg-bar i'), 'v8 条') as HTMLElement;
     expect(bar.style.width).toBe('62.5%');
@@ -206,6 +207,62 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
       (r) => (r as HTMLElement).dataset.key === 'proxy|v11-vct|0',
     )!;
     expect(need(proxyRow, 'proxy 行').querySelector('.exp-agg-tac')!.textContent).toBe('100ms');
+  });
+
+  it('候选点三数：按手加权分桶，非 Jev 身份记 —', () => {
+    /* C0/m13627：`sent` = 交给 Jev 决定的点数（criteria 键数）、`graded` = 模型给了概率的合法点数、
+       `labeled` = 其中带战术标签的点数。与战术层耗时同款口径：非 Jev 侧不过候选集 ⇒ 没有样本（不是 0）。 */
+    const entry: ExperimentEntry = {
+      tag: 'exp-cands',
+      date: '2026-10-03T02:00:00.000Z',
+      chanA: 'proxy',
+      chanB: 'rapfi',
+      tacA: 'v14-live3-fresh',
+      tacB: null,
+      thinkA: 0,
+      thinkB: 1000,
+      total: 2,
+      games: [
+        /* #1：A（proxy）执黑，两手 发 64 / 评 60 / 标 20；B 是 Rapfi，不过候选集 */
+        { no: 1, blackChan: 'proxy', blackTac: 'v14-live3-fresh', whiteChan: 'rapfi',
+          blackCands: { graded: 60, sent: 64, labeled: 20, n: 2 }, winnerChan: 'A' },
+        /* #2：A 换到白方 */
+        { no: 2, blackChan: 'rapfi', whiteChan: 'proxy', whiteTac: 'v14-live3-fresh',
+          whiteCands: { graded: 50, sent: 62, labeled: 18, n: 2 }, winnerChan: null },
+      ],
+    };
+    const t = expTotals([entry]);
+    /* 按手加权：(64×2 + 62×2) ÷ 4 = 63、graded 55、labeled 19 */
+    expect(t.candsSent).toBe(63);
+    expect(t.candsGraded).toBe(55);
+    expect(t.candsLabeled).toBe(19);
+    expect(t.candsMoves).toBe(4);
+
+    const rows = expSideStats([entry]);
+    const proxy = rows.find((r) => r.channel === 'proxy')!;
+    expect(proxy.candsSent).toBe(63);
+    expect(proxy.candsGraded).toBe(55);
+    expect(proxy.candsLabeled).toBe(19);
+    /* Rapfi 刻意不过候选集：没有样本（不是 0） */
+    const rapfi = rows.find((r) => r.channel === 'rapfi')!;
+    expect(rapfi.key).toBe('rapfi||1000');
+    expect(rapfi.candsSent).toBeNull();
+    expect(rapfi.candsGraded).toBeNull();
+    expect(rapfi.candsLabeled).toBeNull();
+
+    const h = host();
+    renderExpHistory([entry], h);
+    expect(need(h.querySelector('#expReportNote')).textContent).toContain('候选点均值 发 63');
+    expect(need(h.querySelector('.exp-total'), '.exp-total').textContent)
+      .toContain('候选点均值 发 63 / 评 55 / 标 19（4 手）');
+    const rapfiRow = [...h.querySelectorAll('.exp-agg-row')].find(
+      (r) => (r as HTMLElement).dataset.key === 'rapfi||1000',
+    )!;
+    expect(need(rapfiRow, 'rapfi 行').querySelector('.exp-agg-cands')!.textContent).toBe('—');
+    const proxyRow = [...h.querySelectorAll('.exp-agg-row')].find(
+      (r) => (r as HTMLElement).dataset.key === 'proxy|v14-live3-fresh|0',
+    )!;
+    expect(need(proxyRow, 'proxy 行').querySelector('.exp-agg-cands')!.textContent).toBe('63/55/19');
   });
 
   it('空列表：只有空态提示，注脚清空', () => {

@@ -114,6 +114,29 @@ describe('POST /api/games', () => {
     expect(moves.results[0]).toMatchObject({ channel: 'jev', model: 'v9', tactics: null });
   });
 
+  it('候选点三数落库：cands_sent/cands_labeled 有值写值、缺失写 NULL（不写 0）', async () => {
+    /* C0/m13627：`cands` 是历史列（模型给了概率的点数）；`cands_sent` = 交给 Jev 决定的点数、
+       `cands_labeled` = 其中带战术标签的点数。两者都由 0003 迁移追加，老归档/非 Jev 侧必须留 NULL。 */
+    const res = await post(gomokuPayload({
+      exported: '2026-10-02T06:00:00.000Z',
+      moves: [
+        { ply: 1, side: '黑方', notation: 'h8', ai: { ch: 'proxy', mdl: 'jev-latest', conf: 0.8, p: 0.7, rank: 1, cands: 58, candsSent: 64, candsLabeled: 21, ms: 900, tv: 'v14-live3-fresh' } },
+        /* 第二手是 Rapfi 侧：不走 Jev 候选集 ⇒ 两个新键根本不出现 */
+        { ply: 2, side: '白方', notation: 'i9', ai: { ch: 'rapfi', mdl: 'rapfi', conf: 0.5, p: 0.4, rank: 1, cands: null, ms: 1000, tv: null } },
+      ],
+      notation: 'h8,i9,',
+    }));
+    expect(res.status).toBe(200);
+
+    const rows = await env.DB.prepare(
+      'SELECT ply, cands, cands_sent AS candsSent, cands_labeled AS candsLabeled FROM game_moves ORDER BY ply',
+    ).all<{ ply: number; cands: number | null; candsSent: number | null; candsLabeled: number | null }>();
+    expect(rows.results).toEqual([
+      { ply: 1, cands: 58, candsSent: 64, candsLabeled: 21 },
+      { ply: 2, cands: null, candsSent: null, candsLabeled: null },
+    ]);
+  });
+
   it('带 X-Device-Id 时先建设备行（外键），并写入 games.device_id', async () => {
     const deviceId = 'test-device-0001';
     const res = await post(gomokuPayload({ exported: '2026-10-02T04:00:00.000Z' }), { 'x-device-id': deviceId });
