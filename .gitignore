@@ -28,6 +28,10 @@ backups/
 .env.*
 !.env.example
 
+# ── git worktree 隔离工作区 ────────────────────────────────
+# `git worktree add .worktrees/<branch>`（见 using-git-worktrees 技能）
+.worktrees/
+
 # ── Agent / 工具本地状态 ─────────────────────────────────────
 # 这些目录是各工具自己的记忆/会话缓存，可能含绝对路径与本机信息。
 # 项目的持久记忆在 docs/memory/MEMORY.md（新条目在最上，工具无关）。
