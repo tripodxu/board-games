@@ -117,6 +117,61 @@
   整轮 401 白跑（连续代点重试 10 次、0 局完成）。改成**先实测探针再起跑**
   （`.work/print-key.mjs` 按候选序逐个 POST `/api/jev`，取第一把非 401 的，只打印长度与 sha8）。
 
+## 2026-10-03 · SSH 远端批量对弈实验设施上线（ADR-0019）
+
+- **做了什么**：新增 `scripts/experiment-worker.mjs`（纯 Node 对弈回路）+ `scripts/experiment-batch.mjs`
+  （本地编排 submit/resume/status/pull/elo）+ `scripts/lib/batch-{common,elo}.mjs`（零依赖纯函数，29 例单测）。
+  对弈回路 = `getGame('gomoku')` → `decide`/`applyMove` 循环 → `buildGameExport` → `POST /api/games`
+  → GET `?tag=` 核对。目标机 `185.242.234.48`（alias `qijia`，2C/1.9GiB/45G，
+  装了 Node 24.9.0）。kill -9 续跑已实测（checkpoint 跳过已完成局）。
+- **踩坑（每条都花过时间，按复用价值排序）**：
+  1. **`src/core/tactics-versions.ts` 的 `VERSIONS` 是数组不是 map** ⇒ `Object.keys(VERSIONS)` 得到
+     `['0'..'13']`，用 `ids()`（返回 14 个 id 字符串）。`resolve(id)` 对未知档号**静默回落 CURRENT**
+     （测试固化的"特性"）⇒ A/B 写错档号会静默变 v13 且事后不可检出，spec 解析层必须显式 throw。
+  2. **OpenSSH 的 `scp` 没有 `-n` 选项**（`ssh` 才有）：把 `-n` 混进通用 `SSH_OPTS` 会让 plan 上传
+     直接失败、远端 worker 秒崩。拆成 `SSH_OPTS` 与只给 ssh 用的 `SSH_LAUNCH_OPTS`。
+  3. **ssh 会话会被 nohup 后台进程拖住**：`cmd & echo` 后 ssh 不返回（等后台进程结束）。
+     实测 `nohup cmd >>log 2>&1 </dev/null & echo` ≈ 2.4 s 返回，`setsid cmd </dev/null >/dev/null 2>&1; echo`
+     ≈ 10 s，`setsid cmd & echo` 不返回。用前者 + pid 落盘。
+  4. **经 ssh_exec 内联 echo 写 authorized_keys 会改字符**（base64 差一位 ⇒ pubkey 认证静默失败）。
+     正确做法：写本地 `.pub` → `ssh_upload` → 远端 `printf '%s\n' "$(cat …)" > authorized_keys`。
+  5. **`rapfi-single-simd128.js` 在 Node 下的加载姿态**：UMD 尾部 `module.exports=Rapfi`，仓库
+     `package.json type=module` 让 `.js` 走 ESM（直接 eval 撞 `ERR_AMBIGUOUS_MODULE_SYNTAX`）⇒
+     复制成临时 `.cjs` + `createRequire` 加载；`locateFile` 指回 `public/rapfi/`。
+     退出时胶水 `ha=(a,b)=>{process.exitCode=a; throw b}` 会把进程退出码置 1（teardown 噪声）
+     ⇒ worker 末尾按 summary 显式设 `process.exitCode`。
+  6. **`effectiveChannelOf` 没 apiKey 会把 `random` 兜底成 `mock`**（`src/core/persist.ts:158-173`）：
+     归档 slug/duelLabel 显示"演示"，但结构化字段 `blackChannel=random` 仍正确 ⇒ worker 必须透传
+     `session.settings.apiKey`（export 不带 settings，不泄密）。key 放远端 `/root/.jev-key`（chmod 600），
+     worker 启动命令 `set -a; . /root/.jev-key; set +a` 注入；**本机 orchestrator 不需要持有 key**
+     （一度写成本地预检，反被本机拦死）。
+  7. **`GET /api/games` 列表项是 camelCase**（`gameUid` / `experimentTag`），数 `r.tag` 恒 0。
+  8. **tag 撞车**：`exp-YYYYMMDDHHmmss` 秒级精度 + `experiments` upsert 覆盖 ⇒ batchTag 追加
+     `-<batch>-r<i>`（≤64）。
+  9. **Node 与浏览器跑 rapfi 的行为对齐结论**：同资产同输入**逐手一致**（自对弈 12/12、重放归档局 12/12）；
+     对浏览器归档逐手复盘 85.9% 不一致的残差在 Node↔Edge 上给出**相同着法且都不等于归档**
+     ⇒ 残差是浏览器运行时墙钟抖动，**rapfi 臂绝对着法不可逐字复现**，实验结论只认聚合口径。
+     附带既有状态：`.data` 里没有 `model210901.bin`（39MB classic model），**Node 与 Edge 都报**
+     `ERROR Unable to open model file` ⇒ 引擎跑缺省配置，这不是回归。
+  10. **pwsh 工具管道捕获 ssh stdout 时可能挂起**（stdin 管道保持打开）：本机跑编排 CLI 用
+      `cmd /c "node scripts\experiment-batch.mjs … < NUL > log 2>&1"` 包一层即可稳定返回。
+   11. **和棋没有 `winner` 字段**：导出/D1 口径里和棋长这样——`result:"和棋（棋盘已满）"`、
+       `winner` 根本不存在（`src/shared/record-map.ts:251-258` 的 `parseResult()` 对和棋返回
+       `winner:null`；D1 `games.winner` 也是 NULL）⇒ `batch-elo.mjs` 原先只认 `winner==='draw'`，
+       把 x1 两局 225 手满盘和棋当「未终局」整局丢掉（Elo 只算 22/24 局、和棋列全 0）。
+       判和棋必须匹配 result 串 `/^和棋(?:（(.+?)）)?\s*$/`（与 parseResult 同形），
+       endReason 从括号里取。这违反铁律 11「不唯胜率」——**和棋漏一局就是 Elo 偏一截**。
+- **战果（截至 2026-10-03，K=16，和棋 0.5；合并 Elo 见 `.work/elo-remote.json`）**：
+  `proxy|v13|0` 1551.9（14 局 10胜2和2负）、`rapfi|-|0` 1503.1（12 局 6-0-6）、
+  `random|v13|0` 1481.4（14 局 6-0-8）、`rapfi|-|500` 1463.6（12 局 2胜2和8负）——
+  即 **proxy·v13 对 rapfi@500ms 合计 6 胜 2 和 4 负**（x1 12 局口径），均 ⚠样本不足(<50)。
+  三轮 26 局全部归档 verified：rapfi1 12 局 + smoke1 2 局 + x1 12 局（含 2 局 225 手满盘和棋）；
+  三轮都已补 `/api/experiments` 行（x1 是旧代码跑的，用 `.work/backfill-experiments.mjs` 事后补，
+  HTTP 200；此后的轮次由 worker 轮末自动补）。
+- **运维事实**：box 上 `/usr/local/bin/{node,npm,npx}` 软链到 `/opt/node/bin`（非登录 shell 找不到 node）；
+  仓库 public 可 https clone，但 **box 上没有 github key ⇒ 只能 https 拉、不能 ssh 推**；
+  本机 `~/.ssh/id_ed25519` 已授权到 box。
+
 ---
 
 ## 2026-10-03 · v14 证据评审：16 个探针 + 2 个对照，两个领跑候选都被否掉（机制仍未选定）

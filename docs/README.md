@@ -33,7 +33,8 @@ docs/
 │   ├── 0015-vct-continuous-threats.md
 │   ├── 0016-vct-defense.md
 │   ├── 0017-pressure-gate.md
-│   └── 0018-live3-fresh-correction.md
+│   ├── 0018-live3-fresh-correction.md
+│   └── 0019-remote-batch-experiments.md
 ├── plans/                  ← 实施计划（完成后保留为历史记录，标注状态）
 │   ├── 2026-09-28-board-games-mvp.md            ✅ 已完成
 │   ├── 2026-09-29-iteration-02-play-loop.md     ✅ 已完成（优化轮）
@@ -46,6 +47,8 @@ docs/
 │   ├── 2026-10-02-tactics-v12-vct-def.md          ✅ 已完成（2026-10-02；战术 v12：连续威胁防守 + 三档思考时间对照）
 │   ├── 2026-10-02-tactics-v13-pressure-gate.md    ✅ 已完成（2026-10-02；战术 v13：压力闸门 + 回归扫描 + 同口径 A/B）
 │   ├── 2026-10-03-tactics-v14-evidence.md         📋 证据评审（2026-10-03；v14 候选的负结论 + 两个对照复算 + §4.4 抬档复核 9-3-8）
+│   ├── 2026-10-03-tactics-coupling-audit.md       ✅ 已完成（2026-10-03；战术版本耦合性审计，并行 A/B 安全性）
+│   ├── 2026-10-03-remote-batch-experiments.md     ✅ 已完成（2026-10-03；SSH 远端批量对弈实验设施 P0–P5）
 │   └── 2026-10-03-tactics-v14-fresh-live3.md      ✅ 已上线（2026-10-03；v14 活三判据纠偏；`rapfi@1000ms` 9-1-2 / `@2000ms` 9-3-8）
 ├── superpowers/
 │   ├── plans/

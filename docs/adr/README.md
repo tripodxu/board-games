@@ -26,3 +26,4 @@
 | [0016](0016-vct-defense.md) | 战术层新增「连续威胁防守」（`vctDefense`）：拆掉对手的混合链，排在 `vcfDefense` 之后 | accepted |
 | [0017](0017-pressure-gate.md) | 战术层新增「压力闸门」（`pressureGate`：对手做四点压过我们时先削点，排在 `vctDefense` 之后） | accepted |
 | [0018](0018-live3-fresh-correction.md) | 活三判据纠偏（`live3Fresh`）：L3 制造点必须由这一手新造，修正 0014 的 L3 定义 | accepted |
+| [0019](0019-remote-batch-experiments.md) | SSH 远端批量对弈实验设施：纯 Node 对弈回路 + 本地编排器 submit/resume/status/pull/elo + 文件 checkpoint + 自研 Elo | accepted |
