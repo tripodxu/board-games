@@ -1,6 +1,6 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-03。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-04。
 
 ## 当前状态
 
@@ -332,6 +332,22 @@
   ③ 覆盖 **13/14 层**（缺 `threat`，结构性不可达：`you:open4` 标签判据与 `chance_points_you` 同源，且含 `threat` 的档都含 `open4` 而链里 `open4` 在前；
   取证 2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）；④ `⑭d` 证指纹与 `decide()` 全链路同解；
   ⑤ 引擎套件 **153 例**（+5）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净、`check:docs` 58 md / 397 链接。语料规模是实测定的：120 局面要 ~9 分钟（早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面），进不了 CI。决策记录 [ADR-0020](adr/0020-tactics-fidelity-freeze.md)。
+- **战术层可离线回溯（P3 回放 + 考古，2026-10-04）**：新增离线重放 `scripts/tactics-replay.mjs`（纯核 `scripts/lib/tactics-replay.mjs`，
+  `--dir/--file/--game/--tag/--tactics/--sides/--limit/--max-games/--json/--show`；23 例单测在 `test/scripts/tactics-replay.spec.mjs`），
+  并产出考古文档 [战术档位考古](plans/2026-10-04-tactics-archaeology.md)（267 行）。
+  证据：① **验收（`exp-20261003082805`，v14 vs `rapfi@5000ms`，20 局 / 990 手 / 重放 496 手 / 282.2 s）**：
+  **层一致率 496/496 = 100%**、**接管落点一致率 327/378 = 86.5%**、**会变 51 手且全是同层换点（0 处换层）**
+  —— 归档没有整张模型概率表，重放刻意走「无模型」等权口径（`pairs = 合法着法等权`、`topK = 1`），
+  所以「层」是与模型无关的确定性事实（强结论），「落点」在层内多解时依赖模型概率（86.5% 是下界）；
+  ② **考古 14/14 档参数层可确证**：15 个预算键逐键、`sound`、`openingMin=4`、注入句集/句面/句序全部有 sha 证据，
+  且逐键等于 P1 冻结值 ⇒ v1–v13 `fidelity` 由 `approximate` 升 **`restored`**、`v0-off` 留 `approximate`（档位表无 sha）、
+  v14 保持 `exact`；③ 两条前序审计结论被否证（v11 上线预算即 10/3000/6，`14/6000/∞` 只在未入库的 `.work/vct-tune*.mjs`；
+  prompt 漂移在 P1 后已修），并修正「预算冻结于 `446f976`」——`src/core/tactics-budget.ts` 仅由 `0b3a400` 创建；
+  ④ `threat` 层逐层可达性复核写进考古文档 §6.1，标注「历史层，当前机制表下不可达」；
+  ⑤ 引擎套件 **153 例**、vitest **39 文件 / 422 例**、`tsc --noEmit` 干净、`check:docs` **59 md / 407 链接**、
+  `node test/engines/fingerprint.mjs --check` **指纹一致（210 行）**；⑥ 考古文档 §9 的「会变 51 手」逐层计数已用
+  `--json` 复跑实测（`live3Attack` 21 · `live3Defense` 11 · `parry4` 7 · `open4` 3 · `vctDefense` 3 · `parry3` 3 ·
+  `pressureGate` 2 · `block` 1，零跨层）。
 - 迁移各阶段的实测数字与偏差裁决见计划 P0–P8 执行记录（含本地导入 4440 changes、7 张表、线上部署版本号等）。
 
 ## 设计例外（有意保留，不是遗漏）
@@ -454,8 +470,9 @@
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
-   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅ 已完成**（见上「已验证」四条），**下一步 P3 回放/考古**
-   （`tactics-replay.mjs` + 逐 commit 考古填 `budget/sound/openingMin`/`fidelity`）→ P4/P4b 离线运行面
+   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅ 已完成**（见上「已验证」五条；
+   P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
+   **下一步 P4/P4b 离线运行面**
    （`--store local` + `--upstream direct` + 进度文件 + 桶留档，零 CF 触碰验收）→ P5 Elo 升级（BT + bootstrap CI）
    → P6 阶梯编排。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
    第一晚 L3 是否含 `rapfi@5000`、P7 `--rev` 是否做、**对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws

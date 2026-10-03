@@ -27,6 +27,23 @@
 
 ### 新增
 
+- **战术层可离线回溯（P3 回放 + 考古，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：新增离线重放工具
+  [`scripts/tactics-replay.mjs`](scripts/tactics-replay.mjs)（纯核 [`scripts/lib/tactics-replay.mjs`](scripts/lib/tactics-replay.mjs)），
+  拿**任意历史棋谱 × 任意档位**重放：`--dir/--file/--game <uid>/--tag <tag>/--tactics <id>/--sides/--limit/--max-games/--json/--show`。
+  语义刻意写成「无模型」口径（归档只存实走那一点的概率、没有整张概率表 ⇒ `pairs = 合法着法等权`、`topK = 1`，与
+  `decide(channel:'random')` 同源），因此给出三个判据：**层一致率**（与模型无关的强结论）、**接管落点一致率**（层内多解，
+  受模型概率影响）、**会变的手**（层不同，或层相同而落点不同）；逐行记 `vSource ∈ forced|move|game|current`，
+  档号是推断出来的行会在汇总里印 ⚠ 提示（不许当历史结论读）。23 例单测在
+  [`test/scripts/tactics-replay.spec.mjs`](test/scripts/tactics-replay.spec.mjs)。
+  **验收（`exp-20261003082805`，v14 vs `rapfi@5000ms`，20 局 / 990 手 / 重放 496 手 / 282.2 s）**：
+  层一致 **496/496 = 100%**、接管落点一致 **327/378 = 86.5%**、会变 **51 手且全是同层换点（0 处换层）** ⇒
+  「战术层能不能回溯」第一次有了可检验答案：**层逐手可复现，落点在 86.5%–100% 之间**。
+  配套考古文档 [docs/plans/2026-10-04-tactics-archaeology.md](docs/plans/2026-10-04-tactics-archaeology.md)（267 行）：
+  **14/14 档的 `budget`（15 键逐键）/`sound`/`openingMin`/`promptFacts` 全部有 git 证据且逐键等于 P1 冻结值**
+  ⇒ v1–v13 的 `fidelity` 由 `'approximate'` 升 **`'restored'`**（`v0-off` 档位表无 sha ⇒ 留 `'approximate'`，v14 保持 `'exact'`）；
+  同时**否证**前序审计两条（v11 上线预算即 10/3000/6，`14/6000/∞` 只存在于未入库的 `.work/vct-tune*.mjs`；
+  prompt 漂移在 P1 后已修）并修正「预算冻结于 `446f976`」（`src/core/tactics-budget.ts` 仅由 `0b3a400` 创建）。
+  另补**逐层可达性复核**（考古文档 §6.1）：`threat` 标注「历史层，当前机制表下不可达」，其余 13 层均有指纹覆盖证据。
 - **战术档位改动会亮红灯（P2 指纹设施，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：接管链原本内嵌在
   [`src/core/jev/client.ts`](src/core/jev/client.ts) 的 `decide()` 里（原 `:374-527`），现在抽成纯函数
   [`src/core/takeover.ts`](src/core/takeover.ts)：`TAKEOVER_ORDER`（14 层权威顺序）+ `TAKEOVER_LABEL`（中文层名）+

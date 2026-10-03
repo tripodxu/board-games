@@ -185,7 +185,13 @@ S.t('P1 冻结层：sound 记历史事实（v9 起才有闸门）/ fidelity / op
     eq(v.promptFacts, 'mech', v.id + ' 的注入口径应为 mech（只注入本档真有的机制句）');
   }
   eq(R.resolve('v14-live3-fresh').fidelity, 'exact', 'v14 就是冻结当天那一版 ⇒ exact');
-  eq(R.resolve('v13-pressure-gate').fidelity, 'approximate', 'P3 考古前的历史档只能是近似（别当「当时就是这样」）');
+  /* P3 考古（docs/plans/2026-10-04-tactics-archaeology.md）：v1–v13 的四项参数全部有 git 证据 ⇒ restored；
+     v0-off 的档位表没有 sha、参数无证据 ⇒ 只能 approximate（不猜）。口径 = 参数层，不等于 exact。 */
+  eq(R.resolve('v13-pressure-gate').fidelity, 'restored', 'P3 考古确证过参数的历史档应是 restored');
+  eq(R.resolve('v5-safesort').fidelity, 'restored', 'v1–v13 同批升 restored（含 js 时代的档）');
+  eq(R.resolve('v0-off').fidelity, 'approximate', 'v0-off 无 sha、参数缺证据 ⇒ 留在 approximate');
+  const restored = R.VERSIONS.filter((v) => v.fidelity === 'restored').map((v) => v.id);
+  eq(restored.length, 13, 'restored 应恰好是 v1–v13 十三档，实际 ' + restored.join(','));
 });
 
 S.t('P1 冻结层：预算与 sound 真的下到引擎（vcfWin 正对照）', () => {

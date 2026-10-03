@@ -1,6 +1,6 @@
 # 计划：战术「任意版本可回溯」语义冻结 + 远端 Elo 能力阶梯
 
-> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 ✅ / P0b 数据卫生与报表口径 ✅ / P1 冻结层 ✅ / P2 指纹设施 ✅ 已完成，P3 回放 + 考古起待做）**。
+> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 ✅ / P0b 数据卫生与报表口径 ✅ / P1 冻结层 ✅ / P2 指纹设施 ✅ / P3 回放 + 考古 ✅ 已完成，P4 起待做）**。
 > 触发：项目所有者要求（2026-10-03，逐字）：「参考 …/2026-10-03-tactics-coupling-audit.md，这些问题怎么办，我需要战术可以回溯到任意版本，我想要让机器在远端跑 elo 比较各版本的战术以及 rapfi@不同时间真正的能力，给出计划」。
 > 补充要求（2026-10-03 同日，逐字）：「这些也要包含到计划里，可以让这个测试全在云端服务器上本地跑，不连接我自己的 cf worker，减少连接数，但我可以通过 ssh 来检验进度，最终将结果上传到桶中」⇒ ① 上一轮给的「建议打包（五条）」**并入本计划**（见 §3.1）；② 新增 **G3 运行面独立**（见 §1、§4、§6 P4/P4b）。
 > 上游输入：耦合性审计 [2026-10-03-tactics-coupling-audit.md](2026-10-03-tactics-coupling-audit.md)（12 条耦合风险 + §4 两条静默回退坑 + §5 四类不按版本裁剪的漂移）、
@@ -141,7 +141,7 @@
 | `test/engines/fingerprint.mjs` | ✅ **已做**：语料抽取（归档抽样 `BUCKETS` 早 4/中 4/晚 2 + 具名夹具 `SYNTHETIC_POSITIONS` 4 个）+ `fingerprintOf()`（一趟链拿「事实 + 层 + 落点」）+ `--write`/`--check` + 覆盖表 | 304 行（实测） |
 | `test/parity/tactics-fingerprints.json` | ✅ **已生成**：14 局面 × 15 档 = 210 行（15 档 × `TAKEOVER_ORDER` 14 层覆盖 13 层 + `digest` + 15 个事实点数） | 生成物 88.9 KB |
 | `test/engines/version-freeze.test.mjs` | ✅ **已做**：5 例（形状/逐行重放/覆盖与必须覆盖层/与 `decide()` 同解/冻结字段完整），已进 `test/engines/runner.mjs:12-20` 的 `ALL_MODULES` | 117 行（实测） |
-| `scripts/tactics-replay.mjs` | 离线重放：`--game <uid>` / `--tag <tag>` / `--all --tactics <id>`，输出逐手差异表 + 汇总 | ~220 行 |
+| `scripts/tactics-replay.mjs` | ✅ **已做**：离线重放 `--dir/--file/--game <uid>/--tag <tag>/--tactics <id>/--sides/--limit/--max-games/--json/--show`（纯核在 `scripts/lib/tactics-replay.mjs`；`--all` 由「不给 `--tactics`」表达）；23 例单测 | 纯核 265 行 + CLI（实测） |
 | `scripts/experiment-ladder.mjs` | 阶梯编排：round-robin 计划、颜色对称、串行调度、断点续跑、汇总一行 | ~260 行 |
 | `scripts/lib/openings.mjs` | 开局库生成（从归档决胜局取前 6–8 手，去重、对称归一）与校验 | ~120 行 |
 | `scripts/lib/s3-put.mjs` | 纯 Node `crypto` 的 AWS SigV4 签名 + `putObject`/`listPrefix`/`getObject`（零依赖，S3 兼容：R2/S3/B2/MinIO） | ~180 行 |
@@ -151,7 +151,7 @@
 | `scripts/lib/batch-elo.mjs`（扩写） | `computeBt()` + `bootstrapCI()` + 带区间的排行表 | +~140 行 |
 | `test/scripts/{openings,ladder-plan,bt-elo}.spec.mjs` | 合成数据验证：已知强弱顺序、CI 宽度随 n 收窄、开局库对称归一 | ~200 行 |
 | `docs/adr/0020-tactics-fidelity-freeze.md` | ✅ **已写**：决策「档位 = 冻结记录 + 指纹」、未知档号显式失败、接管链抽纯函数、只记决策不记耗时、覆盖表是断言的一部分、`threat` 不可达作为显式缺口 | 实测口径 |
-| `docs/plans/2026-10-04-tactics-archaeology.md` | 考古结果表（逐档：budget/sound/openingMin/prompt + 证据 commit + 置信度） | P3 产出 |
+| `docs/plans/2026-10-04-tactics-archaeology.md` | ✅ **已写**（267 行）：考古结果表（逐档：budget/sound/openingMin/prompt + 证据 commit + 置信度）、`promptFacts` 专项结论、共享常量时间线、缺口、P7 复现清单、`threat` 可达性复核、P3 回放验收 | P3 产出 |
 
 **改动**
 
@@ -178,7 +178,7 @@
 | **P0b 数据卫生与报表口径** ✅ **已完成（2026-10-03）**（~40 行 + 3 条 SQL + 文档） | §3.1 第 3–5 条 | 实测全过：① 三条历史 tag 回填前先补 `devices` 行（`games.device_id REFERENCES devices(device_id)`）⇒ `update … where device_id is null and experiment_tag in (…)` ⇒ `select count(*) from games where device_id='ssh-batch'` = **26**，26 局 `code_version` 仍为 `dev+nogit`（未猜 sha）；② `wilson()` 落 `scripts/lib/batch-elo.mjs`，20 局/对半宽 **±20.1 pt**，`formatRankTable()` 每行印 `95% 区间(Wilson)` 列 + 样本 < 50 时印 `±XX.Xpt ⚠` 与读数纪律注（用例把 ±20 pt 钉死）；③ `docs/agents/playbooks.md` §7 新增第 12 条「报表只准聚合口径」+ 第 11 条补齐回填 SQL；④ `npm run check:docs` 绿 |
 | **P1 冻结层** ✅ **已完成（2026-10-03）**（~250 行） | D1/D3/D4/D5：`tactics-budget.ts` + 预算下传 + `sound` 活键 + `openingMin` + `attachFacts` 按 mech | 实测全过：① **零行为变更对照** `.work/p1-fidelity-check.mjs` + `.work/p1-fidelity-diff.mjs`，基线取自干净 HEAD `446f976`、改后同脚本复跑：**15 档 × 120 真实归档局面 = 1800 行，`tac` 与 `ins` 全部 0 差异**（比预告更强 —— v7/v8 的 soundness 差异面在这 120 个局面里没有触发；该口径的 `ins` 是不带 `mech` 的旧调用，只证明「句面逐字未改」）；② **过滤效果** `.work/p1-mech-filter-probe.mjs`（40 局面）：v12/v13/v14 文本 **0 差异**，v11 少 9600 字符、v10 19360、v7–v9 37560、v3–v6 51280、v1/v2 67520、v0 79200，丢掉的句子与该档机制表严格对应（v11 只丢 `vct_win_opponent`、v0 12 句全丢）；③ **sound 正对照**（`test/engines/tactics.test.mjs`）：哨兵局面缺省不报胜、`sound:false` 报出 `F5→F6→E5`，档位级 v7 报 `F5` / v9 不报，`nodeLimit:1` 搜不出 ⇒ 预算与闸门真下到引擎；④ `node test/engines/run.mjs` **148/148**（原 144，+4 例 P1）；⑤ `npx vitest run` **38 文件 / 399 例**；⑥ `npx tsc --noEmit` 干净 |
 | **P2 指纹设施** ✅ **已完成（2026-10-03）**（实测：`takeover.ts` 226 行 + `fingerprint.mjs` 304 行 + `version-freeze.test.mjs` 117 行 + 指纹产物 88.9 KB） | D6/D7 + `version-freeze.test.mjs` + CI 接线；**外加一步计划外但必需的抽取**：把内嵌在 `client.ts` 的接管链抽成 `src/core/takeover.ts` 的纯函数（否则指纹要跑两遍链、P3 回放也无处落脚） | 实测全过：① **抽取零行为变更**：`.work/p2-ab-baseline.mjs` 抽取前后各 dump 30 局面 × 15 档 = 450 行，**差异 0 行**；② 首次 `--write` 基线 = **14 局面 × 15 档 = 210 行，24.0 s**（语料从计划的 N≈120 收缩：实测 120 局面 ≈ 9 分钟，进不了 CI）；③ **层覆盖 13/14**，唯一缺口 `threat` 是结构性的（§7 第 9 条），断言写成「除 `threat` 外每层都必须被走到」+「`coverage.missing` 必须恰好等于 `['threat']`」；④ **故意改一处预算试红**：`DEFAULT_BUDGET.vcfNodeLimit` 4000 → 1 ⇒ `⑭b` 报 **决策指纹漂移 32 处**（v7…v14 的层从 `vcfDefense` 变 `parry`/`vctDefense`），还原后立刻全绿 —— 「改一处牵多档」从此是红灯；⑤ `node test/engines/run.mjs` **153/153**（+5 例）；⑥ `npx vitest run` **38 文件 / 399 例**；⑦ `npx tsc --noEmit` 干净；⑧ `npm run check:docs` **58 md / 397 链接**；⑨ `⑭d` 另证指纹与 `decide()` 全链路同解（语料里一个 mid 局面 × 15 档逐档对照层与落点） |
-| **P3 回放 + 考古**（~220 行 + 文档） | `tactics-replay.mjs`；逐 commit diff 填 `budget/sound/openingMin`/`fidelity`；产出考古文档 | 回放工具在 `exp-20261003082805` 上跑出「与实走一致率」并列出会变的手；考古表 14 档无空缺（每格要么有证据 commit，要么标 `approximate` + 缺口描述） |
+| **P3 回放 + 考古** ✅ **已完成（2026-10-04）**（实测：`scripts/lib/tactics-replay.mjs` 265 行纯核 + `scripts/tactics-replay.mjs` CLI + `test/scripts/tactics-replay.spec.mjs` 23 例 + 考古文档 267 行） | `tactics-replay.mjs`；逐 commit diff 填 `budget/sound/openingMin`/`fidelity`；产出考古文档 `docs/plans/2026-10-04-tactics-archaeology.md` | 实测全过：① **回放验收**（`exp-20261003082805`，v14 vs `rapfi@5000ms`，20 局 / 990 手 / 重放 496 手 / 282.2 s）：**层一致率 496/496 = 100%**、**接管落点一致率 327/378 = 86.5%**、**会变 51 手且全是同层换点**（口径：归档无整张概率表 ⇒ 重放走「无模型」等权口径，故层一致是强结论、落点一致是下界；逐层实测 `live3Attack` 21 · `live3Defense` 11 · `parry4` 7 · `open4` 3 · `vctDefense` 3 · `parry3` 3 · `pressureGate` 2 · `block` 1，零跨层）；② **考古 14/14 档参数层确证**（15 个预算键逐键 + `sound` + `openingMin=4` + 注入句集/句面/句序全部有 sha 证据，且逐键等于 P1 冻结值）⇒ v1–v13 `fidelity` 升 `'restored'`、v0 留 `'approximate'`、v14 保持 `'exact'`；③ 顺带**否证**前序审计两条（v11 上线预算即 10/3000/6、prompt 漂移在 P1 后已修）并修正「冻结于 446f976」（`tactics-budget.ts` 仅由 `0b3a400` 创建）；④ `threat` 层标注「历史层，当前机制表下不可达」（考古文档 §6.1）；⑤ `node test/engines/run.mjs` **153/153**、`npx vitest run` **39 文件 / 422 例**、`npx tsc --noEmit` 干净、`npm run check:docs` **59 md / 407 链接**、`node test/engines/fingerprint.mjs --check` 一致（210 行） |
 | **P4 阶梯地基**（~200 行） | `openings.mjs` + worker `--openings`/`--store local` + **D13 进度文件**（`progress.json` + `events.jsonl` + `--store local` 时零网络写） | 合成开局库可复现；一局真跑（rapfi 自对弈，开局库前 6 手逐手一致）；JSONL 产物能被 `loadRecords` 读回；`ssh <host> cat progress.json` 在跑动中可读到 `{round, gameNo, done, wdl, etaS}` |
 | **P4b 离线运行面 + 桶留档**（~290 行） | **D12**：worker `--upstream direct`（读 `/root/.jev-key`）+ `--rate-limit`（默认 30/min）+ 429 熔断；`experiment-batch.mjs status --watch` 经 SSH 出表格；**D14**：`s3-put.mjs` + `batch-bucket.mjs`，每轮结束上传 `ladders/<batchId>/` | ① **零 CF 触碰验收**：一整局真跑（proxy 直连 + rapfi）后，业主 Worker 的 `experiments`/`games` 行数**不变**，且 box 上无任何指向 `jevqipan.logicc.top` 的请求（`ss -tnp` 抽查 + 代码层 `--upstream direct` 断言）；② SigV4 已知向量单测通过；③ 刻意断桶（错凭据）⇒ 跑动**不中断**、日志告警、本地 JSONL 完整；④ `pull` 按前缀取回后 `elo` 可复算 |
 | **P5 Elo 升级**（~200 行） | D10：`computeBt()` + `bootstrapCI()` + 报表（含 §3.1 第 4 条的 Wilson 区间） | 单测：合成 200 局（真实强弱差 100 Elo）⇒ 点估计误差 < 25 Elo、CI 覆盖真值；CI 宽度随 n 单调收窄；`rapfi\|\|500` = 0 锚成立 |
@@ -217,7 +217,7 @@
 
 | 风险 | 缓解 |
 |---|---|
-| **一整层其实是死分支，而我们以为它在工作**（P2 现场发现） | 已证一例：接管链的 `threat` 层在 gomoku + 非空候选集下**不可达** —— `you:open4` 标签判据（走后 ≥2 个成五点，`src/core/engines/gomoku.ts:1063-1064`）与 `chance_points_you` 判据（`src/core/tactics.ts:202`）同源，且凡含 `threat` 的档（v3 起）都含 `open4`、链里 `open4` 在前 ⇒ 只有「候选集扫不到 open4 点却算得出 chance 点」才可能开火。取证：2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或层被 `open4` 接管（`.work/p2-threat-probe2.mjs`）。缓解：指纹的覆盖表断言「除 `threat` 外每层都必须被走到」并把 `missing` 精确钉成 `['threat']`（⑭c）；P3 考古时对每层再核一遍可达性，不可达的层在考古文档里显式标注「历史层，当前机制表下不可达」而不是假装它在工作 |
+| **一整层其实是死分支，而我们以为它在工作**（P2 现场发现，**P3 已结案**） | 已证一例：接管链的 `threat` 层在 gomoku + 非空候选集下**不可达** —— `you:open4` 标签判据（走后 ≥2 个成五点，`src/core/engines/gomoku.ts:1063-1064`）与 `chance_points_you` 判据（`src/core/tactics.ts:202`）同源，且凡含 `threat` 的档（v3 起）都含 `open4`、链里 `open4` 在前 ⇒ 只有「候选集扫不到 open4 点却算得出 chance 点」才可能开火。取证：2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或层被 `open4` 接管（`.work/p2-threat-probe2.mjs`）。缓解：指纹的覆盖表断言「除 `threat` 外每层都必须被走到」并把 `missing` 精确钉成 `['threat']`（⑭c）；**P3 已对 14 层逐层复核可达性并写进考古文档 §6.1**，`threat` 标注「历史层，当前机制表下不可达」（考古表仍按「当年该档含此机制」记录，但不得拿它归因强度差异） |
 | 指纹把**当下的 bug** 一起冻住 | P1 先做「零行为变更对照」，P2 生成基线前先跑 P0/P1；指纹只记决策不记耗时（D7）；`--write` 必须在 commit 消息里写明理由 |
 | 预算下传改变线上行为 | P1 验收要求「缺省预算 ⇒ 15 档 × 120 局面逐字一致」；引擎缺省常量**一个都不改** |
 | 考古无法确证（审计 §9 的中置信项） | 标 `fidelity:'approximate'` + 缺口描述；需要逐字时走 P7 `--rev` |

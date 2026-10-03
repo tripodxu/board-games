@@ -19,6 +19,37 @@
 
 ---
 
+## 2026-10-04 · P3 回放 + 考古：层一致率 100%、14/14 档参数层确证、DSH 的 node 跑不了 wrangler
+
+- **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` P3）**：
+  ① [`scripts/tactics-replay.mjs`](../../scripts/tactics-replay.mjs) + 纯核 [`scripts/lib/tactics-replay.mjs`](../../scripts/lib/tactics-replay.mjs)：
+  拿任意历史棋谱 × 任意档位离线重放（`--dir/--file/--game/--tag/--tactics/--sides/--limit/--max-games/--json/--show`）；
+  ② 考古文档 [docs/plans/2026-10-04-tactics-archaeology.md](../plans/2026-10-04-tactics-archaeology.md)（267 行）；
+  ③ v1–v13 的 `fidelity` 升 `'restored'`（`v0-off` 留 `'approximate'`，v14 保持 `'exact'`）。
+- **验收数字（`exp-20261003082805` = v14 vs `rapfi@5000ms`，20 局 / 990 手 / 重放 496 手 / 282.2 s）**：
+  **层一致率 496/496 = 100%**、**接管落点一致率 327/378 = 86.5%**、**会变 51 手且全部是同层换点（0 处换层）**。
+- **口径纪律（最容易读错的一条）**：归档只存实走那一点的 `confidence`/`prob`/`rank`，**没有整张模型概率表** ⇒
+  重放只能走「无模型」等权口径（`pairs = 合法着法等权`、`topK = 1`）。所以**「层」才是强结论**（层由确定性事实决定，
+  与模型无关），「落点」在层内多解时依赖模型概率，86.5% 是**下界**。以后引用这组数字时必须带上这句限定。
+- **考古结论（参数层）**：v0–v13 的 15 个预算键逐键、`sound`、`openingMin=4`、注入句集合/句面/句序**全部有 sha 证据**，
+  且逐键等于 P1 冻结值。两条前序审计结论被否证：v11 上线预算就是 `10/3000/6`（`14/6000/∞` 只存在于未入库的
+  `.work/vct-tune*.mjs`）、prompt 漂移在 P1 后已修。另修正一条旧笔记：`src/core/tactics-budget.ts` **仅由 `0b3a400`(P1) 创建**，
+  `446f976`(P0) 没碰过任何战术常量。
+- **`promptFacts: 'mech'` 是正确冻结值，别改成 `'all'`**：当年是「无条件全注入」，但那时的句集**恰好等于**今天的 `'mech'`
+  （句子与机制在同一 commit 成对增加，era 句面/句序在 HEAD 里 0 miss）；`open4/parry/parry3/parry4/safeSort/vcfTry/sound/live3Fresh`
+  这 8 个 mech 键**历史任何时期都没有注入句**。改成 `'all'` 会把「当年还不存在的机制的句子」注入老档 —— 那才是漂移。
+- **「改一处牵多档」的历史实证全部来自「新机制复用旧机制」，不是改值**：全时间值矩阵证明 12 个命名常量
+  **没有一个在引入之后被改过数值**（`NODE_LIMIT=4000`/`slice(0,12)`/`VCF_PLIES=7` 自 `57a9508` 起恒定）。
+  ⇒ 审计里那条「共享常量会互相牵动」的担心，真实形态是「新机制借用老常量」，而不是「改老常量影响老档」。
+- **环境坑（本机 DSH 下跑 wrangler / D1 查询）**：DSH 的 `node` 是 **Electron 运行时**（`process.versions.electron` 有值）
+  ⇒ ① `npx wrangler …` 报 `Unknown argument: …\node_modules\wrangler\wrangler-dist\cli.js`（argv 切片错）；
+  ② 用 ESM `import()` 引 `wrangler-dist/cli.js` 只拿到导出表、CLI 主入口不跑（守卫 `if (typeof vitest === "undefined" && __require.main === module)`）；
+  ③ `ELECTRON_RUN_AS_NODE=1` 自 spawn 也不行（wrangler 仍看得见 electron）。
+  **解法：用真 Node** `C:\Program Files\nodejs\node.exe`（v22.21.0）跑 `node_modules\wrangler\wrangler-dist\cli.js`；
+  `.work/wrangler-run.mjs` 已改成优先用它。D1 查询一律「先重定向到文件、再让 Node 读」（沙箱下 Node 的管道 stdio 会 EPERM）。
+- **`--json` 的 D1 导出形状**：`[{results: [...], success, meta}]`（raw 里可能混 stderr）⇒ 折成重放输入的那一步
+  （`.work/p3-dump.mjs`）是按「首个 `[` 到末个 `]`」切 JSON 再逐 chunk 取 `results`。
+
 ## 2026-10-03 · P2 指纹设施：接管链抽成纯函数 + 210 行决策指纹（改一处预算 = 红灯 32 处）
 
 - **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` D6/D7）**：
