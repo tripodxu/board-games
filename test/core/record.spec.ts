@@ -275,7 +275,7 @@ describe('record/export：真实归档反推再导出（新旧契约逐字段一
 
       /* 键集合：归档的键必须全部在（不能丢字段），多出来的只能是登记过的新增字段 */
       const extra = Object.keys(rec).filter((k) => !(k in a.payload));
-      expect(extra.filter((k) => ['gameId', 'gameUid', 'winner', 'endReason'].indexOf(k) < 0)).toEqual([]);
+      expect(extra.filter((k) => ['gameId', 'gameUid', 'winner', 'endReason', 'blackThink', 'whiteThink'].indexOf(k) < 0)).toEqual([]);
       /* 归档的键必须全在（不能丢字段）：用数组比对，失败信息直接列出缺了哪个键 */
       expect(Object.keys(a.payload).filter((k) => !(k in rec))).toEqual([]);
 
@@ -323,6 +323,30 @@ describe('record/export：真实归档反推再导出（新旧契约逐字段一
       expect(typeof rec.endReason).toBe('string');
     });
   }
+
+  /* 固定思考档落库（2026-10-03 发现的数据缺口）：AI-AI 轮的 `black_think`/`white_think` 长期是
+     NULL，因为棋局 payload 里从来没有这两个键（只有轮次表有 think_a/think_b）⇒ 报告的「成本对照」
+     只能回头翻 `.work/exp-arm*.json`。现在只有 `rapfi` 侧写：proxy 的思考时间是模型往返、
+     人类侧没有预算，写 0 会被报表读成「0 毫秒档」这种不存在的身份。 */
+  it('固定思考档（black_think/white_think）只写在 rapfi 侧，proxy 侧留空', () => {
+    setSeed(null);
+    const src = full.find((a) => typeof a.payload.experiment === 'string' && a.payload.blackTactics);
+    expect(src).toBeTruthy();
+    const clone = JSON.parse(JSON.stringify(src!.payload)) as RawArchive;
+    clone.blackChannel = 'rapfi';
+    const { session, engine } = replay(clone);
+    session.settings.sideConfig.black.rapfiThinkMs = 1000;
+    if (session.expInfo) session.expInfo.blackThink = 1000;
+    const rec = JSON.parse(JSON.stringify(buildGameExport(session, engine, { exported: clone.exported }))) as GameRecord;
+    expect(rec.blackThink).toBe(1000);
+    expect(rec.whiteThink).toBeUndefined(); /* 白方是 proxy：思考时间是模型往返，不是档位 */
+    /* 反例：两侧都不是 rapfi 时两个键都不出现（旧归档因此仍能逐字段复现） */
+    clone.blackChannel = 'proxy';
+    const again = replay(clone);
+    const rec2 = JSON.parse(JSON.stringify(buildGameExport(again.session, again.engine, { exported: clone.exported }))) as GameRecord;
+    expect(rec2.blackThink).toBeUndefined();
+    expect(rec2.whiteThink).toBeUndefined();
+  });
 
   /* 幻影身份回归（2026-10-02 事故）：Rapfi/mock/人类侧**不过战术层**，归档里那侧的档位标签必须是空，
      否则报表按「渠道|战术|思考」分组时会冒出 `rapfi|v9-vcf-sound` 这种并不存在的身份。

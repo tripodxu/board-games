@@ -159,6 +159,8 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 > **战术层耗时列（0002 追加）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms` 记的是**战术层单独耗时**（`computeTactics` + `pickSafestParry`），与 `latency_avg_ms` / 每手 `ms`（那是「战术 + 上游」总耗时）不是一个口径。三列都可为 NULL，NULL 有两种含义：**历史棋谱没有这个字段**，或**该手不过战术层**（Rapfi / mock 渠道刻意短路）——所以 `AVG(tac_ms)` 自动只统计 Jev 渠道，`COUNT(tac_ms)` vs `COUNT(*)` 才能看出覆盖面。
 >
 > **战术档标签同理只在 Jev 渠道有意义**：`games.black_tactics` / `white_tactics` 与 `game_moves.tactics_version` 描述的是**真正跑战术层的那一侧**；Rapfi / mock / 人类侧一律为空（NULL）。判一侧是什么身份要看 `black_channel` / `white_channel`，不要把 `*_tactics` 当成对手的属性（2026-10-02 计时轮的「幻影身份」就是这么来的：脚本旧默认值给 Rapfi 侧写了 `v9-vcf-sound`）。
+>
+> **固定思考档列（`games.black_think` / `white_think`）口径相同**：只有该侧渠道是 `rapfi` 且预算 > 0 时才写（毫秒，`src/core/record/export.ts` 的 `thinkMsOf()`）；`proxy` 侧的「思考时间」是模型往返、人类侧没有预算，一律 NULL——写 0 会在报表里变成「0 毫秒档」这种不存在的身份。**2026-10-03 之前的轮次这两列全是 NULL**（棋局 payload 从来没有这两个键，只有轮次表的 `think_a`/`think_b`），要报当时的 Rapfi 档位得翻轮次配置。
 
 ## 5. 身份与限流（ADR-0013）
 

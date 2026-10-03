@@ -158,6 +158,11 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v13-pressure-gat
    **读成本时把两个口径分开**：`game_moves.ms` 是「战术 + 上游（含重试等待）」的**单步墙钟**，
    随上游快慢在 1 s～10 s 之间浮动（同一臂不同轮实测 1.0 s / 3.5 s / 10.1 s），
    `tac_ms` 才是战术层本身（实测均值 **402 ms** / 最坏 4474 ms）；报「战术层占单步比例」时要用同一轮的 `ms` 做分母。
+   **对手的固定档从 2026-10-03 起落库**：`games.black_think` / `white_think` 只在该侧渠道是 `rapfi`
+   且预算 > 0 时写（毫秒，`src/core/record/export.ts:thinkMsOf()`）；`proxy` 侧留 NULL（它的「思考时间」
+   是模型往返，不是配置）。更早的轮次这两列是 NULL，要报「Rapfi 固定档」只能回头翻
+   `.work/exp-arm*.json` 的 `config.thinkB` 与展示名 `Rapfi(1s)`；UI 侧上限 10 000 ms 来自
+   `index.html` 的 `#expThinkA/B` 选项。
 7. **战术档标签只在 Jev 渠道有意义**：`games.black_tactics` / `white_tactics` 与 `game_moves.tactics_version`
    只描述**真正跑战术层的那一侧**（`proxy` 等 Jev 渠道）。Rapfi / mock / 人类的档位标签一律为空（NULL），
    因为它们压根不进 `computeTactics`——2026-10-02 计时轮就因为实验脚本的旧默认值给 Rapfi 侧写上了

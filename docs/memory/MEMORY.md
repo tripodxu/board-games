@@ -19,6 +19,23 @@
 
 ---
 
+## 2026-10-03 · 固定思考档（`black_think`/`white_think`）长期未落库：成本对照只能翻轮次配置
+
+- **症状**：AI-AI 对比实验的每一局，`games.black_think` / `white_think` 都是 NULL，而轮次表
+  `experiments.think_a` / `think_b` 有值。写 v14 报告要做「战术层 vs Rapfi 固定档」对照时才发现——
+  只能回头翻 `.work/exp-arm*.json` 的 `config.thinkB` 与展示名 `Rapfi(1s)`。
+- **根因**：`src/core/record/export.ts` 的 `buildGameExport()` 从来不写这两个键（只写渠道与战术档），
+  服务端 `src/shared/record-map.ts:375-376` 照 `payload.blackThink`/`whiteThink` 取 ⇒ 恒 NULL。
+  `src/ui/panels/experiment.ts:150-151` 的 `expInfoFor()` 确实把两侧 `rapfiThinkMs` 写进了 `expInfo`，
+  但那份快照只进轮次表与结果表，不进棋局 payload。
+- **修法**：导出侧新增 `thinkMsOf(channel, …candidates)`——**只在 `channel === 'rapfi'` 且预算 > 0 时写**；
+  `proxy` 的「思考时间」是模型往返、人类侧没有预算，写 0 会被报表读成「0 毫秒档」（与 2026-10-02
+  `rapfi|v9-vcf-sound` 幻影身份同源）。取值优先轮次快照 `expInfo.*Think`，回落 `sideConfig.*.rapfiThinkMs`。
+- **教训**：凡「报表要用、但只是配置派生」的字段，都要确认它**真的进了棋局 payload**；晚一轮就少一轮数据，
+  而且事后只能靠工具脚本补救。同理可查的还有：`games.tactics_version` 只反映人机局的黑方（已知）。
+
+---
+
 ## 2026-10-03 · 20 局档位复核：同档方差大于档位差，比分口径失效（要配对样本）
 
 - **为什么做这一轮**：项目所有者要求把 v13 对 Rapfi 的两个档位各跑 20 局（m10573），用来检验

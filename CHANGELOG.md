@@ -163,6 +163,15 @@
 
 ### 修复
 
+- **AI-AI 轮的固定思考档从来没落库**（2026-10-03 写实验报告时发现）：对比实验的每一局，
+  `games.black_think` / `white_think` 都是 NULL——棋局 payload 里压根没有这两个键（`buildGameExport()`
+  只写渠道与战术档），只有轮次表的 `think_a` / `think_b` 有值 ⇒ 报告的「成本对照」只能回头翻
+  `.work/exp-arm*.json` 的 `config.thinkB`。修法：导出时按侧写固定档，**只认 `rapfi` 且预算 > 0**
+  （`thinkMsOf()`；`proxy` 的「思考时间」是模型往返、人类侧没有预算，留 NULL——写 0 会在报表里变成
+  「0 毫秒档」这种不存在的身份，与下面那类幻影身份同源），取值优先轮次快照
+  `expInfo.blackThink/whiteThink`、回落侧配置 `sideConfig.*.rapfiThinkMs`。新增
+  `test/core/record.spec.ts` 用例（rapfi 侧落值 / proxy 侧缺省），口径写进
+  [docs/architecture.md](docs/architecture.md) §4 与 [docs/agents/playbooks.md](docs/agents/playbooks.md) §7。
 - **`smoke:browser` 会「打错靶」且分桶表断言过时**（2026-10-02 实战踩到）：缺省目标 `http://localhost:8787/`
   在本机被**别的应用**占着，脚本照样开页面、拿标题断言通过，其余页签全查不到 ⇒ **2/13**，失败项全是 `no-*`
   标识，极易被误读成产品回归。另：`tac_ms` 上线后分桶表每行多了「战术」格（Rapfi 侧显示 `—`，共 4 格），

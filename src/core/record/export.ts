@@ -17,6 +17,9 @@
  *  - **2026-10-02 起的唯一值语义变化**：`tacticsVersion`/`blackTactics`/`whiteTactics` 只在
  *    「这一侧真的会跑战术层」的渠道上才写档位（`proxy` 系列），`rapfi`/`mock`/人类侧写空串
  *    （D1 里落 NULL）。键集合、拼法与默认值都没动，只是不再把配置里的惰性档位当成事实。
+ *  - **2026-10-03 补的第二个只写「有意义的侧」字段**：`blackThink`/`whiteThink`（固定思考档
+ *    毫秒）只在该侧渠道是 `rapfi` 且预算 > 0 时写（`thinkMsOf()`）。`proxy`/人类侧的思考时间
+ *    不是配置出来的，写 0 会被报表读成「0 毫秒档」。旧归档没有这两个键，新客户端才写。
  */
 import { aiGameMeta, aiMoveMeta, type AiGameMeta, type AiMoveMeta } from '../meta.ts';
 import { effectiveChannelOf, effSide, type EffSide } from '../persist.ts';
@@ -71,6 +74,9 @@ export interface GameRecord {
   firstWin: boolean | null;
   mock: boolean;
   /* ---- 以下为新增（可选）字段 ---- */
+  /** 固定思考档（毫秒）：只有 `rapfi` 侧会写（见 `thinkMsOf()`），其余缺省 */
+  blackThink?: number;
+  whiteThink?: number;
   /** 对局身份：同一局重传恒定（D1 去重键来源） */
   gameUid?: string;
   /** 引擎 id（旧 `gid` 历史上装的是棋种 id，这里显式给一个语义明确的字段） */
@@ -96,6 +102,22 @@ function asSideCfg(cfg: EffSide, human?: boolean): ExportSideCfg {
   };
   if (human) out.human = true;
   return out;
+}
+
+/** 固定思考档（`black_think`/`white_think` 两列）只在**吃固定思考预算**的渠道上写。
+ *
+ *  为什么加值域闸门：`proxy` 的思考时间是模型往返（不是配置出来的），人类侧根本没有预算，
+ *  写 0 会被报表读成「0 毫秒档」这种不存在的身份（与 2026-10-02 的 `rapfi|v9-vcf-sound`
+ *  幻影身份同一类事故）。所以只认 `channel === 'rapfi'` 且 `> 0` 的数值，其余留空（D1 落 NULL）。
+ *  取值优先级：轮次快照（`expInfo.blackThink/whiteThink`，本局开跑时的配置）→ 侧配置
+ *  （`sideConfig.*.rapfiThinkMs`，抽屉当前值）。 */
+function thinkMsOf(channel: string | null | undefined, ...candidates: unknown[]): number | undefined {
+  if (channel !== 'rapfi') return undefined;
+  for (const c of candidates) {
+    const n = typeof c === 'number' ? c : typeof c === 'string' ? Number(c) : NaN;
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+  return undefined;
 }
 
 /** `buildGameExport()` / `exportSideCfg()` 的可选项。 */
@@ -197,6 +219,10 @@ export function buildGameExport(session: GameSession, engine: Engine, opts?: Bui
      （`rapfi`/`mock`/人类侧不跑，见 `view/duel.ts:runsTactics`）。 */
   const bChan = exp ? exp.blackChannel : bCfg.channel;
   const wChan = exp ? exp.whiteChannel : wCfg.channel;
+  /* 固定思考档：`rapfi` 侧的预算必须落库，否则报告的「成本对照」只能回头翻轮次配置
+     （2026-10-03 发现的缺口：AI-AI 轮的 black_think/white_think 长期为 NULL）。 */
+  const bThink = thinkMsOf(bChan, exp ? exp.blackThink : undefined, bCfg.rapfiThinkMs);
+  const wThink = thinkMsOf(wChan, exp ? exp.whiteThink : undefined, wCfg.rapfiThinkMs);
   const rec: GameRecord = {
     format: GAME_EXPORT_FORMAT,
     exported: (opts && opts.exported) || new Date().toISOString(),
@@ -228,6 +254,8 @@ export function buildGameExport(session: GameSession, engine: Engine, opts?: Bui
   };
   if (session.gameUid) rec.gameUid = session.gameUid;
   rec.gameId = session.gameId;
+  if (bThink != null) rec.blackThink = bThink;
+  if (wThink != null) rec.whiteThink = wThink;
   const ws = g.over ? winnerSideOf(engine, g.winner) : null;
   if (ws) rec.winner = ws;
   if (g.over && g.reason) rec.endReason = g.reason;
