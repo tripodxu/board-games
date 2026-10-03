@@ -8,7 +8,7 @@
  * winner→winnerChan 映射、续跑按 tag 失配重跑、pending 复用 gameUid、tag ≤64、note 标明远端来源。
  */
 import { describe, it, expect } from 'vitest';
-import { experimentEntryFrom, ckptAction } from '../../scripts/experiment-worker.mjs';
+import { experimentEntryFrom, ckptAction, DEVICE_ID } from '../../scripts/experiment-worker.mjs';
 import { parseSpec, batchTag } from '../../scripts/lib/batch-common.mjs';
 
 const plan = {
@@ -94,6 +94,11 @@ describe('experimentEntryFrom', () => {
   it('date 为 ISO 串（fillMissing 用它跳过回填）', () => {
     const e = experimentEntryFrom(plan, a, b, summary([{ gameNo: 1, status: 'ok', winner: 'black' }]));
     expect(Number.isNaN(Date.parse(e.date))).toBe(false);
+  });
+
+  it('远端批量的匿名设备 id 合法（D1 里靠它把这批机器跑的行与浏览器轮分开）', () => {
+    // 值域来自 src/worker/lib/validate.ts 的 DEVICE_ID_RE
+    expect(DEVICE_ID).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
   });
 
   it('真实 tag 形状（exp-…-ut-r1）≤64 字符', () => {

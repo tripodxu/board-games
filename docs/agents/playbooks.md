@@ -188,7 +188,12 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v14-live3-fresh 
     于是 `npm run smoke:live` 与 `.work/*.mjs` 探针会**偶发** `UND_ERR_CONNECT_TIMEOUT`（同一分钟 curl 却是 200）。
     跑 node 网络脚本前先设 `$env:HTTPS_PROXY='http://127.0.0.1:10808'; $env:NODE_USE_ENV_PROXY='1'`
     （Node 24 起支持后者；实测 3/3 成功、单次约 300 ms）。Chrome 走系统代理，所以长跑实验不受影响。
-    ② **同一个 D1 可能有第三方在写**：另一个 Agent 的批量对弈 worker 会以 `dev+nogit` 的 `code_version`
-    直连线上库落 `random`/`rapfi` 批次（tag 形如 `exp-20261003042812-rapfi1-r1`，**不建 `experiments` 行**），
-    于是「全局计数恰好 +1」这类断言会假红、`docs/status.md` 的「数据现状」也会漂移。
-    **按 `experiment_tag` 过滤的分析不受影响**；`scripts/smoke-live.mjs` 已把该断言放宽为「至少 +1」。
+    ② **同一个 D1 里混着不同写入者**：SSH 远端批量设施（`scripts/experiment-batch.mjs`，ADR-0019）
+    在空闲主机上直连线上库落 `random`/`rapfi` 批次，tag 形如 `exp-20261003042812-rapfi1-r1`。
+    它有 `experiments` 行，但 2026-10-03 修复之前跑的 26 局：`code_version` 只写 `dev+nogit`
+    （Node 直载没有构建注入）、`device_id` 为 NULL ⇒ **不能与浏览器轮的 `1.0.0+<sha>` 放同一条归因链**。
+    此后 worker 会带 `X-Device-Id: ssh-batch`（可 `BATCH_DEVICE_ID` 覆盖）并把提交自报进 `meta.code`
+    （`dev+nogit+<sha>`）：**要单独筛远端轮次用 `device_id='ssh-batch'`**，或用
+    `code_version LIKE 'dev+nogit+%'`。历史那 26 局仍然只能按 tag 认。
+    **按 `experiment_tag` 过滤的分析不受影响**；`scripts/smoke-live.mjs` 已把「全局计数恰好 +1」的
+    断言放宽为「至少 +1」。

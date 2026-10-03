@@ -89,6 +89,19 @@ function repoHead() {
   } catch (_) { return 'nogit'; }
 }
 
+/** 远端批量不是浏览器设备，但带一个稳定的匿名身份：D1 里才能把这批机器跑出来的行
+    与其它写入者（浏览器轮、历史导入）分开。ADR-0013 的 `X-Device-Id` 是可选的匿名身份，
+    格式 `^[A-Za-z0-9_-]{8,64}$`（`src/worker/lib/validate.ts`）。可用 `BATCH_DEVICE_ID` 覆盖。 */
+export const DEVICE_ID = process.env.BATCH_DEVICE_ID || 'ssh-batch';
+
+let cachedCode = null;
+/** 远端跑的提交自报（H2）：Node 直载没有构建注入，`games.code_version` 否则恒为 `dev+nogit`，
+    D1 里就分不清「哪一版跑的」。形状与浏览器轮一致（`<版本>+<sha>`），缓存一次即可。 */
+function codeOf() {
+  if (cachedCode === null) cachedCode = `dev+nogit+${repoHead()}`;
+  return cachedCode;
+}
+
 /** 一次真上游调用（row 形状与 GET /api/games 的 listItem 对齐，够核对即可）。 */
 async function apiListByTag(origin, tag) {
   try {
@@ -117,7 +130,7 @@ async function apiPostGame(origin, payload, attempts = 3) {
     try {
       const r = await fetch(`${origin}/api/games`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Device-Id': DEVICE_ID },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(30000),
       });
@@ -195,7 +208,7 @@ async function apiPostExperiment(origin, entry) {
     try {
       const r = await fetch(`${origin}/api/experiments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Device-Id': DEVICE_ID },
         body: JSON.stringify(entry),
       });
       if (r.status === 429) throw new Error('HTTP 429 限流');
@@ -296,7 +309,7 @@ async function main() {
 
   ensureDir(gamesDir); ensureDir(ckptDir);
   const head = repoHead();
-  log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun} repoHead=${head}`);
+  log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun} repoHead=${head} device=${DEVICE_ID}`);
 
   const summary = { batchId: plan.batchId, round, tag, repoHead: head, startedAt: new Date().toISOString(), games: [] };
   for (let gameNo = 1; gameNo <= games; gameNo++) {
@@ -441,6 +454,9 @@ async function playOne(plan, a, b, gameNo, dirs) {
       const meta = { ...(decision.meta || {}) };
       meta.byAI = true;
       meta.side = side;
+      /* 自报版本：`games.code_version` 读的是 `meta.code`（src/shared/record-map.ts:379），
+         不写就恒为 `dev+nogit`，D1 里认不出是哪一版跑的。 */
+      meta.code = codeOf();
       session.history.push({
         ply: session.history.length + 1,
         side,

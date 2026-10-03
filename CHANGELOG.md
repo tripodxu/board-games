@@ -250,6 +250,13 @@
 
 ### 修复
 
+- **远端批量的数据卫生（2026-10-03 收口批）**：`scripts/experiment-worker.mjs` 的两个 POST
+  （`/api/games`、`/api/experiments`）现在都带 `X-Device-Id: ssh-batch`（可用 `BATCH_DEVICE_ID` 覆盖），
+  并把提交自报进 `meta.code`（`dev+nogit+<sha>`，`codeOf()` 缓存 `repoHead()`）——
+  此前远端轮次落库是 `code_version = dev+nogit`、`device_id` 为 NULL，D1 里认不出是哪一版、哪台机器跑的，
+  只能按 tag 认。修完可按 `device_id='ssh-batch'` 或 `code_version LIKE 'dev+nogit+%'` 一条 SQL 筛出。
+  限流键是 `kind:IP` 而非设备，加这个头不改限流行为。已跑过的 26 局保持原状（只能按 tag 认）。
+  `test/scripts/experiment-entry.spec.mjs` 加设备 id 值域断言（`scripts` project 44 → 45 例）。
 - **AI-AI 轮的固定思考档从来没落库**（2026-10-03 写实验报告时发现）：对比实验的每一局，
   `games.black_think` / `white_think` 都是 NULL——棋局 payload 里压根没有这两个键（`buildGameExport()`
   只写渠道与战术档），只有轮次表的 `think_a` / `think_b` 有值 ⇒ 报告的「成本对照」只能回头翻

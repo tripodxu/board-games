@@ -248,6 +248,25 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
   审查结论是**不需要紧急隔离**（无结构破坏）。M1–M5 落地后若要更干净，可换 `--origin` 指向独立 Worker+D1，
   并给每批一个稳定 `X-Device-Id`（`batch-<batchId>`）便于一条 SQL 过滤。
 
+### P7 数据卫生收口（✅ 2026-10-03，机制线收口同批）
+
+P6 结尾建议的「稳定 `X-Device-Id`」与「自报版本」已落地，都是远端 worker 的两行改动：
+
+- **匿名身份**：`scripts/experiment-worker.mjs` 的 `apiPostGame` / `apiPostExperiment` 两个 POST 现在都带
+  `X-Device-Id: ssh-batch`（常量 `DEVICE_ID`，可用环境变量 `BATCH_DEVICE_ID` 覆盖；值域同
+  `src/worker/lib/validate.ts` 的 `DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/`）。
+  限流键是 `kind:IP` 而不是设备，所以加这个头**不改限流行为**；`games`/`experiments` 路由会先
+  `touchDevice` ⇒ 下一轮远端实验会首次建出 `ssh-batch` 设备行。
+- **版本自报**：`meta.code = dev+nogit+<sha>`（`codeOf()` 缓存一次 `repoHead()`）。
+  `games.code_version` 读的是 `meta.code`（`src/shared/record-map.ts:379`），不写就恒为 `dev+nogit`，
+  D1 里认不出是哪一版跑的；形状与浏览器轮 `<版本>+<sha>` 一致，所以同一条 SQL 能一起分组。
+- **代价与边界**：前三轮 26 局（`exp-20261003042812-rapfi1-r1` / `…smoke1-r1` / `…x1-r1`）跑在修复之前
+  ⇒ `device_id` 仍为 NULL、`code_version` 仍是裸 `dev+nogit`，只能按 tag 认。**要真正隔离写入**
+  （例如把设施交给别的 Agent 长期跑）仍然要换 `--origin` 指到独立 Worker + D1，这一条没有自动化。
+- 测试：`test/scripts/experiment-entry.spec.mjs` 加了设备 id 值域断言（`scripts` project 44 → 45 例）。
+- 同批的收口决定：**机制线暂停**（v14 之后不再开新机制，静默普查已证明规则 10 之下早盘没有 1-ply 可判定
+  的机制），只保留维护、数据卫生与配对样本设计；见 `docs/plans/2026-10-03-tactics-v14-fresh-live3.md` §8。
+
 ## 9. 未闭环 / 遗留
 
 - **Elo 样本 < 50 局/档**：官方口径下所有身份都标 ⚠；三轮合并后总样本 26 局/档，仍属噪声内，
