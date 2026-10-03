@@ -15,6 +15,9 @@
  * 让对手做四手数最小的点，削掉他的网），没有削点时才照旧抢活三——理由见 gomoku.ts 的
  * v13 注释与 ADR-0017。
  *
+ * v14（`live3Fresh`）不动层数，只**纠偏** live3 两层的判据：制造点必须由这一手新造
+ * （见 types.ts 的 Live3Options 与 docs/plans/2026-10-03-tactics-v14-fresh-live3.md）。
+ *
  * 纯逻辑：只依赖 engine 接口 + 版本登记表；无 DOM、无网络。异步仅出现在 callRaw 一侧。
  */
 import { weightedPick } from './weighted.ts';
@@ -84,11 +87,11 @@ export interface DecideResult {
  * 常量与缓存
  * ------------------------------------------------------------------ */
 
-/** 17 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
+/** 18 个机制键全开的桩版本（引擎没接战术登记表时的兜底）。 */
 const ALL_MECH: Record<string, boolean> = {
   win: true, block: true, open4: true, threat: true,
   vcfAttack: true, vcfDefense: true, vctAttack: true, vctDefense: true, pressureGate: true,
-  live3Attack: true, live3Defense: true,
+  live3Attack: true, live3Defense: true, live3Fresh: true,
   parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true,
 };
 
@@ -367,20 +370,23 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
   }
 
   /* 4-ply 活三（v10）：v9 之前只有「活四制造点」（2-ply），跳活三/斜向组合全靠模型自己看，
-     实测正是输给搜索算法的口子。这里用引擎的 live3Makers / live3Deny 真推演（4 手内必胜）。 */
+     实测正是输给搜索算法的口子。这里用引擎的 live3Makers / live3Deny 真推演（4 手内必胜）。
+     v14 起 `live3Fresh` 把判据纠偏成「制造点必须由这一手新造」：注入模型的事实与接管点不再
+     被本方既有的活四制造点放大（实测虚报率 67.9%，见 Live3Options 与 v14 计划文档）。 */
   if (engine.deepTactics && typeof engine.live3Makers === 'function' && win.length === 0 && block.length === 0
       && oppSide && (M.live3Attack || M.live3Defense)) {
     try {
       const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
+      const l3opts = { fresh: M.live3Fresh === true };
       if (M.live3Defense) {
-        res.live3_opponent = engine.live3Makers(st, oppSide.id);
+        res.live3_opponent = engine.live3Makers(st, oppSide.id, l3opts);
         if (res.live3_opponent.length && typeof engine.live3Deny === 'function') {
-          const deny = engine.live3Deny(st, side, candNotations);
+          const deny = engine.live3Deny(st, side, candNotations, l3opts);
           if (deny && deny.best && deny.best.length) res.live3_deny_points = deny.best;
         }
       }
       /* 抢攻层留到最后算：对手已有活三时我们的活三通常来不及（守卫逻辑在 client 侧判） */
-      if (M.live3Attack) res.live3_you = engine.live3Makers(st, side);
+      if (M.live3Attack) res.live3_you = engine.live3Makers(st, side, l3opts);
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
   }
 

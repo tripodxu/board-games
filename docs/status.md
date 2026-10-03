@@ -173,6 +173,16 @@
   Jev 回合口径不可互引。全文与证据清单见 [plans/2026-10-03-tactics-v14-evidence.md](plans/2026-10-03-tactics-v14-evidence.md)；
   证据 `.work/v14-*.log`、`.work/review-v14-control.log`、`.work/review-live3-gift.log`（都不入库）。
 
+- **战术 v14 `v14-live3-fresh`（活三判据纠偏，2026-10-03，已落盘、对照实验进行中）**：`live3After`
+  自 v10 起漏了「新造」前提 ⇒ 本方已握 ≥2 个活四制造点时，**任何闲棋**都被判成「制造活三」。
+  五轮 3864 个我方回合实测：引擎报点 18675 个里 **12676 个（67.9%）是幻影点**，整集皆假 16 回合（占非空 1.0%），
+  纠正口径**零漏报**；用接管层标签分开「决策」与「事实」后：`live3Attack` 289 手 + `live3Defense` 122 手真接管
+  **没有一手**落在幻影点上，78 手「实走落在幻影点」全部来自 `block`(36)/无接管(33)/`win`(9) ⇒
+  **纠偏不改任何一手已发生的决策**，修的是 **212 手 / 5.5% 回合**给模型看的事实（其中 80 手模型自选、16 手整集皆假）。
+  缺省口径不变（v0–v13 归因与回放逐字如一），成本中位 14 ms / 最坏 66 ms。
+  计划与证据见 [plans/2026-10-03-tactics-v14-fresh-live3.md](plans/2026-10-03-tactics-v14-fresh-live3.md)、
+  设计记录 [adr/0018-live3-fresh-correction.md](adr/0018-live3-fresh-correction.md)（修正 0014 的 L3 定义）。
+
 - **战术层耗时口径（2026-10-02 起）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms`
   单独记 `computeTactics` + `pickSafestParry` 的耗时（`game_moves.ms` 是「战术 + 上游」总耗时，
   两个口径不要混读）。**Rapfi / mock 不过战术层，记 NULL 而不是 0**，所以 `AVG(tac_ms)` 的样本天然只剩 Jev 侧；

@@ -14,7 +14,7 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
-import type { Engine, GameStatus, JevSerialized, Live3Deny, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Live3Options, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -348,34 +348,49 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     board[r]![c] = 0;
     return n >= 2;
   }
-  /** 落 (r,c)（调用方保证为空）后是否形成 L3（≥2 个 L2 点）。 */
-  function live3After(board: Board, p: number, r: number, c: number, cands: number[][]): boolean {
+  /** p 方当前的 L2 点集合（＝落子后 ≥2 个成五点，即活四制造点），键 = r*N+c。v14 纠偏的基线。 */
+  function l2Set(board: Board, p: number, cands: number[][]): Set<number> {
+    const s = new Set<number>();
+    for (const [r, c] of cands) {
+      if (board[r]![c] !== 0) continue;
+      if (openFourAfter(board, p, r, c)) s.add(r * N + c);
+    }
+    return s;
+  }
+  /** 落 (r,c)（调用方保证为空）后是否形成 L3（≥2 个 L2 点）。
+   *  给了 before（落子前本方的 L2 集合）就只数**这一手新造**的 L2 点（v14 纠偏口径）；
+   *  不给 = 旧口径（只要求「落子后存在 ≥2 个 L2 点」，本方既有活四制造点会把任意闲棋放大成 L3）。 */
+  function live3After(board: Board, p: number, r: number, c: number, cands: number[][], before?: Set<number>): boolean {
     board[r]![c] = p;
     let cnt = 0;
     for (const [qr, qc] of cands) {
       if (board[qr]![qc] !== 0) continue;
+      if (before && before.has(qr * N + qc)) continue;
       if (openFourAfter(board, p, qr, qc)) { cnt++; if (cnt >= 2) break; }
     }
     board[r]![c] = 0;
     return cnt >= 2;
   }
-  /** 数 p 方当前有几个 L3 点；数到 limit 就早退（调用方用返回值的截断语义做比较）。 */
-  function live3Count(board: Board, p: number, cands: number[][], limit: number): number {
+  /** 数 p 方当前有几个 L3 点；数到 limit 就早退（调用方用返回值的截断语义做比较）。
+   *  fresh（v14）＝按「新造」口径数（基线只算一次，摊到每个候选上）。 */
+  function live3Count(board: Board, p: number, cands: number[][], limit: number, fresh?: boolean): number {
+    const before = fresh ? l2Set(board, p, cands) : undefined;
     let cnt = 0;
     for (const [r, c] of cands) {
       if (board[r]![c] !== 0) continue;
-      if (live3After(board, p, r, c, cands)) { cnt++; if (cnt >= limit) break; }
+      if (live3After(board, p, r, c, cands, before)) { cnt++; if (cnt >= limit) break; }
     }
     return cnt;
   }
-  function live3Makers(st: GomokuState, sideId: string): string[] {
+  function live3Makers(st: GomokuState, sideId: string, opts?: Live3Options): string[] {
     const p = num(sideId);
     const board = clone(st.board);
     const cands = nearEmpties(board);
+    const before = opts?.fresh ? l2Set(board, p, cands) : undefined;
     const out: string[] = [];
     for (const [r, c] of cands) {
       if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
-      if (live3After(board, p, r, c, cands)) out.push(notation(r, c));
+      if (live3After(board, p, r, c, cands, before)) out.push(notation(r, c));
     }
     return out;
   }
@@ -384,14 +399,16 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
    * 返回的 `best` 是并列最优里**最先评估到**的那些（一旦数到 after=0 就收工，不做全量枚举）：
    * 决策只需要一个够好的点，全量枚举并列会多花几倍时间，而收益（让模型在等价点里挑）很小。
    */
-  function live3Deny(st: GomokuState, sideId: string, candNotations: string[]): Live3Deny {
+  function live3Deny(st: GomokuState, sideId: string, candNotations: string[], opts?: Live3Options): Live3Deny {
     const me = num(sideId), opp = me === 1 ? 2 : 1;
     const board = clone(st.board);
     const cands = nearEmpties(board);
-    const before = live3Count(board, opp, cands, 999);
+    const fresh = opts?.fresh === true;
+    const before = live3Count(board, opp, cands, 999, fresh);
     if (before === 0) return { before: 0, after: 0, best: [] };
     const oppMakers: string[] = [];
-    for (const [r, c] of cands) if (live3After(board, opp, r, c, cands)) oppMakers.push(notation(r, c));
+    const oppBefore = fresh ? l2Set(board, opp, cands) : undefined;
+    for (const [r, c] of cands) if (live3After(board, opp, r, c, cands, oppBefore)) oppMakers.push(notation(r, c));
     const order: string[] = [];
     const seen: Record<string, true> = {};
     for (const n of oppMakers.concat(candNotations)) {
@@ -409,7 +426,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       const n = order[i]!;
       const { r, c } = parseN(n);
       board[r]![c] = me;
-      const cnt = live3Count(board, opp, cands, best + 1);
+      const cnt = live3Count(board, opp, cands, best + 1, fresh);
       board[r]![c] = 0;
       if (cnt < best) { best = cnt; bestPoints = [n]; }
       else if (cnt === best) bestPoints.push(n);

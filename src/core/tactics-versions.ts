@@ -1,6 +1,6 @@
 /* tactics-versions.ts — 战术层版本登记表（迁移自 js/tactics-versions.js）
  *
- * 为什么存在：战术层是 13 次提交逐层累加上线的，没有登记表就无法回答
+ * 为什么存在：战术层是 14 次提交逐层累加上线的，没有登记表就无法回答
  * 「这个版本为什么强/弱」，实验也无法按版本归因。机制键与 jev 接管链一一对应
  * （优先级从高到低）：
  *   win > block > open4 > threat > vcfAttack > vctAttack > vcfDefense > vctDefense > pressureGate > live3Attack > live3Defense > parry > parry3 > parry4
@@ -8,6 +8,7 @@
  *         vcfTry   = vcfDefense 链首占不住时逐点试干预（v8, 9cf4a88）；
  *         sound    = vcfWin 伪胜闸门（引擎侧 gomoku.defenderWinsFull，v9, a16fdd9）；
  *         pressureGate = v13 压力闸门：对手做四手数更多时先削点（pressureCut），不抢活三。
+ *         live3Fresh   = v14 活三判据纠偏：活三制造点必须由这一手**新造**（缺省口径保留给 v0–v13）。
  *
  * 权威来源：git 历史（版本边界只认 commit 时间，git log %ci 为北京时间）× 棋谱数据。
  * 版本一版都不能少；v0-off 是数据驱动的基线（战术层上线前，暂无归档棋谱）。
@@ -84,10 +85,13 @@ export const VERSIONS: TacticsVersion[] = [
   { id: 'v13-pressure-gate', name: '压力闸门', rank: 13, commit: '10762a6', commitAt: '2026-10-02 23:16',
     date: '2026-10-02', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 52,
     note: '压力闸门（用户要求：根据所有已跑的实验整合出下一版战术优化）。新增一层 `pressureGate`（削对手做四点）：**对手的做四手数（`pressure_opponent`）大于我们（`pressure_you`）时，先走削点（`pressure_cut_points`）再谈进攻**。引擎新增两个方法：`fourPressure(st, sideId)`（车氏 ≤2 邻域内落子即成冲四的空点数，精确计数不早退——早退会让两侧同时触顶而误判「不落后」）与 `pressureCut(st, sideId)`（**候选序 = 模型候选点 → 对手做四点的车氏 ≤2 邻域（按距离升序）→ 其余邻近空点**，上限 `PRESSURE_CUT_MAX = 120`；每个候选做 1-ply 模拟，只有「落子后对手做四手数**严格下降**」才算削点，并列时取自己做四手数更大者，保留前 `PRESSURE_CUT_KEEP = 3` 个。**候选序是硬要求**：`.work/v13-cut-debug.mjs` 实测按行序盲试、或让调用点在候选为空时兜底成「全部合法着法」，会把 `1be84659` ply24 的全盘最优削点 `C8`（对手做四 6 → 4）挤出候选上限，削点集变空集——表现为「25 个压力落后回合 / 0 个有削点」）；战术层把它们算成 `pressure_you` / `pressure_opponent` / `pressure_cut_points` 三个事实字段。**依据（六轮 rapfi 对照 / 1787 个 Jev 回合 / 探针 `.work/v13-pressure-probe.mjs`，独立实现量双方做四手数）**：`live3Attack` 实走 205 手（11.5%），其中 **39 手（19.0%，占全部回合 2.2%）在落子前对手做四手数已超过我们**；这 39 手实走之后对手仍握 ≥2 个做四点（双四威胁 = 2 手胜）的有 **37 手**，而改走「拆对手活三点」能把对手做四手数压得更低的有 **37/39、0 手更差**，平均 −1.87 个，双四威胁从 37 手降到 **7 手**；候选点可用率 39/39（引擎的候选集是探针那套活三点的**超集**，度量同一 ⇒ 只能找到不差于它的点）。**为什么不是「拦下 live3Attack 让它落到 live3Defense」**：实测那 5 个闸门回合（v12@500ms 轮 `exp-20261002115126` 的 25 手 live3Attack 里）`live3_deny_points` **全为空**——引擎 `live3Deny` 的候选与判据比独立实现严，拦下来只会掉到 parry 系，削不到对手压力、复现不出 −1.87，故闸门自带削点搜索。语义依据：ADR-0015 已修正「活三＝4 手内必胜」的旧口径（两个 L2 点互斥，真双威胁实测 0 次），活三只是**逼手**，对手做四点密集时才真危险。**漏杀风险为零**：真正的强制胜（VCF / VCT）在接管链上排得更前，本层只在「没有算得出的必胜链」时才算；**削点为空时本层不开火，行为与 v12 逐字一致**（最小回归面）。**开火四条**：`M.pressureGate` + 有削点 + 压力落后 + **`danger_points_opponent` 为空**（安全线：削点搜索只认手数、不认「对手下一步就有杀」，`test/engines/tactics.test.mjs` 的 p18 夹具「双 danger 并存」抓到过反例——当时它会挑走 `I9`；加上这条守卫后与 `live3Attack` 站同一条线，危险局面交回 `parry` / `safeSort`）。**位置**：`src/core/jev/client.ts` 接管链的新分支，插在 `vctDefense` 之后、`live3Attack` 之前（抢活三正是要拦的那一步；也排在 `live3Defense` 之前，因为削点直接压对手做四手数，而 `live3_deny_points` 在实测里经常为空）。**回归扫描（`.work/v13-cut-check.mjs`，三个 v12 回合 = 800 个 Jev 回合逐手重算，回答用户「看看优化是否有回归降低能力的风险」）**：有削点且压力落后 **78 手（9.8%）**、闸门**真能接管 26 手（3.3%）**，其余 52 手被更高层挡住（`vcfDefense` 40 / `parry4` 7 / `vcfAttack` 5 / `open4` 3 / `vctAttack` 3 / `vctDefense` 1 —— 优先级正确，不是漏杀）；对手做四手数 **更优 24 / 持平 54 / 更差 0**、平均 −0.69 个，双四威胁 **45 → 30**；`pressureCut` 单次成本均值 **4.0 ms** / 中位 3 / 最坏 9。**代价（已量化）**：真接管的 26 手里我们自己的做四手数平均 **−1.92 个**、13 手让掉攻势 ⇒ 这是「用攻势换安全」的取舍。**同口径 A/B（tag `exp-20261002160819`，`rapfi@1000ms`，12 局，2026-10-03）**：**9 胜 0 和 3 负（75.0%，对比 v12 同档 10 胜 0 和 2 负 = 83.3%）**——一局之差在 12 局样本里落在噪声内，比分口径在这轮无效；**决定性证据是接管标签 × 局结果的交叉表**：四个进攻类层（`vctAttack` / `open4` / `win` / `vcfAttack`）在 9 个胜局合计命中 **79 手**、3 个负局命中 **0 手**，三局负局的「我方有杀」全为 0 ⇒ **输在「赢不了」而不是「防不住」**，本层是纯防守机制、结构上治不了这个病。**结论：机制按设计工作（对手做四手数确实降、双四威胁确实减）但不是当前瓶颈 ⇒ 保留、不再加码**，下一版转向进攻侧。另有一轮被打断的首轮（tag `exp-20261002154056`，3 局 / 59 手，无实验行）未计入。**20 局档位复核（用户 m10573：各 20 轮）**：`rapfi@1000ms` 20 局 **11 胜 1 和 8 负（57.5% / 不败率 60.0%）**、`rapfi@2000ms` 20 局 **13 胜 2 和 5 负（70.0% / 75.0%）**；本档同档合并 = **32 局 20 胜 1 和 11 负（64.1%）**。⚠️ 同档两轮差 17.5 个百分点（12 局 75.0% → 20 局 57.5%）**大于档位之间的差** ⇒ 比分由上游采样方差主导，20 局仍分辨不出档位效应；能分辨的是机制层。成本（同轮同分母）：战术层 `tac_ms` 中位 240 / 262 ms、均值 661 / 685 ms、最坏 5961 / 7090 ms，两轮一致；「战术层占单步比例」6.9% vs 59.7% **不可跨轮比较**（1000ms 轮有 99 次状态 0 传输错误把上游往返抬到 8854 ms，2000ms 轮 0 次错误、往返仅 462 ms）。逐手复盘（`.work/v12-round-postmortem.mjs`）：1000ms 轮 469 回合 / 我方有杀 82 / 防守机会 124 / 本层开火 1 / 实走拆掉 100 / **真救 0 / 拆不掉 24**；2000ms 轮 598 / 114 / 147 / 开火 2 / 拆掉 131 / **真救 0 / 拆不掉 16** —— **两轮 40 个「拆不掉」回合全部是「全盘没有拆点」**（已经输了的局面），`vctDefense` 两轮合计开火 3 次、真救 0，仍未被实战检验。' },
+  { id: 'v14-live3-fresh', name: '活三判据纠偏', rank: 14, commit: '待回填（v14 实现提交）', commitAt: '2026-10-03 11:39',
+    date: '2026-10-03', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true }, games: 0, gamesVerified: 0,
+    note: '活三判据纠偏（用户指令「继续探索v14」）。**不加层、不加预算**，只把 live3 两层用的判据修成它本来就该有的语义：`live3After` 自 v10 上线起只要求「落子后本方存在 ≥2 个活四制造点（L2）」，**没有要求这些点由这一手新造** ⇒ 本方本来就有活四制造点时，任何一步闲棋都被判成「制造活三」。引擎侧加可选基线 `before`（`l2Set`），`live3Makers` / `live3Deny` 收 `opts.fresh`，战术层按 `M.live3Fresh` 传参；**缺省仍旧口径**，所以 v0–v13 的历史归因与回放逐字不变。**依据（`.work/v14-live3-correct-scan.mjs`，五轮 rapfi 对照共 3864 个回合，逐回合用独立实现交叉核对）**：引擎口径非空 1648 回合（42.7%），其中整集全假 16 回合（占非空 1.0%）；引擎报点 18675 个里 **12676 个（67.9%）是幻影点**；纠正口径**零漏报**（引擎集恒为纠正集的超集）。**影响面用接管层标签实测（`.work/v14-live3-tac-scan.mjs`，同一批 3864 回合）**：`live3Attack` 真接管 289 手、`live3Defense` 122 手，**没有一手落在幻影点上**（411/411 纠正口径仍认，且 `live3Defense` 比的是 `live3Deny` 的 best）；78 手「实走落在幻影点」全部来自其它层或模型自选（`block` 36 / 无接管 33 / `win` 9）⇒ **纠偏不会改变任何一手已发生的决策**，只收窄给模型看的事实面：旧集合非空且与纠正集合不同 **212 手（占我方回合 5.5%）**，其中无接管（模型自选）80 手、整集皆假 16 手。不改规则、不加深搜索、不动层数。**成本**：纠正口径单回合中位 14ms / p90 24ms / 最坏 66ms（对照一次 Jev 往返约 1s），因为它把 baseline 只算一次摊到每个候选上。**同时修掉的是给模型看的事实**：`live3_you` / `live3_opponent` / `live3_deny_points` 从 68% 幻影改成真话（早盘探针 `.work/v14-threat-race.mjs` 五轮 76 局：短胜局早盘真活三 1.4 个 vs 短负 0.6 个，是唯一稳定分型的早盘量）。**如实说明**：这是**纠偏、不是棋力杠杆**——真接管的 411 手在两套口径下判据一致（0 手被改），改变的是 212 手 / 5.5% 回合里注入模型的 `live3_*` 描述从幻影变真话，强度增量在 12 局量级上不可分辨（同档两轮 20 局差 17.5 个百分点 > 任何档位差）；它的价值是「说真话」，后续任何「活三事实」的读数都以本档为准。' },
 ];
 
 /** 当前档位（最后一档）。 */
-export const CURRENT = 'v13-pressure-gate';
+export const CURRENT = 'v14-live3-fresh';
 
 const BY_ID: Record<string, TacticsVersion> = {};
 VERSIONS.forEach((v) => { BY_ID[v.id] = v; });
@@ -126,8 +130,8 @@ export function allows(version: TacticsVersion | null | undefined, mech: string)
  * 基准与声明合一，不再有「窗口 vs 实测」这对矛盾，也就不需要台账与审计函数。
  * 那 20 局的历史事实改由 test/core/attribution.spec.ts 钉在数据上断言。 */
 
-/** 机制键（顺序即接管链顺序 + 三个附加键）。 */
-export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense', 'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound']);
+/** 机制键（顺序即接管链顺序 + 四个附加键）。 */
+export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense', 'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound', 'live3Fresh']);
 
 /** 全部档位 id（注册顺序）。 */
 export function ids(): string[] {
@@ -137,7 +141,7 @@ export function ids(): string[] {
 function U(cond: unknown, msg: string): void { assert(cond, msg); }
 
 export function selfTest(): void {
-  assert(VERSIONS.length === 14, '应登记 13 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
+  assert(VERSIONS.length === 15, '应登记 14 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
   U(CURRENT === VERSIONS[VERSIONS.length - 1]!.id, '当前档必须是最后一档');
   VERSIONS.forEach((v, i) => {
     U(v.rank === i, v.id + ' rank 不连续');

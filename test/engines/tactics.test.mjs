@@ -56,14 +56,14 @@ const VCF_SEQ = ['E7', 'D7', 'F7', 'A1', 'G7', 'A2', 'H5', 'A3', 'H6', 'B1'];
 const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
 
 /* ------------------------------------------------------------------ *
- * ① 版本登记表（git 历史 × 棋谱数据双锚定：12 个战术版本 + 1 数据驱动基线）
+ * ① 版本登记表（git 历史 × 棋谱数据双锚定：13 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v13-pressure-gate', '当前档应为 v13-pressure-gate（压力闸门 / 削对手做四点）');
+  eq(R.CURRENT, 'v14-live3-fresh', '当前档应为 v14-live3-fresh（活三判据纠偏 / 制造点必须新造）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 14, '应为 13 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 15, '应为 14 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
@@ -78,11 +78,13 @@ S.t('版本登记表：机制集合沿梯级单调不减', () => {
   }
 });
 
-S.t('版本登记表：十四级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14）', () => {
+S.t('版本登记表：十四级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
     'v10-live3': 11, 'v11-vct': 12, 'v12-vct-def': 13, 'v13-pressure-gate': 14,
+    /* v14 不加层：层数不变，只纠偏 live3 两层的判据 */
+    'v14-live3-fresh': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
@@ -98,7 +100,7 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v13-pressure-gate 的实证局数看 gamesVerified）');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v14-live3-fresh 的实证局数看 gamesVerified）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
@@ -763,7 +765,7 @@ S.t('v13 削点：战术事实按档给（v12 只会抢活三，v13 报出削点
 S.t('v13 削点：决策级接管（v12 走活三 E9/live3Attack，v13 走削点 D12/pressureGate）', async () => {
   const st = play(gomoku, P13_SEQ);
   const probs = { E9: 0.6, H12: 0.2, D12: 0.05 };   /* 模型偏好正是实走的 E9 */
-  const d13 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d13 = await withFetch(repliesWith(probs), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v13-pressure-gate' }));
   ok(d13.notation === 'D12' && d13.meta.tactics === 'pressureGate',
     'v13 应被 pressureGate 接管走 D12，实际：' + d13.notation + '/' + d13.meta.tactics);
   eq(d13.meta.tacticsVersion, 'v13-pressure-gate', 'meta.tacticsVersion 应记录 v13-pressure-gate');
@@ -771,6 +773,58 @@ S.t('v13 削点：决策级接管（v12 走活三 E9/live3Attack，v13 走削点
     () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v12-vct-def' }));
   ok(d12.notation === 'E9' && d12.meta.tactics === 'live3Attack',
     'v12 档应照旧抢活三 E9，实际：' + d12.notation + '/' + d12.meta.tactics);
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑤f v14 活三判据纠偏（`live3Fresh`：制造点必须由这一手新造）
+ * ------------------------------------------------------------------ */
+/* 夹具 A：黑活三 D1/E1/F1 两端皆空（⇒ 落子前就已有 2 个活四制造点），白远处三散子。
+ * 旧口径下「落子后仍存在 ≥2 个活四制造点」恒真 ⇒ 连 D3 这种与三条毫不相干的闲棋都算制造点。 */
+const FRESH_SEQ = ['D1', 'A15', 'E1', 'B15', 'F1', 'C15'];
+/* 夹具 C：黑两条开放二 D1/E1 与 H8/I8，白散子 —— 落子前没有任何活四制造点（baseline 为空），
+ * 纠正口径必须与旧口径逐字一致（对照组）。 */
+const FRESH_CTRL_SEQ = ['D1', 'A15', 'E1', 'C15', 'H8', 'A13', 'I8', 'C13'];
+
+S.t('v14 活三纠偏：已有活三时，旧口径把闲棋也判成制造点', () => {
+  const st = play(gomoku, FRESH_SEQ);
+  const old = gomoku.live3Makers(st, 'black');
+  const fresh = gomoku.live3Makers(st, 'black', { fresh: true });
+  ok(old.length >= 20, '旧口径应把大量邻近空点判成制造点，实际 ' + old.length);
+  ok(old.indexOf('B1') >= 0, '旧口径应含活三端点 B1（这一手确实能成活四）');
+  ok(old.indexOf('D3') >= 0, '旧口径应把与三条无关的闲棋 D3 也算进来（幻影点）');
+  eq(fresh.length, 0, '纠正口径下这一手什么都没新造 ⇒ 应为空集，实际 ' + JSON.stringify(fresh));
+  deepEq(gomoku.live3Makers(st, 'black', { fresh: false }), old,
+    '显式 fresh:false 必须与缺省逐字一致（v0–v13 的历史归因与回放不能变）');
+});
+
+S.t('v14 活三纠偏：事实层按档给（旧档 28 个幻影点，v14 报空，真威胁不变）', () => {
+  const st = play(gomoku, FRESH_SEQ);
+  const v13 = tacOf(gomoku, st, 'v13-pressure-gate');
+  const v14 = tacOf(gomoku, st, 'v14-live3-fresh');
+  ok(v13.live3_you.length >= 20, 'v13 档应照旧报出全部幻影点，实际 ' + v13.live3_you.length);
+  ok(v13.live3_you.indexOf('D3') >= 0, 'v13 档的 live3_you 应含幻影点 D3');
+  eq(v14.live3_you.length, 0, 'v14 档的 live3_you 应为空（模型不再收到幻影事实），实际 ' + JSON.stringify(v14.live3_you));
+  deepEq(v14.vcf_win_you, v13.vcf_win_you, '纠偏只动 live3 判据：真威胁事实必须逐字不变');
+  deepEq(v14.vcf_win_you, ['C1'], '本局面黑有真 VCF 胜点 C1（v13/v14 都应报出）');
+});
+
+S.t('v14 活三纠偏：真制造点上结果逐字不变（对照组 · 双活三局面）', async () => {
+  const st = play(gomoku, FRESH_CTRL_SEQ);
+  const old = gomoku.live3Makers(st, 'black');
+  deepEq(gomoku.live3Makers(st, 'black', { fresh: true }), old,
+    '落子前没有活四制造点（baseline 为空）时，纠正口径必须与旧口径逐字一致');
+  deepEq(old, ['C1', 'F1', 'G8', 'J8'], '本局面真制造点应是 C1/F1/G8/J8');
+  deepEq(tacOf(gomoku, st, 'v14-live3-fresh').live3_you, old, 'v14 档在这类局面上不该改变任何点');
+  const probs = { C1: 0.6, F1: 0.2, H12: 0.1 };
+  const d13 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v13-pressure-gate' }));
+  const d14 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-live3-fresh' }));
+  ok(d13.notation === 'C1' && d13.meta.tactics === 'live3Attack',
+    'v13 档应由 live3Attack 接管走 C1，实际：' + d13.notation + '/' + d13.meta.tactics);
+  ok(d14.notation === 'C1' && d14.meta.tactics === 'live3Attack',
+    'v14 档在真制造点上必须照旧接管走 C1（纠偏不是削弱），实际：' + d14.notation + '/' + d14.meta.tactics);
+  eq(d14.meta.tacticsVersion, 'v14-live3-fresh', 'meta.tacticsVersion 应记录 v14-live3-fresh');
 });
 
 /* ------------------------------------------------------------------ *

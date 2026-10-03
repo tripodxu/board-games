@@ -87,6 +87,22 @@ export interface Live3Deny {
 }
 
 /**
+ * 活三判据选项（v14 纠偏）。
+ * 缺省 / `fresh: false` = 旧口径：只要「落子后本方存在 ≥2 个活四制造点」就算活三制造点——
+ * 本方本来就有活四制造点时，一步闲棋也会被判成「制造活三」，实测虚报率 67.9%。
+ * `fresh: true` = 纠偏口径：只数**这一手新造**的活四制造点（落子后新增 ≥2 个），
+ * 也就是「活三制造点必须由这一手造出来」。
+ * 实测口径（五轮 76 局 / 我方 3864 回合，`.work/v14-live3-tac-scan.log`）：旧口径报出的点
+ * 67.9% 是幻影；但 `live3Attack` 289 手、`live3Defense` 122 手真接管**没有一手**落在幻影点上
+ * （纠偏后 411/411 仍被认），78 手「实走落在幻影点」全部来自 `block`/`win`/模型自选 ⇒
+ * **纠偏改变的是注入模型的事实**（212 手 / 占我方回合 5.5% 的 `live3_*` 描述失真，其中 16 手
+ * 整集皆假），不是接管决策。见 docs/plans/2026-10-03-tactics-v14-fresh-live3.md。
+ */
+export interface Live3Options {
+  fresh?: boolean;
+}
+
+/**
  * VCT 搜索预算（可选项，缺省走引擎常量）。供离线标定与实验扫描用：
  *   movesMax   每层最多展开几个攻击方着法（默认 10）
  *   nodeLimit  节点上限（默认 3000）
@@ -162,13 +178,15 @@ export interface Engine<S = any> {
   /**
    * 活三制造点（L3）：落子后自己有 ≥2 个活四制造点＝4 手内必胜威胁（v10 战术层用）。
    * 覆盖 labelPoint 的连续三模式认不出的跳活三 / 斜向组合。返回记法列表，可能为空。
+   * opts.fresh（v14）＝只认「这一手新造」的活四制造点，缺省为旧口径（见 Live3Options）。
    */
-  live3Makers?(st: S, sideId: string): string[];
+  live3Makers?(st: S, sideId: string, opts?: Live3Options): string[];
   /**
    * 破活三：在候选记法里挑出让对手 L3 点最少的点（v10 战术层用）。
    * 对手的 L3 点本身优先试；after 为剩下多少，best 为并列最优（见实现注释）。
+   * opts.fresh（v14）＝两侧判据都换成「新造」口径（见 Live3Options）。
    */
-  live3Deny?(st: S, sideId: string, candNotations: string[]): Live3Deny;
+  live3Deny?(st: S, sideId: string, candNotations: string[], opts?: Live3Options): Live3Deny;
   /**
    * VCT（连续威胁搜索）：把 vcfWin 的冲四链扩展到「冲四 + 活三逼迫」（v11 战术层用）。
    * 守方应手精确枚举（冲四→唯一堵点；活三→真能拆掉全部必胜点的点），黑方禁手点不算应手。
