@@ -153,12 +153,13 @@ npm run deploy           # 构建 + wrangler deploy（需 CLOUDFLARE_API_TOKEN�
 npm run typecheck        # tsc --noEmit
 
 # 测试（npm test 是最省事的总闸）
-npm test                 # test:engines + test:new（= 28 个文件 / 300 用例；**不含 test:tactics**）
+npm test                 # test:engines + test:new（= 37 个文件 / 382 用例；**不含 test:tactics**）
 npm run test:engines     # 纯 Node：七引擎 selfTest + 战术 + 54 局金样逐手差分
 npm run test:tactics     # 战术层单测（要单独跑）
-npm run test:new         # vitest 全部 project
+npm run test:new         # vitest 全部 project（worker / core / ui / scripts）
 npm run test:worker      # Worker/D1（真 workerd + 本地 D1；每个 spec 自己清表）
 npm run test:ui          # 视图层 / 装配层单测（happy-dom）
+npm run test:scripts     # 远端批量设施纯函数（test/scripts/**）
 
 # 数据库
 npm run db:migrate:local     # 本地 D1 应用 migrations/
@@ -177,6 +178,11 @@ npm run golden           # 重新生成金样——**预期失败**：金样已�
 # 真跑一轮对比实验（真花上游配额，日常不跑）
 $env:JEV_API_KEY='apikey_…'                      # key 只进环境变量，脚本绝不打印
 node scripts/experiment-run.mjs --games 4         # 干净 profile 的 Chrome 里填配置→开跑→回查归档，证据写 .work/experiment-run.json
+
+# SSH 远端批量（纯 Node 对弈回路，空闲主机 nohup 跑；ADR-0019）
+node scripts/experiment-batch.mjs submit --host <ip> --user root \
+  --a proxy:v14-live3-fresh --b rapfi::1000 --rounds 2 --games 20   # 轮次自动串行；--origin 可换独立 Worker
+node scripts/experiment-batch.mjs status --batch <batchId>          # 进度；resume 断点续跑，pull 取回产物，elo 出评分表
 ```
 
 ## 部署
@@ -288,7 +294,9 @@ VCF 将死链，见 [docs/jev-api.md](docs/jev-api.md) §2.2），五子棋另�
 以及**与旧实现逐手零差异**——7 棋种自对弈 + 54 局历史棋谱，合计 5510 手，
 金样见 [test/parity/README.md](test/parity/README.md)。线上数据核对：导入 54 局 / 4379 手 / 6 轮实验，
 `sum(payload_bytes) = 845578`；2026-10-01 又真跑了 4 局 proxy 对比实验（各 225 手，全和棋），
-D1 现为 244 局 / 15714 手 / 23 轮实验（见 [docs/status.md](docs/status.md)「数据现状」）；
+D1 现为 270 局 / 17378 手 / 26 轮实验（含 SSH 远端批量设施在空闲主机上跑的三轮 26 局，
+`code_version = dev+nogit`、`device_id` NULL，与浏览器轮的 `1.0.0+<sha>` 不同链；
+见 [docs/status.md](docs/status.md)「数据现状」与 [ADR-0019](docs/adr/0019-remote-batch-experiments.md)）；
 战术档对 Rapfi 的逐版曲线在 500 ms 档是 v9 25% → v10 67% → v11 83%/75% → v12 **12 胜 0 和 0 负**，
 按 m08704 抬高思考档后 v12 为 `rapfi@1000ms` 10-0-2（83.3%）、`rapfi@2000ms` 7-1-4（62.5%）；
 v13 的 20 局档位复核为 `rapfi@1000ms` 11-1-8（57.5%）、`rapfi@2000ms` 13-2-5（70.0%）；

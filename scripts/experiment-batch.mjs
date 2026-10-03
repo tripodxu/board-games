@@ -57,12 +57,14 @@ function parseArgs(argv) {
   return out;
 }
 
-function sh(cmd, args, timeoutMs) {
+function sh(cmd, args, timeoutMs, sigtermOk = false) {
   try {
     execFileSync(cmd, args, { stdio: 'inherit', timeout: timeoutMs });
     return true;
   } catch (err) {
-    if (err.signal === 'SIGTERM') {
+    /* 起 worker 的 ssh 被本地超时 SIGTERM 掉是**正常的**（远端 nohup 不受影响）；
+       但 scp/查询被 SIGTERM 掉就是真失败，不能当成功（合入审查的中清单项）。 */
+    if (err.signal === 'SIGTERM' && sigtermOk) {
       console.log('（本地 ssh 客户端已超时断开；远程 nohup worker 不受影响，用 status --batch 查看）');
       return true;
     }
@@ -70,8 +72,8 @@ function sh(cmd, args, timeoutMs) {
   }
 }
 
-function ssh(host, user, remoteCmd, timeoutMs, opts = SSH_OPTS) {
-  return sh('ssh', [...opts, `${user}@${host}`, remoteCmd], timeoutMs);
+function ssh(host, user, remoteCmd, timeoutMs, opts = SSH_OPTS, sigtermOk = false) {
+  return sh('ssh', [...opts, `${user}@${host}`, remoteCmd], timeoutMs, sigtermOk);
 }
 
 function scp(args) {
@@ -79,7 +81,7 @@ function scp(args) {
 }
 
 /* ---------------- submit ---------------- */
-function cmdSubmit(args) {
+async function cmdSubmit(args) {
   if (!args.a || !args.b) die('submit 需要 --a 与 --b（形如 mock / random / proxy:v11-vct / rapfi:v12-vct-def:500）');
   const a = parseSpec(String(args.a));
   const b = parseSpec(String(args.b));
@@ -92,12 +94,26 @@ function cmdSubmit(args) {
   const seed = args.seed !== undefined ? Number(args.seed) : Math.floor(Date.now() / 1000);
   if (!Number.isInteger(seed)) die('--seed 必须是整数');
   const dryRun = !!args['dry-run'];
-  const batchRaw = args.batch ? String(args.batch) : new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  /* batchId 缺省带时分秒：早先只给日期（`YYYYMMDD`）⇒ 同一天第二次 submit 会撞上同一批目录，
+     远程 checkpoint 全命中、一局不跑却 POST 一行 total 正常的实验档案（合入审查 M4）。 */
+  const batchRaw = args.batch
+    ? String(args.batch)
+    : new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
   const batchId = sanitizeBatchId(batchRaw);
   const host = String(args.host || DEFAULT_HOST);
   const user = String(args.user || DEFAULT_USER);
   const repo = String(args.repo || DEFAULT_REPO);
   const keyFile = String(args['key-file'] || '/root/.jev-key');
+  /* H1：origin 可换（plan.origin 全程透传给 worker 的 POST/GET）⇒ 想彻底隔离就指向独立
+     Worker + 独立 D1，不必再往生产库里写实验局。 */
+  const origin = String(args.origin || 'https://jevqipan.logicc.top');
+  if (args.origin && origin !== 'https://jevqipan.logicc.top') {
+    console.log(`注意：origin 已改为 ${origin}（不再写生产 D1）`);
+  }
+  const maxPlies = args['max-plies'] ? Number(args['max-plies']) : 225;
+  const topK = args.topk ? Number(args.topk) : 3;
+  const timeoutMin = args['timeout-min'] ? Number(args['timeout-min']) : 180;
+  const stallMin = args['stall-min'] ? Number(args['stall-min']) : 15;
 
   // 速率预算：上游臂 × 双方轮流 × 每步墙钟估计
   const budget = estimateBudget(a, b, games, 4, 30);
@@ -127,15 +143,23 @@ function cmdSubmit(args) {
     const plan = {
       batchId, round: i, tag: batchTag(startedAt, batchId, i), games,
       a: formatSpec(a), b: formatSpec(b), pauseMs,
-      timeoutMin: 180, stallMin: 15, maxPlies: 225, topK: 3, seed,
-      dryRun, origin: 'https://jevqipan.logicc.top',
+      timeoutMin, stallMin, maxPlies, topK, seed,
+      dryRun, origin,
       outDir: `${repo}/.work/remote/${batchId}/round-${i}`,
     };
     plans.push(plan);
   }
 
+  /* M4：同名 batch 必须拦住 —— 否则会覆盖本地 plan、远端 checkpoint 全命中，一局不跑还 POST 一行档案。
+     缺省 batchId 已带时分秒，这里只防「显式复用同一个 --batch 名」。
+     （远端目录若确实存在，worker 侧还有第二道闸：checkpoint 里的 tag 与本轮不一致就重跑该局。） */
+  const localBatchDir = path.join(ROOT, '.work/remote', batchId);
+  if (fs.existsSync(localBatchDir) && !args.force) {
+    die(`本地已存在 .work/remote/${batchId}（会覆盖 plan）。换 --batch 名，或加 --force 明确覆盖。`);
+  }
+
   // 本地落 plan
-  const localPlans = path.join(ROOT, '.work/remote', batchId, 'plans');
+  const localPlans = path.join(localBatchDir, 'plans');
   fs.mkdirSync(localPlans, { recursive: true });
   for (const p of plans) fs.writeFileSync(path.join(localPlans, `round-${p.round}.json`), JSON.stringify(p, null, 2) + '\n');
 
@@ -143,6 +167,7 @@ function cmdSubmit(args) {
   console.log(`  对阵 ${String(args.a)} vs ${String(args.b)}${dryRun ? '（dry-run 不打上游）' : ''}`);
   console.log(`  速率预算：上游臂 ${budget.upstreamSides} 个，估计 ≈ ${budget.jevCallsPerMin} 次/分（按 4s/步），单轮 D1 写 ≈ ${budget.writesPerDay} 行`);
   console.log(`  tag：${plans.map((p) => p.tag).join(' , ')}`);
+  console.log(`  origin：${origin}${maxPlies !== 225 || topK !== 3 ? `（maxPlies=${maxPlies} topK=${topK}）` : ''}`);
 
   // 远端建目录 + 逐个上传 plan
   if (!ssh(host, user, `mkdir -p ${repo}/.work/remote/${batchId}/{plans,logs}`)) die('远端 mkdir 失败（ssh 不通？）');
@@ -151,16 +176,30 @@ function cmdSubmit(args) {
     if (!scp([rel, `${user}@${host}:${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`])) die(`上传 round-${p.round} plan 失败`);
   }
 
-  // 逐轮起 worker（后台；</dev/null + nohup + pid 落盘，避免 ssh 会话被后台进程拖住）
-  // key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
-  // key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。
-  for (const p of plans) {    const planPath = `${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`;
-    const logPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.log`;
-    const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${p.round}.pid`;
+  /* M2：轮次必须**串行**（起一轮 → 等它退出 → 再起下一轮）。早先 for 循环一口气 nohup 全部轮次，
+     与「限流口径下串行」的闸门文案、ADR 与计划互相矛盾，还会把上游速率/D1 写入按轮数翻倍。 */
+  const remoteBatchDir = `${repo}/.work/remote/${batchId}`;
+  for (let i = 0; i < plans.length; i++) {
+    const p = plans[i];
+    const planPath = `${remoteBatchDir}/plans/round-${p.round}.json`;
+    const logPath = `${remoteBatchDir}/logs/round-${p.round}.log`;
+    const pidPath = `${remoteBatchDir}/logs/round-${p.round}.pid`;
+    /* key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
+       key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。 */
+    const keyInject = `set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a;`;
     const ok = ssh(host, user,
-      `cd ${repo} && set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a; exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
-      20000, SSH_LAUNCH_OPTS);
+      `cd ${repo} && ${keyInject} exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+      20000, SSH_LAUNCH_OPTS, true);
     if (!ok) die(`round-${p.round} worker 启动失败`);
+    console.log(`  round-${p.round} 已启动（pid 见 ${pidPath}）`);
+    if (i < plans.length - 1) {
+      console.log(`  等待 round-${p.round} 跑完再起下一轮（串行）…`);
+      // 轮询 pid（最多 12 h，每 30 s 一次）；本地 ssh 断开不算失败，用 status 复核即可
+      ssh(host, user,
+        `for i in $(seq 1 1440); do kill -0 "$(cat ${pidPath})" 2>/dev/null || { echo "round ${p.round} 已结束"; exit 0; }; sleep 30; done; echo "round ${p.round} 轮询到 12h 上限"`,
+        0);
+      console.log(`  round-${p.round} 的等待循环结束 —— 起下一轮前请先确认它真的跑完（status --batch ${batchId}）`);
+    }
   }
 
   console.log(`已启动。查看进度：node scripts/experiment-batch.mjs status --batch ${batchId}`);
@@ -180,11 +219,14 @@ function cmdResume(args) {
   const planPath = `${repo}/.work/remote/${batchId}/plans/round-${round}.json`;
   const logPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.log`;
   const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.pid`;
+  const keyFile = String(args['key-file'] || '/root/.jev-key');
+  /* M3：resume 必须与 submit 一样注入 key —— 早先漏了这段，走上游的臂续跑必定 exit 2，
+     而断点续跑正是这套设施唯一的容错手段（ADR-0019 D3）。 */
   const ok = ssh(host, user,
-    `cd ${repo} && exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
-    20000, SSH_LAUNCH_OPTS);
+    `cd ${repo} && set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a; exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+    20000, SSH_LAUNCH_OPTS, true);
   if (!ok) die(`round-${round} 续跑失败（plan 不存在？ssh 不通？）`);
-  console.log(`已续跑 batch=${batchId} round=${round}（已完成的对局会按 checkpoint 跳过）`);
+  console.log(`已续跑 batch=${batchId} round=${round}（已完成的对局会按 checkpoint 跳过并原样计入实验档案）`);
 }
 
 /* ---------------- status / pull ---------------- */
@@ -197,8 +239,22 @@ function pullBatch(args, { quiet }) {
   const outParent = path.resolve(String(args.out || path.join(ROOT, '.work/remote')));
   fs.mkdirSync(outParent, { recursive: true });
   const localDir = path.join(outParent, batchId);
-  fs.rmSync(localDir, { recursive: true, force: true }); // 每次整体覆盖，保持目录形状稳定
-  if (!scp(['-r', `${user}@${host}:${repo}/.work/remote/${batchId}`, outParent + path.sep])) die('scp 拉取失败');
+  /* 先拉到临时目录再整目录替换：早先是「先 rm -rf 本地再 scp」，scp 一失败就把本地唯一副本删掉了。 */
+  const staging = path.join(outParent, `.staging-${batchId}-${process.pid}`);
+  fs.rmSync(staging, { recursive: true, force: true });
+  fs.mkdirSync(staging, { recursive: true });
+  if (!scp(['-r', `${user}@${host}:${repo}/.work/remote/${batchId}`, staging + path.sep])) {
+    fs.rmSync(staging, { recursive: true, force: true });
+    die('scp 拉取失败（本地旧副本保持不动）');
+  }
+  const staged = path.join(staging, batchId);
+  if (!fs.existsSync(staged)) {
+    fs.rmSync(staging, { recursive: true, force: true });
+    die('拉回后暂存目录里没有 ' + batchId);
+  }
+  fs.rmSync(localDir, { recursive: true, force: true });
+  fs.renameSync(staged, localDir);
+  fs.rmSync(staging, { recursive: true, force: true });
   if (!fs.existsSync(localDir)) die('拉回后本地没有 ' + localDir);
   if (!quiet) printStatus(localDir, batchId);
   return localDir;
@@ -263,11 +319,14 @@ function main() {
   else if (cmd === 'elo') cmdElo(args);
   else {
     console.log('用法：node scripts/experiment-batch.mjs <submit|resume|status|pull|elo> [选项]');
-    console.log('  submit --a <spec> --b <spec> [--games 12] [--rounds 1] [--pause 2500] [--seed N] [--dry-run] [--force] [--key-file 路径]');
-    console.log('  resume --batch 名 [--round N]   按 checkpoint 续跑某一轮（kill 后恢复用）');
-    console.log('  status [--batch 名]    拉回并显示每轮进度');
+    console.log('  submit --a <spec> --b <spec> [--games 12] [--rounds 1] [--pause 2500] [--seed N] [--force] [--key-file 路径]');
+    console.log('         [--batch 名] [--host IP] [--user 用户] [--repo 远端仓路径] [--origin https://…]（默认生产域；换域即不写生产 D1）');
+    console.log('         [--max-plies 225] [--topk 3] [--timeout-min 180] [--stall-min 15] [--dry-run]');
+    console.log('         多轮（--rounds>1）**串行**：起一轮 → 等它退出 → 再起下一轮（限流口径要求 concurrency=1）');
+    console.log('  resume --batch 名 [--round N] [--key-file 路径]   按 checkpoint 续跑某一轮（kill 后恢复用）');
+    console.log('  status [--batch 名]    拉回并显示每轮进度（先拉临时目录再整体替换，失败不动本地旧副本）');
     console.log('  pull   --batch 名      拉回远端产物');
-    console.log('  elo   <目录...>        本地算 Elo 排行');
+    console.log('  elo   <目录...>  [--k 16] [--json 输出路径]   本地算 Elo 排行');
     process.exit(cmd ? 2 : 0);
   }
 }

@@ -101,6 +101,23 @@
   （x1 一度只算 22/24 局）。改为按 result 串识别（与 `parseResult()` 同形正则）——
   否则「不唯胜率」在工具侧就破了。
 
+## 合入 main 后的整改（2026-10-03，独立审查驱动）
+
+分支把「浏览器侧的四条坑」搬到了远端，但设施自身在**归档与续跑**这两条路径上留了五处真缺陷（审查结论：不建议原样合并）。
+它们不是新决定，而是把已有决定落实到代码里，因此记在这里做**修订记录**（细节与改动清单见
+[计划 §P6](../plans/2026-10-03-remote-batch-experiments.md)）：
+
+- **思考档写值域闸门**（与 ADR 口径一致）：`black_think`/`white_think` 只认 `rapfi` 侧且 > 0，其余留空（D1 落 NULL），
+  复用 `src/core/record/export.ts` 的 `thinkMsOf()`——否则 `proxy` 会以「0 毫秒档」这种不存在的身份进库。
+- **档位标签过 `tacticsLabel()` 闸门**：`games[].blackTac/whiteTac` 不再直接写 plan 里的原始档位，
+  免得 rapfi/mock 侧造出 `rapfi|v13-pressure-gate` 这类幻影身份（与 2026-10-02 的 `rapfi|v9-vcf-sound` 同类）。
+- **轮次串行**：`--rounds>1` 起一轮 → 等 pid 退出 → 再起下一轮（D6「双上游必须串行」的落地；
+  原先一口气 nohup 全部轮次，等于把上游速率与 D1 写入按轮数翻倍）。
+- **续跑语义**：checkpoint 命中要**回读 winner/plies/gameUid** 并计入实验档案；`resume` 与 submit 同样注入 key；
+  batchId 缺省带时分秒、同名批次直接拒绝、checkpoint 的 tag 失配即重跑（防「一局不跑却 POST 一行 total=0 的档案」）。
+- **归档阶段护栏**：POST 带 30 s 超时 + 3 次退避；归档前先把 `pending`+`gameUid` 落进 checkpoint，
+  续跑复用同一 uid（`dedup_key` 不变 ⇒ D1 不会出现同轮同局两份棋谱）；归档后按 uid 核对；写文件改原子替换。
+
 ## 后果
 
 - 实验产能：本机可并行发起多组对照，box 顺序执行；12 局 rapfi 轮 ~52 s/局。

@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 import { getGame } from '../src/core/registry.ts';
 import { decide } from '../src/core/jev/index.ts';
-import { installRapfiNodeLoader } from './lib/rapfi-node-loader.mjs';
+import { installRapfiNodeLoader, smokeTest } from './lib/rapfi-node-loader.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +37,7 @@ function parseArgs(argv) {
     else if (a === '--limit') out.limit = Number(argv[++i]);
     else if (a === '--file') out.files = out.files || [], out.files.push(String(argv[++i]));
     else if (a === '--json') out.json = String(argv[++i]);
+    else if (a === '--no-smoke') out['no-smoke'] = true;
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -66,7 +67,7 @@ async function replayGame(engine, game, rapfiSide, thinkMs) {
       else diffs.push({ ply: i + 1, expect, got: r.notation });
     }
     const mv = engine.moveFromNotation(st, expect);
-    if (!mv) throw new Error(`归档着法非法：${expect}（${g.gameUid} ply ${i + 1}）`);
+    if (!mv) throw new Error(`归档着法非法：${expect}（${game.gameUid || game.game_uid || '?'} ply ${i + 1}）`);
     st = engine.applyMove(st, mv);
   }
   return { rapfiPlies: plies, agree, diffs };
@@ -84,6 +85,11 @@ async function main() {
   const min = argv.min === undefined ? 0.99 : argv.min;
 
   installRapfiNodeLoader();
+  if (!argv['no-smoke']) {
+    // 开局冒烟：胶水装不起来就直说，别过几十手才在 diffs 里看到「全都不一致」
+    const smoke = await smokeTest();
+    console.log(`rapfi 冒烟通过（${smoke.lines.length} 行输出）`);
+  }
   const engine = getGame('gomoku');
 
   let games = [];

@@ -214,6 +214,39 @@ elo（本地算，或 --from-api 直接拉线上）             └─ checkpoin
   `npm run test:scripts` 38 例通过。教训：**Elo 每个「丢局」原因都要单独论证**，
   和棋漏算会让两个臂的 Elo 同时偏移且方向取决于对局构成。
 - 终验（追加闭环后重跑）：`npm test` **375 例 / 37 文件全过** + `npm run typecheck` 干净。
+- ⏱️ **两个终验数字的时序**：`366 例 / 36 文件`（`0e7e9fb`）→ `375 例 / 37 文件`（追加 Elo 和棋口径 + 入口守卫后）。
+  两者不是矛盾，是同一天两次快照；合入 main 后（v14 已在树上）总数变成 **382 例 / 37 文件**——
+  多出的例数与文件来自 `scripts` project 自身（37 文件含本分支新增的 3 个 spec），v14 只加引擎层用例。
+
+### P6 合入 main + 审查整改（✅ 2026-10-03，由编排者收口）
+
+- **合入**：`git merge --no-ff origin/feat/ssh-batch-experiments` ⇒ 合并提交 `f4e4ce9`（父 `fe43b16` + `6997961`）。
+  5 个公共文档冲突（`AGENTS.md` §4、`docs/README.md`、`docs/adr/README.md`、`docs/memory/MEMORY.md`、`docs/status.md`）由编排者收口；
+  代码与测试零冲突。**ADR 改号**：分支的 `0018-remote-batch-experiments.md` 与 main 的 `0018-live3-fresh-correction.md` 撞号 ⇒ 前者改为
+  [ADR-0019](../adr/0019-remote-batch-experiments.md) 并同步全部引用。
+- **独立只读审查**（子代理，先把分支拉到 `.worktrees/review-batch` 复核）：方向、密钥纪律、`src/**` 零改动、38 例单测真绿都过；
+  报 **5 条合并阻断项（M1–M5）+ 3 条建议（H1–H3）+ 12 条可后续**。整改全部落在合入后的同一批 commit 里：
+  1. **M1 思考档越权写 0**：worker 曾无条件写 `blackThink/whiteThink = thinkMs || 0`，会回退 main 的 `thinkMsOf()` 闸门
+     （只有 `rapfi` 侧且 > 0 才写）⇒ 改为只在 `rapfi` 侧写，其余留空（D1 落 NULL）。
+  2. **M2 多轮并发**：`--rounds>1` 原先一口气 nohup 全部轮次，与「限流口径下串行」的闸门文案自相矛盾 ⇒ 改为**起一轮 → 轮询 pid 退出 → 再起下一轮**。
+  3. **M3 续跑语义**：checkpoint 命中只带 `{status:'skipped'}` ⇒ 续跑轮的实验档案里这些局凭空消失（`total` 偏小甚至 0）；
+    改为**回读 winner/plies/gameUid**；`resume` 补上与 submit 相同的 key 注入（原先上游臂续跑必 exit 2）。
+  4. **M4 同日撞车**：`batchId` 缺省只到日期、本地 plan 直接覆盖、checkpoint 只比状态不比 tag ⇒ 同日第二次 submit 会「一局不跑、exit 0、还 POST 一行实验档案」；
+     改为 batchId 带时分秒 + 本地同名即 `die` + checkpoint 的 tag 失配就重跑。
+  5. **M5 归档阶段无护栏**：`apiPostGame` 无重试/无超时、归档不受 `timeoutMin/stallMin` 覆盖、续跑会生成新 `gameUid`（D1 里同轮同局两份棋谱都算数）⇒
+     30 s 超时 + 3 次退避、**先在 checkpoint 落 `pending` + gameUid 再归档**、续跑复用同一 uid、归档后按 uid 核对（退避重查 3 次）；`writeJson` 改原子写（`.tmp` + rename）。
+  6. **H1** 加 `--origin`（不再硬编码生产域，配合独立 Worker/D1 可彻底隔离）；**H2** 记录远端 `repoHead` 并写进实验档案 `note`（Node 直载 `code_version` 恒为 `dev+nogit`）；
+     **H3** 归档行的 `games[].blackTac/whiteTac` 改走 `tacticsLabel()` 闸门（原先会造 `rapfi|v13-pressure-gate` 这类幻影身份）。
+  7. **中清单**里一并修的：`resume`/`scp` 不再把 SIGTERM 当成功、`pull/status` 改「先拉暂存目录再整目录替换」（scp 失败不再删本地唯一副本）、
+     退避预算按**每一手**重置（原先整局共享）、`identityOf` 收敛为 `batch-common.mjs` **唯一实现**（空档留空 `rapfi||500`，与归档/报表桶键同形）、
+     `parseSpec` 移入 try（坏 plan 走 exit 2 而非未捕获异常）、归档核对不再用 `byTag >= gameNo` 计数启发式、`rapfi-parity-probe.mjs` 的
+     `g`→`game` 未定义变量、`rapfi-node-loader.mjs` 的 `smokeTest()` 从「收进空数组」改成**真断言**并在探针开局前跑、`--max-plies/--topk/--timeout-min/--stall-min` 可覆盖。
+  - 新增/改写单测：`ckptAction()`（纯函数：已完成跳过并带回胜负、tag 失配重跑、pending 复用 uid）+ 实验档案的档位/思考档闸门与 skipped 计入 ⇒ `test/scripts` **44 例**（原 38 例）。
+  - 全量验收：`npx tsc --noEmit` 0 错；`node test/engines/run.mjs` **142 例**；`npx vitest run` **37 文件 / 382 例**；`npm run check:docs` **55 md / 355 链接**。
+- **数据卫生**：远端三轮 26 局（`exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1` / `exp-20261003052604-x1-r1`）
+  已进生产 D1，`code_version='dev+nogit'`、`device_id` NULL、tag 形如 `exp-<ts>-<batch>-r<i>` 可与浏览器轮区分；
+  审查结论是**不需要紧急隔离**（无结构破坏）。M1–M5 落地后若要更干净，可换 `--origin` 指向独立 Worker+D1，
+  并给每批一个稳定 `X-Device-Id`（`batch-<batchId>`）便于一条 SQL 过滤。
 
 ## 9. 未闭环 / 遗留
 

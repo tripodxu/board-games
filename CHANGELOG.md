@@ -48,6 +48,35 @@
   失效模式不变；**跨档位比分同样不是曲线**（同档轮间方差实测 17.5 个百分点）。
   文档回填见 `docs/status.md` 与 [docs/plans/2026-10-02-tactics-v13-pressure-gate.md](docs/plans/2026-10-02-tactics-v13-pressure-gate.md)。
 
+- **SSH 远端批量对弈实验设施（2026-10-03 合入 main，ADR-0019）**：`feat/ssh-batch-experiments` 分支
+  （19 文件 / +2149 行）合并进 main，`src/**` 零改动、零新增运行时依赖（只用 `node:` 内置 + 仓内 `.ts` 直载），
+  `package.json` 只加 `test:scripts`，`vitest.config.ts` 新增第 4 个 project `scripts`。构成：
+  `scripts/experiment-batch.mjs`（本地编排 `submit / resume / status / pull / elo`，plan 落
+  `.work/remote/<batch>/`）、`scripts/experiment-worker.mjs`（远端纯 Node 对弈回路：`setSeed` →
+  `createSession(ai-ai)` → `decide` → `applyMove` → `buildGameExport` → 落盘 → `POST /api/games` →
+  `GET ?tag=` 核对 → checkpoint）、`scripts/lib/batch-common.mjs`（spec/批次 id/预算纯函数）、
+  `scripts/lib/batch-elo.mjs`（K=16 自研 Elo，身份 = `渠道|档位|思考ms`）、`scripts/lib/rapfi-node-loader.mjs`
+  （Node 侧 rapfi 胶水，与浏览器同一协议代码路径）、`scripts/rapfi-parity-probe.mjs`（P4 强度 gate：
+  浏览器归档 vs Node rapfi 逐手一致率，默认门槛 0.99）。远端在空闲主机 `qijia`（185.242.234.48）跑三轮
+  26 局，`proxy|v13-pressure-gate|0` Elo **1551.9**（14 局 10 胜 2 和 2 负）> `rapfi|-|0` 1503.1
+  > `random|v13|0` 1481.4 > `rapfi|-|500` 1463.6（全部 ⚠<50 局）；Node rapfi 臂与浏览器同资产同输入
+  自对弈 12/12、重放归档 12/12 一致，残差经双向重放定位为**浏览器墙钟抖动** ⇒ 只认聚合口径。
+  **合入时的独立只读审查**（子代理）报了 5 条合并阻断项，合入后同一批修掉：① `black_think`/`white_think`
+  只在该侧 `rapfi` 且 >0 时写（复用 `thinkMsOf()`，否则 `proxy` 会以「0 毫秒档」这种不存在的身份进库）；
+  ② `--rounds>1` 改为**起一轮 → 等 pid 退出 → 再起下一轮**（与「双上游必须串行」的闸门一致）；
+  ③ 续跑 checkpoint **回读 winner/plies/gameUid** 并计入实验档案、`resume` 补 key 注入；
+  ④ `batchId` 缺省带时分秒 + 同名即拒 + checkpoint 的 tag 失配就重跑（防「一局不跑却 POST `total=0`」）；
+  ⑤ 归档 30 s 超时 + 3 次退避、**归档前先落 `pending`+`gameUid`、续跑复用同一 uid**（`dedup_key` 不变 ⇒
+  D1 不会出现同轮同局两份棋谱）、归档后按 uid 核对、`writeJson` 改原子替换。建议项同批：`--origin`
+  （不再硬编码生产域）、远端 `repoHead` 写进档案 `note`（Node 直载 `code_version` 恒为 `dev+nogit`）、
+  `games[].blackTac/whiteTac` 过 `tacticsLabel()` 闸门（原先会造 `rapfi|v13-pressure-gate` 幻影身份）；
+  另有 `identityOf` 收敛为单一实现、`pull` 不再先删本地、`scp` 不再把 SIGTERM 当成功、退避预算按手重置、
+  `smokeTest()` 改真断言等。`test/scripts` **44 例**（原 38 例，新增 `ckptAction` 续跑判定）。
+  文档：计划 [docs/plans/2026-10-03-remote-batch-experiments.md](docs/plans/2026-10-03-remote-batch-experiments.md) §P6、
+  耦合审计 [docs/plans/2026-10-03-tactics-coupling-audit.md](docs/plans/2026-10-03-tactics-coupling-audit.md)（快照口径注）、
+  [ADR-0019](docs/adr/0019-remote-batch-experiments.md)（原 0018 与 live3 纠偏撞号，已改号并同步全部引用）。
+  遗留：远端批量的数据卫生（稳定 `X-Device-Id` / 清账）待业主决定。
+
 - **战术 v13 `v13-pressure-gate`「压力闸门」（十四级保险）**：对手的「做四点」数压过我们时，
   先削他的点，而不是抢自己的活三。三条硬数据（`.work/v13-pressure-probe.mjs`，六轮 rapfi 对照
   共 **1787 个 Jev 回合**逐手离线复算）：归档标签 `live3Attack` 的实走 **205 手（11.5%）**，

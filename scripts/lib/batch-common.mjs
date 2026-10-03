@@ -102,9 +102,14 @@ export function deriveSeed(seed, gameNo) {
   return (Math.imul(seed >>> 0, 1000003) + gameNo) >>> 0;
 }
 
-/** Elo 身份口径（D8）：与 `tacticsLabel()` 归一同构，防幻影身份（同一配置不同写法算两档）。 */
+/** Elo 身份口径（D8）：与归档/报表的 `渠道|战术|思考` 桶键同形状（空战术档留空：`rapfi||500`），
+ *  防幻影身份（同一配置不同写法算两档）。**唯一实现**：`batch-elo.mjs` 从这里复用。 */
 export function identityOf(cfg) {
-  return `${cfg.channel}|${cfg.tactics}|${cfg.thinkMs | 0}`;
+  const c = cfg || {};
+  const channel = String(c.channel ?? '').trim();
+  const tactics = String(c.tactics ?? '').trim();
+  const think = Number.isFinite(Number(c.thinkMs)) ? Math.trunc(Number(c.thinkMs)) : 0;
+  return `${channel}|${tactics}|${think}`;
 }
 
 /** 局内一步动手数文件名（纯字符串，方便单测）。 */

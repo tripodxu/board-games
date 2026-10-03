@@ -1,12 +1,14 @@
 /**
  * test/scripts/experiment-entry.spec.mjs — scripts/experiment-worker.mjs 的
- * experiments 归档行构造（experimentEntryFrom）单测。只测纯函数，不打线上。
+ * experiments 归档行构造（experimentEntryFrom）与 checkpoint 命中判定（ckptAction）单测。
+ * 只测纯函数，不打线上。
  *
- * 覆盖点：局级 sidesForGameSpec 黑白交替与臂口径分离、只收 status=ok 的局、
- * winner→winnerChan 映射、tag ≤64、note 标明远端来源。
+ * 覆盖点：局级 sidesForGameSpec 黑白交替与臂口径分离、ok/skipped 计入而 dry-run/error 不计、
+ * 战术档只写会跑战术层的渠道（rapfi/mock 侧留空）、思考档只写 rapfi 侧、
+ * winner→winnerChan 映射、续跑按 tag 失配重跑、pending 复用 gameUid、tag ≤64、note 标明远端来源。
  */
 import { describe, it, expect } from 'vitest';
-import { experimentEntryFrom } from '../../scripts/experiment-worker.mjs';
+import { experimentEntryFrom, ckptAction } from '../../scripts/experiment-worker.mjs';
 import { parseSpec, batchTag } from '../../scripts/lib/batch-common.mjs';
 
 const plan = {
@@ -25,7 +27,8 @@ describe('experimentEntryFrom', () => {
     expect(e.chanA).toBe('proxy');
     expect(e.chanB).toBe('rapfi');
     expect(e.tacA).toBe('v13-pressure-gate');
-    expect(e.tacB).toBe('v13-pressure-gate'); // parseSpec 缺省填当前档
+    // rapfi 侧不跑战术层（client.ts 直接短路）⇒ 档位必须留空，否则是 `rapfi|v13-…` 幻影身份
+    expect(e.tacB).toBeNull();
     expect(e.thinkA).toBe(0);
     expect(e.thinkB).toBe(500);
     expect(e.tag).toBe(plan.tag);
@@ -43,20 +46,42 @@ describe('experimentEntryFrom', () => {
     expect(e.games[1].winnerChan).toBe('proxy');
   });
 
+  it('局级战术档/思考档按渠道闸门写：proxy 写档、rapfi 留空（思考档反向）', () => {
+    const e = experimentEntryFrom(plan, a, b, summary([
+      { gameNo: 1, status: 'ok', winner: 'black' },
+      { gameNo: 2, status: 'ok', winner: 'white' },
+    ]));
+    expect(e.games[0]).toMatchObject({
+      blackTac: 'v13-pressure-gate', whiteTac: null, blackThink: null, whiteThink: 500,
+    });
+    expect(e.games[1]).toMatchObject({
+      blackTac: null, whiteTac: 'v13-pressure-gate', blackThink: 500, whiteThink: null,
+    });
+  });
+
   it('和棋 winnerChan 为 null，不计错误侧', () => {
     const e = experimentEntryFrom(plan, a, b, summary([{ gameNo: 1, status: 'ok', winner: null }]));
     expect(e.games[0].winnerChan).toBeNull();
   });
 
-  it('只收 status=ok；dry-run/skipped/error 不进 total 也不进 games', () => {
+  it('ok 与 skipped 都计入；dry-run/error 不进 total 也不进 games', () => {
     const e = experimentEntryFrom(plan, a, b, summary([
       { gameNo: 1, status: 'ok', winner: 'black' },
       { gameNo: 2, status: 'ok-dry', winner: null },
-      { gameNo: 3, status: 'skipped', from: 'ok', winner: 'black' },
+      { gameNo: 3, status: 'skipped', from: 'ok', winner: 'white', plies: 42 },
       { gameNo: 4, status: 'error', error: 'x', winner: null },
     ]));
-    expect(e.games).toHaveLength(1);
+    expect(e.games.map((g) => g.no)).toEqual([1, 3]);
+    expect(e.total).toBe(2);
+  });
+
+  it('续跑跳过的局仍带胜负：不做只会让实验档案凭空少一局（旧 bug）', () => {
+    const e = experimentEntryFrom(plan, a, b, summary([
+      { gameNo: 1, status: 'skipped', from: 'ok', winner: 'white', plies: 60 },
+    ]));
     expect(e.total).toBe(1);
+    // 第 1 局 A(proxy) 执黑、B(rapfi) 执白 ⇒ winner=white 即 rapfi
+    expect(e.games[0].winnerChan).toBe('rapfi');
   });
 
   it('战术层耗时字段为 null（worker 不统计，落样本外）', () => {
@@ -75,5 +100,31 @@ describe('experimentEntryFrom', () => {
     const tag = batchTag(new Date('2026-10-03T05:26:04Z'), 'ut', 1);
     expect(tag).toMatch(/^exp-\d{14}-ut-r1$/);
     expect(tag.length).toBeLessThanOrEqual(64);
+  });
+});
+
+describe('ckptAction（续跑判定）', () => {
+  it('没有 checkpoint / 状态异常 ⇒ 直接跑', () => {
+    expect(ckptAction(undefined, plan.tag)).toEqual({ action: 'run' });
+    expect(ckptAction({ status: 'error' }, plan.tag)).toEqual({ action: 'run' });
+  });
+
+  it('已完成（ok/ok-dry）⇒ 跳过并带回 winner/plies/gameUid', () => {
+    expect(ckptAction({ tag: plan.tag, status: 'ok', winner: 'black', plies: 33, gameUid: 'u1' }, plan.tag))
+      .toEqual({ action: 'skip', from: 'ok', winner: 'black', plies: 33, gameUid: 'u1' });
+    expect(ckptAction({ tag: plan.tag, status: 'ok-dry', winner: null }, plan.tag))
+      .toMatchObject({ action: 'skip', from: 'ok-dry', winner: null, plies: null });
+  });
+
+  it('tag 失配 ⇒ 重跑（同名 batch 换了轮次，不能一局不跑就 exit 0）', () => {
+    expect(ckptAction({ tag: 'exp-20261003000000-ut-r1', status: 'ok', winner: 'black' }, plan.tag))
+      .toEqual({ action: 'run', reason: 'tag-mismatch' });
+  });
+
+  it('pending（归档中途被杀）⇒ 复用同一 gameUid 重跑，避免 D1 里两份棋谱', () => {
+    expect(ckptAction({ tag: plan.tag, status: 'pending', gameUid: 'u9' }, plan.tag))
+      .toEqual({ action: 'run', resumeUid: 'u9' });
+    // pending 但没记 uid（老 checkpoint）⇒ 只能当新局重跑
+    expect(ckptAction({ tag: plan.tag, status: 'pending' }, plan.tag)).toEqual({ action: 'run' });
   });
 });

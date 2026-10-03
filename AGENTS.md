@@ -88,9 +88,9 @@
 npm run dev                     # vite dev：单进程起 Worker + 前端 + 本地 D1 绑定 → http://localhost:8787（端口被占会自动顺延，看启动日志）
 npm test                        # 唯一验收命令：test:engines（src/core 自检 + 战术 + 金样逐手差分）→ test:new（vitest 全 project）
 npm run typecheck               # tsc --noEmit（提交前必须干净）
-npm run test:engines            # 只跑纯 Node 层：七引擎 selfTest + 战术十四级与 VCF/VCT 攻防 + 金样逐手差分（7 局自对弈 + games/ 归档 54 局）
+npm run test:engines            # 只跑纯 Node 层：七引擎 selfTest + 战术十五级与 VCF/VCT 攻防 + 金样逐手差分（7 局自对弈 + games/ 归档 54 局）
 npm run test:tactics            # 只跑战术层回归（node test/tactics/run.mjs）
-npm run test:new                # vitest 全部 project；也可细分 test:worker（真 workerd + 真 D1）/ test:ui（happy-dom）
+npm run test:new                # vitest 全部 project（worker / core / ui / scripts）；也可细分 test:worker / test:ui / test:scripts
 npm run check:docs              # 文档自检：memory 置顶、md 相对链接可解析、status 时效
 npm run db:migrate:local        # 本地 D1 应用 migrations/（npm run dev 的 predev 会自动跑）
 npm run import:archive -- --local   # 把 54 局历史归档导入本地 D1（--remote 打线上，慎用）
@@ -101,7 +101,7 @@ npm run deploy                  # = build + wrangler deploy（需 CLOUDFLARE_API
 npm run smoke:live              # 线上 HTTP 冒烟（可 --url 换目标；需要网络，未授权时别跑）
 npm run smoke:browser           # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge，零依赖；--url/--channel/--headful/--keep/--offline；默认把 /rapfi/* 改由本地 public/rapfi/ 供给，--no-rapfi-local 可关）
 node scripts/experiment-run.mjs --games 12 --tacA v14-live3-fresh --chanB rapfi --thinkB 1000   # 长跑对照实验（真浏览器 + 干净 profile；key 只从 JEV_API_KEY 读；会真花上游配额；规程与四条坑见 docs/agents/playbooks.md §7）
-node scripts/experiment-batch.mjs submit --batch r1 --a "rapfi:v14-live3-fresh:1000" --b "random:v14-live3-fresh:0" --games 12 --pause 2500 --host 185.242.234.48 --user root   # SSH 远端批量对弈（ADR-0019；worker 在空闲主机跑、nohup 脱离 ssh；key 从远端 /root/.jev-key 注入，本机无需持有；另有 resume/status/pull/elo 子命令）
+node scripts/experiment-batch.mjs submit --batch r1 --a "proxy:v14-live3-fresh:0" --b "rapfi::1000" --games 12 --pause 2500 --host 185.242.234.48 --user root   # SSH 远端批量对弈（ADR-0019；worker 在空闲主机跑、nohup 脱离 ssh；key 从远端 /root/.jev-key 注入，本机无需持有；另有 resume/status/pull/elo 子命令；`--rounds>1` 自动串行，`--origin` 可换独立 Worker）
 npm run golden                  # 重新生成金样：**已冻结**，旧实现删除后该命令只打印中文说明并 exit 1（属预期）
 npm run cf-typegen              # 重新生成 worker-configuration.d.ts（改 wrangler.jsonc 后跑）
 ```

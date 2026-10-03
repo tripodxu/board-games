@@ -19,6 +19,33 @@
 
 ---
 
+## 2026-10-03 · `feat/ssh-batch-experiments` 合入 main：独立审查报 5 条阻断项，全部当批修掉
+
+- **合入**：合并提交 `f4e4ce9`（父 `fe43b16` + `6997961`），19 文件 / +2149 行；`src/**` 零改动、零新增运行时依赖。
+  冲突只有 5 个公共文档（`AGENTS.md` §4、`docs/README.md`、`docs/adr/README.md`、`docs/memory/MEMORY.md`、`docs/status.md`），
+  代码与测试零冲突 —— 全部由编排者收口。**ADR 撞号**：分支的 `0018-remote-batch-experiments` 与 main 的
+  `0018-live3-fresh-correction` 同名 ⇒ 前者改号 [ADR-0019](../adr/0019-remote-batch-experiments.md) 并同步全仓引用。
+- **教训（审查抓到 5 条，都不用跑棋就能看出来）**：
+  1. **新增写库路径必须复用既有值域闸门**：worker 曾无条件写 `black_think/white_think = thinkMs || 0`，
+     把 `proxy` 侧写成「0 毫秒档」——一个不存在的身份。同一份口径已经写在 `src/core/record/export.ts` 的
+     `thinkMsOf()` 里，工具侧照抄判据即可（`tacticsLabel()` 同理：`games[].blackTac` 直接写 plan 会造
+     `rapfi|v13-pressure-gate` 幻影身份）。**任何「第二写入者」都要先问：这条字段的闸门在哪。**
+  2. **文档写「串行」而代码并发**：`--rounds>1` 原先一口气 nohup 全部轮次，与自家闸门文案、计划、ADR 的
+     「双上游必须串行（限流）」直接矛盾 ⇒ 改为「起一轮 → 轮询 pid 退出 → 再起下一轮」。
+  3. **断点续跑必须回读胜负**：checkpoint 命中只带 `{status:'skipped'}` ⇒ 续跑轮的实验档案里这些局**凭空消失**
+     （`total` 偏小甚至 0），而出口码还是 0（假绿）。修法 = 回读 `winner/plies/gameUid` 一并计入；
+     `resume` 少了一段 key 注入 ⇒ 上游臂续跑必 exit 2（唯一容错手段失效）。
+  4. **幂等键要能区分「同一批次」与「同一天」**：`batchId` 缺省只有日期、本地 plan 直接覆盖、checkpoint 只比状态
+     不比 tag ⇒ 同日第二次 submit 会**一局不跑、exit 0，还 POST 一行 `total=0` 的实验档案**。
+  5. **归档阶段也要有超时与幂等**：`POST /api/games` 原先无重试无超时、不受 `timeoutMin/stallMin` 覆盖（挂住即挂死）；
+     续跑重跑会生成新 `gameUid` ⇒ `dedup_key` 变 ⇒ D1 里同轮同局两份棋谱都算数。修法 = 先落 `pending`+uid 再归档、
+     续跑复用同一 uid、归档后按 uid 核对。
+- **顺手归一**：`identityOf` 两处实现收敛为一处（`scripts/lib/batch-common.mjs`，空档留空 = `rapfi||500` 形状，
+  与归档/报表桶键同形）；`pull` 不再先 `rm -rf` 本地目录；`scp` 不再把 SIGTERM 当成功；退避预算按**每一手**重置。
+- **验收**：`npx tsc --noEmit` 0 错 · `node test/engines/run.mjs` **142 例** · `npx vitest run` **37 文件 / 382 例**
+  （`test/scripts` 44 例，含新增的 `ckptAction()` 续跑判定）· `npm run check:docs` **55 md / 355 链接**。
+- **未闭环**：远端批量的数据卫生（每批稳定 `X-Device-Id` / 按 tag 清账）与 `.worktrees/` 清理，等业主决定。
+
 ## 2026-10-03 · v14 抬档到 `rapfi@2000ms`：9 胜 3 和 8 负，和局变多、失效模式不变（跨档位比分不是曲线）
 
 - **轮次事实**：tag `exp-20261003050139`，单臂 **20 局** vs `rapfi@2000ms`，用时 **3453 s**，

@@ -8,11 +8,11 @@ import path from 'node:path';
 import os from 'node:os';
 
 describe('identityOf', () => {
-  it('三元组：渠道|战术档|思考ms，空战术档归 -', () => {
+  it('三元组：渠道|战术档|思考ms（空档留空，与归档/报表桶键同形状；唯一实现在 batch-common）', () => {
     expect(identityOf({ channel: 'proxy', tactics: 'v11-vct', thinkMs: 0 })).toBe('proxy|v11-vct|0');
-    expect(identityOf({ channel: 'mock' })).toBe('mock|-|0');
+    expect(identityOf({ channel: 'mock' })).toBe('mock||0');
     expect(identityOf({ channel: 'rapfi', tactics: 'v13-pressure-gate', thinkMs: 500 })).toBe('rapfi|v13-pressure-gate|500');
-    expect(identityOf({ channel: 'rapfi', tactics: '', thinkMs: '1000' })).toBe('rapfi|-|1000');
+    expect(identityOf({ channel: 'rapfi', tactics: '', thinkMs: '1000' })).toBe('rapfi||1000');
   });
 });
 
@@ -45,7 +45,7 @@ describe('gameRecord', () => {
   });
   it('身份从 export 的黑白三字段提取', () => {
     const r = gameRecord({ ...base, winner: 'black' });
-    expect(r.black).toBe('mock|-|0');
+    expect(r.black).toBe('mock||0');
     expect(r.white).toBe('random|v13-pressure-gate|0');
     expect(r.plies).toBe(3);
   });

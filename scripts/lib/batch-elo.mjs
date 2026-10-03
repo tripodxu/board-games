@@ -5,9 +5,10 @@
 // 本地（甚至 test/scripts 单测里）不碰网络地复算。
 //
 // 口径（D8）：
-//   - 身份 = channel|tactics|thinkMs（战术档空 = '-'；mock 臂不过战术层，
-//     thinkMs 对非 rapfi 臂无意义，统一记 0）。这个三元组来自
-//     persist.ts 的 SideConfig，与实验面板的 duelLabel 同源。
+//   - 身份 = channel|tactics|thinkMs，**唯一实现在 batch-common.mjs**（与归档/报表的
+//     `渠道|战术|思考` 桶键同一形状，空战术档留空而不是 '-'：`rapfi||500`）。
+//     早先这里另有一份把空档写成 '-' 的实现 ⇒ 同一个配置两处口径（合入审查的中清单项）。
+//     mock 臂不过战术层、thinkMs 对非 rapfi 臂无意义，都自然落到空串/0。
 //   - 顺序迭代（按时间序逐局更新），K=16，和棋记 0.5。
 //   - <MIN_GAMES 局的身份只展示不计 ranking 标注（本版不做 Glicko）。
 //   - 只统计 buildGameExport 里 result/winner 完整的局；dry-run 局也统计
@@ -16,16 +17,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { identityOf } from './batch-common.mjs';
+
+export { identityOf };
+
 /** 少于这个局数的身份在排行里标注「样本不足」。 */
 export const MIN_GAMES = 50;
-
-/** 身份归一：渠道/战术档/思考 ms 三元组。空战术档归 '-'，thinkMs 缺省 0。 */
-export function identityOf(side) {
-  const channel = String(side.channel || '').trim() || '-';
-  const tactics = String(side.tactics || '').trim() || '-';
-  const think = Number.isFinite(Number(side.thinkMs)) ? Math.trunc(Number(side.thinkMs)) : 0;
-  return channel + '|' + tactics + '|' + think;
-}
 
 /** 从一个棋谱 export JSON 提取一局记录（黑/白身份 + 黑方得分）。 */
 export function gameRecord(exportJson) {

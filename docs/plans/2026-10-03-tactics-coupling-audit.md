@@ -1,8 +1,9 @@
-# 战术版本耦合性审计报告：14 档战术档位之间到底有没有牵连？
+# 战术版本耦合性审计报告：战术档位之间到底有没有牵连？
 
 > 类型：**审计报告（只读调查，不改代码、不占战术轮换计数）**。状态：**✅ 已完成（2026-10-03 交付，结论已被 ② 的计划 D2/D4 消费）**。执行者：编排代理 + 3 个只读调研子代理。
 > 触发：项目所有者要求（2026-10-03，paraphrased）：「建新 worktree；①确认战术版本之间是否有耦合牵连；②建 SSH 远程批量实验工具……先给出你的计划」。本文件是 ① 的答案，② 见同目录 [2026-10-03-remote-batch-experiments.md](2026-10-03-remote-batch-experiments.md)。
 > 结论速览：**有耦合，且分三层**——状态层（低）、机制层（高）、复现层（最高）。「同进程并行跑不同版本做对比」是安全的；「在 HEAD 上逐字复现老版本」是不安全的。详见 §2–§5。
+> ⚠️ **快照口径（2026-10-03 合入后补注）**：本文写于 v13 时代，当时的登记表是 **14 档 / 17 个机制键**，正文里的档位数、`src/core/engines/gomoku.ts` 行号都是那天的快照。当天稍后 v14（`v14-live3-fresh`）落盘 ⇒ 现为 **15 档（14 个战术版本 + `v0-off` 基线）/ 18 个机制键**（新增 `live3Fresh`），live3 那一段实现重写 ⇒ 该段行号有位移。**结论（三层耦合、两条静默回退坑、写死预算）不受影响**，引用行号时请以当天 commit `0e7e9fb` 为准。
 
 ---
 
@@ -20,7 +21,7 @@
 
 | 状态 | 位置 | 分级 | 说明 |
 |---|---|---|---|
-| 战术缓存 `tacCache` | `src/core/tactics.ts:103-105` | **安全** | `WeakMap<object, Map<string, TacticsReport>>` 双键：state 对象 → `ver.id` → report。写入前有版本门（`:387-391` `if (ver.id !== tacticsVersion) return…`）。同进程先跑 v9 再跑 v13 不串味，代价只是同 state 最多驻留 14 档 |
+| 战术缓存 `tacCache` | `src/core/tactics.ts:103-105` | **安全** | `WeakMap<object, Map<string, TacticsReport>>` 双键：state 对象 → `ver.id` → report。写入前有版本门（`:387-391` `if (ver.id !== tacticsVersion) return…`）。同进程先跑 v9 再跑 v13 不串味，代价只是同 state 最多驻留 15 档（v13 审计当时为 14 档） |
 | 全局 RNG | `src/core/rng.ts:25-27`（`setSeed` 重绑进程级随机流，`:30-33`） | **高（唯一实测污染源）** | 并行两臂互相 `setSeed` 会改对方随机流；且 `meta.seed` 记的是「最后一次 setSeed」而非开局面值（`src/core/meta.ts:93`），归档 seed 与实际随机流脱钩。**只影响 random/mock 臂**（`src/core/jev/client.ts:519`、`src/core/jev/mock.ts:44-53`）；真实 Jev 臂不受影响 |
 | mockDecide 注入点 | `src/core/jev/client.ts:49-54` | 无实质影响 | 跨版本共享，但 mock 渠道根本不进战术层（`:287-290`），与版本无关 |
 
@@ -83,7 +84,7 @@
 
 ## 5. 复现层：不 checkout 老 commit，能复现老版本吗？
 
-**答案：能复现「机制层集合」，不能逐字复现老版本行为。** HEAD 的 mech 门覆盖全部 14 层，传 `tacticsVersion` 即可关层；但以下四类代码**不按版本裁剪且已随后续 commit 漂移**：
+**答案：能复现「机制层集合」，不能逐字复现老版本行为。** HEAD 的 mech 门覆盖全部档位（v13 审计当时是 14 层，v14 起 15 层），传 `tacticsVersion` 即可关层；但以下四类代码**不按版本裁剪且已随后续 commit 漂移**：
 
 1. **`sound` 键是死键，soundness 闸门无条件执行**：`sound` 只在 `src/core/tactics-versions.ts:130` 出现，`computeTactics`/`decide` 从未消费；而 `src/core/engines/gomoku.ts:313`
    ```ts

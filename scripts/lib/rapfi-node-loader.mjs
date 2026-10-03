@@ -90,17 +90,24 @@ export function installRapfiNodeLoader() {
   setLoader(loadRapfiNode);
 }
 
-/** 冒烟：START 15 → OK、INFO rule 0、空盘一手 BOARD → 应有着法行。 */
+/** 冒烟：START 15 → ITER 会回 OK、INFO rule 0、一手中盘 BOARD → 应有 stdout。
+ *
+ *  早先这函数把 stdout 收进一个从不 push 的数组再原样返回，等于没有断言（合入审查列为「形同虚设」）；
+ *  现在把行收集起来，一条都没有就抛错——`scripts/rapfi-parity-probe.mjs` 开局前会先跑它。 */
 export async function smokeTest() {
+  const lines = [];
   const factory = requireFactory();
   const mod = await factory({
     locateFile: (p) => path.join(RAPFI_DIR, p),
-    onReceiveStdout: () => { /* ignore */ },
-    onReceiveStderr: () => { /* ignore */ },
+    onReceiveStdout: (line) => { lines.push(String(line)); },
+    onReceiveStderr: (line) => { lines.push('ERR ' + String(line)); },
   });
-  const seen = [];
+  if (!mod || typeof mod.sendCommand !== 'function') throw new Error('Rapfi 引擎实例化失败（Module 无 sendCommand）');
   mod.sendCommand('START 15');
   mod.sendCommand('INFO rule 0');
   mod.sendCommand('BOARD\n7,7,1\n7,8,2\nDONE');
-  return { seen };
+  if (lines.length === 0) throw new Error('Rapfi 冒烟失败：START/INFO/BOARD 之后没有任何 stdout/stderr');
+  const answered = lines.some((l) => /\d/.test(l));
+  if (!answered) throw new Error(`Rapfi 冒烟失败：输出里没有任何数字（着法/OK）：${lines.slice(0, 5).join(' | ')}`);
+  return { lines, answered };
 }

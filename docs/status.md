@@ -231,10 +231,13 @@
     `winner==='draw'` ⇒ x1 两局 225 手满盘和棋被当「未终局」整局丢掉（Elo 只算 22/24 局、
     和棋列全 0）。改为按 result 串判和棋（与 parseResult 同形正则）——铁律 11 落实：胜/和/负同报。
   - 产物 `.work/remote/<batch>/`（plan/checkpoint/games/round-summary）不入库；工具自身
-    36 例单测（`npm run test:scripts`）+ 全量 `npm test` 375 例 / `tsc --noEmit` 干净。
+    **44 例单测**（`npm run test:scripts`）+ 全量 `npm test` **382 例 / 37 文件** / `tsc --noEmit` 干净。
   **合入时的审查（独立子代理，只读）**：设施方向与密钥纪律无问题、`src/**` 零改动、38 例单测真绿；
   但报了 5 条合并阻断项（`think=0` 越权写、`--rounds>1` 并发起 worker、续跑 skipped 计 0 + `resume` 缺 key 注入、
-  `batchId` 同日撞车 + checkpoint 不比 tag、归档阶段无重试/超时/非幂等）⇒ **已在合入后同一批修掉**（见 CHANGELOG/MEMORY）。
+  `batchId` 同日撞车 + checkpoint 不比 tag、归档阶段无重试/超时/非幂等）⇒ **已在合入后同一批修掉**；
+  整改细节与「轮次串行 / 续跑回读胜负 / 归档前落 pending+uid / `--origin` / 远端 `repoHead` 归因」等 3 条建议项见
+  [2026-10-03-remote-batch-experiments.md](plans/2026-10-03-remote-batch-experiments.md) §P6 与
+  [ADR-0019](adr/0019-remote-batch-experiments.md)「合入 main 后的整改」。
 
 - **战术层耗时口径（2026-10-02 起）**：`game_moves.tac_ms` 与 `games.tac_avg_ms` / `tac_max_ms`
   单独记 `computeTactics` + `pickSafestParry` 的耗时（`game_moves.ms` 是「战术 + 上游」总耗时，
@@ -336,15 +339,16 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 三个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 139 个用例 + vitest 34 个测试文件 / 337 个用例）。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **142 个用例** + vitest **37 个测试文件 / 382 个用例**（含新增的 `scripts` project：`test/scripts/**` 44 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
-| `npm test` | `test:engines` + `test:new`（vitest 三个 project 一次跑完） | 提交前的总闸 |
-| `npm run test:engines` | 引擎自检、战术十四级与 VCF/VCT 攻防、压力闸门削点、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
+| `npm test` | `test:engines` + `test:new`（vitest 四个 project 一次跑完：worker/core/ui/scripts） | 提交前的总闸 |
+| `npm run test:engines` | 引擎自检、战术十五级与 VCF/VCT 攻防、压力闸门削点、活三新造口径、**金样逐手差分**、54 局归档逐手重放 | 改引擎 / 战术层后必跑；也是最省事的一次全量回归 |
 | `npm run test:tactics` | 战术层独立回归（`test/tactics/run.mjs`） | 改战术层时 |
 | `npm run test:worker` | 真 workerd + 真 D1 的 HTTP 契约与维护任务 | 改 `src/worker/**`、`migrations/**` 后 |
 | `npm run test:ui` | happy-dom 下的视图层与装配层运行时断言 | 改 `src/ui/**`、`src/app/**`、`index.html` 后 |
+| `npm run test:scripts` | 远端批量实验设施（`test/scripts/**`：spec 解析、编排计划、Elo 与续跑判定纯函数） | 改 `scripts/**` 后 |
 | `npx vitest run --project core` | 纯 Node：字段映射、会话、战绩簿、上传队列、迁移重放归因、版本双源一致性 | 改 `src/core/**`、`src/shared/**` 后 |
 | `npm run typecheck` | TypeScript 全量类型检查（无输出） | 提交前 |
 | `npm run build` | Vite 生产构建（静态资产 + Worker 产物） | 部署前 / 排查产物问题 |

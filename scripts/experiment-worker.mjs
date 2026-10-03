@@ -25,7 +25,8 @@ import { fileURLToPath } from 'node:url';
 import { getGame } from '../src/core/registry.ts';
 import { setSeed } from '../src/core/rng.ts';
 import { createSession, randomGameUid } from '../src/core/session.ts';
-import { buildGameExport } from '../src/core/record/export.ts';
+import { buildGameExport, thinkMsOf } from '../src/core/record/export.ts';
+import { tacticsLabel } from '../src/core/view/duel.ts';
 import { decide } from '../src/core/jev/index.ts';
 import {
   KNOWN_CHANNELS,
@@ -67,26 +68,70 @@ function ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
 
 function writeJson(file, obj) {
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(obj, null, 2) + '\n');
+  // 原子写：先写 .tmp 再 rename——`kill -9` 只可能留下 .tmp，不会留半截 JSON
+  // （半截 JSON 会被 playOne/loadRecords 静默跳过，等于悄悄少一局）。
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+}
+
+/** 本轮跑的是哪个提交（Node 直载没有构建注入，`code_version` 恒为 dev+nogit ⇒ 只能自报）。
+    纯 fs 读 `.git`，不 spawn 子进程。 */
+function repoHead() {
+  try {
+    const head = fs.readFileSync(path.join(ROOT, '.git/HEAD'), 'utf8').trim();
+    if (!head.startsWith('ref: ')) return head.slice(0, 12);
+    const ref = head.slice(5);
+    try { return fs.readFileSync(path.join(ROOT, '.git', ref), 'utf8').trim().slice(0, 12); } catch (_) { /* packed-refs */ }
+    const packed = fs.readFileSync(path.join(ROOT, '.git/packed-refs'), 'utf8');
+    const line = packed.split('\n').find((l) => l.trim().endsWith(' ' + ref));
+    return line ? line.trim().slice(0, 12) : 'ref-missing';
+  } catch (_) { return 'nogit'; }
 }
 
 /** 一次真上游调用（row 形状与 GET /api/games 的 listItem 对齐，够核对即可）。 */
 async function apiListByTag(origin, tag) {
   try {
-    const r = await fetch(`${origin}/api/games?tag=${encodeURIComponent(tag)}&limit=100`);
+    const r = await fetch(`${origin}/api/games?tag=${encodeURIComponent(tag)}&limit=100`, {
+      signal: AbortSignal.timeout(30000),
+    });
     if (!r.ok) return null;
     return await r.json();
   } catch (_) { return null; }
 }
 
-async function apiPostGame(origin, payload) {
-  const r = await fetch(`${origin}/api/games`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(`POST /api/games → HTTP ${r.status}`);
-  return await r.json();
+/** 列表里是否已有这一局（uid 优先）。列表项是 camelCase（`gameUid`）。 */
+async function alreadyArchived(origin, tag, gameUid) {
+  const list = await apiListByTag(origin, tag);
+  const rows = list && Array.isArray(list.games) ? list.games : [];
+  return rows.some((r) => r.gameUid === gameUid || r.game_uid === gameUid);
+}
+
+/**
+ * POST 一局棋谱：30 s 超时 + 3 次退避；4xx（除 429）判为不可重试直接抛出
+ * （无重试/无超时的版本会在归档阶段挂住整轮，见合入审查 M5）。
+ */
+async function apiPostGame(origin, payload, attempts = 3) {
+  let lastErr = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(`${origin}/api/games`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (r.ok) return await r.json();
+      const err = new Error(`POST /api/games → HTTP ${r.status}`);
+      if (r.status !== 429 && r.status < 500) err.fatal = true;
+      throw err;
+    } catch (e) {
+      lastErr = e;
+      if (e && e.fatal) throw e;
+      if (i < attempts - 1) await sleep(2000 * (i + 1));
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -102,17 +147,22 @@ async function apiPostGame(origin, payload) {
 export function experimentEntryFrom(plan, a, b, summary) {
   const games = [];
   for (const g of summary.games) {
-    if (g.status !== 'ok') continue;
+    /* `ok` 与 `skipped`（续跑时按 checkpoint 跳过的局）都必须计入 —— 早先只收 ok 的写法会让续跑轮
+       POST 出一行 total=0 的实验档案，同时把 skipped 算进 okCount ⇒ 出口码 0 的假绿。
+       `ok-dry`（dry-run）与 `error` 不是真落库的局，照旧不计。 */
+    if (g.status !== 'ok' && g.status !== 'skipped') continue;
     const { black, white } = sidesForGameSpec(a, b, g.gameNo);
     const winnerSide = g.winner === 'black' ? black : g.winner === 'white' ? white : null;
     games.push({
       no: g.gameNo,
       blackChan: black.channel,
       whiteChan: white.channel,
-      blackTac: black.tactics || null,
-      whiteTac: white.tactics || null,
-      blackThink: black.thinkMs || 0,
-      whiteThink: white.thinkMs || 0,
+      // 与浏览器 `newEntryFromRun()` 同规则：档位只对会跑战术层的渠道有意义（rapfi/random 侧留空），
+      // 思考档只对 rapfi 侧写（否则会造出 `rapfi|v13-pressure-gate` /「0 毫秒档」这类幻影身份）。
+      blackTac: tacticsLabel({ channel: black.channel, tactics: black.tactics || undefined }) || null,
+      whiteTac: tacticsLabel({ channel: white.channel, tactics: white.tactics || undefined }) || null,
+      blackThink: thinkMsOf(black.channel, black.thinkMs) ?? null,
+      whiteThink: thinkMsOf(white.channel, white.thinkMs) ?? null,
       winnerChan: winnerSide ? winnerSide.channel : null,
       by: null,
       blackTacMs: null,
@@ -126,13 +176,15 @@ export function experimentEntryFrom(plan, a, b, summary) {
     date: new Date().toISOString(),
     chanA: a.channel,
     chanB: b.channel,
-    tacA: a.tactics || null,
-    tacB: b.tactics || null,
-    thinkA: a.thinkMs || 0,
-    thinkB: b.thinkMs || 0,
+    tacA: tacticsLabel({ channel: a.channel, tactics: a.tactics || undefined }) || null,
+    tacB: tacticsLabel({ channel: b.channel, tactics: b.tactics || undefined }) || null,
+    thinkA: thinkMsOf(a.channel, a.thinkMs) ?? 0,
+    thinkB: thinkMsOf(b.channel, b.thinkMs) ?? 0,
     total: games.length,
     games,
-    note: 'SSH 远端批量（experiment-batch.mjs）',
+    /* H2：Node 直载没有构建注入 ⇒ 每局 `code_version` 恒为 `dev+nogit`，远端跑的是哪个提交
+       只能在档案里自报（summary/checkpoint 里也有 repoHead 字段）。 */
+    note: `SSH 远端批量（experiment-batch.mjs）${summary.repoHead ? ` repo ${summary.repoHead}` : ''}`,
   };
 }
 
@@ -168,6 +220,26 @@ function decideEnvFor(cfg, plan) {
 
 /* ---------- 主流程 ---------- */
 
+/**
+ * checkpoint 命中时该怎么走（纯函数，便于单测）：
+ * - `skip`：该局上次已跑完 ⇒ 直接计入 summary（**带上 winner/plies/gameUid**，否则实验档案里这局会凭空消失）；
+ * - `run` + `resumeUid`：上次归档中途被杀 ⇒ 复用同一 gameUid 重跑（dedup_key 不变，D1 不会出现两份棋谱）；
+ * - `run` + `reason: 'tag-mismatch'`：checkpoint 属于别的 tag（同名 batch 换了轮次）⇒ 必须重跑。
+ * 早先只比 `status` 不比 `tag`，同日第二次 submit 会「一局不跑、exit 0、还 POST 一行实验档案」。
+ */
+export function ckptAction(prev, tag) {
+  if (!prev || typeof prev !== 'object') return { action: 'run' };
+  if (prev.tag && tag && prev.tag !== tag) return { action: 'run', reason: 'tag-mismatch' };
+  if (prev.status === 'ok' || prev.status === 'ok-dry') {
+    return {
+      action: 'skip', from: prev.status,
+      winner: prev.winner ?? null, plies: prev.plies ?? null, gameUid: prev.gameUid ?? null,
+    };
+  }
+  if (prev.status === 'pending' && prev.gameUid) return { action: 'run', resumeUid: prev.gameUid };
+  return { action: 'run' };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const planPath = argOf(argv, '--plan');
@@ -178,8 +250,16 @@ async function main() {
   }
   const plan = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(planPath, 'utf8')) };
   const { round, tag, games, pauseMs, timeoutMin, stallMin, maxPlies, topK, seed, dryRun, origin } = plan;
-  const a = parseSpec(plan.a);
-  const b = parseSpec(plan.b);
+  let a;
+  let b;
+  try {
+    a = parseSpec(plan.a);
+    b = parseSpec(plan.b);
+  } catch (err) {
+    process.stderr.write(`plan 里的臂不合法（a=${plan.a} / b=${plan.b}）：${err.message}\n`);
+    process.exitCode = 2;
+    return;
+  }
   // outDir 相对 cwd 解析（编排器在仓根启动 worker，plan 里通常给绝对路径）
   const outDir = path.resolve(process.cwd(), plan.outDir || `.work/remote/${plan.batchId}/round-${round}`);
   const gamesDir = path.join(outDir, 'games');
@@ -215,24 +295,34 @@ async function main() {
   }
 
   ensureDir(gamesDir); ensureDir(ckptDir);
-  log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun}`);
+  const head = repoHead();
+  log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun} repoHead=${head}`);
 
-  const summary = { batchId: plan.batchId, round, tag, startedAt: new Date().toISOString(), games: [] };
+  const summary = { batchId: plan.batchId, round, tag, repoHead: head, startedAt: new Date().toISOString(), games: [] };
   for (let gameNo = 1; gameNo <= games; gameNo++) {
     const ckptFile = path.join(ckptDir, gameRecordName(round, gameNo));
+    let resumeUid = null;
     if (fs.existsSync(ckptFile)) {
+      let act = { action: 'run' };
       try {
-        const prev = JSON.parse(fs.readFileSync(ckptFile, 'utf8'));
-        if (prev.status === 'ok' || prev.status === 'ok-dry') {
-          log(`game-${gameNo} 已完成（${prev.status}），跳过`);
-          summary.games.push({ gameNo, status: 'skipped', from: prev.status });
-          continue;
-        }
+        act = ckptAction(JSON.parse(fs.readFileSync(ckptFile, 'utf8')), tag);
       } catch (_) { /* checkpoint 损坏则重跑该局 */ }
+      if (act.action === 'skip') {
+        log(`game-${gameNo} 已完成（${act.from}），跳过`);
+        /* 续跑也必须把胜负带回 summary：早先只带 status 会让实验档案里这局凭空消失，
+           同时再把 skipped 计入正常局数 ⇒ 出口码 0 的假绿。 */
+        summary.games.push({ gameNo, status: 'skipped', from: act.from, winner: act.winner, plies: act.plies, gameUid: act.gameUid });
+        continue;
+      }
+      if (act.reason === 'tag-mismatch') log(`game-${gameNo} checkpoint 的 tag 与本轮 ${tag} 不一致，重跑本局`);
+      if (act.resumeUid) {
+        resumeUid = act.resumeUid;
+        log(`game-${gameNo} 上次归档未完成，复用 gameUid=${resumeUid} 重跑`);
+      }
     }
-    const one = await playOne(plan, a, b, gameNo, { gamesDir, ckptDir });
+    const one = await playOne(plan, a, b, gameNo, { gamesDir, ckptDir, resumeUid });
     summary.games.push({ gameNo, ...one });
-    writeJson(ckptFile, { gameNo, tag, ...one });
+    writeJson(ckptFile, { gameNo, tag, head, ...one });
     if (gameNo < games) await sleep(pauseMs);
   }
   summary.endedAt = new Date().toISOString();
@@ -269,7 +359,8 @@ async function playOne(plan, a, b, gameNo, dirs) {
   const s = sidesForGameSpec(a, b, gameNo);
   const session = createSession({
     gameId: 'gomoku',
-    gameUid: randomGameUid(),
+    // 续跑复用上次的 uid（见 main 的 pending 分支）：归档幂等的锚点
+    gameUid: dirs.resumeUid || randomGameUid(),
     mode: 'ai-ai',
     startedAt,
   });
@@ -344,6 +435,7 @@ async function playOne(plan, a, b, gameNo, dirs) {
         clearTimeout(watchdog);
       }
       if (!decision || !decision.move) throw new Error('AI 未返回可走着法');
+      retries = 0; // 退避预算是「每一手」的（与 loop.ts 同口径），不是整局共享
 
       /* playMove 三行（loop.ts:225-232）的纯数据复刻：不加 epoch/渲染 */
       const meta = { ...(decision.meta || {}) };
@@ -365,11 +457,12 @@ async function playOne(plan, a, b, gameNo, dirs) {
   session.endedAt = Date.now();
   const g = engine.getStatus(session.st);
   const payload = buildGameExport(session, engine);
-  /* 思考 ms 不在 export 里（浏览器同款 payload 也没这俩键），但本地 Elo 身份
-     （rapfi|500 ≠ rapfi|1000）与 D1 归因都要用：expInfo 现成，补成可选字段
-     （record-map.ts:375 的 num() 认得；旧消费方都有 ?? 0 兜底）。 */
-  payload.blackThink = s.black.thinkMs || 0;
-  payload.whiteThink = s.white.thinkMs || 0;
+  /* 固定思考档只认 `rapfi` 侧（`thinkMsOf` 与 src/core/record/export.ts 同一条值域闸门）：
+     proxy 的「思考时间」是模型往返、不是配置，写 0 会被报表读成「0 毫秒档」这种不存在的身份。 */
+  const bThink = thinkMsOf(s.black.channel, s.black.thinkMs);
+  if (bThink !== undefined) payload.blackThink = bThink;
+  const wThink = thinkMsOf(s.white.channel, s.white.thinkMs);
+  if (wThink !== undefined) payload.whiteThink = wThink;
   const gameFile = path.join(dirs.gamesDir, gameRecordName(round, gameNo));
   writeJson(gameFile, payload);
 
@@ -388,17 +481,30 @@ async function playOne(plan, a, b, gameNo, dirs) {
   };
 
   if (!dryRun) {
+    /* 归档前先落一次 pending（带 gameUid）：kill -9 落在归档中途时，续跑能复用同一 uid，
+       dedup_key 不变 ⇒ D1 里不会出现「同一轮同一局号两份棋谱且都算数」。 */
+    writeJson(path.join(dirs.ckptDir, gameRecordName(round, gameNo)), {
+      gameNo, tag, status: 'pending', gameUid: session.gameUid,
+    });
     try {
-      const resp = await apiPostGame(origin, payload);
-      result.archivedId = resp && (resp.id ?? null);
-      /* 归档核对：GET /api/games?tag= 里应能数到本局（uid 优先，退化按局号计数）。
-         注意列表项是 camelCase（gameUid/experimentTag），不是 snake_case。 */
-      const list = await apiListByTag(origin, tag);
-      const rows = (list && Array.isArray(list.games) ? list.games : []);
-      const hit = rows.find((r) => r.game_uid === session.gameUid || r.gameUid === session.gameUid);
-      const byTag = rows.filter((r) => (r.experimentTag || r.tag) === tag).length;
-      result.verified = Boolean(hit) || byTag >= gameNo;
-      result.rowsForTag = byTag;
+      if (await alreadyArchived(origin, tag, session.gameUid)) {
+        result.archivedId = null;
+        result.verified = true;
+        result.alreadyArchived = true; // 上次其实已经写进去了，不必再 POST
+      } else {
+        const resp = await apiPostGame(origin, payload);
+        result.archivedId = resp && (resp.id ?? null);
+        /* 归档核对：GET /api/games?tag= 里应能按 uid 找到本局（列表项是 camelCase）。
+           列表读只是核对手段，可能比写入慢一拍 ⇒ 退避重查 3 次再判失败。 */
+        result.verified = false;
+        for (let i = 0; i < 3 && !result.verified; i++) {
+          if (i) await sleep(3000);
+          result.verified = await alreadyArchived(origin, tag, session.gameUid);
+        }
+        const list = await apiListByTag(origin, tag);
+        result.rowsForTag = list && Array.isArray(list.games) ? list.games.length : null;
+        if (!result.verified) throw new Error('归档后按 uid 核对不到本局');
+      }
     } catch (e) {
       result.status = 'error';
       result.error = `归档失败：${e.message || e}`;

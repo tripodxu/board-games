@@ -111,7 +111,7 @@ function asSideCfg(cfg: EffSide, human?: boolean): ExportSideCfg {
  *  幻影身份同一类事故）。所以只认 `channel === 'rapfi'` 且 `> 0` 的数值，其余留空（D1 落 NULL）。
  *  取值优先级：轮次快照（`expInfo.blackThink/whiteThink`，本局开跑时的配置）→ 侧配置
  *  （`sideConfig.*.rapfiThinkMs`，抽屉当前值）。 */
-function thinkMsOf(channel: string | null | undefined, ...candidates: unknown[]): number | undefined {
+export function thinkMsOf(channel: string | null | undefined, ...candidates: unknown[]): number | undefined {
   if (channel !== 'rapfi') return undefined;
   for (const c of candidates) {
     const n = typeof c === 'number' ? c : typeof c === 'string' ? Number(c) : NaN;
