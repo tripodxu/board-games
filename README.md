@@ -219,10 +219,11 @@ CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:
    其中 `vctAttack` 是**冲四链 + 活三逼迫**的连续威胁搜索（纯冲四看不见的杀由它兜住），
    `vctDefense` 是它的防守对偶（**对手的混合链**也要拆：判据是拆完对手连冲四链和混合链都没有），
    `pressureGate` 是**压力闸门**（对手的「做四点」数压过我们时先削点，而不是抢自己的活三），
-   `live3*` 两级是 4 手内必胜的**真推演**（跳活三/斜线组合同样认得出），
+   `live3*` 两级是 4 手内必胜的**真推演**（跳活三/斜线组合同样认得出；v14 起判据要求制造点**由这一手新造**，
+   旧口径把「已握制造点后的任何闲棋」也认成活三，实测 68% 是幻影点），
    详见 [docs/jev-api.md](docs/jev-api.md) §2.2、[ADR-0014](docs/adr/0014-live3-real-lookahead.md)、
-   [ADR-0015](docs/adr/0015-vct-continuous-threats.md)、[ADR-0016](docs/adr/0016-vct-defense.md) 与
-   [ADR-0017](docs/adr/0017-pressure-gate.md)。
+   [ADR-0015](docs/adr/0015-vct-continuous-threats.md)、[ADR-0016](docs/adr/0016-vct-defense.md)、
+   [ADR-0017](docs/adr/0017-pressure-gate.md) 与 [ADR-0018](docs/adr/0018-live3-fresh-correction.md)。
 7. **校准实验室**：固定局面的胜率标定与复盘（`src/core/view/calibration.ts`）。
 8. **对比实验**：同一开局跑多局 A/B（渠道/战术档/思考深度可分别设），结果归档到 `/api/experiments`
    并按 tag upsert。
@@ -287,10 +288,12 @@ VCF 将死链，见 [docs/jev-api.md](docs/jev-api.md) §2.2），五子棋另�
 以及**与旧实现逐手零差异**——7 棋种自对弈 + 54 局历史棋谱，合计 5510 手，
 金样见 [test/parity/README.md](test/parity/README.md)。线上数据核对：导入 54 局 / 4379 手 / 6 轮实验，
 `sum(payload_bytes) = 845578`；2026-10-01 又真跑了 4 局 proxy 对比实验（各 225 手，全和棋），
-D1 现为 210 局 / 13449 手 / 20 轮实验（见 [docs/status.md](docs/status.md)「数据现状」）；
+D1 现为 222 局 / 14078 手 / 21 轮实验（见 [docs/status.md](docs/status.md)「数据现状」）；
 战术档对 Rapfi 的逐版曲线在 500 ms 档是 v9 25% → v10 67% → v11 83%/75% → v12 **12 胜 0 和 0 负**，
 按 m08704 抬高思考档后 v12 为 `rapfi@1000ms` 10-0-2（83.3%）、`rapfi@2000ms` 7-1-4（62.5%）；
-v13 的 20 局档位复核为 `rapfi@1000ms` 11-1-8（57.5%）、`rapfi@2000ms` 13-2-5（70.0%）。
+v13 的 20 局档位复核为 `rapfi@1000ms` 11-1-8（57.5%）、`rapfi@2000ms` 13-2-5（70.0%）；
+v14（活三判据纠偏）在 `rapfi@1000ms` 12 局为 **9 胜 1 和 2 负**（不败率 83.3%），与 v13 同档的 9-0-3
+差一局、**分辨不了**（是纠偏不是棋力杠杆）。
 ⚠️ 同一个 1000 ms 档在 12 局时是 75.0%、20 局时是 57.5%，**同档方差大于档位差** ⇒ 比分只能当
 抖动区间读，机制结论要看接管标签 × 局结果的交叉表（见 [v13 计划](docs/plans/2026-10-02-tactics-v13-pressure-gate.md) §6.7）。
 

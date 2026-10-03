@@ -100,7 +100,7 @@ npm run build                   # vite build（静态资产 + Worker 包一起�
 npm run deploy                  # = build + wrangler deploy（需 CLOUDFLARE_API_TOKEN；线上域 https://jevqipan.logicc.top）
 npm run smoke:live              # 线上 HTTP 冒烟（可 --url 换目标；需要网络，未授权时别跑）
 npm run smoke:browser           # 真浏览器端到端冒烟（CDP + 系统 Chrome/Edge，零依赖；--url/--channel/--headful/--keep/--offline；默认把 /rapfi/* 改由本地 public/rapfi/ 供给，--no-rapfi-local 可关）
-node scripts/experiment-run.mjs --games 12 --tacA v13-pressure-gate --chanB rapfi --thinkB 1000   # 长跑对照实验（真浏览器 + 干净 profile；key 只从 JEV_API_KEY 读；会真花上游配额；规程与四条坑见 docs/agents/playbooks.md §7）
+node scripts/experiment-run.mjs --games 12 --tacA v14-live3-fresh --chanB rapfi --thinkB 1000   # 长跑对照实验（真浏览器 + 干净 profile；key 只从 JEV_API_KEY 读；会真花上游配额；规程与四条坑见 docs/agents/playbooks.md §7）
 npm run golden                  # 重新生成金样：**已冻结**，旧实现删除后该命令只打印中文说明并 exit 1（属预期）
 npm run cf-typegen              # 重新生成 worker-configuration.d.ts（改 wrangler.jsonc 后跑）
 ```

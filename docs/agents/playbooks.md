@@ -129,7 +129,7 @@
 
 ```bash
 $env:JEV_API_KEY = '<key>'    # 只从环境变量读；脚本只打印长度，不落盘
-node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v13-pressure-gate \
+node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v14-live3-fresh \
      --chanB rapfi --thinkB 500 --port 9450 --timeout-min 180 --stall-min 10 \
      --out .work/exp-<臂名>.json
 ```

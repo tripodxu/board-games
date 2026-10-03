@@ -46,7 +46,7 @@ docs/
 │   ├── 2026-10-02-tactics-v12-vct-def.md          ✅ 已完成（2026-10-02；战术 v12：连续威胁防守 + 三档思考时间对照）
 │   ├── 2026-10-02-tactics-v13-pressure-gate.md    ✅ 已完成（2026-10-02；战术 v13：压力闸门 + 回归扫描 + 同口径 A/B）
 │   ├── 2026-10-03-tactics-v14-evidence.md         📋 证据评审（2026-10-03；v14 候选的负结论 + 两个对照复算）
-│   └── 2026-10-03-tactics-v14-fresh-live3.md      🚧 进行中（2026-10-03；战术 v14：活三判据纠偏 + 影响面实测）
+│   └── 2026-10-03-tactics-v14-fresh-live3.md      ✅ 已上线（2026-10-03；v14 活三判据纠偏 + 对照实验 9-1-2 vs `rapfi@1000ms`）
 ├── superpowers/
 │   ├── plans/
 │   │   ├── 2026-09-28-board-games-hardening.md   ✅ 已完成（仓库硬化）

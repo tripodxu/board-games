@@ -146,9 +146,10 @@ threat | vcfAttack | vctAttack | vcfDefense | vctDefense | pressureGate | live3A
 并列取己方做四手数更大者；它排在 `vctDefense` 之后、`live3Attack` 之前，因为它要拦的正是「抢活三」
 那一步（六轮 1787 个回合里 205 手 `live3Attack`，其中 39 手落子前对手压力已领先，削点让 37/39 更优、
 双四威胁 37 → 7）；⑩ `live3Attack` 否则抢己方
-**活三制造点**（`live3_you`：走出后己方有 ≥2 个
-活四制造点，对手只能挡一个）；⑪ `live3Defense` 否则走 `live3_deny_points`
-（拆掉对方全部活三制造点的那一手）；⑩⑪ 两级都是**真推演**（跳活三、斜线组合、带空隙的四
+**活三制造点**（`live3_you`：走出后己方**新造** ≥2 个
+活四制造点，对手只能挡一个；「新造」这一条是 v14 `v14-live3-fresh` 补上的——旧口径只要「盘面上存在 ≥2 个」
+就把任何闲棋都算成制造活三，实测 67.9% 是幻影点）；⑪ `live3Defense` 否则走 `live3_deny_points`
+（拆掉对方全部活三制造点的那一手，同样按新造口径算）；⑩⑪ 两级都是**真推演**（跳活三、斜线组合、带空隙的四
 一律认得出），且**只在对方没有 2 手杀（`danger_points_opponent` 为空）时才动**——对方有更短的剑时
 抢剑会输速度，这两级让位给后面的 `parry` / `vcfDefense`；⑫ `parry` 否则拆 2-ply 杀点（`danger_points_opponent`），**多个并存时按 3-ply
 安全性排序**——先排除「堵完对手仍有双杀制造点」的坏点（给了对手持续攻击节奏），剩余按对手逼杀
