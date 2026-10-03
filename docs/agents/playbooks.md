@@ -179,3 +179,13 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v14-live3-fresh 
     ① 看负局是不是**全程「我方有杀 0」**；② 看「拆不掉」的手是不是逐条都标「全盘没有拆点」；
     ③ 只有「有拆点却没走」（真救 > 0）才算漏防，那才是防守层的活儿；否则问题在**更早的织网期**，
     该动的是进攻选择（例如压力闸门），不是再加一层防守。
+11. **两条会让冒烟/探针假红的环境坑（2026-10-03 实测）**：
+    ① **node 的 `fetch` 不走系统代理**。本机系统代理是 `127.0.0.1:10808`（注册表 `ProxyEnable=1`）——
+    PowerShell 的 `Invoke-RestMethod` 与 `curl.exe` 走它，而 Node 的 undici 直连 Cloudflare IP，
+    于是 `npm run smoke:live` 与 `.work/*.mjs` 探针会**偶发** `UND_ERR_CONNECT_TIMEOUT`（同一分钟 curl 却是 200）。
+    跑 node 网络脚本前先设 `$env:HTTPS_PROXY='http://127.0.0.1:10808'; $env:NODE_USE_ENV_PROXY='1'`
+    （Node 24 起支持后者；实测 3/3 成功、单次约 300 ms）。Chrome 走系统代理，所以长跑实验不受影响。
+    ② **同一个 D1 可能有第三方在写**：另一个 Agent 的批量对弈 worker 会以 `dev+nogit` 的 `code_version`
+    直连线上库落 `random`/`rapfi` 批次（tag 形如 `exp-20261003042812-rapfi1-r1`，**不建 `experiments` 行**），
+    于是「全局计数恰好 +1」这类断言会假红、`docs/status.md` 的「数据现状」也会漂移。
+    **按 `experiment_tag` 过滤的分析不受影响**；`scripts/smoke-live.mjs` 已把该断言放宽为「至少 +1」。

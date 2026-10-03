@@ -185,10 +185,16 @@ const mine = await req('/api/games?device=me&limit=5', { headers: { 'x-device-id
 check('GET /api/games?device=me 只回自己的局', mine.status === 200 && mine.body?.games?.length === 1 && mine.body.games[0].gameUid === newUid);
 
 const afterStats = await req('/api/stats');
+// 只断言「我们这一笔写进去了」，不把全局计数钉死成 +1：
+// 本仓库允许多 Agent 并行跑实验（例如对弈 worker 直连同一个 D1），
+// 期间第三方写入会让全局 +2、+3……把 +1 写成硬断言会在别人跑实验时假红
+// （2026-10-03 实测：另一 Agent 的 random/rapfi 批次每 ~30s 落一局）。
+// 「我们自己的那一笔恰好一局」由上面的 ?device=me 断言与逐手保真断言把关。
+const statsDelta = (afterStats.body?.totalGames ?? 0) - baseGames;
 check(
-  '写入后 totalGames 恰好 +1',
-  afterStats.body?.totalGames === baseGames + 1,
-  `${baseGames} → ${afterStats.body?.totalGames}`,
+  '写入后 totalGames 至少 +1（并发写入时放宽）',
+  statsDelta >= 1,
+  `${baseGames} → ${afterStats.body?.totalGames}（Δ${statsDelta}${statsDelta > 1 ? '，期间有其它写入' : ''}）`,
 );
 
 console.log(`\n结果：${pass} 项通过 / ${fails.length} 项失败${fails.length ? ' → ' + fails.join('; ') : ''}`);

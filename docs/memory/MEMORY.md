@@ -36,6 +36,28 @@
 
 ---
 
+## 2026-10-03 · 冒烟与探针的两类假红：node 不走系统代理、同一个 D1 有第三方在写
+
+- **坑 1（网络）**：`npm run smoke:live` 连续两次死在 `UND_ERR_CONNECT_TIMEOUT`（`104.21.58.114:443`／
+  `172.67.159.102:443`，各 10 s），而同一分钟 `curl.exe` 与 `Invoke-RestMethod` 打同一个域都是 **200 / 0.95 s**。
+  根因：本机系统代理 `127.0.0.1:10808`（注册表 `ProxyEnable=1`）只被 WinHTTP/curl 使用，
+  **Node 的 undici 默认直连**，于是直连路线一抖就整体超时（也解释了此前偶发的 `UND_ERR_BODY_TIMEOUT`）。
+  修法：跑 node 网络脚本前设 `$env:HTTPS_PROXY='http://127.0.0.1:10808'; $env:NODE_USE_ENV_PROXY='1'`
+  （Node 24 起支持 `NODE_USE_ENV_PROXY`），实测 3/3 成功、单次约 300 ms ⇒ 冒烟 **30/30 全过**。
+  Chrome 走系统代理，所以长跑实验与记分牌不受影响。
+- **坑 2（并发写库）**：同一时间 `smoke:live` 的「写入后 totalGames 恰好 +1」红成 `233 → 235`。
+  查 `/api/games`：另一个 Agent 的**批量对弈 worker 正在直连线上库**，每 ~30 s 落一局
+  `random` vs `rapfi`（`code_version = dev+nogit`，tag `exp-20261003042812-rapfi1-r1`，**不建 `experiments` 行**），
+  实测 12 局 1 轮（04:30:13–04:39:35Z）。这是 `feat/ssh-batch-experiments` 分支（`experiment-batch.mjs` /
+  `experiment-worker.mjs`）在跑，属于并行 Agent 的正常行为，不是回归。
+- **结论 / 纪律**：① 「全局计数恰好 +N」这类断言在多 Agent 并行下天然会假红，
+  `scripts/smoke-live.mjs` 已放宽为「至少 +1（Δ 一并打印，>1 时标注『期间有其它写入』）」，
+  「我们这一笔恰好一局」由 `?device=me` 与逐手保真断言把关；② `docs/status.md` 的「数据现状」
+  **只统计本仓库脚本跑出来的部分**，第三方写入会让线上总数漂移 —— 分析一律**按 `experiment_tag` 过滤**，
+  不看总数；③ 这类第三方棋谱的 `code_version = dev+nogit`，**不可用于版本归因**。
+
+---
+
 ## 2026-10-03 · 固定思考档（`black_think`/`white_think`）长期未落库：成本对照只能翻轮次配置
 
 - **症状**：AI-AI 对比实验的每一局，`games.black_think` / `white_think` 都是 NULL，而轮次表
