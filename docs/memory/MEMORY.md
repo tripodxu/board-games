@@ -19,6 +19,33 @@
 
 ---
 
+## 2026-10-04 · P4b 离线实验面：本机 Node 没外网、SigV4 要用官方向量自证、`KEY_CHANNELS.has` 只在缺 key 时炸
+
+- **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` P4b，[ADR-0021](../adr/0021-standalone-experiment-plane.md)）**：
+  ① [`scripts/lib/upstream.mjs`](../../scripts/lib/upstream.mjs)（89 行）：运行面闸门（direct 面禁 `proxy` 臂、`worker`/`d1` 必须显式 `--origin`）+ key 解析（`JEV_API_KEY` 优先、`--key-file` 缺省 `/root/.jev-key`）；
+  ② [`scripts/lib/throttle.mjs`](../../scripts/lib/throttle.mjs)（148 行）：滑窗 30 req/min + 连续 5 次 429 熔断，`installFetchThrottle()` **裹全局 `fetch`**；
+  ③ [`scripts/lib/s3-put.mjs`](../../scripts/lib/s3-put.mjs)（288 行）+ [`scripts/batch-bucket.mjs`](../../scripts/batch-bucket.mjs)（211 行）：纯 Node SigV4 与桶 CLI（`push|pull|ls`，凭据只读环境变量，缺任一 exit 3，上传失败只告警）；
+  ④ worker 缺省 `--upstream direct`（不写 `--origin` 就机械地不碰业主 Worker 与 D1）。
+- **坑① 直连面的真验收只能去 box 上做：本机 Node 没有外网**。`fetch` 直接 `ECONNREFUSED 127.0.0.1:10808`
+  （代理进程没跑）⇒ `plan-direct.json` 在本地永远 exit 1，而同一个 plan 在 box 上能跑通。
+  box 探针：`/root/.jev-key`（`-rw-------` 121 B）+ `Bearer` POST 上游 ⇒ **HTTP 422**（`questions` 空 ⇒ 鉴权已过，0.315 s）。
+  **教训：判「网络不通」和「代码错」要看错误类型** —— 限速器日志照常打「已发 16 次、累计等待 6.3 s」，说明闸门与限速是好的，只有出口不通。
+- **坑② 自实现 SigV4 必须拿 AWS 官方已知向量钉死，否则是自证**。三条向量当场抓出三个真 bug：
+  (a) 作用域日期用 `now` 而**忽略了调用方显式给的 `x-amz-date` 头**（签名与头不一致）；
+  (b) `canonicalUri()` **吞掉前导 `/`**（`ladders/…` 应为 `/ladders/…`，且要先把 URL 的 `pathname` `decodeURIComponent` 再逐段编码，否则 `test$file.text` 会二次编码成 `%2524`）；
+  (c) 虚拟主机式寻址 + endpoint 已含桶名 ⇒ 拼成 `bucket.bucket.s3.amazonaws.com`（静默 403/404），现在直接抛错。
+  另：`f4780e2d…`（20120215/us-east-1/iam 的签名密钥）**不要再往测试里写** —— 出处的 S3 API 文档页已 404，无法核对；换成 RFC 4231 用例 1 的 HMAC 常量（`b0344c61…`）钉参数顺序。
+- **坑③ `KEY_CHANNELS.has(cfg.channel)`：数组没有 `has`，而这只在「缺 key」那条分支上炸**（正常有 key 的跑动永远看不到），
+  验收闸门第一次跑就吃了一个 exit 1 + `TypeError`。**教训：闸门类代码必须真的跑一遍每条拒绝路径**（本案四道闸门各跑一次）。
+- **口径① 身份串从 `proxy|…` 变 `official|…` 不是改名而是换渠道**：`proxy` 是相对端点 `api/jev` + `X-Api-Key`（绑定业主 Worker），
+  `official` 才是绝对端点 + `Bearer`。两者协议同构、可比，但**不混在一张表里算 Elo**，报表要注明同源。
+- **口径② 未终局记录两处不一致（不是 bug）**：`progress.json` 把 `winner === null` 记和棋，而 `batch-elo.mjs` `gameRecord()` 丢弃未终局
+  （「未终局或超时截断，不计入 Elo」）⇒ 只有 `maxPlies < 225`（人为截断）时两者才会对不上；真满盘和棋（225 ½ 手）两边都算和。
+- **测试技巧**：注入的假 `fetch` 返回的对象要像真 Response 一样带 `headers`（`putObject()` 会读 `resp.headers.get('etag')`），
+  否则表现为「PUT 明明 200 却 `uploaded=0/failed=1`」；`installFetchThrottle().uninstall()` 要还原**注入前的** `globalThis.fetch`（不是还原成注入用的 mock）。
+
+---
+
 ## 2026-10-04 · P4 阶梯地基：开局库 + 进度文件 + 默认 `--store local`；归档棋谱没有 `winner`
 
 - **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` P4）**：

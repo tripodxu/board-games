@@ -35,7 +35,8 @@ docs/
 │   ├── 0017-pressure-gate.md
 │   ├── 0018-live3-fresh-correction.md
 │   ├── 0019-remote-batch-experiments.md
-│   └── 0020-tactics-fidelity-freeze.md
+│   ├── 0020-tactics-fidelity-freeze.md
+│   └── 0021-standalone-experiment-plane.md
 ├── plans/                  ← 实施计划（完成后保留为历史记录，标注状态）
 │   ├── 2026-09-28-board-games-mvp.md            ✅ 已完成
 │   ├── 2026-09-29-iteration-02-play-loop.md     ✅ 已完成（优化轮）
@@ -51,7 +52,7 @@ docs/
 │   ├── 2026-10-03-tactics-coupling-audit.md       ✅ 已完成（2026-10-03；战术版本耦合性审计，并行 A/B 安全性）
 │   ├── 2026-10-03-remote-batch-experiments.md     ✅ 已完成（2026-10-03；SSH 远端批量对弈实验设施 P0–P5）
 │   ├── 2026-10-03-tactics-v14-fresh-live3.md      ✅ 已上线（2026-10-03；v14 活三判据纠偏；`rapfi@1000ms` 9-1-2 / `@2000ms` 9-3-8）
-│   ├── 2026-10-03-tactics-fidelity-and-elo-ladder.md 🚧 实施中（P0–P4 ✅：档位冻结/指纹/回放·考古/阶梯地基；P4b 起待做）
+│   ├── 2026-10-03-tactics-fidelity-and-elo-ladder.md 🚧 实施中（P0–P4b ✅：档位冻结/指纹/回放·考古/阶梯地基/离线运行面 + 桶；P5 Elo 升级起待做）
 │   ├── 2026-10-04-tactics-archaeology.md          ✅ 已完成（2026-10-04；14 档历史参数逐档考古 + P3 回放验收）
 │   └── 2026-10-03-cands-metric-and-provider-failover.md 📋 待批（2026-10-03；候选点数三键落库与报表 + 上游 key 用尽切 commandcode 网关）
 ├── superpowers/

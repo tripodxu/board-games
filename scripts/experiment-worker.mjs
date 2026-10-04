@@ -4,7 +4,11 @@
  * 计划：docs/plans/2026-10-03-remote-batch-experiments.md §4（本轮不加浏览器依赖）。
  *       P4（docs/plans/2026-10-03-tactics-fidelity-and-elo-ladder.md §5/§6）：`--store local`、
  *       `--openings <file>`、D13 进度文件、`--device-id`。
+ *       P4b：`--upstream direct`（默认，box 直连上游、零 CF 触碰）、`--key-file`、`--rate-limit`
+ *       （默认 30/min，滑窗 + 连续 429 熔断）；`--upstream worker` / `--store d1` 必须显式 `--origin`。
  * 用法：node scripts/experiment-worker.mjs --plan .work/remote/<batch>/round-<i>/plan.json
+ *       [--store local|d1] [--openings <file>] [--device-id <id>]
+ *       [--upstream direct|worker] [--key-file <path>] [--rate-limit <n>] [--origin <url>]
  * 产出：
  *   <plan.outDir>/games/round-<r>-game-<n>.json    与线上归档同构的 payload（POST 原样体）
  *   <plan.outDir>/games.jsonl                      **D11 的本地库**：每局一行同样的 payload（`--store local` 的唯一产物，
@@ -21,7 +25,10 @@
  *   - 自动退避 [4000,12000,25000] ms 复刻 loop.ts:66（限流/网络重试，机机无人值守必需）。
  * `--store local`（默认）与 `d1` 的差别：**只有归档这一步不同** —— local 不碰网络（不 POST、
  *   不 GET 核对），产物落 `games.jsonl`；`d1` 保持旧行为（POST + 按 uid 核对 + 轮末实验行）。
- *   P4b 起 local 还会配 `--upstream direct`，那时整条链路零 CF 触碰（G3）。
+ * 运行面（P4b / D12）：默认 `--upstream direct` = 直连 `https://api.typesafe.ai/v1/systemone`，
+ *   不连业主 Worker、不写 D1，box 侧自限速 30 req/min（裹全局 fetch ⇒ **每个真实上游请求**都领令牌），
+ *   连续 5 次 429 熔断并早失败。直连面**禁止 proxy 臂**（proxy 相对端点 + X-Api-Key，见 lib/upstream.mjs）。
+ *   `--upstream worker`（老路径）与 `--store d1` 都必须显式 `--origin`，否则 exit 2。
  * 与浏览器路径的已知偏差（记录在案，P3 前评估）：
  *   - experience 不喂（浏览器从 localStorage 战绩簿经 /api/openings 构建；Node 无战绩簿）；
  *   - 限流监听走 decide 自带 onRetry + 我们自己的退避，没有面板的状态机。
@@ -57,6 +64,14 @@ import {
   formatProgress,
 } from './lib/progress.mjs';
 import { readLibrary, openingForNo } from './lib/openings.mjs';
+import {
+  DEFAULT_PER_MINUTE,
+  DIRECT_UPSTREAM_HOSTS,
+  createThrottle,
+  formatThrottle,
+  installFetchThrottle,
+} from './lib/throttle.mjs';
+import { DEFAULT_KEY_FILE, KEY_CHANNELS, KEY_HELP, resolveRunKey, upstreamGate } from './lib/upstream.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -70,6 +85,10 @@ const DEFAULTS = {
   /* D11/D12：默认**不写生产 D1**。老调用方（experiment-batch submit）在 plan 里显式写
      `store: 'd1'` 保持原行为；漏写就是「只落本地」，不会悄悄往业主库里灌三万行。 */
   store: 'local',
+  /* D12/G3：默认直连上游（零 CF 触碰）+ box 侧自限速；key 优先环境变量，其次这个文件。 */
+  upstream: 'direct',
+  rateLimit: DEFAULT_PER_MINUTE,
+  keyFile: DEFAULT_KEY_FILE,
 };
 
 const log = (msg) => {
@@ -252,11 +271,14 @@ async function apiPostExperiment(origin, entry) {
   throw lastErr;
 }
 
-/** 每侧 decide 入参（apiKey/endpoint 按渠道取；proxy 端点要拼 origin，client.ts:29 的 'api/jev' 是相对路径）。 */
+/** 每侧 decide 入参（apiKey/endpoint 按渠道取；proxy 端点要拼 origin，client.ts:29 的 'api/jev' 是相对路径）。
+    `plan.keys`（P4b 直连面在 main 里解析出来的 key）优先于环境变量：key 文件那条路只有它知道。
+    **key 本身绝不进日志/产物**，只记录来源（`keySource`）。 */
 function decideEnvFor(cfg, plan) {
+  const injected = (plan.keys && plan.keys[cfg.channel]) || '';
   const apiKey = cfg.channel === 'openrouter'
-    ? (process.env.JEV_OR_KEY || '')
-    : (process.env.JEV_API_KEY || '');
+    ? (process.env.JEV_OR_KEY || injected || '')
+    : (injected || process.env.JEV_API_KEY || '');
   const endpoint = cfg.channel === 'proxy' ? `${plan.origin}/api/jev` : '';
   return { apiKey, endpoint };
 }
@@ -287,14 +309,21 @@ async function main() {
   const argv = process.argv.slice(2);
   const planPath = argOf(argv, '--plan');
   if (!planPath) {
-    process.stderr.write('用法：node scripts/experiment-worker.mjs --plan <plan.json> [--store local|d1] [--openings <file>] [--device-id <id>]\n');
+    process.stderr.write('用法：node scripts/experiment-worker.mjs --plan <plan.json> [--store local|d1] [--openings <file>] [--device-id <id>] [--upstream direct|worker] [--key-file <path>] [--rate-limit <n>] [--origin <url>]\n');
     process.exitCode = 2;
     return;
   }
-  const plan = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(planPath, 'utf8')) };
+  const rawPlan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+  const plan = { ...DEFAULTS, ...rawPlan };
   const cliStore = argOf(argv, '--store');
   const cliOpenings = argOf(argv, '--openings');
   const cliDevice = argOf(argv, '--device-id');
+  const cliUpstream = argOf(argv, '--upstream');
+  const cliKeyFile = argOf(argv, '--key-file');
+  const cliRateLimit = argOf(argv, '--rate-limit');
+  const cliOrigin = argOf(argv, '--origin');
+  /* 「显式给了 origin」而不是 DEFAULTS 兜的生产地址：两道逃生门（worker 面 / store d1）都要求它。 */
+  const originGiven = Object.prototype.hasOwnProperty.call(rawPlan, 'origin') || Boolean(cliOrigin);
   const { round, tag, games, pauseMs, timeoutMin, stallMin, maxPlies, topK, seed, dryRun, origin } = plan;
   let a;
   let b;
@@ -306,15 +335,48 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  /* CLI 覆盖 plan（P4）：跑手不必改 plan 文件就能换存储、开局库、匿名身份。 */
+  /* CLI 覆盖 plan（P4/P4b）：跑手不必改 plan 文件就能换存储、开局库、匿名身份、运行面与限速。 */
   if (cliStore) plan.store = cliStore;
   if (cliOpenings) plan.openings = cliOpenings;
   if (cliDevice) plan.deviceId = cliDevice;
+  if (cliUpstream) plan.upstream = cliUpstream;
+  if (cliKeyFile) plan.keyFile = cliKeyFile;
+  if (cliOrigin) plan.origin = cliOrigin;
+  if (cliRateLimit != null) plan.rateLimit = Number(cliRateLimit);
   const store = plan.store;
   if (store !== 'local' && store !== 'd1') {
     process.stderr.write(`--store 只认 local|d1，收到 ${store}\n`);
     process.exitCode = 2;
     return;
+  }
+  /* 运行面闸门（D12）：direct 面不许有 proxy 臂，worker 面/store d1 必须显式 origin。 */
+  const gateMsg = upstreamGate({ upstream: plan.upstream, store, originGiven, channels: [a.channel, b.channel] });
+  if (gateMsg) {
+    process.stderr.write(`${gateMsg}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  if (!Number.isFinite(plan.rateLimit) || plan.rateLimit <= 0) {
+    process.stderr.write(`--rate-limit 必须是正数（每分钟请求数），收到 ${plan.rateLimit}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  /* 直连面的 key：环境变量优先，其次 key 文件（默认 box 的 /root/.jev-key）。
+     缺 key 必须在开局前退出——不然每局白跑十几分钟才失败。 */
+  plan.keys = {};
+  const keySources = {};
+  if (plan.upstream === 'direct') {
+    for (const cfg of [a, b]) {
+      const { key, source } = resolveRunKey({ channel: cfg.channel, keyFile: plan.keyFile });
+      if (key) {
+        plan.keys[cfg.channel] = key;
+        keySources[cfg.channel] = source;
+      } else if (KEY_CHANNELS.includes(cfg.channel) && !dryRun) {
+        process.stderr.write(`渠道 ${cfg.channel} 拿不到 key：${KEY_HELP}\n`);
+        process.exitCode = 2;
+        return;
+      }
+    }
   }
   try {
     setDeviceId(plan.deviceId);
@@ -356,8 +418,10 @@ async function main() {
       return;
     }
   }
+  /* 直连面的 key 已在上面的运行面闸门里解析（环境变量或 key 文件）；这里只管 worker 面
+     （老路径）仍靠进程环境变量，缺 key 一律开局前退出。 */
   for (const cfg of [a, b]) {
-    if (UPSTREAM_CHANNELS.includes(cfg.channel)) {
+    if (UPSTREAM_CHANNELS.includes(cfg.channel) && plan.upstream === 'worker') {
       const need = cfg.channel === 'openrouter' ? process.env.JEV_OR_KEY : process.env.JEV_API_KEY;
       if (!need) {
         process.stderr.write(`渠道 ${cfg.channel} 需要 key（worker 启动环境变量，--dry-run 可绕开）\n`);
@@ -374,7 +438,20 @@ async function main() {
   ensureDir(gamesDir); ensureDir(ckptDir);
   const head = repoHead();
   log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun} store=${store} repoHead=${head} device=${DEVICE_ID}`);
+  /* 运行面（P4b / D12）：direct = 直连上游、零 CF 触碰；限速裹在全局 fetch 上 ⇒ **每个真实上游请求**都领令牌。 */
+  const plane = plan.upstream === 'direct' ? 'direct（直连上游，零 CF 触碰）' : `worker（经 ${plan.origin}）`;
+  log(`运行面：${plane}｜store=${store}${store === 'd1' ? `（归档到 ${plan.origin}）` : '（只落本地，不碰网络写）'}`);
   if (lib) log(`开局库：${plan.openings} 共 ${lib.openings.length} 本 / 前 ${lib.plies} 手（同一开局连续两局，换色双跑）`);
+
+  /* 限速：只在真会打上游的时候装（rapfi/mock 自对弈不该被拖慢），dryRun 也不装。 */
+  const needUpstream = plan.upstream === 'direct' && !dryRun
+    && [a, b].some((cfg) => UPSTREAM_CHANNELS.includes(cfg.channel));
+  const throttle = needUpstream ? createThrottle({ perMinute: plan.rateLimit, sleep }) : null;
+  const gate = throttle ? installFetchThrottle(throttle, { hosts: DIRECT_UPSTREAM_HOSTS }) : null;
+  if (throttle) {
+    const src = Object.entries(keySources).map(([ch, s]) => `${ch}←${s}`).join('、') || '未用到';
+    log(`限速：${formatThrottle(throttle.state())}｜key 来源：${src}`);
+  }
 
   /* D13：进度是**文件**不是服务（box 只有 1.3 GiB 内存，且 `ssh cat` 要能随时读到）。
      state 在内存里累计，每局/每手落一次原子快照；events.jsonl 只追加流水。 */
@@ -383,11 +460,13 @@ async function main() {
   flush({ gameNo: 1, ply: 0 });
   appendEvent(outDir, {
     kind: 'round-start', batchId: plan.batchId, round, tag, games, store,
+    upstream: plan.upstream, rateLimit: throttle ? plan.rateLimit : null,
+    keySource: Object.keys(keySources).length ? keySources : null,
     openings: plan.openings || null, repoHead: head, device: DEVICE_ID,
     a: identityOf(a), b: identityOf(b),
   });
 
-  const summary = { batchId: plan.batchId, round, tag, repoHead: head, store, startedAt: new Date().toISOString(), games: [] };
+  const summary = { batchId: plan.batchId, round, tag, repoHead: head, store, upstream: plan.upstream, startedAt: new Date().toISOString(), games: [] };
   for (let gameNo = 1; gameNo <= games; gameNo++) {
     const ckptFile = path.join(ckptDir, gameRecordName(round, gameNo));
     let resumeUid = null;
@@ -420,7 +499,7 @@ async function main() {
     flush({ gameNo, ply: 0 });
     appendEvent(outDir, { kind: 'game-start', gameNo, opening: opening ? opening.key : null });
     const one = await playOne(plan, a, b, gameNo, {
-      gamesDir, ckptDir, resumeUid, store, opening, jsonlFile,
+      gamesDir, ckptDir, resumeUid, store, opening, jsonlFile, throttle,
       /* 每手回写一次「跑到第几手」：长局里 progress.json 不写就会几分钟不动，看不出是死是活。 */
       onPly: (ply) => flush({ gameNo, ply }),
     });
@@ -441,6 +520,10 @@ async function main() {
     if (gameNo < games) await sleep(pauseMs);
   }
   summary.endedAt = new Date().toISOString();
+  /* 限速账要跟着轮次走：事后能算出这轮到底等了多久、有没有撞过 429 风暴。 */
+  summary.throttle = throttle ? { ...throttle.state(), fetch: gate ? gate.stats() : null } : null;
+  if (throttle) log(`限速轮末：${formatThrottle(throttle.state())}${gate ? `｜上游请求 ${gate.stats().gated} 次` : ''}`);
+  if (gate) gate.uninstall();
   const okCount = summary.games.filter((g) => g.status === 'skipped' || g.status === 'ok' || g.status === 'ok-dry').length;
   summary.progress = snapshot(state, {});
   /* 轮末补 experiments 行（只写真跑的局）：失败不坏出口码——棋谱才是主产物，
@@ -459,7 +542,7 @@ async function main() {
     summary.experimentEntry = experimentEntryFrom(plan, a, b, summary);
     log(`store=local：未触碰业主 Worker（实验行留在 round-summary.json 的 experimentEntry 里）`);
   }
-  appendEvent(outDir, { kind: 'round-end', ok: okCount, total: games, progress: summary.progress });
+  appendEvent(outDir, { kind: 'round-end', ok: okCount, total: games, progress: summary.progress, throttle: summary.throttle });
   writeJson(path.join(outDir, 'round-summary.json'), summary);
   log(`worker 完：${okCount}/${games} 局正常`);
   log(`产物：${jsonlFile} · ${path.join(outDir, 'progress.json')} · ${path.join(outDir, 'events.jsonl')}`);
@@ -567,7 +650,14 @@ async function playOne(plan, a, b, gameNo, dirs) {
           rapfiThinkMs: cfg.thinkMs,
           tacticsVersion: cfg.tactics,
           signal: ac.signal,
-          onRetry: (code, attempt) => log(`game-${gameNo} 限流(${code}) 退避重试 ${attempt}`),
+          onRetry: (code, attempt) => {
+            /* 429/529 上报给熔断器：连续 N 次就熔断，让整轮早失败而不是拿 429 刷满剩下的局。 */
+            if (code === 429 || code === 529) {
+              const st = dirs.throttle ? dirs.throttle.note429() : null;
+              if (st && st.tripped) log(`game-${gameNo} ${st.tripReason}`);
+            }
+            log(`game-${gameNo} 限流(${code}) 退避重试 ${attempt}`);
+          },
         });
       } catch (e) {
         const retryable = Boolean(e && (e.retryable || String(e.message || e).includes('abort')));
@@ -582,6 +672,7 @@ async function playOne(plan, a, b, gameNo, dirs) {
         clearTimeout(watchdog);
       }
       if (!decision || !decision.move) throw new Error('AI 未返回可走着法');
+      if (dirs.throttle) dirs.throttle.noteOk(); // 一次成功就清零连续 429 计数
       retries = 0; // 退避预算是「每一手」的（与 loop.ts 同口径），不是整局共享
 
       /* playMove 三行（loop.ts:225-232）的纯数据复刻：不加 epoch/渲染 */

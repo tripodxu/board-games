@@ -27,6 +27,20 @@
 
 ### 新增
 
+- **离线实验面：默认直连上游、零 CF 依赖（P4b，plan `2026-10-03-tactics-fidelity-and-elo-ladder`，[ADR-0021](docs/adr/0021-standalone-experiment-plane.md)）**：
+  远端批量实验过去每手都经业主 Cloudflare Worker（`proxy` 渠道 → `/api/jev`），既占连接数与 D1 写入额度，
+  又把研究数据混进站点棋谱。现在**运行面默认不碰业主设施**：`scripts/experiment-worker.mjs` 的
+  `--upstream` 缺省 `direct`（直连 `https://api.typesafe.ai/v1/systemone`、`Authorization: Bearer`，key 优先取
+  `JEV_API_KEY`、其次读 `--key-file`（缺省 `/root/.jev-key`）），`--store` 缺省 `local`（只落本地 JSONL）；
+  不给 `--origin` 时 `--upstream worker` 与 `--store d1` 一律 exit 2，direct 面出现 `proxy` 臂也 exit 2
+  （提示改写成 `official`——同一上游、同一 Bearer；身份串因此从 `proxy|…` 变 `official|…`，二者可比但**不混表算 Elo**）。
+  限流与熔断自实现：新增 `scripts/lib/throttle.mjs`（滑窗 30 req/min + 连续 5 次 429 熔断；**裹全局 `fetch`**
+  ——core 的 `client.ts` 直接调全局 fetch，包一层 client 会漏掉它自己的重试）与 `scripts/lib/upstream.mjs`
+  （运行面闸门 + key 解析：认裸 key / `KEY=value` / `export` / `Bearer`；key 值永不进日志与产物，只记 `keySource`）。
+  留档用纯 Node SigV4：新增 `scripts/lib/s3-put.mjs`（零依赖 `crypto` 实现，path-style 与 virtual-host 两种寻址，
+  用 AWS 官方 GET/PUT 已知向量逐字节校验）+ `scripts/batch-bucket.mjs push|pull|ls`（产物白名单、凭据只读环境变量、
+  缺任一 exit 3、上传失败只告警不阻断，`--strict` 才升 1）。进度仍走文件 + SSH：`experiment-batch.mjs status --watch`
+  用纯 shell 循环复读 `progress.json`（远端非交互 shell 未必有 `node`，而这份文件本身是给人看的）。
 - **远端阶梯的地基：配对开局 + 进度可查 + 默认不碰业主 Worker（P4 阶梯地基，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   新增 `scripts/lib/openings.mjs`（开局库：归档决胜局取前 N 手、8 变换对称归一、去重计数、原子读写、
   `openingForNo()` 让**连续两局同一开局、换色双跑** —— 配对样本是分辨 5 pt 差异的前提）与

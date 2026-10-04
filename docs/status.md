@@ -13,7 +13,7 @@
 | 数据 | ✅ 已迁入 D1 | 数据库 `jev-qiguan`（WNAM），`database_id = f72390fe-a506-4a88-8db7-af7213657947`；见下「数据现状」 |
 | 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
-| 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)） |
+| 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
 | 渠道 | ✅ 六个选项 | `official`、`openrouter`、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
 | 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
@@ -332,6 +332,33 @@
   ③ 覆盖 **13/14 层**（缺 `threat`，结构性不可达：`you:open4` 标签判据与 `chance_points_you` 同源，且含 `threat` 的档都含 `open4` 而链里 `open4` 在前；
   取证 2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）；④ `⑭d` 证指纹与 `decide()` 全链路同解；
   ⑤ 引擎套件 **153 例**（+5）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净、`check:docs` 58 md / 397 链接。语料规模是实测定的：120 局面要 ~9 分钟（早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面），进不了 CI。决策记录 [ADR-0020](adr/0020-tactics-fidelity-freeze.md)。
+- **离线实验面：直连上游 + 本地 JSONL + 文件进度 + 对象桶留档（P4b，2026-10-04）**：
+  新增 `scripts/lib/s3-put.mjs`（288 行：纯 Node `crypto` 自实现 AWS SigV4，覆盖 R2/S3/B2/MinIO 的
+  path-style 与 virtual-host 两种寻址）、`scripts/lib/throttle.mjs`（148 行：滑窗自限速 + 连续 429 熔断，
+  **裹全局 `fetch`** 只给上游主机领令牌 —— core 的 `client.ts` 直接调全局 fetch，包一层 client 会漏掉它自己的重试）、
+  `scripts/lib/upstream.mjs`（89 行：运行面闸门 + key 解析：env 优先、`/root/.jev-key` 兜底）、
+  `scripts/batch-bucket.mjs`（211 行：`push|pull|ls`，产物白名单，凭据只读环境变量、缺任一 exit 3，
+  上传失败只告警不阻断）；`scripts/experiment-worker.mjs` 增 `--upstream direct|worker`（**缺省 direct**）/
+  `--key-file`/`--rate-limit`（缺省 30/min）/`--origin`（显式逃生门），`scripts/experiment-batch.mjs` 的
+  `submit` 透传并把 `upstream` 写进 plan、`status --watch` 用**纯 shell** 循环经 SSH 复读 `progress.json`。
+  决策记录 [ADR-0021](adr/0021-standalone-experiment-plane.md)（为什么直连面复用现成 `official` 渠道而不是新造渠道、
+  为什么进度载体是文件、为什么 SigV4 自己实现、身份串为什么从 `proxy|…` 变 `official|…`）。
+  证据：① **四道闸门实跑全过（exit 2 + 精确文案）**：direct 面出现 `proxy` 臂（提示改写成 `official`，
+  同一上游同一 Bearer）/ `--upstream worker` 无 `--origin` / `--store d1` 无 `--origin` / 缺 key（打 `KEY_HELP`）
+  —— 缺 key 那条第一次跑是 `KEY_CHANNELS.has is not a function` 的 exit 1，已修 `includes`（这种错只在「缺 key」路径暴露）；
+  ② **SigV4 用 AWS 官方已知向量逐字节钉死**：GET Object `f0e8bdb8…`、PUT Object `98ad7217…`、
+  RFC 4231 HMAC 用例 1 `b0344c61…`（三条向量当场抓出三个真 bug：作用域日期忽略显式 `x-amz-date`、
+  `canonicalUri` 吞前导斜杠、虚拟主机式 endpoint 已含桶名会静默拼成 `bucket.bucket.…`）；
+  ③ **rapfi 真跑（`--store local --upstream direct`，2 局 27 s）**：两局前 6 手 = 开局库 `H8 E5 I8 B2 J8 G8`，
+  `progress.json` 跑动中可读（`{total:2,done:2,wdl:{w:1,d:1,l:0},etaS:0,meanGameS:14}`）、`events.jsonl` 6 行
+  （`round-start` 带 `upstream:'direct'`）、`games.jsonl` 能被 `loadRecords` 读回并按 `gameUid` 去重、
+  日志打「store=local：未触碰业主 Worker」；④ **断桶不阻断**：错凭据下逐项告警、其余文件照传，`main` 缺凭据 exit 3
+  （`--strict` 才升 1）；⑤ **box 出网探针**：`/root/.jev-key`（`-rw-------` 121 B）+ `Bearer` POST 上游 ⇒ **HTTP 422**
+  （`questions` 空 ⇒ 鉴权已过）0.315 s，box `node -v` v24.9.0 —— 顺带查清**本机 Node 无外网**（代理 `127.0.0.1:10808`
+  未运行时 `fetch` 直接 `ECONNREFUSED`）⇒ 直连面的**整局**验收只能在 box 上做；⑥ scripts 单测 **10 文件 / 187 例**、
+  vitest 全量 **45 文件 / 529 例**、引擎套件 **153 例**、`tsc --noEmit` 干净、`check:docs` **60 md / 421 链接**、
+  `node test/engines/fingerprint.mjs --check` 一致（210 行）；⑦ 一条口径：未终局记录（`maxPlies` 截断）在
+  `progress.json` 里记和棋、在 `batch-elo.mjs` `gameRecord()` 被丢弃（「未终局不计入 Elo」），只有 `maxPlies < 225` 时两者不一致。
 - **远端阶梯的地基：配对开局 + 进度可查 + 默认不碰业主 Worker（P4 阶梯地基，2026-10-04）**：
   新增 `scripts/lib/openings.mjs`（269 行：从归档决胜局取前 N 手、8 变换对称归一、去重计数、
   `openingForNo()` 让**连续两局同一开局、换色双跑**、原子读写 + 形状校验）与 `scripts/lib/progress.mjs`
@@ -488,13 +515,14 @@
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
-   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅ 已完成**（见上「已验证」六条；
+   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅
+   已完成**（见上「已验证」条目；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 P4b 离线运行面 + 桶留档**
-   （`--upstream direct` + `--rate-limit` + 429 熔断 + `s3-put.mjs`/`batch-bucket.mjs` 与零 CF 触碰验收）→ P5 Elo 升级（BT + bootstrap CI）
-   → P6 阶梯编排。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
+   **下一步 P5 Elo 升级（BT + bootstrap CI）→ P6 阶梯编排**；
+   P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂
+   （[ADR-0021](adr/0021-standalone-experiment-plane.md)）。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
    第一晚 L3 是否含 `rapfi@5000`、P7 `--rev` 是否做、**对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws
-   ⇒ 纯 Node SigV4）、兜底是否进生产 Worker 路径。
+   ⇒ 纯 Node SigV4，CLI 已就绪等地址）、兜底是否进生产 Worker 路径。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
 > 已核验（2026-10-02）：Cron `17 3 * * *` 的首次落库 —— `stats_cache` 有且只有一行 `daily:2026-10-02`，`updated_at = 2026-10-02T03:17:56.373Z`（调度时刻），`value` 报 `rateLimitsDeleted: 139`、`games: 82`、`moves: 7110`、`experiments: 11`，与 D1 当时的行数一致 ⇒ 定时维护真实执行、口径正确。
@@ -535,3 +563,4 @@
     ```
 
     用法 `node .work/wrangler-run.cjs <args…>`（`npm run db:migrate:remote` 等脚本在当前环境同样受影响）。
+

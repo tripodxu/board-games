@@ -7,10 +7,14 @@
 //           [--host IP] [--repo 远端仓根] [--user root] [--key-file 路径]
 //           [--origin https://…]（不给 origin 时必须 --allow-production 才写生产 D1）
 //           [--store d1|local]（缺省 d1；local = worker 只落远端 games.jsonl，零网络写，D11）
+//           [--upstream direct|worker]（缺省 direct：box 直连上游、零 CF 触碰，G3/D12）
+//           [--rate-limit 30]（上游请求/分；429 连续 5 次熔断）
 //           [--parallel]（仅双本地臂）
 //     → 本地生成每轮 plan.json → scp 到远端 → nohup 起 worker，后台跑
 //       （--key-file 默认 /root/.jev-key：远端 shell source 它把 key 注入 worker 环境）
 //   status  [--batch 名]           → scp 回 batch 目录，打印每轮进度/最新日志
+//   status  --watch --batch 名 [--interval 30] [--iterations N]
+//                                  → 每 N 秒 cat 远端 progress.json 原文（D13：进度是文件，无服务）
 //   pull    --batch 名 [--out 目录] → 把远端 batch 目录整体拉回本地
 //   elo     <目录...> [--k 16] [--json 文件] → 对拉回来的棋谱算 Elo 排行
 //
@@ -112,6 +116,12 @@ async function cmdSubmit(args) {
   const user = String(args.user || DEFAULT_USER);
   const repo = String(args.repo || DEFAULT_REPO);
   const keyFile = String(args['key-file'] || '/root/.jev-key');
+  /* P4b/D12：运行面与自限速。缺省 direct = box 直连上游、零 CF 触碰（G3）；限速在 worker 侧
+     裹全局 fetch，每个真实上游请求都领令牌。`worker` 是本仓老路径（经业主 Worker 转发）。 */
+  const upstream = String(args.upstream || 'direct');
+  if (upstream !== 'direct' && upstream !== 'worker') die('--upstream 只认 direct|worker');
+  const rateLimit = args['rate-limit'] !== undefined ? Number(args['rate-limit']) : 30;
+  if (!Number.isFinite(rateLimit) || rateLimit <= 0) die('--rate-limit 必须是正数（每分钟请求数）');
   /* H1：origin 可换（plan.origin 全程透传给 worker 的 POST/GET）⇒ 想彻底隔离就指向独立
      Worker + 独立 D1，不必再往生产库里写实验局。
      P0 卫生包①：没给 --origin 时**必须**显式 --allow-production —— 缺省 origin 就是生产域，
@@ -162,6 +172,8 @@ async function cmdSubmit(args) {
       a: formatSpec(a), b: formatSpec(b), pauseMs,
       timeoutMin, stallMin, maxPlies, topK, seed,
       dryRun, origin, store,
+      /* P4b：运行面与限速写进 plan（worker 也认 CLI 覆盖，但显式落盘才好复盘）。 */
+      upstream, rateLimit, keyFile,
       outDir: `${repo}/.work/remote/${batchId}/round-${i}`,
     };
     plans.push(plan);
@@ -186,6 +198,12 @@ async function cmdSubmit(args) {
   console.log(`  tag：${plans.map((p) => p.tag).join(' , ')}`);
   console.log(`  origin：${origin}${maxPlies !== 225 || topK !== 3 ? `（maxPlies=${maxPlies} topK=${topK}）` : ''}`);
   console.log(`  存储：${store === 'd1' ? '归档进 D1 + 按 uid 核对' : '仅落远端 games.jsonl（零网络写，D11）'}`);
+  console.log(`  运行面：${upstream === 'direct'
+    ? `直连上游（零 CF 触碰，G3）；自限速 ${rateLimit}/分，key 从远端 ${keyFile} 注入`
+    : `经业主 Worker 转发（${origin}）；自限速 ${rateLimit}/分`}`);
+  if (store === 'local' && upstream === 'direct') {
+    console.log(`  （origin ${origin} 本轮不会被触碰；--origin 缺省仍要 --allow-production 是 P1 的闸门，与运行面无关）`);
+  }
 
   // 远端建目录 + 逐个上传 plan
   if (!ssh(host, user, `mkdir -p ${repo}/.work/remote/${batchId}/{plans,logs}`)) die('远端 mkdir 失败（ssh 不通？）');
@@ -303,6 +321,38 @@ function printStatus(batchDir, batchId) {
   }
 }
 
+/* ---------------- status（D13：进度是文件，`--watch` 不拉目录、直接读远端 progress.json） ---------------- */
+/** 远端一行 shell：每轮打一份 progress.json 原文。**不用 node** —— 远端非交互 shell 未必有 node 在 PATH，
+    而 `cat` 一定在；progress 快照本身就是给人看的（原子写 ⇒ 读到的永远是完整 JSON）。 */
+function watchRemoteCmd(batchDir, { intervalS, iterations }) {
+  const bound = iterations > 0 ? `i -lt ${iterations}` : '1 -eq 1';
+  return [
+    `cd ${batchDir} || exit 1`,
+    'i=0',
+    `while [ ${bound} ]; do`,
+    '  i=$((i+1))',
+    '  echo "==== $(date -Is) 第 $i 次"',
+    '  for d in round-*; do',
+    '    [ -d "$d" ] || continue',
+    '    if [ -f "$d/progress.json" ]; then echo "--- $d"; cat "$d/progress.json";',
+    '    else echo "--- $d（还没有 progress.json）"; fi',
+    '  done',
+    `  sleep ${intervalS}`,
+    'done',
+  ].join('\n');
+}
+
+function cmdStatusWatch(args, batchId, host, user, repo) {
+  const intervalS = args.interval !== undefined ? Number(args.interval) : 30;
+  if (!Number.isFinite(intervalS) || intervalS < 5) die('--interval 至少 5 秒（远端 sleep，太小只是白刷）');
+  const iterations = args.iterations !== undefined ? Number(args.iterations) : 0;
+  if (!Number.isInteger(iterations) || iterations < 0) die('--iterations 必须是非负整数（0 = 一直看）');
+  const batchDir = `${repo}/.work/remote/${batchId}`;
+  console.log(`观察 batch=${batchId} 的 ${batchDir}（每 ${intervalS}s 一次${iterations > 0 ? `，共 ${iterations} 次` : ''}；Ctrl-C 停止）`);
+  console.log('  进度只有文件、没有常驻服务（D13）⇒ cat 到的一定是最后落盘的那份原子快照。\n');
+  ssh(host, user, watchRemoteCmd(batchDir, { intervalS, iterations }), 0);
+}
+
 /* ---------------- elo ---------------- */
 function cmdElo(args) {
   const dirs = args._;
@@ -335,7 +385,14 @@ function main() {
   const args = parseArgs(argv.slice(1));
   if (cmd === 'submit') cmdSubmit(args);
   else if (cmd === 'resume') cmdResume(args);
-  else if (cmd === 'status') pullBatch(args, { quiet: false });
+  else if (cmd === 'status') {
+    if (args.watch) {
+      const batchId = sanitizeBatchId(String(args.batch || ''));
+      if (!batchId) die('status --watch 需要 --batch <名>');
+      cmdStatusWatch(args, batchId,
+        String(args.host || DEFAULT_HOST), String(args.user || DEFAULT_USER), String(args.repo || DEFAULT_REPO));
+    } else pullBatch(args, { quiet: false });
+  }
   else if (cmd === 'pull') pullBatch(args, { quiet: true });
   else if (cmd === 'elo') cmdElo(args);
   else {
@@ -345,10 +402,14 @@ function main() {
     console.log('         [--origin https://…]（换域即不写生产 D1）| 不给 --origin 时必须显式 --allow-production（写生产 D1 的闸门）');
     console.log('         [--max-plies 225] [--topk 3] [--timeout-min 180] [--stall-min 15] [--dry-run]');
     console.log('         [--store d1|local]  缺省 d1（本编排器保持旧行为）；local = worker 只落远端 games.jsonl，不碰业主 Worker（D11）');
+    console.log('         [--upstream direct|worker]  缺省 direct：box 直连上游、零 CF 触碰（G3/D12）；worker = 老路径（经业主 Worker）');
+    console.log('         [--rate-limit 30]  上游请求/分（worker 侧裹全局 fetch 限速 + 连续 5 次 429 熔断）');
     console.log('         多轮（--rounds>1）**串行**：起一轮 → 等它退出 → 再起下一轮（限流口径要求 concurrency=1）');
     console.log('         [--parallel] 只对**双本地臂**放行（两侧都不是 proxy/official/openrouter）：不再逐轮等待，一次起全部轮次');
     console.log('  resume --batch 名 [--round N] [--key-file 路径]   按 checkpoint 续跑某一轮（kill 后恢复用）');
     console.log('  status [--batch 名]    拉回并显示每轮进度（先拉临时目录再整体替换，失败不动本地旧副本）');
+    console.log('  status --watch --batch 名 [--interval 30] [--iterations N]');
+    console.log('         → 不拉目录，直接每 N 秒 cat 远端 progress.json 原文（D13：进度是文件，无服务；N≥5，0=一直看）');
     console.log('  pull   --batch 名      拉回远端产物');
     console.log('  elo   <目录...>  [--k 16] [--json 输出路径]   本地算 Elo 排行');
     process.exit(cmd ? 2 : 0);

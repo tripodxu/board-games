@@ -1,6 +1,6 @@
 # 计划：战术「任意版本可回溯」语义冻结 + 远端 Elo 能力阶梯
 
-> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 ✅ / P0b 数据卫生与报表口径 ✅ / P1 冻结层 ✅ / P2 指纹设施 ✅ / P3 回放 + 考古 ✅ / P4 阶梯地基 ✅ 已完成，P4b 起待做）**。
+> 类型：**实施计划**。状态：**🚧 实施中（2026-10-03 起草，同日按业主补充要求修订；业主 m13862「两个计划一起开工，可以先进行探测」⇒ 开工；P0 闸门收紧 ✅ / P0b 数据卫生与报表口径 ✅ / P1 冻结层 ✅ / P2 指纹设施 ✅ / P3 回放 + 考古 ✅ / P4 阶梯地基 ✅ / P4b 离线运行面 + 桶留档 ✅ 已完成，P5 Elo 升级起待做）**。
 > 触发：项目所有者要求（2026-10-03，逐字）：「参考 …/2026-10-03-tactics-coupling-audit.md，这些问题怎么办，我需要战术可以回溯到任意版本，我想要让机器在远端跑 elo 比较各版本的战术以及 rapfi@不同时间真正的能力，给出计划」。
 > 补充要求（2026-10-03 同日，逐字）：「这些也要包含到计划里，可以让这个测试全在云端服务器上本地跑，不连接我自己的 cf worker，减少连接数，但我可以通过 ssh 来检验进度，最终将结果上传到桶中」⇒ ① 上一轮给的「建议打包（五条）」**并入本计划**（见 §3.1）；② 新增 **G3 运行面独立**（见 §1、§4、§6 P4/P4b）。
 > 上游输入：耦合性审计 [2026-10-03-tactics-coupling-audit.md](2026-10-03-tactics-coupling-audit.md)（12 条耦合风险 + §4 两条静默回退坑 + §5 四类不按版本裁剪的漂移）、
@@ -144,10 +144,13 @@
 | `scripts/tactics-replay.mjs` | ✅ **已做**：离线重放 `--dir/--file/--game <uid>/--tag <tag>/--tactics <id>/--sides/--limit/--max-games/--json/--show`（纯核在 `scripts/lib/tactics-replay.mjs`；`--all` 由「不给 `--tactics`」表达）；23 例单测 | 纯核 265 行 + CLI（实测） |
 | `scripts/experiment-ladder.mjs` | 阶梯编排：round-robin 计划、颜色对称、串行调度、断点续跑、汇总一行 | ~260 行 |
 | `scripts/lib/openings.mjs` | ✅ **已做**：开局库生成（归档决胜局取前 `plies` 手、8 变换对称归一、去重计数、原子读写、`openingForNo()` 连续两局同一开局换色）；额外补了两件归档必需的：**决胜方口径 `winnerSideOf()`**（归档没有 `winner` 字段、只有中文 `result`）与**路径闸门放宽到「路径上任何一级目录叫 `games`」**（归档布局是 `games/<day>/*.json`） | 269 行 + 33 例单测（实测） |
-| `scripts/lib/s3-put.mjs` | 纯 Node `crypto` 的 AWS SigV4 签名 + `putObject`/`listPrefix`/`getObject`（零依赖，S3 兼容：R2/S3/B2/MinIO） | ~180 行 |
-| `scripts/batch-bucket.mjs` | `push <dir> --prefix ladders/<batchId>/` / `pull` / `ls`；凭据只读环境变量，缺失则明确报「未配置桶」并 exit 3（不静默跳过） | ~110 行 |
+| `scripts/lib/s3-put.mjs` | ✅ **已做**：纯 Node `crypto` 的 AWS SigV4 签名 + `putObject`/`getObject`/`listPrefix`（零依赖，S3 兼容：R2/S3/B2/MinIO）；**用 AWS 官方三个已知向量逐字节钉死**（GET Object 签名 `f0e8bdb8…`、PUT Object 签名 `98ad7217…`、RFC 4231 HMAC 用例 1） | 288 行 + 17 例单测（实测） |
+| `scripts/lib/throttle.mjs` | ✅ **已做**：自限速（滑窗发车，缺省 30 req/min）+ 连续 429 熔断（缺省 5 次）+ `installFetchThrottle()` 裹全局 fetch（只给上游主机领令牌）；时间与 `sleep` 可注入 ⇒ 单测不真等 | 148 行 + 10 例单测（实测） |
+| `scripts/lib/upstream.mjs` | ✅ **已做**：运行面闸门（direct 不许 proxy 臂 / worker 与 d1 必须显式 `--origin`）+ key 解析（env 优先、`/root/.jev-key` 兜底、`parseKeyFile()` 认五种写法） | 89 行 + 14 例单测（实测） |
+| `scripts/batch-bucket.mjs` | ✅ **已做**：`push <dir> --prefix ladders/<batchId>/` / `pull` / `ls`；产物白名单（`games.jsonl`/`elo.json`/`report.md`/`round-<i>/*`），凭据只读环境变量，缺失明确报「未配置桶」并 **exit 3**（不静默跳过）；上传失败**只告警不阻断**（`--strict` 才升 exit 1） | 211 行 + 10 例单测（实测） |
+| `docs/adr/0021-standalone-experiment-plane.md` | ✅ **已写**：实验面默认直连上游 + 本地 JSONL + 文件进度 + 对象桶留档，为什么用现成 `official` 渠道而不是新造 `direct` 渠道、为什么进度用文件不用常驻服务、为什么 SigV4 自己实现 | P4b 产出 |
 | `scripts/lib/progress.mjs` | ✅ **已做**：`progress.json` 原子读写 + `events.jsonl` 追加 + `eta()` 估算（只用已完赛局、最近 5 局均值，样本不足给 `null` 而不编数字）；`done` 含 `skipped`，但 `skipped` 且无 winner **不计入 W/D/L**（「没跑 ≠ 和棋」，见单测） | 153 行 + 22 例单测（实测） |
-| `test/scripts/{s3-put,progress}.spec.mjs` | `progress.spec.mjs` ✅ **已做**（22 例：原子性与 ETA 单调、`outcomeForA` 五态、坏文件/坏目录不抛）；`s3-put.spec.mjs` 待 P4b（SigV4 用**已知向量**校验：固定时间戳/密钥 ⇒ 固定签名串） | progress 211 行（实测） |
+| `test/scripts/{s3-put,progress}.spec.mjs` | 两个 ✅ **已做**：`progress.spec.mjs`（22 例：原子性与 ETA 单调、`outcomeForA` 五态、坏文件/坏目录不抛）；`s3-put.spec.mjs`（17 例：SigV4 **已知向量**固定时间戳/密钥 ⇒ 固定签名串、编码与规范化、端点与寻址、三个动作注入 fetch 不联网）。另新增 `throttle.spec.mjs`（10 例）/`upstream.spec.mjs`（14 例）/`batch-bucket.spec.mjs`（10 例） | progress 211 行 + s3-put 255 行（实测） |
 | `scripts/lib/batch-elo.mjs`（扩写） | `computeBt()` + `bootstrapCI()` + 带区间的排行表 | +~140 行 |
 | `test/scripts/{openings,ladder-plan,bt-elo}.spec.mjs` | 合成数据验证：已知强弱顺序、CI 宽度随 n 收窄、开局库对称归一 | ~200 行 |
 | `docs/adr/0020-tactics-fidelity-freeze.md` | ✅ **已写**：决策「档位 = 冻结记录 + 指纹」、未知档号显式失败、接管链抽纯函数、只记决策不记耗时、覆盖表是断言的一部分、`threat` 不可达作为显式缺口 | 实测口径 |
@@ -163,8 +166,8 @@
 | `src/core/types.ts` | ✅ 已完成：新增 `VcfOptions`；`Live3Options`/`VctDefenseOptions`/`PressureCutOptions` 补齐字段，注释写清「缺省 = 历史常量」 |
 | `src/core/jev/client.ts` | ✅ 已完成：`attachFacts(ser, tactics, experience, { mech: mechOf(opts.tacticsVersion) })` —— 与 `computeTactics` 同一解析路径；**P2 已做**：内嵌的接管链（原 `:374-527`）抽成 `takeover.ts` 的纯函数 `pickTakeover()`，本文件 565 → 431 行，决策面 450 行 0 差异 |
 | `src/core/takeover.ts` | ✅ **已做（P2）**：`TAKEOVER_ORDER`（14 层权威顺序）+ `TAKEOVER_LABEL`（中文层名）+ `pickTakeover({engine, st, tactics, mech, criteria, legal, pairs, cands, topK, onTime})` → `{notation, layer, bypassed}`；锁层逻辑逐字搬运（`pickAmong`/`pickSafestParry`/三个 criteria 点集/十四条 `if-else if`），耗时经 `onTime` 回调记账 | 226 行（实测） |
-| `scripts/experiment-worker.mjs` | ✅ **P4 部分已做**：`--openings <file>`、`--store local\|d1`（缺省 **local** ⇒ 默认不写生产 D1；老调用方在 plan 里显式写 `store:'d1'` 保持原行为）、`--device-id <id>`、每局写 `progress.json`/`events.jsonl`、`games.jsonl` 追加（`--store local` 的唯一产物）；**P4b 待做**：`--upstream direct\|worker`（默认 direct，读 `/root/.jev-key`）、`--rate-limit <n>/min`（默认 30）、上游 429 熔断退避 |
-| `scripts/experiment-batch.mjs` | `--store d1\|local` ✅ **已做**（`submit` 缺省 d1 并写进 plan）；**P6 待做**：`ladder` 子命令；**P4b 待做**：`status --watch`（经 SSH 读 `progress.json`，D13）；每轮结束调 `batch-bucket.mjs push`（可 `--no-upload`）。已在 §3.1 完成的：`--allow-production` 闸门（第 1 条）、`--parallel` 仅双本地臂（第 2 条） |
+| `scripts/experiment-worker.mjs` | ✅ **P4 + P4b 已做**：`--openings <file>`、`--store local\|d1`（缺省 **local** ⇒ 默认不写生产 D1；老调用方在 plan 里显式写 `store:'d1'` 保持原行为）、`--device-id <id>`、每局写 `progress.json`/`events.jsonl`、`games.jsonl` 追加（`--store local` 的唯一产物）；**P4b**：`--upstream direct\|worker`（默认 direct）、`--key-file <path>`（默认 `/root/.jev-key`）、`--rate-limit <n>/min`（默认 30）、`--origin` 显式逃生门、自限速裹全局 fetch、连续 5 次 429 熔断、轮末记 `summary.throttle` |
+| `scripts/experiment-batch.mjs` | `--store d1\|local` ✅ **已做**（`submit` 缺省 d1 并写进 plan）；**P4b 已做**：`--upstream direct\|worker`（缺省 direct）+ `--rate-limit` + `--key-file` 写进 plan、`status --watch`（经 SSH 读 `progress.json`，纯 shell 循环，D13）；**P6 待做**：`ladder` 子命令；**仍未做**：每轮结束自动调 `batch-bucket.mjs push`（桶 CLI 已就绪，等桶地址确定后接线）。已在 §3.1 完成的：`--allow-production` 闸门（第 1 条）、`--parallel` 仅双本地臂（第 2 条） |
 | `test/engines/tactics.test.mjs` | 两处「固化为静默回落」的用例改为断言**抛错**；登记表字段断言补全 |
 | `docs/{README.md,status.md,agents/playbooks.md,memory/MEMORY.md}` + `README.md` + `CHANGELOG.md` | 索引、口径、教训、数字随阶段回填 |
 
@@ -180,7 +183,7 @@
 | **P2 指纹设施** ✅ **已完成（2026-10-03）**（实测：`takeover.ts` 226 行 + `fingerprint.mjs` 304 行 + `version-freeze.test.mjs` 117 行 + 指纹产物 88.9 KB） | D6/D7 + `version-freeze.test.mjs` + CI 接线；**外加一步计划外但必需的抽取**：把内嵌在 `client.ts` 的接管链抽成 `src/core/takeover.ts` 的纯函数（否则指纹要跑两遍链、P3 回放也无处落脚） | 实测全过：① **抽取零行为变更**：`.work/p2-ab-baseline.mjs` 抽取前后各 dump 30 局面 × 15 档 = 450 行，**差异 0 行**；② 首次 `--write` 基线 = **14 局面 × 15 档 = 210 行，24.0 s**（语料从计划的 N≈120 收缩：实测 120 局面 ≈ 9 分钟，进不了 CI）；③ **层覆盖 13/14**，唯一缺口 `threat` 是结构性的（§7 第 9 条），断言写成「除 `threat` 外每层都必须被走到」+「`coverage.missing` 必须恰好等于 `['threat']`」；④ **故意改一处预算试红**：`DEFAULT_BUDGET.vcfNodeLimit` 4000 → 1 ⇒ `⑭b` 报 **决策指纹漂移 32 处**（v7…v14 的层从 `vcfDefense` 变 `parry`/`vctDefense`），还原后立刻全绿 —— 「改一处牵多档」从此是红灯；⑤ `node test/engines/run.mjs` **153/153**（+5 例）；⑥ `npx vitest run` **38 文件 / 399 例**；⑦ `npx tsc --noEmit` 干净；⑧ `npm run check:docs` **58 md / 397 链接**；⑨ `⑭d` 另证指纹与 `decide()` 全链路同解（语料里一个 mid 局面 × 15 档逐档对照层与落点） |
 | **P3 回放 + 考古** ✅ **已完成（2026-10-04）**（实测：`scripts/lib/tactics-replay.mjs` 265 行纯核 + `scripts/tactics-replay.mjs` CLI + `test/scripts/tactics-replay.spec.mjs` 23 例 + 考古文档 267 行） | `tactics-replay.mjs`；逐 commit diff 填 `budget/sound/openingMin`/`fidelity`；产出考古文档 `docs/plans/2026-10-04-tactics-archaeology.md` | 实测全过：① **回放验收**（`exp-20261003082805`，v14 vs `rapfi@5000ms`，20 局 / 990 手 / 重放 496 手 / 282.2 s）：**层一致率 496/496 = 100%**、**接管落点一致率 327/378 = 86.5%**、**会变 51 手且全是同层换点**（口径：归档无整张概率表 ⇒ 重放走「无模型」等权口径，故层一致是强结论、落点一致是下界；逐层实测 `live3Attack` 21 · `live3Defense` 11 · `parry4` 7 · `open4` 3 · `vctDefense` 3 · `parry3` 3 · `pressureGate` 2 · `block` 1，零跨层）；② **考古 14/14 档参数层确证**（15 个预算键逐键 + `sound` + `openingMin=4` + 注入句集/句面/句序全部有 sha 证据，且逐键等于 P1 冻结值）⇒ v1–v13 `fidelity` 升 `'restored'`、v0 留 `'approximate'`、v14 保持 `'exact'`；③ 顺带**否证**前序审计两条（v11 上线预算即 10/3000/6、prompt 漂移在 P1 后已修）并修正「冻结于 446f976」（`tactics-budget.ts` 仅由 `0b3a400` 创建）；④ `threat` 层标注「历史层，当前机制表下不可达」（考古文档 §6.1）；⑤ `node test/engines/run.mjs` **153/153**、`npx vitest run` **39 文件 / 422 例**、`npx tsc --noEmit` 干净、`npm run check:docs` **59 md / 407 链接**、`node test/engines/fingerprint.mjs --check` 一致（210 行） |
 | **P4 阶梯地基** ✅ **已完成（2026-10-04）**（实测：`scripts/lib/openings.mjs` 269 行 + `scripts/lib/progress.mjs` 153 行 + 55 例新单测 + worker 接线） | `openings.mjs` + worker `--openings`/`--store local` + **D13 进度文件**（`progress.json` + `events.jsonl` + `--store local` 时零网络写） | 实测全过（证据脚本 `.work/p4-build-openings.mjs` / `.work/p4-verify.mjs`，全部可复算）：① **开局库可复现**：归档 54 局 → `buildLibrary(records,{plies:6,limit:4})` 得 `source={games:54,used:45,dropped:9}`（9 局和棋按 `decisiveOnly` 丢）+ 4 本开局（`H8 E5 I8 B2 J8 G8` 13× · `H8 H7 G7 F6 G6 G5` 9× · `H8 H7 E11 H6 B14 H9` 7× · `A1 B2 B1 C1 D1 D2` 3×）；单测另钉「同输入 ⇒ 逐字节同输出」；② **一局真跑（rapfi 自对弈 `rapfi@500`，`--store local`）**：`exp-20261004-p4smoke-r1` 2 局（同一开局换色双跑），**两局前 6 手逐手等于开局库** `H8 E5 I8 B2 J8 G8`，第 7 手起才有 `ai` 块且 `ch=rapfi`（脚本落子的识别口径：`aiMoveMeta()` 对非 AI 手返回 null ⇒ 导出无 `ai` 键）；③ **JSONL 能被 `loadRecords` 读回**：`games.jsonl` 2 行 ⇒ 读回 2 局、身份 `rapfi||500` 对 `rapfi||500`（战术档不让 rapfi 臂沾上）、单局 JSON 与 JSONL 同局只算一次；④ **跑动中可读**：`exp-20261004-p4watch2-r1` 在第 1 局完、第 2 局未起时读到 `{total:2,done:1,gameNo:1,ply:50,wdl:{w:0,d:0,l:1},elapsedS:12,etaS:12}`（`ssh cat` 同形）；⑤ **零网络写**：`store=local` 轮次只落 `games/*.json` + `games.jsonl` + `progress.json` + `events.jsonl` + `round-summary.json`，日志打「store=local：未触碰业主 Worker」，实验行留在 `round-summary.json` 的 `experimentEntry`；⑥ `npx vitest run --project scripts` **6 文件 / 136 例**、全量 `npx vitest run` **41 文件 / 478 例**、`node test/engines/run.mjs` **153/153**、`npx tsc --noEmit` 干净、`npm run check:docs` **59 md / 411 链接**、`node test/engines/fingerprint.mjs --check` 一致（210 行） |
-| **P4b 离线运行面 + 桶留档**（~290 行） | **D12**：worker `--upstream direct`（读 `/root/.jev-key`）+ `--rate-limit`（默认 30/min）+ 429 熔断；`experiment-batch.mjs status --watch` 经 SSH 出表格；**D14**：`s3-put.mjs` + `batch-bucket.mjs`，每轮结束上传 `ladders/<batchId>/` | ① **零 CF 触碰验收**：一整局真跑（proxy 直连 + rapfi）后，业主 Worker 的 `experiments`/`games` 行数**不变**，且 box 上无任何指向 `jevqipan.logicc.top` 的请求（`ss -tnp` 抽查 + 代码层 `--upstream direct` 断言）；② SigV4 已知向量单测通过；③ 刻意断桶（错凭据）⇒ 跑动**不中断**、日志告警、本地 JSONL 完整；④ `pull` 按前缀取回后 `elo` 可复算 |
+| **P4b 离线运行面 + 桶留档** ✅ **已完成（2026-10-04）**（实测：`scripts/lib/s3-put.mjs` 288 行 + `scripts/lib/throttle.mjs` 148 行 + `scripts/lib/upstream.mjs` 89 行 + `scripts/batch-bucket.mjs` 211 行 + 51 例新单测 + worker/batch 接线 + ADR-0021） | **D12**：worker `--upstream direct`（读 `/root/.jev-key`）+ `--rate-limit`（默认 30/min）+ 429 熔断；`experiment-batch.mjs status --watch` 经 SSH 出表格；**D14**：`s3-put.mjs` + `batch-bucket.mjs`，每轮结束上传 `ladders/<batchId>/` | 实测：① **四道闸门真跑全过（exit 2 + 精确文案）**：direct 面出现 `proxy` 臂 ⇒ 提示改写成 `official`（同一上游同一 Bearer）；`--upstream worker` 无 `--origin` ⇒ 拒绝；`--store d1` 无 `--origin` ⇒ 拒绝；缺 key ⇒ 打 `KEY_HELP` 并拒绝（该路径第一次跑是 `KEY_CHANNELS.has is not a function` 的 exit 1，已修 `includes`）；② **SigV4 已知向量单测通过**：AWS 官方 GET/PUT 两条签名（`f0e8bdb8…` / `98ad7217…`）逐字节相等 + RFC 4231 HMAC 用例 1；③ **rapfi 真跑（`--store local --upstream direct`）**：2 局 27 s，两局前 6 手 = 开局库 `H8 E5 I8 B2 J8 G8`，`progress.json` 跑动中可读（`{total:2,done:2,wdl:{w:1,d:1,l:0},etaS:0,meanGameS:14}`），`events.jsonl` 6 行（`round-start` 带 `upstream:'direct'`），`games.jsonl` 能被 `loadRecords` 读回并按 `gameUid` 去重，日志打「store=local：未触碰业主 Worker」；④ **断桶不阻断**：错凭据下 `pushArtifacts` 逐项告警、其余文件照传、`main` 缺凭据 exit 3（`--strict` 才升 1），单测钉死；⑤ **box 出网探针（D12 第一步）通过**：`/root/.jev-key`（`-rw-------` 121 B）+ `Authorization: Bearer` POST `https://api.typesafe.ai/v1/systemone` ⇒ **HTTP 422**（`questions` 空，鉴权已过）0.315 s；box `node -v` v24.9.0；**本机 Node 无外网**（代理 `127.0.0.1:10808` 未运行 ⇒ `ECONNREFUSED`）⇒ 真打上游的**整局**直连验收落在 box 上（做法与结果见 §9 第 7 条）；⑥ 全量验收：`node test/engines/run.mjs` **153/153**、`npx vitest run` **45 文件 / 529 例**、`npx tsc --noEmit` 干净、`npm run check:docs` **60 md / 421 链接**、`node test/engines/fingerprint.mjs --check` 一致（210 行）；⑦ 顺带查清一条口径：未终局记录（`maxPlies` 截断）在 `progress.json` 里记和棋、但在 `batch-elo.mjs` `gameRecord()` 被丢弃（「未终局不计入 Elo」），只有 `maxPlies < 225` 时两者才不一致 |
 | **P5 Elo 升级**（~200 行） | D10：`computeBt()` + `bootstrapCI()` + 报表（含 §3.1 第 4 条的 Wilson 区间） | 单测：合成 200 局（真实强弱差 100 Elo）⇒ 点估计误差 < 25 Elo、CI 覆盖真值；CI 宽度随 n 单调收窄；`rapfi\|\|500` = 0 锚成立 |
 | **P6 阶梯编排**（~260 行） | D11/D12：round-robin + 颜色对称 + 串行调度 + 断点续跑 + 一行汇总 + 桶上传钩子 | dry-run 计划表（mock 臂）逐项对齐；`--allow-production` 闸门生效（无 `--origin` 时应拒绝）；`--parallel` 双 proxy 被拒；中断后 `pull` 桶前缀可续跑 |
 | **P7 逃生门（可延后）**（~150 行） | `--rev <sha>`：box 上 `git worktree add` 老 commit + 特征适配驱动（老导出可能缺 `tacticsLabel`/`thinkMsOf` 等新符号） | 在某个考古 `approximate` 档上，`--rev` 版的落点与考古预算版的差异被量化；结论写回考古文档 |
@@ -191,9 +194,11 @@
 
 ## 7. 阶梯实验设计（G2）
 
-**身份（identity）** 建议集合：`proxy|v10-live3|0`、`proxy|v11-vct|0`、`proxy|v12-vct-def|0`、`proxy|v13-pressure-gate|0`、`proxy|v14-live3-fresh|0`、`rapfi||500`、`rapfi||1000`、`rapfi||2000`（8 个身份；`rapfi||5000` 视预算追加）。
+**身份（identity）** 建议集合：`official|v10-live3|0`、`official|v11-vct|0`、`official|v12-vct-def|0`、`official|v13-pressure-gate|0`、`official|v14-live3-fresh|0`、`rapfi||500`、`rapfi||1000`、`rapfi||2000`（8 个身份；`rapfi||5000` 视预算追加）。
 
-⚠️ **`proxy` 臂在本计划里是「直连上游」**（D12：box 直接打 `https://api.typesafe.ai/v1/systemone`），**不是**业主 Worker 的 `/api/jev` 转发。两者协议同构（同端点、同 `Authorization: Bearer`、请求体同样只取 `state`/`model`/`questions`，见 `src/worker/lib/upstream.ts:37/137`），所以身份口径与历史轮次仍可比；差异只在**谁来做限流与重试**——历史轮次是 Worker，本计划是 box 侧自限速（§8 风险表已列）。
+⚠️ **上游臂（`official`）在本计划里是「直连上游」**（D12：box 直接打 `https://api.typesafe.ai/v1/systemone`），**不是**业主 Worker 的 `/api/jev` 转发。两者协议同构（同端点、同 `Authorization: Bearer`、请求体同样只取 `state`/`model`/`questions`，见 `src/worker/lib/upstream.ts:37/137`），所以身份口径与历史轮次仍可比；差异只在**谁来做限流与重试**——历史轮次是 Worker，本计划是 box 侧自限速（§8 风险表已列）。
+
+📌 **为什么身份写成 `official|…` 而不是历史轮次的 `proxy|…`**：`proxy` 渠道在代码里是**相对端点** `api/jev` 且只发 `X-Api-Key`（`src/core/jev/client.ts:31`），它天然依赖业主 Worker；直连上游必须换成 `official`（绝对端点 + `Bearer`）。两个身份**协议同构、可比但不等同**（限流/重试方不同），所以 P4b 起阶梯报表一律标 `official|v14-live3-fresh|0` 这类写法，**不与历史 `proxy|…` 轮次混在一张表里算 Elo**，只在结论里注明同源。
 
 **三条阶梯**（可分别跑，也可合并成一次 round-robin）：
 
@@ -201,11 +206,11 @@
 |---|---|---|---|---|
 | **L3 Rapfi 自身思考时间曲线**（先跑，纯本地不耗上游） | `rapfi@500/1000/2000` 两两 + `@5000` 对 `@1000` | 6 对 × 20 = 120 局 | ~10 h（5000 档每局 ~8 min） | 「`rapfi@不同时间`真正的能力」——用户的直接问题 |
 | **L2 各版对 Rapfi** | 5 版 × `rapfi@{500,1000,2000}` | 15 对 × 20 = 300 局 | ~9 h | 版本能力沿时间轴的位移；同一版本在不同对手强度下的表现 |
-| **L1 版本内侧梯** | 5 版两两 | 10 对 × 20 = 200 局 | ~5 h（双 proxy 臂，上游双倍负载，需限速） | 版本之间谁更强（**预期差异最小，最需要配对开局与大样本**） |
+| **L1 版本内侧梯** | 5 版两两 | 10 对 × 20 = 200 局 | ~5 h（双上游臂，上游双倍负载，需限速） | 版本之间谁更强（**预期差异最小，最需要配对开局与大样本**） |
 
 **样本与分辨率（诚实口径）**：单对 20 局、p≈0.5 时得分率 95% CI ≈ ±22 pt；60 局 ≈ ±13 pt；200 局 ≈ ±7 pt。⇒ **Stage 1（20 局/对）只做筛选**；**Stage 2 只对决赛对（前 2–3 名 + 锚 + 一档高 Rapfi）做 100–200 局配对确认**，才允许写「A 比 B 强」。分辨率目标 = 5 pt ⇒ 200 局/对起步（这正是机制线恢复的门槛）。
 
-**成本纪律**：① 单上游臂串行，轮次之间 30 s 冷却；② 双 proxy 臂（L1）把 `--games` 减半或拆两晚；③ 阶梯产物落 box JSONL，`pull` 回本地；④ 每轮报 `tac_ms` 三口径 + 单步墙钟 + 模型往返（m07650/m08110 的必报项照旧）；⑤ **直连上游自限速 30 req/min + 并发 1 + 429 退避熔断**（D12，替代 Worker 的限流）；⑥ 每轮结束 `batch-bucket.mjs push`（D14），上传失败只告警。
+**成本纪律**：① 单上游臂串行，轮次之间 30 s 冷却；② 双上游臂（L1）把 `--games` 减半或拆两晚；③ 阶梯产物落 box JSONL，`pull` 回本地；④ 每轮报 `tac_ms` 三口径 + 单步墙钟 + 模型往返（m07650/m08110 的必报项照旧）；⑤ **直连上游自限速 30 req/min + 并发 1 + 429 退避熔断**（D12，替代 Worker 的限流）；⑥ 每轮结束 `batch-bucket.mjs push`（D14），上传失败只告警。
 
 **运行面（G3，可被业主随时抽查）**：进度看 `ssh <host> "cat /root/ladder/<batchId>/progress.json"` 或 `experiment-batch.mjs status --watch`；日志 `ssh <host> "tail -f /root/ladder/<batchId>.log"`；产物在桶里 `ladders/<batchId>/`（`plan.json` / `games.jsonl` / `progress.json` / `report.md` / `elo.json`）。整轮跑动期间业主 Worker 与生产 D1 **零新增**（P4b 验收 ①）。
 
@@ -222,15 +227,15 @@
 | 预算下传改变线上行为 | P1 验收要求「缺省预算 ⇒ 15 档 × 120 局面逐字一致」；引擎缺省常量**一个都不改** |
 | 考古无法确证（审计 §9 的中置信项） | 标 `fidelity:'approximate'` + 缺口描述；需要逐字时走 P7 `--rev` |
 | 上游采样方差 > 版本差异 | 配对开局（D9）+ 大样本 + CI 门槛（D10）；L1 结论默认只能到「筛选」级别 |
-| 双 proxy 臂把上游打爆 / 429 增多 | 串行 + 冷却；`retryable` 退避已有；必要时降级为「单 proxy 臂 + rapfi」并把 L1 拆两晚 |
+| 双上游臂把上游打爆 / 429 增多 | 串行 + 冷却；`retryable` 退避已有；必要时降级为「单上游臂 + rapfi」并把 L1 拆两晚 |
 | D1 写额度与棋谱洁净度 | D11：阶梯不写 D1，只一行汇总；`--allow-production` 闸门（承接上一轮「写入隔离没自动化」的 P1 建议） |
 | 开局库太窄 ⇒ 所有身份趋同、区分度下降 | K≥8 且覆盖不同首手/不同形状；报表出「开局分层表」，若某开局对所有身份都是同一结果 ⇒ 换库 |
 | 阶梯跑完发现口径又错（重蹈 17.5 pt 覆辙） | 先跑 L3 做**口径自检**：`rapfi@1000` vs `rapfi@500` 若测不出该有的差距，说明设计或方差控制有问题，先修口径再跑 L1/L2 |
-| **直连上游丢掉 Worker 的限流/重试**（D12） | box 侧自实现：令牌桶 30 req/min + 单上游臂并发 1 + 429/5xx 指数退避（4 s/12 s/25 s，沿用 `src/app/loop.ts` 的档）+ 连续 3 次 429 ⇒ **熔断暂停本轮**并写进 `events.jsonl`；跑前先做 5 次探针确认额度与延迟 |
+| **直连上游丢掉 Worker 的限流/重试**（D12） | ✅ **已实现**（P4b）：`scripts/lib/throttle.mjs` 滑窗自限速（缺省 30 req/min）+ `installFetchThrottle()` 裹全局 fetch（只给上游主机领令牌，`src/core/jev/client.ts` 内部重试也照领）+ 连续 **5** 次 429 ⇒ 熔断（`acquire()` 抛 `限流熔断已触发…`，`summary.throttle`/`events.jsonl` 记数）；退避档沿用 `src/app/loop.ts` 的 4 s/12 s/25 s；跑前先做探针确认额度与延迟 |
 | **直连上游的协议随上游变动**（离线面与生产转发漂移） | 请求体白名单与 `src/worker/lib/upstream.ts` 共用同一段口径（P4b 单测：同一 state ⇒ 直连与 Worker 转发**逐字同体**）；上游改协议时两条路径同时红 |
 | **box 上 key 的暴露面**（`/root/.jev-key`） | 沿用 ADR-0019：`chmod 600`、只从文件读、**永不进日志/URL/产物**（`events.jsonl` 只记 key 长度）；上传桶的产物里不含 key（P4b 验收里加一条 `grep -r 'apikey_'` 必须为空） |
 | **桶凭据纪律与断桶** | 凭据只从环境变量取（D14），不入仓库、不写进 box 日志；刻意断桶时跑动不中断（P4b 验收 ③）；`ls`/`push` 失败重试 3 次后告警 |
-| **box 出网不可达上游 / 桶**（未知，需探针） | P4b 第一步就做探针：`curl -sS -o /dev/null -w '%{http_code}' https://api.typesafe.ai/...`（带 key）与桶 endpoint 的 `HEAD`；不可达则本计划退回「经业主 Worker」并保留 `--allow-production` 闸门（G3 降级但不失败） |
+| **box 出网不可达上游 / 桶**（上游那半 ✅ 已探明；桶那半仍待桶地址） | **P4b 第一步探针已跑（2026-10-04）**：box `curl -X POST https://api.typesafe.ai/v1/systemone -H "Authorization: Bearer $(cat /root/.jev-key…)"` ⇒ **HTTP 422**（`questions` 空 ⇒ 鉴权已过）0.315 s，**上游可达**；桶 endpoint 的 `HEAD` 仍待第 6 条定桶后补；若桶不可达 ⇒ 只影响留档，本地 JSONL 与 SSH 进度不受影响（上传失败只告警，D14） |
 
 ---
 
@@ -242,7 +247,7 @@
 4. **L3 的 5000 ms 档要不要跑**：单局 ~8 min，20 局 ≈ 2.7 h，只为一个点；业主决定。
 5. **`--rev` 逃生门值不值得做**（P7）：只有在「确实要拿老版本逐字数据下结论」时才值得；否则考古 + `approximate` 标注够用。
 6. **桶是哪一个**（Cloudflare R2 / S3 / B2 / 自建 MinIO）与 endpoint、region、path-style vs virtual-host？决定 `BUCKET_ENDPOINT` 的默认写法与 `s3-put.mjs` 的默认寻址样式（两种样式都会实现，只需定默认）。
-7. **box 出网是否可达上游与桶**（P4b 第一步的探针）：`api.typesafe.ai` 需带 key 探一次；桶 endpoint 做一次 `HEAD`。**不可达则 G3 降级**为「经业主 Worker + `--allow-production`」，其余不变。
+7. ✅ **box 出网是否可达上游与桶**（P4b 第一步的探针）：**上游已答「可达」**（2026-10-04，见 §8 风险表该行；`/root/.jev-key` + `Bearer` POST ⇒ HTTP 422 = 鉴权通过、延迟 0.315 s；box `node -v` v24.9.0、可用内存 1336 MiB）。**桶那半待第 6 条定桶后补 `HEAD`**。若桶不可达 ⇒ 只降级留档（本地 JSONL + SSH 进度照常）。
 8. **直连上游的额度是否与 Worker 共用同一 key 的配额**：若共用，30 req/min 的自限速要按「Worker 生产流量 + 阶梯流量」的合计来设；跑前先探 5 次看 `429` 与 `Retry-After`。
 
 ---
@@ -266,3 +271,4 @@
 **如果只批「远端离线跑」这一半（G3）**：则做 **P4b 前置三件**（~0.5 天，都不依赖 P1/P2）：① 出网探针（§9 第 7 条）+ 直连上游单局真跑对照（同 state 与 Worker 转发逐字同体）；② `progress.json`/`events.jsonl` + `status --watch`（SSH 看进度）；③ `s3-put.mjs` + `batch-bucket.mjs`（含已知向量单测）。做完当晚就能用**现有** `experiment-run.mjs`/`experiment-worker.mjs` 把任意 A/B 实验搬成「零 CF 触碰 + SSH 可查 + 桶留档」，不必等语义冻结。
 
 **两半的依赖关系**：G1（可回溯）是 G2（可信阶梯）的**前提**——不然跑出来的 Elo 表只是「HEAD 上五个像老版本的档位」的相对强弱；G3 与两者**正交**，可以先行或并行（上一条）。
+
