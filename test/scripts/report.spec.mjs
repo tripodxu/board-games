@@ -268,6 +268,20 @@ describe('版本筛查判读（阶梯计划 §7 规则机械化：只决定下�
     expect(screenVersions(six.flatMap((v, i) => (i ? pair(six[0], v) : [])))).toBeNull();
   });
 
+  it('只跟 Rapfi 交过手的版本（L2 形态）不算筛查对象 ⇒ null；混跑时只按交过手的子集判', () => {
+    const V10 = 'official|v10-live3|0';
+    const l2 = [...pair(V10, 'rapfi||500'), ...pair(V11, 'rapfi||1000'), ...pair(V13, 'rapfi||2000')];
+    expect(screenVersions(l2)).toBeNull();
+    const s = screenVersions([...l2,
+      ...pair(V13, V11, { blackWins: 7, whiteWins: 6 }),
+      ...pair(V13, V14, { blackWins: 7, whiteWins: 5 }),
+      ...pair(V11, V14, { blackWins: 5, whiteWins: 4 }),
+    ]);
+    expect(s.versions).toEqual([V11, V13, V14]);   // 只跟 Rapfi 交过手的 v10 不进筛查
+    expect(s.games).toBe(60);                      // 版本 vs Rapfi 的对局不计入筛查局数
+    expect(s.verdict).toBe('pass');
+  });
+
   it('三对全过 ⇒ 全序 + 判据全绿 + verdict=pass（头部两版是决赛对）', () => {
     const recs = [
       ...pair(V13, V11, { blackWins: 7, whiteWins: 6 }),   // v13 0.65

@@ -288,10 +288,11 @@
 ## 已验证（验收证据）
 
 - **报告第 4 节新增「版本筛查判读」块：把 §7 的筛查规则机械化（2026-10-05）**：
-  `scripts/lib/report.mjs` 新增 `screenVersions()`（`report.mjs` 现 710 行、`test/scripts/report.spec.mjs` 521 行 **35 例**），
+  `scripts/lib/report.mjs` 新增 `screenVersions()`（`report.mjs` 现 714 行、`test/scripts/report.spec.mjs` 535 行 **36 例**），
   把「要不要补 L1」那条规则算成三句判据 + 一句判定印在配对表与逐色格之间：① 全序（Copeland 赢场数排序，逐三元组查环）；
   ② 共同对手一致性（直接比较 vs 经第三方的间接比较）；③ 逐色格是否换色翻面。全过 ⇒ `有值得决赛的差距 ⇒ 只补决赛对 X vs Y`，
-  否则 ⇒ `筛查不成立 ⇒ 直接跑 L1`。只在「3–5 个 `official|v*` 身份且两两都交过手」时出现（其它形态整块不印）；
+  否则 ⇒ `筛查不成立 ⇒ 直接跑 L1`。只在**彼此真交过手**的 3–5 个 `official|v*` 身份上出现（整批只有「版本 vs Rapfi」
+  的形态不印；混跑批次只按交过手的子集判 —— `l2n1` 真实 300 局复跑时抓到第一版会误印「只凑齐 0/10 对 ⇒ 直接跑 L1」）；
   判据 ② 在 3 版筛查里每对只有 1 个共同对手 ⇒ 退化为「间接与直接同向」，块内写了这条口径提示。
   真数据验证（`vorder1` 已拉回的 round-1 + 从 box 现拉的在跑 round-2，共 36 局 / 3 身份 / 2 对）：块正确渲染并写
   「只凑齐 2/3 对（版本之间没两两交过手）⇒ 筛查不成立，按 §7 直接跑 L1」——**单轮报表里这块不出现是正常的**
@@ -702,7 +703,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 693 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 318 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 694 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 319 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

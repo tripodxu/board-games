@@ -235,7 +235,10 @@ export function colorSplit(records) {
  * 版本筛查判读（把阶梯计划 §7 的「筛查判读规则」机械化）：只决定**下一场跑什么**，
  * 不判谁更强（判强只看配对表与区间）。
  *
- * 只对版本身份（`official|v*`）生效，且必须是 3–5 个、两两都交过手 —— 否则返回 null（不是筛查形态）。
+ * 只对版本身份（`official|v*`）生效，而且**只算彼此真交过手的那几版**：整批只有「版本 vs Rapfi」的
+ * 形态（L2 就是这样）根本不是筛查批次 ⇒ 返回 null、这块不印；混跑的批次（L2 + vorder1 一起读）
+ * 也只按真交过手的子集判（否则会印出误导性的「只凑齐 3/10 对 ⇒ 直接跑 L1」）。
+ * 子集必须是 3–5 个、两两都交过手 —— 否则返回 null。
  * 三条判据（全过才算「有值得决赛的差距」）：
  *   ① 全序：两两点估计能排出一个无环全序（Copeland 赢场数排序，逐三元组查环）；
  *   ② 共同对手：直接比较的方向与该对共同对手上的间接比较方向一致；
@@ -244,15 +247,16 @@ export function colorSplit(records) {
  */
 export function screenVersions(records, opts = {}) {
   const isVersion = (id) => typeof id === 'string' && /^official\|v[0-9]/.test(id);
-  const versions = [...new Set(records.flatMap((r) => [r.black, r.white]))].filter(isVersion).sort();
   const maxVersions = opts.maxVersions == null ? 5 : opts.maxVersions;
+  /* 只把「版本 vs 版本」的对局算进筛查（版本 vs Rapfi 的不算），版本集合也从这些对局里取。 */
+  const opposed = records.filter((r) => isVersion(r.black) && isVersion(r.white) && r.black !== r.white);
+  const versions = [...new Set(opposed.flatMap((r) => [r.black, r.white]))].sort();
   if (versions.length < 3 || versions.length > maxVersions) return null;
 
   const cells = new Map();
-  for (const r of records) {
+  for (const r of opposed) {
     const x = r.black;
     const y = r.white;
-    if (!isVersion(x) || !isVersion(y) || x === y || !versions.includes(x) || !versions.includes(y)) continue;
     const a = x < y ? x : y;
     const b = a === x ? y : x;
     const key = a + '\u0000' + b;
