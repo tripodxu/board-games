@@ -553,7 +553,9 @@ async function main() {
     flush({ gameNo, ply: 0 });
     appendEvent(outDir, { kind: 'game-start', gameNo, opening: opening ? opening.key : null });
     const one = await playOne(plan, a, b, gameNo, {
-      gamesDir, ckptDir, resumeUid, store, opening, jsonlFile, throttle,
+      /* outDir 也要传：`playOne` 是顶层函数，切换事件回调得自己写 events.jsonl
+         （曾经漏传 ⇒ 每次切换都 `outDir is not defined`，整局变 error）。 */
+      gamesDir, ckptDir, outDir, resumeUid, store, opening, jsonlFile, throttle,
       /* 每手回写一次「跑到第几手」：长局里 progress.json 不写就会几分钟不动，看不出是死是活。 */
       onPly: (ply) => flush({ gameNo, ply }),
     });
@@ -714,7 +716,7 @@ async function playOne(plan, a, b, gameNo, dirs) {
           onProviderSwitch: (info) => {
             stickyProvider = info.to;
             log(`game-${gameNo} ${formatProviderSwitch(info)}`);
-            appendEvent(outDir, {
+            appendEvent(dirs.outDir, {
               kind: 'provider', gameNo, ply: session.history.length + 1, side,
               from: info.from, to: info.to, reason: info.reason,
               probeStatus: info.probeStatus, probeMs: info.probeMs,
