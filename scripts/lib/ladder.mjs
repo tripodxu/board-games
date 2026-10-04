@@ -476,6 +476,40 @@ export function formatPollTick(round, progress, { elapsedS = null } = {}) {
   return `  ⏳ round-${round} ${done}/${total} 局${bits.length ? ` · ${bits.join(' · ')}` : ''}`;
 }
 
+/** 同步睡：主线程唯一能用的同步等待（scp/ssh 重试之间用）。 */
+export function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * 同步重试（scp/ssh 用）。
+ *
+ * 为什么要有它：box 的 22 端口链路会**间歇性抽风** —— 几十次里挂一次，`scp` 直接 `exit=1`
+ * 且没有任何 stderr（同一文件、同一命令行手工跑就成功），轮询里也见过
+ * `ssh: connect to host … port 22: Connection timed out`。原来只重试一次，
+ * L2 那一晚「上传 round-1 plan 失败」把续跑掐死了两次；而 `ssh` 那几处失败**不报错只回退**，
+ * 回退的后果更坏（读 tag 失败会换新 tag 把整轮重放，数行数失败会把跑完的轮次再排一遍）。
+ *
+ * `fn` 返回 `false` 或抛错都算失败；`sleep` 可注入（单测不真睡）。
+ * 返回 `{ ok, attempts }`，`attempts` 是实际用掉的次数（成功时为第几次成功）。
+ */
+export function retrySync(fn, { attempts = 3, sleepMs = 2000, sleep = sleepSync, onRetry } = {}) {
+  for (let i = 1; i <= attempts; i++) {
+    let ok = false;
+    try {
+      ok = fn() !== false;
+    } catch {
+      ok = false;
+    }
+    if (ok) return { ok: true, attempts: i };
+    if (i < attempts) {
+      if (onRetry) onRetry(i);
+      if (sleep) sleep(sleepMs);
+    }
+  }
+  return { ok: false, attempts };
+}
+
 export function readLadderState(file) {
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));

@@ -108,6 +108,32 @@ describe('parseRecord', () => {
     expect(() => parseRecord({ game: '飞行棋', moves: [{ ply: 1, notation: 'A1' }] }, { file: 'x.json' }))
       .toThrow(/不认识的棋种/);
   });
+
+  // L2 的 300 局全栽在这条上：实验面归档的 slug 是「对阵描述」不是棋种，
+  // 而解析顺序原来把 slug 排在 game 前面 ⇒ 整批被判「不认识的棋种」跳过。
+  it('slug 是对阵描述（实验面归档）⇒ 回退到 game 显示名', () => {
+    const rec = parseRecord({
+      slug: 'jev-v14-vs-rapfi-0-5s', game: '五子棋', gameUid: 'u1',
+      moves: [{ ply: 1, side: '黑方', notation: 'H8' }],
+    }, { file: 'round-13-game-1.json' });
+    expect(rec.engine.id).toBe('gomoku');
+  });
+
+  it('slug 不认识且 game 写的是引擎 id ⇒ 也认；显式 gameId 仍然最优先', () => {
+    const raw = { slug: 'jev-v14-vs-rapfi-0-5s', game: 'gomoku', moves: [{ ply: 1, notation: 'H8' }] };
+    expect(parseRecord(raw, { file: 'x.json' }).engine.id).toBe('gomoku');
+    expect(parseRecord({ ...raw, game: '飞行棋' }, { file: 'x.json', gameId: 'gomoku' }).engine.id).toBe('gomoku');
+  });
+
+  it('候选里的棋种字段全都认不出 ⇒ 仍然 throw（一个坏 slug 不该判死，但也不能瞎兜底）', () => {
+    expect(() => parseRecord({ slug: 'jev-v14-vs-rapfi-0-5s', game: '飞行棋', moves: [{ ply: 1, notation: 'A1' }] },
+      { file: 'x.json' })).toThrow(/引擎 id 或显示名/);
+  });
+
+  it('一个棋种字段都没写 ⇒ 才用默认 gomoku', () => {
+    const rec = parseRecord({ moves: [{ ply: 1, notation: 'H8' }] }, { file: 'x.json' });
+    expect(rec.engine.id).toBe('gomoku');
+  });
 });
 
 describe('replayGame：致胜点接管', () => {

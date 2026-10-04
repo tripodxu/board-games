@@ -40,6 +40,7 @@ import {
   formatRoundLine, formatLadderProgress, formatLadderTable, ladderDir, stateFile,
   estimateRoundSeconds, parsePollOutput, formatPollTick,
   readLadderState, writeLadderState, writePlans,
+  retrySync,
 } from './lib/ladder.mjs';
 import { gameRecord } from './lib/batch-elo.mjs';
 import { collectArtifacts, pushArtifacts, requireBucketCfg, defaultPrefix } from './batch-bucket.mjs';
@@ -113,6 +114,12 @@ function sh(cmd, args, timeoutMs, sigtermOk = false) {
       console.log('（本地 ssh 客户端已超时断开；远端 nohup worker 不受影响，重跑本命令即可续跑）');
       return true;
     }
+    // 静默失败最费时间：L2 收尾时连续两次「上传 round-1 plan 失败」没有留下任何 stderr，
+    // 只能靠猜。这里把子进程的退出状态 / 信号 / 自带信息原样打出来（stdio 是 inherit，
+    // 子进程自己的报错在它那边已经打到 stderr，这里补的是「进程压根没起来」那一类）。
+    const detail = [err.status !== undefined && err.status !== null ? `exit=${err.status}` : '',
+      err.signal ? `signal=${err.signal}` : '', err.code ? `code=${err.code}` : ''].filter(Boolean).join(' ');
+    console.log(`  （${cmd} 失败${detail ? `：${detail}` : ''}${err.message ? `｜${String(err.message).split('\n')[0]}` : ''}）`);
     return false;
   }
 }
@@ -187,12 +194,27 @@ function localScpPath(p) {
   return (rel.split(path.sep).join('/') || '.') + trailing;
 }
 
-/** scp 失败重试一次：box 是低配机器，首连握手偶尔慢到无输出地失败，一次重试即可覆盖。 */
+const SCP_ATTEMPTS = 3;
+const SCP_RETRY_MS = 2000;
+
+/**
+ * scp 重试 3 次（之间停 2 s）。
+ * L2 那一晚实测：这台 box 的 22 端口链路会间歇性抽风 —— 几十次里挂一次，
+ * `scp` 直接 exit=1 且**没有任何 stderr**（同一文件、同一命令行手工跑就成功），
+ * 轮询里也见过一次 `ssh: connect to host … port 22: Connection timed out`。
+ * 原来只重试一次，于是「上传 round-1 plan 失败」能把整晚的续跑掐死两次。
+ * 重试是唯一合算的应对：一次抖动不该让 8 小时的阶梯白等。
+ * 真正那两次抖动就发生在本轮：15 个 plan 里 round-12 / round-13 第一次都失败、第二次成功。
+ */
 function scp(args) {
   const mapped = args.map((a) => (a.includes('@') && a.includes(':') ? a : localScpPath(a)));
-  if (sh('scp', [...SSH_OPTS, ...mapped])) return true;
-  console.log('（scp 第一次失败，重试一次…）');
-  return sh('scp', [...SSH_OPTS, ...mapped]);
+  const res = retrySync(() => sh('scp', [...SSH_OPTS, ...mapped]), {
+    attempts: SCP_ATTEMPTS,
+    sleepMs: SCP_RETRY_MS,
+    onRetry: (i) => console.log(`（scp 第 ${i}/${SCP_ATTEMPTS} 次失败，${SCP_RETRY_MS / 1000}s 后重试）`),
+  });
+  if (res.ok && res.attempts > 1) console.log(`（scp 第 ${res.attempts} 次成功）`);
+  return res.ok;
 }
 
 /** 缺省阶梯 id：lad<MMDD>-<HHmm>（11 位，合法且一眼看得出是哪天起的）。 */
@@ -251,7 +273,7 @@ function remoteTagsOf(host, user, remoteRoot, id, localBase) {
     '  echo "$n $t" >> tags.txt',
     'done',
   ].join('\n');
-  if (!ssh(host, user, cmd, 60000)) return {};
+  if (!sshRetry(host, user, cmd, 60000)) return {};
   const local = path.join(localBase, 'tags.txt');
   fs.mkdirSync(localBase, { recursive: true });
   if (!scp([`${user}@${host}:${remote}/tags.txt`, local])) return {};
@@ -289,6 +311,22 @@ function pullRound(host, user, remoteRoot, id, round, localBase) {
 }
 
 /**
+ * 幂等 ssh（读 tag / mkdir / 数行数）的重试包装。
+ * 和 scp 同一个理由：这条链路会间歇性抽风（见 scp 注释）。这几处失败**不会报错只回退**，
+ * 而回退的后果比报错更坏 —— 读 tag 失败会当「远端没有 tag」而换新 tag 把整轮重放；
+ * 数行数失败会当「远端 0 行」而把跑完的轮次再排一遍。所以它们必须重试。
+ */
+function sshRetry(host, user, cmd, timeoutMs, attempts = 3) {
+  const res = retrySync(() => ssh(host, user, cmd, timeoutMs), {
+    attempts,
+    sleepMs: SCP_RETRY_MS,
+    onRetry: (i) => console.log(`（ssh 第 ${i}/${attempts} 次失败，${SCP_RETRY_MS / 1000}s 后重试）`),
+  });
+  if (res.ok && res.attempts > 1) console.log(`（ssh 第 ${res.attempts} 次成功）`);
+  return res.ok;
+}
+
+/**
  * 远端每轮 `games.jsonl` 行数 → `{round: lines}`。
  * 本机不抓 ssh 管道（沙箱/管道 stdio 会 EPERM，见实验面脚本的既有约定）⇒ 远端先写 lines.txt 再 scp 回来。
  */
@@ -303,7 +341,7 @@ function remoteLineCounts(host, user, remoteRoot, id, localBase) {
     '  echo "${d#round-} $n" >> lines.txt',
     'done',
   ].join('\n');
-  if (!ssh(host, user, cmd, 60000)) return {};
+  if (!sshRetry(host, user, cmd, 60000)) return {};
   const local = path.join(localBase, 'lines.txt');
   fs.mkdirSync(localBase, { recursive: true });
   if (!scp([`${user}@${host}:${remote}/lines.txt`, local])) return {};
@@ -431,7 +469,7 @@ async function main(argv = process.argv.slice(2)) {
   let remoteReady = false;
   const ensureRemote = () => {
     if (remoteReady) return true;
-    remoteReady = Boolean(ssh(host, user, `mkdir -p ${remoteBatch}/{plans,logs}`));
+    remoteReady = sshRetry(host, user, `mkdir -p ${remoteBatch}/{plans,logs}`, undefined, 3);
     return remoteReady;
   };
   const oldState = readLadderState(statePath);

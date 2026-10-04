@@ -93,9 +93,18 @@ export function parseRecord(raw, opts) {
   if (!raw || typeof raw !== 'object') throw new Error('棋谱不是对象：' + (o.file || '?'));
   const moves = raw.moves;
   if (!Array.isArray(moves) || !moves.length) throw new Error('棋谱没有 moves 数组：' + (o.file || '?'));
-  const gid = o.gameId || raw.slug || raw.game || 'gomoku';
-  const engine = resolveEngine(gid);
-  if (!engine) throw new Error(`不认识的棋种 "${gid}"（${o.file || '?'}）——用 --game 指定`);
+  // 棋种解析顺序：显式给的 → slug → 显示名 → 默认 gomoku。
+  // 实验面归档的 `slug` 是「对阵描述」（例如 jev-v14-vs-rapfi-0-5s），不是棋种；老归档又可能
+  // 只写显示名（「五子棋」）。逐个试，别让一个不认识的 slug 把整局判死（L2 的 300 局全栽在这）。
+  const candidates = [o.gameId, raw.slug, raw.game, raw.gid]
+    .filter((x) => typeof x === 'string' && x.trim());
+  let engine;
+  for (const c of candidates) {
+    engine = resolveEngine(c);
+    if (engine) break;
+  }
+  if (!engine && candidates.length === 0) engine = resolveEngine('gomoku'); // 一个棋种字段都没写才用默认
+  if (!engine) throw new Error(`不认识的棋种 "${candidates[0] || '?'}"（${o.file || '?'}）——归档里的 game/gid 得是引擎 id 或显示名`);
   const uid = raw.gameUid || raw.uid || raw.gid || null;
   return { engine, uid, tag: raw.experimentTag || raw.experiment || null, raw, moves };
 }

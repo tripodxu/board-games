@@ -19,6 +19,33 @@
 
 ---
 
+## 2026-10-04 · 这台 box 的链路会间歇性抽风：scp/ssh 都要三次重试
+
+- **症状**：`scp` 直接 `exit=1` 且**没有任何 stderr**（最费时间的就是这种静默失败），同一条命令行手工跑、
+  或换 `node -e` 的 `execFileSync` 跑就成功；轮询里还见过一次 `ssh: connect to host 185.242.234.48 port 22:
+  Connection timed out`。频率约「几十次里挂一次」。
+- **代价**：只重试一次时，L2 收尾的「上传 round-1 plan 失败」把整套续跑掐死两次（每次都要人重跑）；
+  第 15 轮的 `scp -r` 也栽了一次 —— 远端 20/20 早已跑完，只有本地拉不回来。
+- 已修：`scripts/lib/ladder.mjs` 的 `retrySync(fn,{attempts:3,sleepMs:2000,onRetry})`（`sleep` 可注入才测得了）
+  + `sleepSync(ms)`，CLI 的 `scp()` 与 `sshRetry()` 统一用它；`sh()` 失败时打印 `exit=/signal=/code=/message`。
+  修复当场生效：同一次续跑里 round-12、round-13 的 plan 上传各失败一次、第二次即成功。
+
+## 2026-10-04 · 「不报错只回退」比报错更坏：ssh 读远端状态的三处都必须重试
+
+- 阶梯编排里读远端的三处调用 —— `remoteTagsOf()`（读 tag）、`ensureRemote()`（`mkdir -p`）、
+  `remoteLineCounts()`（数 `games.jsonl` 行数）—— 原来失败**不抛错，只当「远端没东西」**：
+  读 tag 失败 ⇒ 以为远端没 tag ⇒ 换新 tag ⇒ **worker 的 checkpoint 按 tag 命中，整轮白重放**；
+  数行数失败 ⇒ 以为远端 0 行 ⇒ **把已经跑完的轮次再排一遍**（一晚的机时）。
+  所以这三处一律 `sshRetry(..., attempts=3)`。判据：凡是「失败后的回退路径会静默改变实验语义」的调用，
+  都必须重试或直接报错，不能静默回退。
+
+## 2026-10-04 · 实验面归档的 `slug` 是对阵描述，不是棋种
+
+- `.work/remote/<batch>/round-N/games/*.json` 里 `slug` 形如 `jev-v14-vs-rapfi-0-5s`（对阵描述），
+  而 `parseRecord()` 的棋种解析顺序原来是 `slug → game → 默认` ⇒ **L2 的 300 局全被判「不认识的棋种」跳过**。
+- 已修：候选链 `[显式 gameId, slug, game, gid]` 逐个试、认出就用；**候选全认不出时仍然 throw**，
+  只有「一个棋种字段都没写」才退默认 gomoku —— 一个坏 `slug` 不该判死整批，但也不能瞎兜底。
+
 ## 2026-10-04 · 远端目录要先建，否则 `tags.txt` 是两次假失败
 
 - 阶梯编排的 `remoteTagsOf()` 会先在远端 `: > tags.txt` 再把它 scp 回来读；**这个调用发生在 `mkdir -p` 之前**

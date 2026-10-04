@@ -8,6 +8,22 @@
 
 ### 修复
 
+- **链路抖动会把整晚掐死：`scp`/`ssh` 一律三次重试（L2 收尾发现）**：box 的 22 端口链路会**间歇性抽风** ——
+  `scp` 直接 `exit=1` 且**没有任何 stderr**，同一条命令行手工跑、或换 `node -e` 的 `execFileSync` 跑就成功
+  （轮询里还见过一次 `ssh: connect to host … port 22: Connection timed out`）。原来只重试一次，
+  L2 收尾时「上传 round-1 plan 失败」把续跑连续掐死两次，第 15 轮的 `scp -r` 也栽了一次
+  （那轮远端 20/20 已跑完，只剩本地拉不回来）。现在 `scripts/lib/ladder.mjs` 新增可注入 `sleep` 的
+  `retrySync(fn,{attempts,sleepMs,onRetry})` 与 `sleepSync(ms)`，CLI 的 `scp()` 与新增的 `sshRetry()`
+  统一 **3 次重试、间隔 2 s**，失败时打印 `exit=/signal=/code=/message`（静默失败最费时间）。
+  `ssh` 的三处（`mkdir -p` / 读 tag / 数行数）也必须重试：它们原来**不报错只回退**，而回退的后果更坏 ——
+  读 tag 失败会当「远端没 tag」换新 tag 把整轮重放（worker 的 checkpoint 按 tag 命中），
+  数行数失败会当「远端 0 行」把跑完的轮次再排一遍。修复当场生效：同一次续跑里 round-12 与 round-13
+  的 plan 上传各失败一次、第二次重试成功。单测 6 例（`test/scripts/ladder.spec.mjs`）。
+- **重放工具把实验面归档全判成「不认识的棋种」（L2 首次过棋谱时发现）**：`scripts/lib/tactics-replay.mjs`
+  的棋种解析顺序是 `slug → game → 默认`，而实验面归档的 `slug` 是**对阵描述**（`jev-v14-vs-rapfi-0-5s`）
+  ⇒ L2 的 300 局全部被跳过，回归核对直接跑不出数。现在按 `[显式 gameId, slug, game, gid]` 逐个候选试、
+  认出就用；**候选全都认不出时仍然 throw**（一个坏 `slug` 不该判死整批，但也不能瞎兜底成 gomoku），
+  只有「一个棋种字段都没写」才退默认。单测 3 例。
 - **阶梯编排先建远端目录再读 tag（L2 首跑发现）**：`remoteTagsOf()` 会先在远端 `: > tags.txt` 再 scp 回来，
   而这一步排在 `mkdir -p` 之前 ⇒ 新 `--batch` 首跑必然打两行
   `scp: …/tags.txt: No such file or directory`（`scp()` 失败重试一次）再照常继续 —— 不是故障，是噪音，
@@ -50,6 +66,20 @@
 
 ### 新增
 
+- **L2 阶梯结果落档：5 个版本 × 3 档 Rapfi，300 局（2026-10-04）**：新增
+  [docs/plans/2026-10-04-l2-version-vs-rapfi.md](docs/plans/2026-10-04-l2-version-vs-rapfi.md)。
+  `--ladder L2 --batch l2n1 --games 20` ⇒ 15/15 轮 / 300 局 / **W234-D17-L49**（Jev 侧 78.0%），
+  零网络写、零 CF 触碰，墙钟 316.7 分钟、7440 个 Jev 手全 `provider=primary`（切换 0 次、兜底 0 手）。
+  两条可用的结论：① **Rapfi「思考时间 → 强度」曲线成立** —— 每档 100 局、分母配平，
+  `rapfi||500/1000/2000` = Elo 1240.1 / 1340.8 / 1448.4，Rapfi 视角得分率 10.5% / 20.5% / 26.5%
+  （Wilson [5.9–18.0] / [13.8–29.4] / [18.8–35.9]）⇒ 从 500 抬到 2000 **确实更强**（区间不重叠），
+  500→1000 分不出来；② **五个版本之间不可排序**（每版 60 局、每对 20 局，Wilson 半宽 12–22 pt、
+  12 对区间重叠）：v11 85.8% / v12 84.2% / v14 84.2% / v10 78.3% / v13 71.7%；
+  ③ **成本随机制单调变贵**：战术占单手 v10 22.3% → v11 36.7% → v12 36.8% → v13 37.9% → v14 38.7%
+  （合计 35.6%：战术层均值 1006.7 ms、模型往返 1818.7 ms、单手合计 2825.4 ms）。回归核对：每轮抽样
+  2 局重放（30 局 / 1580 手）⇒ **层一致率 640/640 = 100%**、接管落点 410/484 = 84.7%、74 手会变但**全部同层**。
+  产物留 box（业主决定暂不推对象桶）：`.work/remote/l2n1/round-{1..15}/`、`.work/l2n1-report.md`、
+  `.work/l2-regress/round-*.json`。
 - **阶梯报告 CLI：计划 §7 的「六项必出报表」一条命令复算（plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   `node scripts/experiment-report.mjs --batch <batchId> [--json <path>]`（或 `--dir <path[,path]>`）读
   `round-<i>/games.jsonl` + `round-summary.json` + `events.jsonl`，产出 `report.md`：① 能力表（BT Elo + bootstrap

@@ -14,7 +14,7 @@ import {
   parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
   newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress, stateMatchesLadder, withReusedTags, staleCleanups,
   ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
-  estimateRoundSeconds, parsePollOutput, formatPollTick,
+  estimateRoundSeconds, parsePollOutput, formatPollTick, retrySync, sleepSync,
 } from '../../scripts/lib/ladder.mjs';
 import { ladderMain, wdlOfGamesJsonl } from '../../scripts/experiment-ladder.mjs';
 
@@ -194,6 +194,61 @@ describe('汇总文本', () => {
     expect(formatPollTick(2, null)).toContain('还没写 progress.json');
     // 本地墙钟优先于远端自报（远端 elapsedS 是它自己的计时，重启会归零）
     expect(formatPollTick(1, { done: 1, total: 2, elapsedS: 5 }, { elapsedS: 65 })).toContain('65s');
+  });
+});
+
+// L2 那一晚的真实教训：box 的链路会间歇性抽风（scp exit=1 且无 stderr），
+// 一次抖动掐死了两次续跑；而 ssh 那几处失败不报错只回退，回退的后果更坏。
+describe('retrySync（链路抖动的重试）', () => {
+  const spinner = () => {
+    const slept = [];
+    const tries = [];
+    return { slept, tries, sleep: (ms) => slept.push(ms) };
+  };
+
+  it('第一次就成功 ⇒ 不睡、只用 1 次', () => {
+    const s = spinner();
+    const res = retrySync(() => { s.tries.push(1); return true; }, { sleep: s.sleep, attempts: 3, sleepMs: 2000 });
+    expect(res).toEqual({ ok: true, attempts: 1 });
+    expect(s.tries.length).toBe(1);
+    expect(s.slept).toEqual([]);
+  });
+
+  it('第三次才成功 ⇒ attempts=3、睡了两次（每次 2s）、onRetry 两次', () => {
+    const s = spinner();
+    const retried = [];
+    const res = retrySync(() => { s.tries.push(1); return s.tries.length >= 3; },
+      { sleep: s.sleep, attempts: 3, sleepMs: 2000, onRetry: (i) => retried.push(i) });
+    expect(res).toEqual({ ok: true, attempts: 3 });
+    expect(s.slept).toEqual([2000, 2000]);
+    expect(retried).toEqual([1, 2]);
+  });
+
+  it('一直失败 ⇒ ok=false、次数用满、不再多睡', () => {
+    const s = spinner();
+    const res = retrySync(() => false, { sleep: s.sleep, attempts: 3, sleepMs: 5 });
+    expect(res).toEqual({ ok: false, attempts: 3 });
+    expect(s.slept).toEqual([5, 5]);
+  });
+
+  it('返回 undefined 算成功（回调式「没抛就是成」），抛错算失败', () => {
+    const s = spinner();
+    expect(retrySync(() => {}, { sleep: s.sleep }).ok).toBe(true);
+    let n = 0;
+    const res = retrySync(() => { n++; if (n < 2) throw new Error('boom'); return true; }, { sleep: s.sleep, attempts: 2 });
+    expect(res).toEqual({ ok: true, attempts: 2 });
+  });
+
+  it('attempts=1 ⇒ 只试一次（pollRound 那种「失败就认」的调用可以关掉重试）', () => {
+    const s = spinner();
+    expect(retrySync(() => false, { attempts: 1, sleep: s.sleep })).toEqual({ ok: false, attempts: 1 });
+    expect(s.slept).toEqual([]);
+  });
+
+  it('sleepSync 真会阻塞指定的毫秒数（注入用的替身别把这条测掉）', () => {
+    const t0 = Date.now();
+    sleepSync(30);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(25);
   });
 });
 
