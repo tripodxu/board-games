@@ -287,6 +287,12 @@
 
 ## 已验证（验收证据）
 
+- **合并报表的标题与默认产物名不再只剩第一批（2026-10-05）**：`--dir a,b` 合并多批时 `batchId` 原取 `dirs[0]`
+  ⇒ 标题写成「阶梯报告：l2n1」、默认落盘 `.work/l2n1-report.md` 会**覆盖**单批报表。现在
+  `scripts/experiment-report.mjs` 用 `dirs.map(path.basename).join('+')` ⇒ 实测
+  `node scripts/experiment-report.mjs --dir .work/remote/l2n1,.work/remote/vorder1,.work/remote/rapfihi1 …`
+  自报 `✓ l2n1+vorder1+rapfihi1：380 局 / 9 身份 / 19 对｜兜底手 0 / 上游手 16213`、标题 `# 阶梯报告：l2n1+vorder1+rapfihi1`；
+  `test/scripts/report.spec.mjs` 新增 1 例钉住 `batchId` 与 `dirs`（该文件现 **561 行 / 37 例**）。
 - **上游兜底在本机复现一次（2026-10-05，提交 `8c612b2`）**：`c2fb2` 的 box 验收之外，用**坏主 key + 真兜底 key**
   在开发机再跑一遍（两臂皆 `official`，本机没有 Rapfi 二进制）：
   `node scripts/experiment-worker.mjs --plan .work/c2e2-plan.json --store local --upstream direct --key-file .work/bad-key.txt --backup-key-file .work/cc-key.txt --expect-backup --rate-limit 30`
@@ -330,7 +336,7 @@
   `11–29 / 27.5%`，而同一份报告第 1 节对同一身份的得分率是 50.0%（口径 =（胜 + 和/2）÷ 局数）。
   同一个词两个意思 + 把和棋算进「负」⇒ 和棋多的批次会被读成惨败。现在 `colorSplit()` 补 `blackDraws/whiteDraws`、
   表头写死 `胜–和–负 ｜ 得分率 ｜ 执黑 胜/局 ｜ 执白 胜/局`，单测钉住三行渲染。
-  `scripts/lib/report.mjs` 现 **727 行**、`test/scripts/report.spec.mjs` **540 行 / 36 例**。
+  `scripts/lib/report.mjs` 现 **727 行**、`test/scripts/report.spec.mjs` **561 行 / 37 例**。
 
 - **报告第 4 节新增「版本筛查判读」块：把 §7 的筛查规则机械化（2026-10-05）**：
   `scripts/lib/report.mjs` 新增 `screenVersions()`（`report.mjs` 现 718 行、`test/scripts/report.spec.mjs` 536 行 **36 例**），
@@ -753,7 +759,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 723 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 348 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 724 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 349 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

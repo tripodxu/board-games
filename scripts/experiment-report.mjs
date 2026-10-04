@@ -95,7 +95,9 @@ export async function reportMain(argv = process.argv.slice(2)) {
     ? dirArg.split(',').map((d) => path.resolve(d.trim())).filter(Boolean)
     : [path.resolve('.work/remote', batch)];
   if (dirs.length === 0) die(USAGE);
-  const batchId = batch || path.basename(dirs[0]);
+  /* 多根合并（`--dir a,b`）时标题与默认产物名必须带上每一批：只取 `dirs[0]` 的名字会让
+     `# 阶梯报告：l2n1` 看起来只有一批，而且默认落盘 `.work/l2n1-report.md` 会**覆盖**单批报表。 */
+  const batchId = batch || dirs.map((d) => path.basename(d)).filter(Boolean).join('+');
 
   if (args.json === true) die('--json 需要一个输出路径，例如 --json .work/l3n1-report.json');
   const jsonOut = args.json ? path.resolve(String(args.json)) : null;

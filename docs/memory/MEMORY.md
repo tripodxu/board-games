@@ -21,6 +21,18 @@
 
 ---
 
+## 2026-10-05 · 合并多批的报表若沿用「第一个根」的名字，会覆盖单批产物、且标题漏掉其它批
+
+- **事实**：`scripts/experiment-report.mjs` 原来 `batchId = batch || path.basename(dirs[0])`。
+  `--dir .work/remote/l2n1,.work/remote/vorder1,.work/remote/rapfihi1` 于是自报 `l2n1`：
+  ① 报告第一行写成 `# 阶梯报告：l2n1`（读者会以为只有一批）；② 不给 `--out` 时默认落盘
+  `.work/l2n1-report.md`，**把单批报表覆盖掉**（`.work/` 里的报表是给业主看的产物，不是缓存）。
+- **修法**：`batchId = batch || dirs.map((d) => path.basename(d)).filter(Boolean).join('+')`，
+  实测 `✓ l2n1+vorder1+rapfihi1：380 局 / 9 身份 / 19 对`、标题 `# 阶梯报告：l2n1+vorder1+rapfihi1`；
+  单测钉住 `model.batchId` 与 `model.dirs`（`test/scripts/report.spec.mjs` 现 37 例）。
+- **一般化**：凡是「多输入合成一个产物」的命令行，默认输出名必须能唯一区分输入集合；
+  只取第一个输入的名字 = 静默覆盖 + 误导性标题，两者都不会报错。
+
 ## 2026-10-05 · 门禁命令与 `git commit` 串在一条命令里、且只看输出尾部 ⇒ 门禁失败被吞掉，坏提交照样推上去
 
 - **事实**：`npm run check:docs 2>&1 | Select-Object -Last 3` 只看尾部 3 行时，输出正好停在

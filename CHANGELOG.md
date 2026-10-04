@@ -8,6 +8,11 @@
 
 ### 新增
 
+- **合并批次报表自报家门：`--dir a,b` 的标题与默认产物名不再只剩第一批（2026-10-05）**：
+  `scripts/experiment-report.mjs` 的 `batchId` 原取 `dirs[0]` ⇒ 三批合并的标题写成「阶梯报告：l2n1」、
+  默认落盘 `.work/l2n1-report.md` 会**覆盖**单批报表。现在 `batchId` = 各根 basename 用 `+` 连接；
+  实测 `✓ l2n1+vorder1+rapfihi1：380 局 / 9 身份 / 19 对｜兜底手 0 / 上游手 16213`、
+  标题 `# 阶梯报告：l2n1+vorder1+rapfihi1`；`test/scripts/report.spec.mjs` 累计 **37 例**（新增 1 例钉住多根）。
 - **败局解释固化成工具：`scripts/loss-report.mjs`（规则 11 可复算）（2026-10-05）**：纯核
   `scripts/lib/loss-report.mjs`（`fatalSuffix()` 取**最长必败后缀** —— 「VCF 出现又被堵掉」的局不能算早就必败；
   `lossShape()` 出形态与追因；`formatLossMarkdown()` **强制印边界句**「VCF 只解释 found/l」）+ CLI

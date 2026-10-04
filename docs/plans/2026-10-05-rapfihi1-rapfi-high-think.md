@@ -24,22 +24,46 @@
   `node scripts/experiment-report.mjs --dir .work/remote/l2n1,.work/remote/vorder1,.work/remote/rapfihi1 --out .work/rapfihi1-report.md --json .work/rapfihi1-report.json`。
   曲线**没有硬编码档位**（`rafiCurve()` 按身份尾段取 ms 升序），两档会自动进表。
 - 败局解释（规则 11）：`node scripts/loss-report.mjs --batch rapfihi1 --json .work/rapfihi1-loss.json`。
+- **档位真的传下去了（round-1 产物复核）**：身份 → 逐手入参的链路是
+  `scripts/experiment-worker.mjs:670-671`（`rapfiThinkMs: s.black/white.thinkMs`）→ `scripts/experiment-worker.mjs:711` → `src/core/jev/client.ts:550` → `src/core/jev/rapfi.ts:240`（`_send('INFO timeout_turn ' + thinkMs)`）。
+  round-1 的 10 局里 Rapfi 执白、`whiteThink=7000`；另 10 局 Rapfi 执黑（`blackChannel=rapfi`）⇒ 换色双跑、档位随身份走。
 
 ## 3 结果
 
-<!-- 待填：L4 全部 10 轮收尾后，用 .work/rapfihi1-report.md 填 3.1–3.6 -->
+<!-- 待填：L4 全部 10 轮收尾后，用 .work/rapfihi1-report.md 填 3.1–3.6。每节的「填法」已写死，避免事后挑口径。 -->
 
 ### 3.1 逐对（判强弱只看这张表）
 
+填法：报表 §4 的 10 行（`official|vN-…|0 vs rapfi||7000|10000`），逐行 `局数 / W-D-L / 得分率 / Wilson / ⚠ <50`，
+并从「逐色注」抄该对的黑白分色数（本批每对 20 局 ⇒ 每色 10 局，先手优势会直接体现在这里）。
+
 ### 3.2 Rapfi「思考时间 → Elo」曲线延伸（`@7000` / `@10000` 与 Δ）
+
+填法：抄报表 §2 的五档行（500/1000/2000/7000/10000）。**方向不许读反**：§2 与 §1 能力表的身份是 `rapfi||<ms>` ⇒
+那一行的 `W-D-L`、`得分率`、`Wilson` 都是 **Rapfi 自己**的；**版本侧得分 = 1 − Rapfi 得分**（和棋算半分）。
+`ΔElo` 只抄，不据此做显著性判断（见 §5 第 2、5 条）。
 
 ### 3.3 逐档合并口径（5 版 × 20 = 每档 100 局）
 
+填法：每档 = 该档 Rapfi 身份的全部 100 局（对手集 = 五个版本各 20 局，配平）⇒ 半宽 ≈±10 pt，这才是「档位强多少」的可引用读数。
+两档（7000 / 10000）与 L2 的三档（500 / 1000 / 2000）同表并列；同样按 §3.2 的方向换算成版本侧得分。
+
 ### 3.4 成本（m07650 / m08110 必报项：战术层与模型往返分开）
+
+填法：报表 §3 逐身份抄 `模型往返 mean/median/p90/max`、`战术层 mean/median/p90/max`、`单手合计`、`战术占单手`、`提供方`；
+对照列写 Rapfi 的**固定预算上限**（`INFO timeout_turn 7000` / `10000` ms）—— Rapfi 逐手实际耗时**没有落盘**（归档里 Rapfi 侧 `ai.ms` 为 `null`），
+所以只能说「预算上限」，不能说「Rapfi 实际用了 7 s」。参照系还要带上 `AGENTS.md`「战术层不吃搜索」的口径：模型往返与战术层都是 Jev 侧成本。
 
 ### 3.5 接管层诊断（解释性口径，不参与判强）
 
+填法：报表 §4 底部的「收尾机制与接管层」两块（本批 = 纯 `rapfihi1`，最好再出一份三批合并的对照），
+格式照抄现有列（身份 / 局数 / 接管手 / 逐层开火次数 + 该层开火那几手的胜和负）。
+
 ### 3.6 败局解释（规则 11）
+
+填法：`node scripts/loss-report.mjs --batch rapfihi1 --json .work/rapfihi1-loss.json --show 30` 的原样输出要点：
+局数 W/D/L 与不败率、胜/和/负的手数分布（和棋是否全 225 满盘）、败局最后一手与终局方式、
+**能查到 ≤9 手必杀后缀的败局数**、**不可逆点（自此每步都仍必败的最大后缀）落在第几手与那一手用的层**。
 
 ## 4 与 L2 的交叉读数（五档曲线）
 
@@ -49,6 +73,12 @@
 
 - 单版单档 **n=20 ⇒ 半宽 ≈±20 pt**：逐版数字只作方向参考，可引用的是每档合并 100 局（±10 pt）。
 - **跨档不是配对比较**：档位不同 ⇒ 对手强度不同、开局集不同，没有配对结构 ⇒ 曲线不做显著性检验（L4 判读规则 ②）。
+- **某一档只跑了一部分版本时，那一格的 Elo 与 `ΔElo` 不可比**：BT Elo 由「谁跟谁打过」决定，不全由档位决定。
+  预演证据（2026-10-04 19:54，本批只收尾 round-1、`@7000` 只有 v10 一个对手 20 局）：
+  `7000 ms` 那行的 `ΔElo` 是 **+106.8**（对比 100 局的 `@2000`），这个数反映的是「Rapfi@7000 只打过 v10」而不是档位增益。
+  10 轮全部收尾后每档 100 局、五个版本各 20 局，Δ 才可比。
+- **Rapfi 侧逐手实际耗时没有落盘**（归档 payload 里 `ai.ms` 对 Rapfi 是 `null`）⇒ 与 Rapfi 的时间对比只能用
+  **预算上限**（`INFO timeout_turn <ms>`，见 `src/core/jev/rapfi.ts:240`）；不许写成「Rapfi 实际用了 7 s」。
 - 一次 200 局之间的 BT 只能分辨 ~30 Elo（P5 实测），所以「谁更强」仍只写在配对样本上。
 - L4 只覆盖 box 上那一个 Rapfi 二进制与固定开局种子；换二进制/换开局集都要重跑。
 

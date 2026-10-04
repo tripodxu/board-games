@@ -474,6 +474,27 @@ describe('CLI：闸门与落盘', () => {
     expect(model.cost.totalRow.moves).toBe(2);
     fs.rmSync(root, { recursive: true, force: true });
   });
+  it('多根合并（--dir a,b）：batchId 与标题带上每一批（默认产物名不许只剩第一批）', async () => {
+    // 事故背景：`--dir l2n1,vorder1` 若 batchId 取 dirs[0]，标题会写成「阶梯报告：l2n1」、
+    // 默认落盘 `.work/l2n1-report.md` 会**覆盖**单批报表 —— 合并批次必须自报家门。
+    const a = tmpBatch([game({ uid: 'a', moves: [jevMove(1, '黑方')] })]);
+    const b = tmpBatch([game({ uid: 'b', black: 'rapfi', white: 'official', moves: [rafiMove(1, '黑方')] })]);
+    const json = path.join(a, 'multi.json');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(reportMain(['--dir', `${a},${b}`, '--out', '-', '--json', json, '--no-bt'])).resolves.toBe(0);
+    } finally {
+      log.mockRestore();
+      err.mockRestore();
+    }
+    const model = JSON.parse(fs.readFileSync(json, 'utf8'));
+    expect(model.batchId).toBe(`${path.basename(a)}+${path.basename(b)}`);
+    expect(model.dirs).toHaveLength(2);
+    expect(model.records.map((r) => r.gameUid).sort()).toEqual(['a', 'b']);
+    fs.rmSync(a, { recursive: true, force: true });
+    fs.rmSync(b, { recursive: true, force: true });
+  });
   it('空目录（没有 round-*）是读不到棋谱的用法错，不是崩溃', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'report-empty-'));
     await expect(reportMain(['--dir', root])).rejects.toThrow(/没读到棋谱/);
