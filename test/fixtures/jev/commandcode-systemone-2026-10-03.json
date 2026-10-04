@@ -1,0 +1,109 @@
+{
+  "capturedAt": "2026-10-04T03:58:48.416Z",
+  "endpoint": "https://api.commandcode.ai/provider/v1/systemone",
+  "httpStatus": 200,
+  "ms": 1978,
+  "request": {
+    "model": "typesafe/jev",
+    "state": {
+      "game": "gomoku (five-in-a-row) on 15x15 board, columns A-O left to right, rows 1-15 top to bottom",
+      "board_ascii": "   A B C D E F G H I J K L M N O\n 1 . . . . . . . . . . . . . . .\n 2 . . . . . . . . . . . . . . .\n 3 . . . . . . . . . . . . . . .\n 4 . . . . . . . . . . . . . . .\n 5 . . . . . . . . . . . . . . .\n 6 . . . . . . . . . . . . . . .\n 7 . . . . . . x . . . . . . . .\n 8 . . . . . . o X o . . . . . .\n 9 . . . . . . . o X . . . . . .\n10 . . . . . . . . . X . . . . .\n11 . . . . . . . . . . . . . . .\n12 . . . . . . . . . . . . . . .\n13 . . . . . . . . . . . . . . .\n14 . . . . . . . . . . . . . . .\n15 . . . . . . . . . . . . . . .",
+      "you_play": "black",
+      "move_number": 8,
+      "legal_moves": [
+        "E5",
+        "F6",
+        "J9",
+        "E6",
+        "H8",
+        "G7"
+      ]
+    },
+    "questions": {
+      "move": {
+        "type": "choice",
+        "instructions": "You are an expert gomoku player playing black. Pick the best point from legal_moves. Answer ONLY with the Choice question \"move\".",
+        "criteria": {
+          "E5": "you:open4",
+          "F6": "you:live3",
+          "J9": null,
+          "E6": "deny:live3",
+          "H8": "you:four",
+          "G7": "you:live3"
+        }
+      },
+      "edge": {
+        "type": "noul",
+        "instructions": "After the best move for black, is black better than the opponent in this position?",
+        "criteria": {
+          "true": "black has the advantage",
+          "false": "equal or opponent better"
+        }
+      },
+      "position": {
+        "type": "score",
+        "instructions": "Rate the position for black after the best move, on a 0-10 scale.",
+        "criteria": [
+          "0-2 clearly losing",
+          "3-4 slightly worse",
+          "5 roughly even",
+          "6-7 slightly better",
+          "8-10 clearly winning"
+        ]
+      }
+    },
+    "options": [
+      "E5",
+      "F6",
+      "J9",
+      "E6",
+      "H8",
+      "G7"
+    ]
+  },
+  "response": {
+    "model": "typesafe/jev",
+    "answers": {
+      "move": {
+        "type": "choice",
+        "choice": "H8",
+        "confidence": 0.38,
+        "probabilities": {
+          "E5": 0.19,
+          "E6": 0.07,
+          "F6": 0.06,
+          "H8": 0.48,
+          "J9": 0.07,
+          "G7": 0.13
+        }
+      },
+      "edge": {
+        "type": "noul",
+        "noul": 0.61
+      },
+      "position": {
+        "type": "score",
+        "score": 2.51,
+        "confidence": 0.11,
+        "legend": {
+          "0": "0-2 clearly losing",
+          "1": "3-4 slightly worse",
+          "2": "5 roughly even",
+          "3": "6-7 slightly better",
+          "4": "8-10 clearly winning"
+        },
+        "probabilities": {
+          "0": 0.13,
+          "1": 0.12,
+          "2": 0.17,
+          "3": 0.29,
+          "4": 0.29
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 890,
+      "output_tokens": 96
+    }
+  }
+}

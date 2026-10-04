@@ -26,13 +26,27 @@
  * ── 为什么 `c.req.raw.signal` 要传给上游 ────────────────────────────────────
  * 前端「切棋种/重开」会 abort 在途请求（`js/jev-client.js` 的 `opts.signal`）。不把这个信号
  * 传下去，Worker 仍会替一个已经没人等的请求烧完上游额度——BYOK 是用户自己付费，这点更值得省。
+ *
+ * ── 兜底提供方（C2，plan 2026-10-03-cands-metric-and-provider-failover）────────
+ * 主家仍是 TypeSafe 官方；只有 `env.COMMANDCODE_API_KEY` 配了、且（`env.JEV_FAILOVER==='on'`
+ * 或客户端显式 `X-Jev-Provider: backup`）时才把 commandcode 加进候选。切换判据在
+ * `lib/failover.ts`（与浏览器直连面共用 `core/jev/providers.ts` 的分类）。响应加两个头：
+ * `X-Jev-Provider`（这一手谁答的）与切换时的 `X-Jev-Provider-Switch`（原因，百分号编码）。
+ * 默认 `JEV_FAILOVER: "off"` + 没配 secret ⇒ 没有任何行为变化（见 §7 未决项）。
  */
 import { Hono } from 'hono';
+import {
+  PROVIDER_BACKUP,
+  PROVIDER_HINT_HEADER,
+  PROVIDER_SWITCH_HEADER,
+  defaultProvider,
+  providerOf,
+} from '../../core/jev/providers.ts';
+import { callUpstreamWithFailover, type UpstreamAttempt } from '../lib/failover.ts';
 import { rateLimit } from '../middleware/ratelimit.ts';
 import {
   DEFAULT_MODEL,
   DEFAULT_TIMEOUT_MS,
-  callUpstream,
   toPassthroughResponse,
   upstreamFailureMessage,
 } from '../lib/upstream.ts';
@@ -124,11 +138,67 @@ interface CorsTarget {
 function applyCors(c: CorsTarget): void {
   const origin = c.req.header('origin');
   if (!origin) return;
-  c.header('Access-Control-Allow-Origin', origin);
-  c.header('Vary', 'Origin');
-  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, X-Api-Key');
-  c.header('Access-Control-Max-Age', '86400');
+  for (const [name, value] of Object.entries(corsHeaders(origin))) c.header(name, value);
+}
+
+/**
+ * CORS 头集中在这里，是因为**成功路径要自己拼 Response**（透传上游流 + 加提供方头），
+ * 而 `c.header()` 设的「预备头」只在 `c.body()/c.json()` 这类路径上会被带上——
+ * 直接把 `fetch()` 的响应 return 出去时会被丢掉（Hono 的 `res` setter 只在已存在 `#res` 时合并）。
+ * 旧实现里 POST 成功响应因此**没有** CORS 头：同源部署看不出来，跨源就抓瞎。顺手修掉。
+ */
+function corsHeaders(origin: string): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    Vary: 'Origin',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    // `X-Jev-Provider` 是客户端用来做「局内粘滞」的提示头（C2 / D-B2）
+    'Access-Control-Allow-Headers': `Content-Type, X-Api-Key, ${PROVIDER_HINT_HEADER}`,
+    // 自定义响应头默认不暴露给跨源 JS：不回这两个头，客户端读不到「这一手是谁答的」
+    'Access-Control-Expose-Headers': `${PROVIDER_HINT_HEADER}, ${PROVIDER_SWITCH_HEADER}`,
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+/* ---------- 兜底提供方（C2） ---------- */
+
+/**
+ * 本请求要按什么顺序试哪些提供方。
+ *
+ * - 主家永远是 TypeSafe 官方（BYOK key + 客户端指定的 `model`，向后兼容）；
+ * - 兜底只在**两个条件同时满足**时加入：`env.COMMANDCODE_API_KEY` 有值，且
+ *   （`env.JEV_FAILOVER === 'on'` 自动切 **或** 客户端显式带 `X-Jev-Provider: backup`）。
+ *   显式那一路是「切换已经发生、本局粘滞在兜底上」——此时兜底是唯一选择，仍需 key 存在。
+ * - 没有兜底时 `attempts.length === 1`，`callUpstreamWithFailover` 退化成原来的单次转发。
+ *
+ * 导出只为单测：路由本身没法在 workerd 里换掉全局 `fetch`（见 `test/worker/jev.spec.ts` 头注），
+ * 所以「什么条件下才带兜底」这条策略必须能脱离网络被钉住。
+ */
+export function providerAttempts(
+  env: { COMMANDCODE_API_KEY?: string; JEV_FAILOVER?: string },
+  hint: string | null,
+  apiKey: string,
+  body: { state: unknown; model: string; questions: unknown },
+): UpstreamAttempt[] {
+  const primary = defaultProvider();
+  const attempts: UpstreamAttempt[] = [{ provider: primary, apiKey }];
+  const backupKey = env.COMMANDCODE_API_KEY?.trim() ?? '';
+  if (!backupKey) return attempts;
+  const auto = (env.JEV_FAILOVER ?? '').trim().toLowerCase() === 'on';
+  if (!auto && hint !== PROVIDER_BACKUP) return attempts;
+  const backup = providerOf(PROVIDER_BACKUP);
+  if (!backup) return attempts;
+  /* 换家就得换模型名：兜底网关只认 `typesafe/jev`（主家那套 `jev-latest` 送过去是 400） */
+  attempts.push({ provider: backup, apiKey: backupKey, body: { ...body, model: backup.model } });
+  return attempts;
+}
+
+/**
+ * 切换原因要进响应头，而 HTTP 头只能是 latin-1：中文原因（`TypeSafe 官方 HTTP 401`）直接写会炸，
+ * 所以百分号编码，客户端读的时候解码（`decodeURIComponent`，失败就退回原文）。
+ */
+function encodeSwitchReason(info: { from: string; to: string; reason: string }): string {
+  return `${info.from}->${info.to}; ${encodeURIComponent(info.reason)}`;
 }
 
 /* ---------- 路由 ---------- */
@@ -171,14 +241,18 @@ jevRoute.post('/', rateLimit('jev'), async (c) => {
   if (!parsed.ok) return fail(c, parsed);
   const { body, apiKey, keySource } = parsed.value;
 
-  /* 3) 转发。`fetcher` 传全局 fetch（生产路径）；`signal` 传客户端信号（客户端断开即中止）。 */
-  const result = await callUpstream({
-    apiKey,
+  /* 3) 转发。`fetcher` 传全局 fetch（生产路径）；`signal` 传客户端信号（客户端断开即中止）。
+   *    `providerAttempts` 决定要不要带兜底（C2）：没配 `COMMANDCODE_API_KEY` 时只有一个尝试，
+   *    行为与加兜底之前逐字相同。 */
+  const attempts = providerAttempts(c.env, c.req.header(PROVIDER_HINT_HEADER) ?? null, apiKey, body);
+  const outcome = await callUpstreamWithFailover({
+    attempts,
     body,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     signal: c.req.raw.signal,
     fetcher: (...args) => fetch(...args),
   });
+  const result = outcome.result;
 
   const elapsedMs = Date.now() - startedAt;
 
@@ -202,7 +276,22 @@ jevRoute.post('/', rateLimit('jev'), async (c) => {
   }
 
   /* 4) 原样透传（含流式：`toPassthroughResponse` 不读 body）。429/529 交给客户端退避
-   *    （docs/jev-api.md §1）——服务端再重试会把一次用户点击变成 N 次上游计费。 */
-  console.log(`[jev] status=${result.status} requestId=${requestId} keySource=${keySource} ms=${elapsedMs}`);
-  return toPassthroughResponse(result);
+   *    （docs/jev-api.md §1）——服务端再重试会把一次用户点击变成 N 次上游计费。
+   *
+   *    提供方头（C2）：`X-Jev-Provider` 告诉客户端这一手是谁答的（归因 + 局内粘滞），
+   *    发生切换时多一个 `X-Jev-Provider-Switch`。响应是新建的，所以 CORS 头要在这里补
+   *    ——`applyCors(c)` 设的预备头在「直接 return fetch 响应」这条路径上会被丢掉（见 `corsHeaders`）。 */
+  console.log(
+    `[jev] status=${result.status} requestId=${requestId} keySource=${keySource} provider=${outcome.providerId}` +
+      `${outcome.switchInfo ? ` switch=${outcome.switchInfo.from}->${outcome.switchInfo.to}` : ''}` +
+      ` upstreamCalls=${outcome.upstreamCalls} ms=${elapsedMs}`,
+  );
+
+  const passthrough = toPassthroughResponse(result);
+  const headers = new Headers(passthrough.headers);
+  const origin = c.req.header('origin');
+  if (origin) for (const [name, value] of Object.entries(corsHeaders(origin))) headers.set(name, value);
+  headers.set(PROVIDER_HINT_HEADER, outcome.providerId);
+  if (outcome.switchInfo) headers.set(PROVIDER_SWITCH_HEADER, encodeSwitchReason(outcome.switchInfo));
+  return new Response(passthrough.body, { status: passthrough.status, statusText: passthrough.statusText, headers });
 });

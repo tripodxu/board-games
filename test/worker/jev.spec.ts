@@ -30,8 +30,10 @@ import { SELF, env } from 'cloudflare:test';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app as indexApp } from '../../src/worker/index.ts';
-import { jevRoute, parseJevRequest } from '../../src/worker/routes/jev.ts';
+import { jevRoute, parseJevRequest, providerAttempts } from '../../src/worker/routes/jev.ts';
 import { statusFor } from '../../src/worker/lib/http.ts';
+import { callUpstreamWithFailover, type UpstreamAttempt } from '../../src/worker/lib/failover.ts';
+import { PROVIDER_BACKUP, PROVIDER_PRIMARY, providerOf } from '../../src/core/jev/providers.ts';
 import {
   DEFAULT_MODEL,
   DEFAULT_TIMEOUT_MS,
@@ -254,6 +256,163 @@ describe('lib/upstream.ts（注入假 fetcher，不碰网络）', () => {
     expect(response.headers.get('authorization')).toBeNull();
     expect(response.headers.get('x-api-key')).toBeNull();
     expect(JSON.stringify([...response.headers])).not.toContain('sk-secret');
+  });
+});
+
+/* ────────────────────────── 1b. 兜底切换（C2，注入假 fetcher） ────────────────────────── */
+
+describe('lib/failover.ts（注入假 fetcher，不碰网络）', () => {
+  const primary = providerOf(PROVIDER_PRIMARY)!;
+  const backup = providerOf(PROVIDER_BACKUP)!;
+  const body = { state: {}, model: 'jev-latest', questions: { move: {} } };
+
+  /** 两个提供方按优先级排好；兜底的 body 与路由里一样覆盖 model。 */
+  function attempts(): UpstreamAttempt[] {
+    return [
+      { provider: primary, apiKey: 'primary-key' },
+      { provider: backup, apiKey: 'backup-key', body: { ...body, model: backup.model } },
+    ];
+  }
+
+  it('401 ⇒ 探活备用 ⇒ 换家，并且**换家就换模型名**', async () => {
+    const { fetcher, calls } = fakeFetch((call) => {
+      if (call.url === primary.url) return new Response('{"error":"bad key"}', { status: 401 });
+      if (call.url === backup.probeUrl) return new Response('{"data":[]}', { status: 200 });
+      if (call.url === backup.url) return new Response('{"model":"typesafe/jev","answers":{}}', { status: 200 });
+      return new Response('{}', { status: 500 });
+    });
+
+    const out = await callUpstreamWithFailover({ attempts: attempts(), body, fetcher });
+    expect(out.providerId).toBe('backup');
+    expect(out.upstreamCalls).toBe(2); /* 主家一次 + 兜底一次；探活不算上游业务调用 */
+    expect(calls.map((c) => c.url)).toEqual([primary.url, backup.probeUrl, backup.url]);
+    const sent = JSON.parse(String(calls[2].init.body)) as { model: string };
+    expect(sent.model).toBe('typesafe/jev');
+    expect(out.switchInfo).toMatchObject({ from: 'primary', to: 'backup', probeStatus: 200 });
+    expect(out.switchInfo?.reason).toContain('401');
+  });
+
+  it('备用探活不过 ⇒ 不切，把主家的原响应透传出去（只在 switchInfo 里如实记一笔）', async () => {
+    const { fetcher, calls } = fakeFetch((call) => {
+      if (call.url === primary.url) return new Response('{"error":"bad key"}', { status: 401 });
+      return new Response('{"error":"probe down"}', { status: 503 });
+    });
+
+    const out = await callUpstreamWithFailover({ attempts: attempts(), body, fetcher });
+    expect(out.providerId).toBe('primary');
+    expect(out.result.ok && out.result.status).toBe(401); /* 主家的错误原样交出去 */
+    expect(calls.some((c) => c.url === backup.url)).toBe(false); /* 没碰兜底的业务端点 */
+    expect(out.switchInfo?.reason).toContain('备用探活未通过');
+    expect(out.switchInfo?.probeStatus).toBe(503);
+  });
+
+  it('429 在 Worker 面一次即切（每请求独立，没有跨请求的退避计数可数）', async () => {
+    const { fetcher, calls } = fakeFetch((call) => {
+      if (call.url === primary.url) return new Response('{"error":"rate limited"}', { status: 429, headers: { 'retry-after': '3' } });
+      if (call.url === backup.probeUrl) return new Response('{"data":[]}', { status: 200 });
+      return new Response('{"answers":{}}', { status: 200 });
+    });
+
+    const out = await callUpstreamWithFailover({ attempts: attempts(), body, fetcher });
+    expect(out.providerId).toBe('backup');
+    expect(calls.filter((c) => c.url === primary.url).length).toBe(1);
+    expect(out.switchInfo?.reason).toContain('429');
+  });
+
+  it('5xx 先在本家连试到阈值才切（一次抖动不该把备用也搭进去）', async () => {
+    let primaryHits = 0;
+    const { fetcher, calls } = fakeFetch((call) => {
+      if (call.url === primary.url) {
+        primaryHits++;
+        return new Response('{"error":"boom"}', { status: 503 });
+      }
+      if (call.url === backup.probeUrl) return new Response('{"data":[]}', { status: 200 });
+      return new Response('{"answers":{}}', { status: 200 });
+    });
+
+    const out = await callUpstreamWithFailover({ attempts: attempts(), body, fetcher });
+    expect(primaryHits).toBe(3); /* 三次都在主家内部，第三次才决定换家 */
+    expect(out.providerId).toBe('backup');
+    expect(calls[calls.length - 1].url).toBe(backup.url);
+    expect(out.switchInfo?.reason).toContain('503');
+
+    /* 只有一家时没有「连续」可言：一次 5xx 就原样交出去 */
+    let solo = 0;
+    const alone = await callUpstreamWithFailover({
+      attempts: [{ provider: primary, apiKey: 'k' }],
+      body,
+      fetcher: fakeFetch(() => {
+        solo++;
+        return new Response('{"error":"boom"}', { status: 503 });
+      }).fetcher,
+    });
+    expect(solo).toBe(1);
+    expect(alone.result.ok && alone.result.status).toBe(503);
+  });
+
+  it('4xx（请求本身有问题）不切；网络错/超时也不切', async () => {
+    const bad = await callUpstreamWithFailover({
+      attempts: attempts(),
+      body,
+      fetcher: fakeFetch((call) => (call.url === primary.url ? new Response('{"error":"bad"}', { status: 400 }) : new Response('{}', { status: 200 }))).fetcher,
+    });
+    expect(bad.providerId).toBe('primary');
+    expect(bad.switchInfo).toBeNull();
+
+    const { fetcher, calls } = fakeFetch((call) => {
+      if (call.url === primary.url) throw new Error('socket hang up');
+      return new Response('{}', { status: 200 });
+    });
+    const net = await callUpstreamWithFailover({ attempts: attempts(), body, fetcher, timeoutMs: 50 });
+    expect(net.result.ok).toBe(false);
+    expect(net.providerId).toBe('primary');
+    expect(net.switchInfo).toBeNull();
+    expect(calls.length).toBe(1); /* 网络错不换家：换过去只会把失败原因搅浑 */
+  });
+
+  it('只有一家时退化成原样转发：不探活、不换家、不加头', async () => {
+    const { fetcher, calls } = fakeFetch(() => new Response('{"error":"bad key"}', { status: 401 }));
+    const out = await callUpstreamWithFailover({ attempts: [{ provider: primary, apiKey: 'k' }], body, fetcher });
+    expect(out.providerId).toBe('primary');
+    expect(out.switchInfo).toBeNull();
+    expect(calls.length).toBe(1);
+  });
+});
+
+describe('providerAttempts（路由的上游策略，纯函数）', () => {
+  const envOff = { JEV_FAILOVER: 'off' };
+
+  it('没有兜底 key ⇒ 永远只有一个尝试（行为与加兜底之前逐字相同）', () => {
+    const list = providerAttempts(envOff, null, 'byok', { state: {}, model: 'jev-latest', questions: {} });
+    expect(list.length).toBe(1);
+    expect(list[0].provider.id).toBe('primary');
+    expect(list[0].apiKey).toBe('byok');
+    expect(list[0].body).toBeUndefined();
+  });
+
+  it('默认关（JEV_FAILOVER 非 on）⇒ 只有显式提示头才带兜底', () => {
+    const env = { COMMANDCODE_API_KEY: 'cc-key', JEV_FAILOVER: 'off' };
+    const args = { state: {}, model: 'jev-latest', questions: {} } as const;
+    expect(providerAttempts(env, null, 'byok', { ...args }).length).toBe(1);
+    expect(providerAttempts(env, 'primary', 'byok', { ...args }).length).toBe(1);
+
+    const hinted = providerAttempts(env, 'backup', 'byok', { ...args });
+    expect(hinted.length).toBe(2);
+    expect(hinted[1].provider.id).toBe('backup');
+    expect(hinted[1].apiKey).toBe('cc-key');
+    /* 兜底的 body 必须换成它认得的模型名，其余字段与主家一致 */
+    expect(hinted[1].body).toEqual({ state: {}, model: 'typesafe/jev', questions: {} });
+    expect(hinted[0].body).toBeUndefined();
+  });
+
+  it('JEV_FAILOVER=on ⇒ 自动带上兜底（大小写与空白都容忍）', () => {
+    for (const flag of ['on', 'ON', ' on ']) {
+      const list = providerAttempts({ COMMANDCODE_API_KEY: 'cc', JEV_FAILOVER: flag }, null, 'byok', { state: {}, model: 'jev-latest', questions: {} });
+      expect(list.length).toBe(2);
+    }
+    /* key 只有空白等于没配 */
+    const blank = providerAttempts({ COMMANDCODE_API_KEY: '   ', JEV_FAILOVER: 'on' }, null, 'byok', { state: {}, model: 'jev-latest', questions: {} });
+    expect(blank.length).toBe(1);
   });
 });
 

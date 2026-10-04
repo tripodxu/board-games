@@ -25,6 +25,7 @@ import { ids, resolve } from './tactics-versions.ts';
 import type { TacticsVersion } from './tactics-versions.ts';
 import { DEFAULT_BUDGET, budgetOf } from './tactics-budget.ts';
 import type { EngineBudget } from './tactics-budget.ts';
+import type { ProviderSwitchInfo } from './jev/providers.ts';
 import type { Engine, JevSerialized, Move } from './types.ts';
 
 /* ------------------------------------------------------------------ *
@@ -88,6 +89,18 @@ export interface DecideOpts {
   experience?: Experience;
   onRetry?: (status: number, attempt: number) => void;
   rapfiThinkMs?: number;
+  /**
+   * C2：备用提供方（commandcode 网关）的 key。**不填 = 不启用兜底**，失败照旧抛——
+   * 老行为逐字不变，兜底只能在明确配了第二把 key 的运行面上生效。
+   */
+  backupApiKey?: string;
+  /**
+   * C2：本局粘滞的提供方 id。切换一旦发生，调用侧把新的 id 存进本局状态、下一手传回来，
+   * 于是「同一局内不再回切」（D-B2）——否则两家都不稳时会一手机一换，棋谱没法归因。
+   */
+  providerSticky?: string;
+  /** C2：切换（含「备用探活未通过」）时的回调，供日志与事件流。 */
+  onProviderSwitch?: (info: ProviderSwitchInfo) => void;
   [k: string]: unknown;
 }
 

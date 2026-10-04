@@ -24,6 +24,12 @@ export interface AiMoveMeta {
   candsSent?: number | null;
   /** 其中带战术标签的点数；同上，只在真有值时写出（C0/m13627） */
   candsLabeled?: number | null;
+  /** 这一手实际由哪个上游答的（C2/D-B6）：`primary`（TypeSafe 官方）/ `backup`（commandcode
+   *  兜底）/ 渠道名（`rapfi`/`mock`/`random`）/ `custom`（自定义端点）。只在是字符串时写出。 */
+  prov?: string | null;
+  /** 概率来源（C2/D-B3）：`exact` = 模型给了逐点概率，`derived` = 没给（兜底网关偶发、random 渠道）。
+   *  「候选点数」这条指标只在 `exact` 上有意义，所以这个标记必须跟着每手走。 */
+  probs?: string | null;
   tv: string | null;
   [k: string]: unknown;
 }
@@ -52,6 +58,11 @@ export interface AiGameMeta {
   tacticsMs?: { avg: number; max: number; n: number };
   /** 候选点三数汇总（C0/m13627）：样本 = 真过了 Jev 候选集的手；无样本时整个键省略。 */
   candStats?: CandsStat;
+  /** 逐提供方手数（C2/D-B6）：`{primary: 24, backup: 3}`；一手都没归因（老归档 / 全 Rapfi）
+   *  时整个键省略。报表按它分桶——「兜底手」不能混进主口径。 */
+  providers?: Record<string, number>;
+  /** 逐概率来源手数（C2/D-B3）：`{exact: 24, derived: 3}`；无样本时省略。 */
+  probSources?: Record<string, number>;
   conf: number | null;
   tactics: Record<string, number>;
 }
@@ -89,6 +100,10 @@ export function aiMoveMeta(notation: string, m: Move | Record<string, unknown> |
    * `cands` 是 0001 就有的列，历史口径不动；新两键回答「交给 Jev 几个点 / 其中战术层解释了几个」。 */
   if (typeof meta.candsSent === 'number') out.candsSent = meta.candsSent;
   if (typeof meta.candsLabeled === 'number') out.candsLabeled = meta.candsLabeled;
+  /* 提供方与概率来源（C2/D-B3、D-B6）同款纪律：只在是**非空字符串**时写出。
+   * 历史棋谱没有这两个键，往返用例会把多写的 `prov: null` 抓出来。 */
+  if (typeof meta.provider === 'string' && meta.provider) out.prov = meta.provider;
+  if (typeof meta.probSource === 'string' && meta.probSource) out.probs = meta.probSource;
   return out;
 }
 
@@ -105,6 +120,8 @@ export function aiGameMeta(history: { meta?: Move | Record<string, unknown> | nu
   let candSentSum = 0, candSentN = 0;
   let candLabeledSum = 0, candLabeledN = 0;
   const tactics: Record<string, number> = {};
+  const providers: Record<string, number> = {};
+  const probSources: Record<string, number> = {};
   items.forEach((h) => {
     const meta = h.meta as unknown as Record<string, unknown>;
     cost += typeof meta.costUsd === 'number' ? meta.costUsd : 0;
@@ -121,6 +138,9 @@ export function aiGameMeta(history: { meta?: Move | Record<string, unknown> | nu
     if (typeof meta.candsSent === 'number') { candSentSum += meta.candsSent; candSentN++; }
     if (typeof meta.candsLabeled === 'number') { candLabeledSum += meta.candsLabeled; candLabeledN++; }
     if (meta.tactics) tactics[String(meta.tactics)] = (tactics[String(meta.tactics)] || 0) + 1;
+    /* 逐提供方 / 逐概率来源手数（C2）：只统计有该字段的手（Rapfi/mock 侧没有 provider）。 */
+    if (typeof meta.provider === 'string' && meta.provider) providers[meta.provider] = (providers[meta.provider] || 0) + 1;
+    if (typeof meta.probSource === 'string' && meta.probSource) probSources[meta.probSource] = (probSources[meta.probSource] || 0) + 1;
   });
   const out: AiGameMeta = {
     code: CODE_VERSION || null,
@@ -136,6 +156,9 @@ export function aiGameMeta(history: { meta?: Move | Record<string, unknown> | nu
   /* 战术层耗时只在真有样本时写出（口径同 `aiMoveMeta` 的 `tacMs`）：历史归档没有这个字段，
    * 「反推再导出必须逐字段一致」的往返用例要求没有样本时不多写这个键。 */
   if (tacN) out.tacticsMs = { avg: Math.round(tacSum / tacN), max: tacMax, n: tacN };
+  /* 提供方 / 概率来源分布（C2）：没有样本就不写这个键（同 `tacticsMs` 的纪律）。 */
+  if (Object.keys(providers).length) out.providers = providers;
+  if (Object.keys(probSources).length) out.probSources = probSources;
   /* 候选点三数（C0/m13627）：一局的均值，样本 = 「真过了 Jev 候选集的手」（`candsSent` 有值）。
    * 同款纪律：没有样本不写这个键。`graded`/`labeled` 可能与 `sent` 的样本数不同（历史手只有前者）。 */
   if (candSentN) {

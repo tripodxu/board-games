@@ -230,6 +230,7 @@ export function formatLadderTable(rounds, { avgGameS = null, estimateOf = null }
 export function buildLadder({
   ladderId, specs, extras = [], pairs = null, games, openings = null, now, seed,
   store = 'local', upstream = 'direct', rateLimit = 30, keyFile = '/root/.jev-key',
+  backupKeyFile = '/root/.cc-key', expectBackup = false,
   origin = null, remoteRoot = '/root/board-games', pauseMs = 2500, timeoutMin = 180,
   stallMin = 15, maxPlies = 225, topK = 3, dryRun = false, allowOdd = false,
 }) {
@@ -271,6 +272,9 @@ export function buildLadder({
         upstream,
         rateLimit,
         keyFile,
+        /* C2：兜底 key 文件（可选）+ 「本轮要求兜底可用」。默认 false ⇒ 没有兜底 key 也不算错。 */
+        backupKeyFile,
+        expectBackup,
         openings,
         outDir: `${remoteRoot}/.work/remote/${id}/round-${round}`,
       },

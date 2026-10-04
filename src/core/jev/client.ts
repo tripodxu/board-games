@@ -16,6 +16,23 @@ import {
 /* 接管链在 2026-10-03（P2）抽成纯函数：指纹冻结与 P3 回放都要在**无模型**下跑这条链。
  * 抽取是逐字搬运，行为逐字不变（对照证据：`.work/p2-ab-baseline.mjs` 450 行 0 差异）。 */
 import { pickTakeover, TAKEOVER_LABEL } from '../takeover.ts';
+import {
+  PROVIDER_BACKUP,
+  PROVIDER_HINT_HEADER,
+  PROVIDER_PRIMARY,
+  PROVIDER_SWITCH_HEADER,
+  SERVER_FAILURE_LIMIT,
+  classifyStatus,
+  defaultProvider,
+  newProviderStates,
+  noteFailure,
+  noteSuccess,
+  providerOf,
+  type ProviderConfig,
+  type ProviderKeySource,
+  type ProviderStates,
+  type ProviderSwitchInfo,
+} from './providers.ts';
 import type { DecideOpts, DecideResult, TacticsReport } from '../tactics.ts';
 import type { Engine, JevQuestion, JevSerialized, Move } from '../types.ts';
 
@@ -30,6 +47,10 @@ export const CHANNELS: Record<string, ChannelConfig> = {
   openrouter: { endpoint: 'https://openrouter.ai/api/v1/systemone', model: 'typesafe/jev-1.13', keyName: 'openrouter' },
   proxy: { endpoint: 'api/jev', model: 'jev-latest', keyName: null },
 };
+
+/* 提供方表与切换策略在 core 里（`providers.ts`）：Worker 面与 box 直连面必须同一套判据。
+ * 这里只用它做两件事——直连面自己切换、proxy 面把「本轮该用谁」提示给 Worker 并读回执。 */
+export { PROVIDER_HINT_HEADER, PROVIDER_SWITCH_HEADER };
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const REQUEST_TIMEOUT_MS = 30000;
@@ -91,21 +112,100 @@ function markRetryable<T extends Error>(err: T, retryable: boolean): T {
   return err;
 }
 
-/** 单次请求（含 BYOK 头、超时与外部取消合并）。 */
-async function callRaw(channel: string, body: JevSerialized, opts: DecideOpts): Promise<Record<string, unknown>> {
+/**
+ * 造一个**保留状态码**的传输错误。
+ *
+ * 2026-10-04（C2）加：`markRetryable(new Error(…))` 的静态类型是 `Error`，状态码写不进去；
+ * 而切换层必须按状态分类（401⇒换家、429 用尽⇒换家、5xx 连续 3 次⇒换家），
+ * 只看文案猜状态是迟早会错的做法。
+ */
+function httpError(message: string, status: number | undefined, retryable: boolean, detail?: string): JevHttpError {
+  const err = new Error(message) as JevHttpError;
+  if (status !== undefined) err.status = status;
+  if (detail !== undefined) err.detail = detail;
+  err.retryable = retryable;
+  return err;
+}
+
+/* ------------------------------------------------------------------ *
+ * 提供方尝试（C2）：一个有 key 的「端点 + 模型 + 鉴权」三元组
+ * ------------------------------------------------------------------ */
+
+/**
+ * 一次请求要用哪家、用哪把 key。
+ *
+ * `custom` = 自定义端点（自建网关）：沿用旧语义——不强制 key、也不做切换（我们不知道对面是谁）。
+ */
+interface ProviderAttempt {
+  provider: ProviderConfig;
+  apiKey: string;
+  channel: string;
+  custom: boolean;
+}
+
+/** 把渠道预设包成一个「合成提供方」（openrouter / proxy 这些不在兜底表里）。 */
+function syntheticProvider(channel: string, id: string, label: string, url: string, model: string): ProviderConfig {
+  return { id, label, url, model, keySource: 'official' as ProviderKeySource, kind: 'systemone', probeUrl: '' };
+}
+
+/**
+ * 本次调用可用的提供方（按优先级）。**只有直连面（`official`）才在这里切换**：
+ *  - `proxy`：切换是 Worker 的事，客户端只带「本局粘滞」提示头并读回执（见 `PROVIDER_HINT_HEADER`）；
+ *  - `openrouter`：另一条渠道（模型 `typesafe/jev-1.13`），不在本计划的兜底链里，保持单提供方；
+ *  - 自定义端点：单提供方（不知道对面是谁，不猜）。
+ *
+ * 备用 key（`opts.backupApiKey`，commandcode）没配就是老行为：单提供方、失败照旧抛。
+ */
+function attemptsFor(channel: string, opts: DecideOpts): ProviderAttempt[] {
   const cfg = CHANNELS[channel];
   if (!cfg) throw new Error('未知渠道: ' + channel);
-  const endpoint = opts.endpoint || cfg.endpoint;
-  const custom = !!opts.endpoint; /* 自定义端点：兼容自建网关，不强制 key */
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const customEndpoint = typeof opts.endpoint === 'string' && opts.endpoint.trim() ? opts.endpoint.trim() : '';
+  const apiKey = typeof opts.apiKey === 'string' ? opts.apiKey.trim() : '';
+
   if (channel === 'proxy') {
-    if (opts.apiKey) headers['X-Api-Key'] = opts.apiKey;
+    return [{
+      provider: syntheticProvider(channel, PROVIDER_PRIMARY, '同源代理', customEndpoint || cfg.endpoint, cfg.model),
+      apiKey, channel, custom: !!customEndpoint,
+    }];
+  }
+  if (customEndpoint) {
+    return [{
+      provider: syntheticProvider(channel, 'custom', '自定义端点', customEndpoint, cfg.model),
+      apiKey, channel, custom: true,
+    }];
+  }
+  if (channel === 'official') {
+    if (!apiKey) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
+    const out: ProviderAttempt[] = [{ provider: defaultProvider(), apiKey, channel, custom: false }];
+    const backupKey = typeof opts.backupApiKey === 'string' ? opts.backupApiKey.trim() : '';
+    const backup = providerOf(PROVIDER_BACKUP);
+    if (backupKey && backup) out.push({ provider: backup, apiKey: backupKey, channel, custom: false });
+    return out;
+  }
+  if (cfg.keyName && !apiKey) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
+  return [{ provider: syntheticProvider(channel, channel, channel, cfg.endpoint, cfg.model), apiKey, channel, custom: false }];
+}
+
+/** 单次请求（含 BYOK 头、超时与外部取消合并）。返回体与响应头（回执头要用）。 */
+async function callRaw(
+  attempt: ProviderAttempt,
+  body: JevSerialized,
+  opts: DecideOpts,
+  extraHeaders: Record<string, string> = {},
+): Promise<{ data: Record<string, unknown>; headers: Headers }> {
+  const { channel, apiKey, custom } = attempt;
+  const cfg = CHANNELS[channel];
+  if (!cfg) throw new Error('未知渠道: ' + channel);
+  const endpoint = attempt.provider.url;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders };
+  if (channel === 'proxy') {
+    if (apiKey) headers['X-Api-Key'] = apiKey;
   } else if (cfg.keyName) {
-    if (!opts.apiKey && !custom) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
-    if (opts.apiKey) headers['Authorization'] = 'Bearer ' + opts.apiKey;
+    if (!apiKey && !custom) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
+    if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
     if (channel === 'openrouter') headers['HTTP-Referer'] = locationOrigin() || 'http://localhost';
   }
-  const payload = { state: body.state, model: cfg.model, questions: body.questions };
+  const payload = { state: body.state, model: attempt.provider.model, questions: body.questions };
 
   const timeoutCtrl = new AbortController();
   const timer = setTimeout(() => timeoutCtrl.abort(), REQUEST_TIMEOUT_MS);
@@ -124,7 +224,7 @@ async function callRaw(channel: string, body: JevSerialized, opts: DecideOpts): 
       err.retryAfterMs = retryAfterMsOf(resp.headers.get('Retry-After')) ?? undefined;
       throw err;
     }
-    return await resp.json() as Record<string, unknown>;
+    return { data: await resp.json() as Record<string, unknown>, headers: resp.headers };
   } finally {
     clearTimeout(timer);
   }
@@ -144,20 +244,33 @@ const RATE_LIMIT_ATTEMPTS = 5;
 const MAX_RATE_LIMIT_BACKOFF_MS = 20000;
 
 /**
- * 带退避重试的请求：网络错误 4 次尝试；429/529 按 `Retry-After`（缺省指数退避）重试 5 次；
- * 401 直接报鉴权失败。
+ * 带退避重试的请求（**单一提供方**）：网络错误 4 次尝试；429/529 按 `Retry-After`
+ * （缺省指数退避）重试 5 次；401 直接报鉴权失败。
  *
  * 2026-10-01 修：旧写法在 429 分支里**没有给 `lastErr` 赋值**，于是 5 次限流之后抛的是
  * `重试次数用尽`——排障时完全看不出「被限流了」，而真实原因（每 IP 30/分）恰恰是用户
  * 唯一能改的东西。现在每次失败都留下带状态码与等待策略的错误，并打上 `retryable`。
+ *
+ * C2 起只加两件事，**不改老路径的文案与次数**：① 抛错时保留 `status`（切换层要分类）；
+ * ② 只有存在备用提供方（`hasBackup`）时，5xx 才在**同一提供方内**重试到
+ * `SERVER_FAILURE_LIMIT` 次——「连续 3 次 5xx 才切」需要真的连续试，而没配兜底时
+ * 单次 5xx 仍然立刻失败（老行为，别把一个抖动变成三倍等待）。
  */
-async function callWithRetry(channel: string, body: JevSerialized, opts: DecideOpts): Promise<Record<string, unknown>> {
+async function callWithRetry(
+  attempt: ProviderAttempt,
+  body: JevSerialized,
+  opts: DecideOpts,
+  extraHeaders: Record<string, string> = {},
+  hasBackup = false,
+): Promise<{ data: Record<string, unknown>; headers: Headers }> {
+  const channel = attempt.channel;
   let networkTries = 0;
   let rateLimitTries = 0;
+  let serverTries = 0;
   for (;;) {
     if (opts.signal && opts.signal.aborted) throw new Error('aborted');
     try {
-      return await callRaw(channel, body, opts);
+      return await callRaw(attempt, body, opts, extraHeaders);
     } catch (e) {
       const err = e as JevHttpError;
       if (opts.signal && opts.signal.aborted) throw new Error('aborted');
@@ -173,8 +286,8 @@ async function callWithRetry(channel: string, body: JevSerialized, opts: DecideO
       }
       if (err.status === 429 || err.status === 529) {
         if (++rateLimitTries >= RATE_LIMIT_ATTEMPTS) {
-          throw markRetryable(new Error(`上游限流（HTTP ${err.status}）：已退避重试 ${rateLimitTries} 次仍未放行`
-            + (err.detail ? '（' + err.detail.slice(0, 120) + '）' : '')), true);
+          throw httpError(`上游限流（HTTP ${err.status}）：已退避重试 ${rateLimitTries} 次仍未放行`
+            + (err.detail ? '（' + err.detail.slice(0, 120) + '）' : ''), err.status, true);
         }
         if (opts.onRetry) opts.onRetry(err.status, rateLimitTries - 1);
         /* 服务端给了 `Retry-After` 就听它的（截到 20 秒）；没给才用指数退避 1/2/4/8 秒。 */
@@ -183,11 +296,149 @@ async function callWithRetry(channel: string, body: JevSerialized, opts: DecideO
         continue;
       }
       if (err.status === 401) {
-        throw markRetryable(new Error('API Key 无效或缺失（401）——若 key 确认无误（「测试连接」通过），可能是服务端瞬时故障，稍后点「重试」即可'), false);
+        throw httpError('API Key 无效或缺失（401）——若 key 确认无误（「测试连接」通过），可能是服务端瞬时故障，稍后点「重试」即可', err.status, false);
       }
-      throw markRetryable(new Error('API 错误 ' + err.status + '：' + (err.detail || '')), false);
+      if (hasBackup && err.status >= 500 && ++serverTries < SERVER_FAILURE_LIMIT) {
+        /* 只为「连续 3 次 5xx ⇒ 切换」凑连续性：短退避、不打扰 UI 的 onRetry（那是限流的提示位） */
+        await sleep(1000 * serverTries);
+        continue;
+      }
+      throw httpError('API 错误 ' + err.status + '：' + (err.detail || ''), err.status, false, err.detail);
     }
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * 兜底切换（C2）
+ * ------------------------------------------------------------------ */
+
+/** 切换前的探活（D-B2）：只判「网关 + key 活着」，不看模型清单（C1：清单不权威）。 */
+async function probeProvider(
+  attempt: ProviderAttempt,
+  opts: DecideOpts,
+): Promise<{ ok: boolean; status: number | null; ms: number }> {
+  const url = attempt.provider.probeUrl;
+  const started = Date.now();
+  if (!url) return { ok: false, status: null, ms: 0 };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+  if (opts.signal) {
+    if (opts.signal.aborted) ctrl.abort();
+    else opts.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+  }
+  try {
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + attempt.apiKey },
+      signal: ctrl.signal,
+    });
+    /* 200 = 活着；401/403 = key 不能用（切过去也没意义）；其余（含 4xx/5xx）= 不确定，按不可用处理。 */
+    return { ok: resp.status === 200, status: resp.status, ms: Date.now() - started };
+  } catch (_) {
+    return { ok: false, status: null, ms: Date.now() - started };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 上游应答 + 「这一手是谁答的」（进 `meta.provider`，D-B6）。 */
+interface UpstreamAnswer {
+  data: Record<string, unknown>;
+  providerId: string;
+  /** 切换事件（发生过才有）；调用侧据此落日志/事件流 */
+  switchInfo: ProviderSwitchInfo | null;
+}
+
+/**
+ * 请求上游，**必要时按提供方表兜底切换**。
+ *
+ * 为什么把切换放在重试阶梯之外：重试是「同一家再试一次」，切换是「换一家」。
+ * 混在一个循环里会让「429 等 20 秒」和「401 立刻换」两种截然不同的处置互相污染。
+ *
+ * 粘滞（D-B2）：`opts.providerSticky` 指定的提供方**直接照办**；一旦切换，本局不再回切
+ * ——调用侧把 `switchInfo.to` 存进自己的局内状态，下一手通过 `providerSticky` 传回来。
+ */
+/**
+ * Worker 回报的切换原因：`<from>-><to>; <百分号编码的原因>`。
+ * HTTP 头只能是 latin-1，中文原因直接写会炸，所以 Worker 端编码、这里解回来（解不开就用原文）。
+ */
+function decodeSwitchReason(raw: string): string {
+  if (!raw) return '';
+  const semi = raw.indexOf('; ');
+  const encoded = semi >= 0 ? raw.slice(semi + 2) : raw;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+}
+
+async function callWithFailover(channel: string, body: JevSerialized, opts: DecideOpts): Promise<UpstreamAnswer> {
+  const attempts = attemptsFor(channel, opts);
+  const first = attempts[0] as ProviderAttempt;
+  const stickyId = typeof opts.providerSticky === 'string' ? opts.providerSticky : '';
+  const sticky = stickyId ? attempts.find((a) => a.provider.id === stickyId) : undefined;
+  /* 粘滞命中就固定用它（哪怕表里那个已被判死——本局已经押在它身上了） */
+  const order: ProviderAttempt[] = sticky ? [sticky, ...attempts.filter((a) => a !== sticky)] : attempts;
+
+  let states: ProviderStates = newProviderStates();
+  let switchInfo: ProviderSwitchInfo | null = null;
+
+  /* proxy 面：切换在 Worker 里做，客户端只带提示头 + 读回执（CORS 已 `Expose-Headers`）。
+   * 探活耗时/状态只在 Worker 日志里（响应头塞不下结构化字段），所以这里 `probeMs/probeStatus` 记 null。 */
+  if (channel === 'proxy') {
+    const extra: Record<string, string> = {};
+    if (stickyId) extra[PROVIDER_HINT_HEADER] = stickyId;
+    const { data, headers } = await callWithRetry(first, body, opts, extra);
+    const used = headers.get(PROVIDER_HINT_HEADER) || first.provider.id;
+    const switchReason = decodeSwitchReason(headers.get(PROVIDER_SWITCH_HEADER) || '');
+    if (used !== first.provider.id) {
+      switchInfo = { from: first.provider.id, to: used, reason: switchReason || 'Worker 侧切换', probeMs: null, probeStatus: null };
+      if (opts.onProviderSwitch) opts.onProviderSwitch(switchInfo);
+    }
+    return { data, providerId: used, switchInfo };
+  }
+
+  let lastErr: unknown = null;
+  for (let i = 0; i < order.length; i++) {
+    const attempt = order[i] as ProviderAttempt;
+    const hasBackup = order.length > 1 && i < order.length - 1;
+    try {
+      const { data } = await callWithRetry(attempt, body, opts, {}, hasBackup || order.length > 1);
+      states = noteSuccess(states, attempt.provider.id);
+      return { data, providerId: attempt.provider.id, switchInfo };
+    } catch (e) {
+      lastErr = e;
+      const err = e as JevHttpError;
+      /* 只在「有下一家可换」时才做切换判定——没配兜底时一切照旧（错误原样抛） */
+      if (!err.status || i >= order.length - 1) throw e;
+      const cls = classifyStatus(err.status);
+      if (!cls) throw e;
+      /* 走到这里说明 `callWithRetry` 的重试阶梯已经结束：限流是退避次数用尽，5xx 是
+       * 本家内部连试到 `SERVER_FAILURE_LIMIT`（`hasBackup` 时才会重试 5xx）。两种都算
+       * 「用尽」，否则一次 5xx 在 `consecutive` 里只记到 1，永远等不到阈值。 */
+      const exhausted = cls === 'rate-limit' || cls === 'server';
+      const note = noteFailure(states, attempt.provider.id, cls, { status: err.status, exhausted });
+      states = note.states;
+      if (!note.switchAway) throw e;
+      const next = order[i + 1] as ProviderAttempt;
+      const probe = await probeProvider(next, opts);
+      if (!probe.ok) {
+        /* 备用探活不过：不切（切过去只是把同一个错换个文案）。如实抛主家的错。 */
+        if (opts.onProviderSwitch) {
+          opts.onProviderSwitch({
+            from: attempt.provider.id, to: next.provider.id,
+            reason: `${note.reason}；备用探活未通过${probe.status === null ? '' : `（HTTP ${probe.status}）`}`,
+            probeMs: probe.ms, probeStatus: probe.status,
+          });
+        }
+        throw e;
+      }
+      switchInfo = { from: attempt.provider.id, to: next.provider.id, reason: note.reason, probeMs: probe.ms, probeStatus: probe.status };
+      if (opts.onProviderSwitch) opts.onProviderSwitch(switchInfo);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('上游调用失败：没有可用的提供方');
 }
 
 /* ------------------------------------------------------------------ *
@@ -334,6 +585,10 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   attachFacts(ser, tactics, opts.experience, { mech: mechOf(opts.tacticsVersion) });
 
   let answers: Record<string, unknown>, usage: Record<string, unknown>, costUsd: number, probs: Record<string, number>, conf: number | null, modelName: string | undefined;
+  /* C2：这一手是谁答的 + 概率是不是真的逐点给的（D-B3/D-B6）。random 渠道没有人答，
+   * 也没有概率图——它自己造均匀分布，所以两条都如实标注，别让它看起来像模型输出。 */
+  let providerId = channel;
+  let probSource: 'exact' | 'derived' = 'exact';
   if (channel === 'random') {
     /* 纯随机基线（对比实验用）：均匀概率、零启发式，照样走完整战术管线。
      * 与 mock 的区别：mock 直接返回不经过战术层；random 刻意走战术层，
@@ -343,8 +598,12 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     probs = {};
     legal.forEach((m) => { probs[m.notation] = 1; });
     conf = null;
+    providerId = 'random';
+    probSource = 'derived';
   } else {
-    const data = await callWithRetry(channel, ser, opts) as { answers?: Record<string, unknown>; usage?: Record<string, unknown>; model?: string };
+    const out = await callWithFailover(channel, ser, opts);
+    const data = out.data as { answers?: Record<string, unknown>; usage?: Record<string, unknown>; model?: string };
+    providerId = out.providerId;
     answers = data.answers || {};
     usage = data.usage || {};
     costUsd = (typeof usage.input_tokens === 'number' ? usage.input_tokens : 0) * 42 / 1e9; /* 输入 $42/十亿token，输出免费 */
@@ -352,6 +611,9 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
     const ans = (answers.move || {}) as { probabilities?: Record<string, number>; confidence?: unknown };
     probs = ans.probabilities || {};
     conf = typeof ans.confidence === 'number' ? ans.confidence : null;
+    /* D-B3：**响应里没有逐点概率**才算降级（备用网关某次只给 choice）。绝不把 `cands` 或
+     * 均匀分布冒充成模型概率——那会让「候选点数」这条 C0 指标失去意义。 */
+    probSource = Object.keys(probs).length > 0 ? 'exact' : 'derived';
   }
   const latencyMs = Date.now() - t0;
 
@@ -363,6 +625,7 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
       notation: fallback.notation, move: fallback,
       meta: { channel, model: modelName, latencyMs, tacticsMs, usage, costUsd, confidence: 0, top: [],
               candidates: 0, candsSent, candsLabeled,
+              provider: providerId, probSource,
               warning: '响应中无合法选项，已回退到首个合法着法', noul: answers.edge, score: answers.position,
               tactics: null, tacticsVersion: ver.id },
     };
@@ -418,6 +681,8 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
       candidates: pairs.length, /* 合法候选总数（模型给了概率且合法的点数，历史口径不动） */
       candsSent, /* 交给 Jev 决定的候选点数（C0） */
       candsLabeled, /* 其中带战术标签的点数（C0） */
+      provider: providerId, /* C2/D-B6：这一手是哪家答的（primary / backup / 渠道名） */
+      probSource, /* C2/D-B3：exact = 响应真给了逐点概率；derived = 没给，别当模型概率用 */
       restProb: pairs.slice(8).reduce((s, x) => s + x[1], 0), /* 第 9 名以后的概率合计 */
       noul: answers.edge ? (answers.edge as Record<string, unknown>).noul : undefined,
       score: answers.position ? (answers.position as Record<string, unknown>).score : undefined,

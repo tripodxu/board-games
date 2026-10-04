@@ -58,7 +58,11 @@
     // 窗口 34 次），进而把整轮对比实验卡死在第一局；60 留 1.7× 余量，同时把最坏 D1 写量
     // 压在免费额度内（60×1440 = 8.6 万 < 10 万/日）。测试里由 `test/worker/jev.spec.ts`
     // 从响应头 `X-RateLimit-Limit` 现读，所以改这个值不会让用例变脆。
-    "JEV_RATE_LIMIT_PER_MIN": "60"
+    "JEV_RATE_LIMIT_PER_MIN": "60",
+    // 兜底提供方（C2）：默认**关**。开着也只会在 `COMMANDCODE_API_KEY` 这个 secret 配了之后
+    // 才可能切换（key 不在仓库里，所以这一行本身不会让生产路径多打一次第三方网关）。
+    // 生产要不要自动切是计划 §7 的未决项，由业主拍板；实验面（box 直连）不走本 Worker。
+    "JEV_FAILOVER": "off"
   },
   "dev": {
     "port": 8787

@@ -68,6 +68,8 @@ const USAGE = `用法：
   --upstream direct|worker  缺省 direct（box 直连上游，零 CF 触碰）
   --rate-limit <n>      上游请求/分（缺省 30；连续 5 次 429 熔断）
   --key-file <路径>     远端 key 文件（缺省 /root/.jev-key，由远端 shell source）
+  --backup-key-file <路径>  兜底提供方（commandcode）的远端 key 文件（缺省 /root/.cc-key；没有 = 不启用切换）
+  --expect-backup       本轮要求兜底 key 真的可用（拿不到就整轮退码 2，用于切换验收）
   --origin <url>        经业主 Worker 时的地址（不给 origin 还要写生产 D1 必须 --allow-production）
   --max-plies/--topk/--pause/--timeout-min/--stall-min   透传给每轮 plan
   --cooldown <秒>       轮间冷却（缺省 30；单上游臂串行的成本纪律）
@@ -299,6 +301,9 @@ async function main(argv = process.argv.slice(2)) {
   const rateLimit = args['rate-limit'] !== undefined ? Number(args['rate-limit']) : 30;
   if (!Number.isFinite(rateLimit) || rateLimit <= 0) die('--rate-limit 必须是正数（每分钟请求数）');
   const keyFile = args['key-file'] !== undefined ? String(args['key-file']) : '/root/.jev-key';
+  /* C2：兜底 key 文件（可选）与「本轮要求兜底可用」。默认不要求 ⇒ 没配就是老行为。 */
+  const backupKeyFile = args['backup-key-file'] !== undefined ? String(args['backup-key-file']) : '/root/.cc-key';
+  const expectBackup = Boolean(args['expect-backup']);
   const origin = args.origin !== undefined ? String(args.origin) : null;
   const seed = args.seed !== undefined ? Number(args.seed) : 20261004;
   if (!Number.isInteger(seed)) die('--seed 必须是整数');
@@ -342,7 +347,7 @@ async function main(argv = process.argv.slice(2)) {
     ladder = buildLadder({
       ladderId, pairs, games, now, seed,
       openings: args.openings ? String(args.openings) : null,
-      store, upstream, rateLimit, keyFile, origin, remoteRoot: repo,
+      store, upstream, rateLimit, keyFile, backupKeyFile, expectBackup, origin, remoteRoot: repo,
       pauseMs: args.pause !== undefined ? Number(args.pause) : 2500,
       timeoutMin: args['timeout-min'] !== undefined ? Number(args['timeout-min']) : 180,
       stallMin: args['stall-min'] !== undefined ? Number(args['stall-min']) : 15,
@@ -388,6 +393,7 @@ async function main(argv = process.argv.slice(2)) {
 
   console.log(`阶梯 ${ladderId}：${title}｜${ladder.rounds.length} 轮｜每对 ${ladder.gamesPerPair} 局｜合计 ${ladder.totalGames} 局`);
   console.log(`  运行面：${upstream === 'direct' ? `直连上游（零 CF 触碰，G3）；自限速 ${rateLimit}/分，key 从远端 ${keyFile} 注入` : `经业主 Worker（${origin}）`}`);
+  console.log(`  兜底：${expectBackup ? `要求可用（${backupKeyFile}）` : `可选（${backupKeyFile}；没有 = 不启用切换）`}`);
   console.log(`  存储：${store === 'd1' ? '归档进 D1（origin 已给）' : '仅落远端 games.jsonl（零网络写，D11）'}｜开局库：${ladder.openings || '（不用）'}`);
   console.log(`  对称性：每对局数 ${ladder.gamesPerPair}（偶数 ⇒ 同一开局换色双跑）｜轮间冷却 ${cooldownS}s｜串行`);
   console.log(`  远端：${user}@${host}:${repo}/.work/remote/${ladderId}\n`);

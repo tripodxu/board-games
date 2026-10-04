@@ -18,10 +18,17 @@ import fs from 'node:fs';
 
 /** box 上 key 的落地位置（chmod 600，不进仓库、不进日志）。 */
 export const DEFAULT_KEY_FILE = '/root/.jev-key';
+/**
+ * 兜底提供方（commandcode）的 key 文件（C2/D-B4）。与主 key 分开一个文件：两把 key 配额、
+ * 归属、失效方式都不同，混在一个文件里会出现「换主 key 顺手把兜底也换了」这种事。
+ */
+export const DEFAULT_CC_KEY_FILE = '/root/.cc-key';
 /** 直连上游时，这些渠道必须拿得到 key 才能开跑。 */
 export const KEY_CHANNELS = ['official', 'openrouter', 'proxy'];
 /** 缺 key 时的提示（别只说「缺 key」，要说清楚该把 key 放哪）。 */
 export const KEY_HELP = `直连上游需要 key：优先用环境变量 JEV_API_KEY，其次放 ${DEFAULT_KEY_FILE}（chmod 600，内容可以是裸 key 或 JEV_API_KEY=… 一行）`;
+/** 兜底 key 的提示（没有它 = 不启用切换，老行为；不是错）。 */
+export const CC_KEY_HELP = `兜底提供方需要 key：优先用环境变量 COMMANDCODE_API_KEY，其次放 ${DEFAULT_CC_KEY_FILE}（chmod 600，裸 key 一行）`;
 
 const KEY_MIN_LEN = 20;
 
@@ -58,6 +65,22 @@ export function resolveRunKey({ env = process.env, channel = 'official', keyFile
   const asOpenrouter = env.JEV_OR_KEY || '';
   const fromEnv = channel === 'openrouter' ? asOpenrouter : asOfficial;
   if (fromEnv) return { key: fromEnv, source: channel === 'openrouter' ? 'env:JEV_OR_KEY' : 'env:JEV_API_KEY' };
+  if (!keyFile) return { key: '', source: '' };
+  try {
+    const key = parseKeyFile(readFile(keyFile, 'utf8'));
+    return key ? { key, source: `file:${keyFile}` } : { key: '', source: '' };
+  } catch (_) {
+    return { key: '', source: '' };
+  }
+}
+
+/**
+ * 取兜底的 commandcode key（C2/D-B4）。**取不到不是错**：没有它就是「单提供方、失败照旧抛」
+ * 的老行为。所以这里只回 `{ key:'', source:'' }`，不抛、不打印任何 key 片段。
+ */
+export function resolveBackupKey({ env = process.env, keyFile = DEFAULT_CC_KEY_FILE, readFile = fs.readFileSync } = {}) {
+  const fromEnv = env.COMMANDCODE_API_KEY || '';
+  if (fromEnv) return { key: fromEnv, source: 'env:COMMANDCODE_API_KEY' };
   if (!keyFile) return { key: '', source: '' };
   try {
     const key = parseKeyFile(readFile(keyFile, 'utf8'));

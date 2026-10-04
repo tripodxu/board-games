@@ -44,6 +44,7 @@ import { createSession, randomGameUid } from '../src/core/session.ts';
 import { buildGameExport, thinkMsOf } from '../src/core/record/export.ts';
 import { tacticsLabel } from '../src/core/view/duel.ts';
 import { decide } from '../src/core/jev/index.ts';
+import { formatProviderSwitch } from '../src/core/jev/providers.ts';
 import {
   KNOWN_CHANNELS,
   UPSTREAM_CHANNELS,
@@ -71,7 +72,16 @@ import {
   formatThrottle,
   installFetchThrottle,
 } from './lib/throttle.mjs';
-import { DEFAULT_KEY_FILE, KEY_CHANNELS, KEY_HELP, resolveRunKey, upstreamGate } from './lib/upstream.mjs';
+import {
+  CC_KEY_HELP,
+  DEFAULT_CC_KEY_FILE,
+  DEFAULT_KEY_FILE,
+  KEY_CHANNELS,
+  KEY_HELP,
+  resolveBackupKey,
+  resolveRunKey,
+  upstreamGate,
+} from './lib/upstream.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -89,6 +99,10 @@ const DEFAULTS = {
   upstream: 'direct',
   rateLimit: DEFAULT_PER_MINUTE,
   keyFile: DEFAULT_KEY_FILE,
+  /* C2/D-B4：兜底 key 文件（可选）。`expectBackup` = 本轮要求兜底真的可用（拿不到就退码 2），
+     用于切换验收；默认 false ⇒ 没有它只是「不启用切换」。 */
+  backupKeyFile: DEFAULT_CC_KEY_FILE,
+  expectBackup: false,
 };
 
 const log = (msg) => {
@@ -280,7 +294,24 @@ function decideEnvFor(cfg, plan) {
     ? (process.env.JEV_OR_KEY || injected || '')
     : (injected || process.env.JEV_API_KEY || '');
   const endpoint = cfg.channel === 'proxy' ? `${plan.origin}/api/jev` : '';
-  return { apiKey, endpoint };
+  /* C2/D-B1：兜底 key 只对 official 面有意义（proxy 面的切换在 Worker 里做；openrouter 是另一条渠道）。 */
+  const backupApiKey = cfg.channel === 'official' ? ((plan.keys && plan.keys.backup) || process.env.COMMANDCODE_API_KEY || '') : '';
+  return { apiKey, endpoint, backupApiKey };
+}
+
+/** 逐提供方手数（C2/D-B6）：`{ primary: 24, backup: 3 }`；没见过的提供方也别丢，照实记。 */
+function countProvider(counts, id) {
+  const key = typeof id === 'string' && id ? id : 'unknown';
+  counts[key] = (counts[key] || 0) + 1;
+  return counts;
+}
+
+/** 一行摘要（只在真有切换时才花字数）。 */
+function formatProviderCounts(counts) {
+  const keys = Object.keys(counts);
+  if (!keys.length) return '';
+  keys.sort((a, b) => counts[b] - counts[a]);
+  return keys.map((k) => `${k}:${counts[k]}`).join(' ');
 }
 
 /* ---------- 主流程 ---------- */
@@ -309,7 +340,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const planPath = argOf(argv, '--plan');
   if (!planPath) {
-    process.stderr.write('用法：node scripts/experiment-worker.mjs --plan <plan.json> [--store local|d1] [--openings <file>] [--device-id <id>] [--upstream direct|worker] [--key-file <path>] [--rate-limit <n>] [--origin <url>]\n');
+    process.stderr.write('用法：node scripts/experiment-worker.mjs --plan <plan.json> [--store local|d1] [--openings <file>] [--device-id <id>] [--upstream direct|worker] [--key-file <path>] [--backup-key-file <path>] [--expect-backup] [--rate-limit <n>] [--origin <url>]\n');
     process.exitCode = 2;
     return;
   }
@@ -320,6 +351,7 @@ async function main() {
   const cliDevice = argOf(argv, '--device-id');
   const cliUpstream = argOf(argv, '--upstream');
   const cliKeyFile = argOf(argv, '--key-file');
+  const cliBackupKeyFile = argOf(argv, '--backup-key-file');
   const cliRateLimit = argOf(argv, '--rate-limit');
   const cliOrigin = argOf(argv, '--origin');
   /* 「显式给了 origin」而不是 DEFAULTS 兜的生产地址：两道逃生门（worker 面 / store d1）都要求它。 */
@@ -341,6 +373,8 @@ async function main() {
   if (cliDevice) plan.deviceId = cliDevice;
   if (cliUpstream) plan.upstream = cliUpstream;
   if (cliKeyFile) plan.keyFile = cliKeyFile;
+  if (cliBackupKeyFile) plan.backupKeyFile = cliBackupKeyFile;
+  if (argv.includes('--expect-backup')) plan.expectBackup = true;
   if (cliOrigin) plan.origin = cliOrigin;
   if (cliRateLimit != null) plan.rateLimit = Number(cliRateLimit);
   const store = plan.store;
@@ -373,6 +407,19 @@ async function main() {
         keySources[cfg.channel] = source;
       } else if (KEY_CHANNELS.includes(cfg.channel) && !dryRun) {
         process.stderr.write(`渠道 ${cfg.channel} 拿不到 key：${KEY_HELP}\n`);
+        process.exitCode = 2;
+        return;
+      }
+    }
+    /* C2/D-B4：兜底 key 是可选的——**没有就是「不启用切换」**，不是配置错误，
+       所以这里既不退码也不打印 key 内容，只记来源（`backup←file:/root/.cc-key`）。 */
+    if ([a, b].some((cfg) => cfg.channel === 'official')) {
+      const backup = resolveBackupKey({ keyFile: plan.backupKeyFile });
+      if (backup.key) {
+        plan.keys.backup = backup.key;
+        keySources.backup = backup.source;
+      } else if (plan.expectBackup && !dryRun) {
+        process.stderr.write(`本轮要求兜底可用，但拿不到兜底 key：${CC_KEY_HELP}\n`);
         process.exitCode = 2;
         return;
       }
@@ -630,6 +677,9 @@ async function playOne(plan, a, b, gameNo, dirs) {
   const stallMs = stallMin * 60000;
   let retries = 0;
   let lastProgress = Date.now();
+  /* C2：本局谁答的（逐手计数）+ 局内粘滞（切过去就不再回切，D-B2）。 */
+  const providerCounts = {};
+  let stickyProvider = '';
 
   try {
     for (;;) {
@@ -641,7 +691,7 @@ async function playOne(plan, a, b, gameNo, dirs) {
 
       const side = g.turn || session.st.turn;
       const cfg = side === 'black' ? s.black : s.white;
-      const { apiKey, endpoint } = decideEnvFor(cfg, plan);
+      const { apiKey, endpoint, backupApiKey } = decideEnvFor(cfg, plan);
 
       /* 看门狗：单步 decide 超过 stallMin 就 abort（decide 内置 30s HTTP 超时兜不住
          「连上了但一直不返回」；loop.ts:285 的同款 signal 用法）。 */
@@ -657,6 +707,19 @@ async function playOne(plan, a, b, gameNo, dirs) {
           rapfiThinkMs: cfg.thinkMs,
           tacticsVersion: cfg.tactics,
           signal: ac.signal,
+          /* C2：主上游打死整局时的兜底。`backupApiKey` 为空 = 不启用（老行为）；粘滞只在
+             本局内生效，切换事件写日志 + `events.jsonl`，事后能按手归因「谁答的」。 */
+          backupApiKey,
+          providerSticky: stickyProvider || undefined,
+          onProviderSwitch: (info) => {
+            stickyProvider = info.to;
+            log(`game-${gameNo} ${formatProviderSwitch(info)}`);
+            appendEvent(outDir, {
+              kind: 'provider', gameNo, ply: session.history.length + 1, side,
+              from: info.from, to: info.to, reason: info.reason,
+              probeStatus: info.probeStatus, probeMs: info.probeMs,
+            });
+          },
           onRetry: (code, attempt) => {
             /* 429/529 上报给熔断器：连续 N 次就熔断，让整轮早失败而不是拿 429 刷满剩下的局。 */
             if (code === 429 || code === 529) {
@@ -686,6 +749,8 @@ async function playOne(plan, a, b, gameNo, dirs) {
       const meta = { ...(decision.meta || {}) };
       meta.byAI = true;
       meta.side = side;
+      /* C2/D-B6：逐手记「这一手是谁答的」（primary/backup/渠道名）。 */
+      countProvider(providerCounts, meta.provider);
       /* 自报版本：`games.code_version` 读的是 `meta.code`（src/shared/record-map.ts:379），
          不写就恒为 `dev+nogit`，D1 里认不出是哪一版跑的。 */
       meta.code = codeOf();
@@ -738,6 +803,8 @@ async function playOne(plan, a, b, gameNo, dirs) {
     white: identityOf(s.white),
     durationMs: Date.now() - startedAt,
     startedAt: t0.toISOString(),
+    /* C2/D-B6：这一局的逐手提供方分布（只在真跑过时非空；`{}` 的下游按缺省读）。 */
+    providers: Object.keys(providerCounts).length ? providerCounts : null,
   };
 
   if (dirs.store === 'd1' && !dryRun) {
@@ -770,7 +837,8 @@ async function playOne(plan, a, b, gameNo, dirs) {
       result.error = `归档失败：${e.message || e}`;
     }
   }
-  log(`game-${gameNo} ${result.status} ${result.plies} 手 winner=${result.winner || '和棋'} ${Math.round(result.durationMs / 1000)}s`);
+  const provLine = result.providers ? ` provider[${formatProviderCounts(result.providers)}]` : '';
+  log(`game-${gameNo} ${result.status} ${result.plies} 手 winner=${result.winner || '和棋'} ${Math.round(result.durationMs / 1000)}s${provLine}`);
   return result;
 }
 
