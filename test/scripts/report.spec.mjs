@@ -11,7 +11,7 @@ import path from 'node:path';
 import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
   collectCost, colorCells, colorSplit, costRow, isUpstreamMove, moveIdentity, openingRows, pairTable, quantiles,
-  rafiCurve, reportMarkdown, significance,
+  rafiCurve, reportMarkdown, significance, curveDeltas,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
 
@@ -99,6 +99,20 @@ describe('pairTable / rafiCurve / openingRows / significance', () => {
     expect(rafiCurve(rows).map((p) => p.thinkMs)).toEqual([500, 1000, 2000]);
     expect(rafiCurve(rows)[0].identity).toBe('rapfi||500');
   });
+  it('相邻档差：给 ΔElo 并判两档 BT 区间是否重叠（重叠就不许说更强）', () => {
+    const rows = [
+      { identity: 'rapfi||500', rating: 1480, btLo: -20, btHi: 20 },
+      { identity: 'rapfi||2000', rating: 1520, btLo: 10, btHi: 40 },  // 与上一档重叠
+      { identity: 'rapfi||10000', rating: 1560, btLo: 60, btHi: 90 }, // 与上一档不重叠
+    ];
+    const ds = curveDeltas(rafiCurve(rows));
+    expect(ds.map((d) => [d.fromMs, d.toMs, Number(d.delta.toFixed(1))]))
+      .toEqual([[500, 2000, 40], [2000, 10000, 40]]);
+    expect(ds.map((d) => d.overlap)).toEqual([true, false]);
+    expect(curveDeltas(rafiCurve([{ identity: 'rapfi||500', rating: 1500 }]))).toEqual([]);
+    expect(curveDeltas(rafiCurve([{ identity: 'rapfi||500', rating: 1500 },
+      { identity: 'rapfi||1000', rating: 1510 }]))[0].overlap).toBeNull(); // 缺 btLo/btHi ⇒ 不判
+  });
   it('开局分层按 events 给的开局键分组；没有键就是空（= 报告写「未启用开局库」）', () => {
     const g1 = game({ uid: '1' });
     const g2 = game({ uid: '2' });
@@ -162,6 +176,19 @@ describe('reportMarkdown：六节齐全', () => {
     expect(md).toContain('deadbeefcafe');                 // 产物 sha256 前 12 位
     expect(md).toContain('⚠ <50');                        // 样本不足标注
     expect(md).toContain('未计入主口径');                   // 兜底手不计入主口径
+  });
+  it('曲线 ≥2 档时印相邻档差与「区间重叠」读数', () => {
+    const m = base();
+    m.rows = [
+      { identity: 'rapfi||500', rating: 1480, games: 60, w: 20, d: 5, l: 35, rate: 0.375,
+        ci: { lo: 0.26, hi: 0.5 }, halfPt: 12, enough: true, btDelta: -20, btLo: -50, btHi: 10, btWidth: 60, btDraws: 5 },
+      { identity: 'rapfi||2000', rating: 1520, games: 60, w: 25, d: 6, l: 29, rate: 0.467,
+        ci: { lo: 0.34, hi: 0.6 }, halfPt: 13, enough: true, btDelta: 20, btLo: -5, btHi: 55, btWidth: 60, btDraws: 6 },
+    ];
+    const md = reportMarkdown(m);
+    expect(md).toContain('相邻档差：500→2000：+40.0（区间重叠）');
+    expect(md).toContain('1 对区间重叠');
+    expect(md).toContain('每档样本：500 ms 60 局、2000 ms 60 局；没有样本 < 50 局的档');
   });
   it('开局分层非空时印每个开局的配对行', () => {
     const m = base();

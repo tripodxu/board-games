@@ -287,6 +287,11 @@
 
 ## 已验证（验收证据）
 
+- **报表的 Rapfi 曲线带「相邻档差 + 区间重叠」读数（2026-10-04，为 L4 铺路）**：第 2 节每行多一列
+  **ΔElo（相对上一档）**，表下自动印相邻档差 + 重叠对数 + 每档样本；判据 = **相邻档 BT 区间重叠就不许说
+  「这一档更强」**（与 §1/§4 同一条纪律）。纯函数 `curveDeltas()`（`scripts/lib/report.mjs` 422 行、
+  `test/scripts/report.spec.mjs` 344 行 23 例）。`l2n1` 真数据复跑：500→1000 **不重叠**（+100.7）、
+  1000→2000 **重叠**（+107.6）⇒「抬时间有收益」踏实、「每抬一档都更强」不能说。
 - **`L4` 高思考档预设：把 Rapfi 曲线补到 UI 上限（2026-10-04，业主点名）**：业主原话「补 500ms，
   7000ms，到 10000ms」⇒ `scripts/lib/ladder.mjs` 新增 `RAPFI_HIGH_SPECS`（`@7000`/`@10000`，后者 = UI 上限）
   与预设 `L4`（`cross(VERSION_SPECS, RAPFI_HIGH_SPECS)` = **10 对 / 200 局**）；**只列 L2 没有的档**
@@ -657,7 +662,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 660 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 285 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 662 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 287 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

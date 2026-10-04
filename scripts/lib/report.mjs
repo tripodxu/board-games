@@ -143,6 +143,29 @@ export function rafiCurve(rows) {
 }
 
 /**
+ * 相邻两档的差（L4 曲线要读的就是这个）：ΔElo 与「两档 BT 区间是否重叠」。
+ * 为什么把「重叠」也带上：ΔElo 的符号在小样本下会被噪声翻来翻去，区间重叠时**不许**说「这一档更强」
+ * （与 §1/§4 同一条读数纪律）。
+ */
+export function curveDeltas(curve) {
+  const out = [];
+  for (let i = 1; i < curve.length; i += 1) {
+    const prev = curve[i - 1].row;
+    const cur = curve[i].row;
+    const overlap = prev.btLo != null && prev.btHi != null && cur.btLo != null && cur.btHi != null
+      ? prev.btLo <= cur.btHi && cur.btLo <= prev.btHi
+      : null;
+    out.push({
+      fromMs: curve[i - 1].thinkMs,
+      toMs: curve[i].thinkMs,
+      delta: Number(cur.rating) - Number(prev.rating),
+      overlap,
+    });
+  }
+  return out;
+}
+
+/**
  * 开局分层表（§7 第 ④ 项）：按开局分组，每组给一张配对矩阵。
  * `openingOf(payload)` 由调用侧提供 —— 开局键在 `events.jsonl` 的 `game-start` 事件里，
  * 不在棋谱 payload 上（逐手 meta 只有 `opening: true` 标出「这几手是开局」）。
@@ -276,13 +299,29 @@ export function reportMarkdown(model) {
   if (curve.length === 0) {
     out.push('（本轮没有 rapfi 身份）');
   } else {
-    out.push('| 思考档 | Elo | BT Δ | 95% 区间(BT Δ) | 局数 | 胜/和/负 | 得分率 | Wilson 95% |');
-    out.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
-    for (const p of curve) {
+    out.push('| 思考档 | Elo | ΔElo（相对上一档） | BT Δ | 95% 区间(BT Δ) | 局数 | 胜/和/负 | 得分率 | Wilson 95% |');
+    out.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+    for (let i = 0; i < curve.length; i += 1) {
+      const p = curve[i];
       const r = p.row;
-      out.push(`| ${p.thinkMs} ms | ${r.rating} | ${r.btDelta == null ? '—' : r.btDelta} | ` +
+      const d = i === 0 ? null : curveDeltas(curve)[i - 1];
+      out.push(`| ${p.thinkMs} ms | ${r.rating} | ${d == null ? '—' : (d.delta >= 0 ? '+' : '') + d.delta.toFixed(1)} | ` +
+        `${r.btDelta == null ? '—' : r.btDelta} | ` +
         `${r.btLo == null ? '—' : `[${r.btLo}–${r.btHi}]`} | ${r.games} | ${r.w}/${r.d}/${r.l} | ` +
         `${fmtPt(r.rate)} | ${r.ci ? `[${fmtPt(r.ci.lo)}–${fmtPt(r.ci.hi)}]` : '—'} |`);
+    }
+    if (curve.length > 1) {
+      const ds = curveDeltas(curve);
+      const shown = ds.map((d) => `${d.fromMs}→${d.toMs}：${d.delta >= 0 ? '+' : ''}${d.delta.toFixed(1)}` +
+        `${d.overlap === true ? '（区间重叠）' : d.overlap === false ? '（区间不重叠）' : ''}`).join('、');
+      const overlapN = ds.filter((d) => d.overlap === true).length;
+      out.push('');
+      out.push(`- 相邻档差：${shown}。`);
+      out.push(`- 读数：ΔElo 是同一根 BT 标尺上的差；**相邻档区间重叠时不许说「这一档更强」** —— ` +
+        `本曲线 ${ds.length} 对相邻档里有 **${overlapN} 对区间重叠**。`);
+      const thin = curve.filter((p) => p.row.games < 50).map((p) => `${p.thinkMs} ms`);
+      out.push(`- 每档样本：${curve.map((p) => `${p.thinkMs} ms ${p.row.games} 局`).join('、')}；` +
+        `${thin.length ? `样本 < 50 局的档：${thin.join('、')}` : '没有样本 < 50 局的档'}。`);
     }
   }
   out.push('');
