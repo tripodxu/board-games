@@ -36,7 +36,7 @@ import {
   PRODUCTION_ORIGIN, productionGate, parallelGate,
 } from './lib/batch-common.mjs';
 import { loadRecords, rankTable, formatRankTable, computeElo, bootstrapBt, DEFAULT_ANCHOR, MIN_GAMES } from './lib/batch-elo.mjs';
-import { launchRoundCommand } from './lib/ladder.mjs';
+import { launchRoundCommand, pollRoundCommand, parsePollOutput, formatPollTick, sleepSync } from './lib/ladder.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -88,6 +88,46 @@ function ssh(host, user, remoteCmd, timeoutMs, opts = SSH_OPTS, sigtermOk = fals
 
 function scp(args) {
   return sh('scp', [...SSH_OPTS, ...args]);
+}
+
+/** 捕获式 ssh（要解析远端回话时用；`sh` 走 inherit，抓不到输出）。失败返回 null。 */
+function sshCapture(host, user, remoteCmd, timeoutMs = 60000) {
+  try {
+    return execFileSync('ssh', [...SSH_OPTS, `${user}@${host}`, remoteCmd], { encoding: 'utf8', timeout: timeoutMs });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 本地轮询等一轮跑完（每分钟一次短 ssh），最多 `maxHours`。
+ *
+ * 为什么不再用「远端一条 ssh 守 12 h」：那条长命 ssh **继承 stdout 管道**，编排进程一旦意外死掉，
+ * 外层 `| Tee-Object` 永远等不到 EOF —— 作业假装还在跑（L3 第一晚实测踩到，只能靠
+ * `Get-CimInstance Win32_Process` 看清）。返回 false = 到了上限，不当作失败（用 status 复核）。
+ */
+function waitRoundLocally(host, user, remoteBatchDir, round, { maxHours = 12, pollMs = 60000 } = {}) {
+  const cmd = pollRoundCommand({
+    pidPath: `${remoteBatchDir}/logs/round-${round}.pid`,
+    progressPath: `${remoteBatchDir}/round-${round}/progress.json`,
+  });
+  const started = Date.now();
+  const deadline = started + maxHours * 3600 * 1000;
+  let misses = 0;
+  for (;;) {
+    const out = sshCapture(host, user, cmd);
+    if (out === null) {
+      misses += 1;
+      if (misses % 3 === 0) console.log(`  ⚠ round-${round} 连续 ${misses} 次轮询 ssh 失败（远端是 nohup worker，不受影响）`);
+    } else {
+      misses = 0;
+      const p = parsePollOutput(out);
+      if (p.done) return true;
+      console.log(formatPollTick(round, p.progress, { elapsedS: (Date.now() - started) / 1000 }));
+    }
+    if (Date.now() >= deadline) return false;
+    sleepSync(pollMs);
+  }
 }
 
 /* ---------------- submit ---------------- */
@@ -234,11 +274,10 @@ async function cmdSubmit(args) {
     console.log(`  round-${p.round} 已启动（pid 见 ${pidPath}）`);
     if (serial && i < plans.length - 1) {
       console.log(`  等待 round-${p.round} 跑完再起下一轮（串行）…`);
-      // 轮询 pid（最多 12 h，每 30 s 一次）；本地 ssh 断开不算失败，用 status 复核即可
-      ssh(host, user,
-        `for i in $(seq 1 1440); do kill -0 "$(cat ${pidPath})" 2>/dev/null || { echo "round ${p.round} 已结束"; exit 0; }; sleep 30; done; echo "round ${p.round} 轮询到 12h 上限"`,
-        0);
-      console.log(`  round-${p.round} 的等待循环结束 —— 起下一轮前请先确认它真的跑完（status --batch ${batchId}）`);
+      const done = waitRoundLocally(host, user, remoteBatchDir, p.round);
+      console.log(done
+        ? `  round-${p.round} 已结束`
+        : `  ⚠ round-${p.round} 轮询到 12h 上限 —— 起下一轮前先 status --batch ${batchId}`);
     }
   }
 

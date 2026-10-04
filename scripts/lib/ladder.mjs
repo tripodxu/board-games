@@ -476,6 +476,21 @@ export function formatPollTick(round, progress, { elapsedS = null } = {}) {
   return `  ⏳ round-${round} ${done}/${total} 局${bits.length ? ` · ${bits.join(' · ')}` : ''}`;
 }
 
+/**
+ * 轮询一轮的远端探针（阶梯与 batch 共用，一次 ssh 的完整输出）：
+ * 第一行 `alive` = 这轮的 worker 还在跑，`done` = pid 没了（或 pid 文件不在）；
+ * 后面紧跟 `progress.json` 原文（可能为空），交给 `parsePollOutput()` 解。
+ *
+ * 为什么要「本地每分钟问一次」而不是「远端一条 ssh 守 12 h」：那条长命 ssh **继承 stdout 管道**，
+ * 编排进程一旦意外死掉，外层 `| Tee-Object` 永远等不到 EOF，作业就假装还在跑（L3 第一晚实测踩到，
+ * 只能靠 `Get-CimInstance Win32_Process` 才看清它还挂着）。
+ */
+export function pollRoundCommand({ pidPath, progressPath }) {
+  return `pid=$(cat ${pidPath} 2>/dev/null); `
+    + 'if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo alive; else echo done; fi; '
+    + `cat ${progressPath} 2>/dev/null`;
+}
+
 /** 同步睡：主线程唯一能用的同步等待（scp/ssh 重试之间用）。 */
 export function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

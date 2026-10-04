@@ -640,7 +640,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 655 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 280 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 658 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 280 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

@@ -8,6 +8,11 @@
 
 ### 修复
 
+- **batch 的串行等待也改本地轮询（同一类「作业永不结束」）**：`experiment-batch.mjs` 的串行分支原先是
+  远端 `for i in $(seq 1 1440); do kill -0 …; sleep 30; done` 一条 ssh 守 12 h，**与阶梯第一晚 L3 的悬挂
+  同一个根因**（长命 ssh 继承 stdout 管道，编排意外死掉后外层 `| Tee-Object` 永远等不到 EOF）。
+  现在改成本地 `waitRoundLocally()`：每分钟一次**捕获式**短 ssh（`pollRoundCommand()` 探针 → `parsePollOutput()`），
+  到 12 h 上限只提示「先 `status` 复核」，不当作失败；探针与阶梯共用同一份实现（单测见 `test/scripts/ladder.spec.mjs`）。
 - **同一轮被两个 worker 双写：启动命令收敛到一处并加 pid 守卫（版本排序筛查开局发现）**：
   编排的准备阶段要连好几趟 ssh（建目录 → 上传全部计划 → 逐轮读 tag，**每趟 12–20 s，合计 2–4 分钟**），
   这段时间远端只有 `plans/`、没有 `round-N/`、没有 `.pid`，看着像「启动失败」；当时据此又手工起了一个

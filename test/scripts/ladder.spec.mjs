@@ -14,7 +14,7 @@ import {
   parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
   newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress, stateMatchesLadder, withReusedTags, staleCleanups,
   ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
-  estimateRoundSeconds, parsePollOutput, formatPollTick, retrySync, sleepSync, launchRoundCommand,
+  estimateRoundSeconds, parsePollOutput, formatPollTick, retrySync, sleepSync, launchRoundCommand, pollRoundCommand,
 } from '../../scripts/lib/ladder.mjs';
 import { ladderMain, wdlOfGamesJsonl } from '../../scripts/experiment-ladder.mjs';
 
@@ -281,6 +281,32 @@ describe('launchRoundCommand（同一轮不许被两个 worker 双写）', () =>
     const c = cmd();
     expect(c).toContain('set -a; [ -f /root/.jev-key ] && . /root/.jev-key; set +a;');
     expect(c).not.toMatch(/JEV_API_KEY=/);
+  });
+});
+
+describe('pollRoundCommand（本地每分钟一次短 ssh，不是远端守 12 h）', () => {
+  const c = pollRoundCommand({
+    pidPath: '/root/board-games/.work/remote/x1/logs/round-3.pid',
+    progressPath: '/root/board-games/.work/remote/x1/round-3/progress.json',
+  });
+
+  it('先报 alive/done（pid 文件不在也算 done），再吐 progress.json 原文', () => {
+    expect(c).toContain('pid=$(cat /root/board-games/.work/remote/x1/logs/round-3.pid 2>/dev/null)');
+    expect(c).toContain('kill -0 "$pid"');
+    expect(c).toContain('then echo alive; else echo done; fi');
+    expect(c.trimEnd().endsWith('cat /root/board-games/.work/remote/x1/round-3/progress.json 2>/dev/null')).toBe(true);
+  });
+
+  it('没有 for/seq/sleep —— 长命 ssh 继承 stdout 管道就是那次「作业永不结束」的根因', () => {
+    expect(c).not.toMatch(/for i in|seq 1|sleep \d/);
+  });
+
+  it('输出能被 parsePollOutput 直接解（两个工具共用同一条探针）', () => {
+    const out = 'alive\n' + JSON.stringify({ total: 20, done: 4, gameNo: 5, ply: 12, wdl: { a: 3, draw: 0, b: 1 } });
+    const p = parsePollOutput(out);
+    expect(p.done).toBe(false);
+    expect(p.alive).toBe(true);
+    expect(p.progress.done).toBe(4);
   });
 });
 

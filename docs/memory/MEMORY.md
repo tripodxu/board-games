@@ -33,6 +33,10 @@
   `started pid=…（已在跑，不重复起）`，不再起第二个；否则 nohup 起并写 pid。本地先查再起是关不掉窗口的
   （中间隔着一次 12–20 s 的 ssh 握手）。编排自己也会在准备阶段先打印
   `准备中：建远端目录 → 上传 N 份计划 → 读 tag（…这期间远端没有 round-N/ 是正常的，别手动补启动）`。
+- **同一类悬挂的第二处也修了**：`experiment-batch.mjs` 的串行等待原本是远端一条 ssh 守 12 h
+  （`for i in $(seq 1 1440); do kill -0 …; sleep 30; done`），长命 ssh 继承 stdout 管道 —— 与阶梯第一晚 L3
+  那次「作业永不结束」同根因。现在两处都走 `scripts/lib/ladder.mjs` 的 `pollRoundCommand()`
+  ＋本地每分钟一次**捕获式**短 ssh（阶梯 `pollRound` / batch `waitRoundLocally`）。
 
 ## 2026-10-04 · 这台 box 的链路会间歇性抽风：scp/ssh 都要三次重试
 

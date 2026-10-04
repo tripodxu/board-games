@@ -40,7 +40,7 @@ import {
   formatRoundLine, formatLadderProgress, formatLadderTable, ladderDir, stateFile,
   estimateRoundSeconds, parsePollOutput, formatPollTick,
   readLadderState, writeLadderState, writePlans,
-  retrySync, launchRoundCommand,
+  retrySync, launchRoundCommand, pollRoundCommand,
 } from './lib/ladder.mjs';
 import { gameRecord } from './lib/batch-elo.mjs';
 import { collectArtifacts, pushArtifacts, requireBucketCfg, defaultPrefix } from './batch-bucket.mjs';
@@ -152,9 +152,7 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 async function pollRound({ host, user, remoteBatch, round, pollS, maxHours = 12, quiet = false }) {
   const pidPath = `${remoteBatch}/logs/round-${round}.pid`;
   const progressPath = `${remoteBatch}/round-${round}/progress.json`;
-  const cmd = `pid=$(cat ${pidPath} 2>/dev/null); `
-    + 'if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo alive; else echo done; fi; '
-    + `cat ${progressPath} 2>/dev/null`;
+  const cmd = pollRoundCommand({ pidPath, progressPath });
   const started = Date.now();
   const deadline = started + maxHours * 3600 * 1000;
   let misses = 0;
