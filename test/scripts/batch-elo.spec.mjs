@@ -160,4 +160,29 @@ describe('loadRecords', () => {
     const recs = loadRecords([dir, path.join(dir, '不存在')]);
     expect(recs.map((r) => r.gameUid)).toEqual(['u1', 'u2']);
   });
+
+  it('也认 games.jsonl（D11 --store local 产物）：坏行跳过、与 JSON 合并排序', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elo-jsonl-'));
+    const g = (winner, exported, uid) => JSON.stringify({
+      exported, gameUid: uid, winner, result: winner || '', endReason: '', moves: [],
+      blackChannel: 'proxy', whiteChannel: 'rapfi', blackTactics: 'v14-live3-fresh', whiteTactics: '',
+      blackThink: 0, whiteThink: 1000,
+    });
+    fs.writeFileSync(path.join(dir, 'games.jsonl'), [
+      g('black', '2026-10-04T00:00:02Z', 'u2'),
+      '',                       // 空行
+      '{ 半截（kill -9 可能留）', // 坏行
+      g('white', '2026-10-04T00:00:01Z', 'u1'),
+    ].join('\n') + '\n');
+    // 同目录 round-i/games/*.json 也要一起被读到（两种布局共存不冲突）
+    const games = path.join(dir, 'round-1', 'games');
+    fs.mkdirSync(games, { recursive: true });
+    fs.writeFileSync(path.join(games, 'a.json'), g('black', '2026-10-04T00:00:03Z', 'u3'));
+    // 同一局在两处都出现（JSONL + 单局 JSON）⇒ 只能算一次
+    fs.writeFileSync(path.join(games, 'b.json'), g('black', '2026-10-04T00:00:02Z', 'u2'));
+    const recs = loadRecords(dir);
+    expect(recs.map((r) => r.gameUid)).toEqual(['u1', 'u2', 'u3']);
+    expect(recs[0].black).toBe('proxy|v14-live3-fresh|0');
+    expect(recs[0].white).toBe('rapfi||1000');
+  });
 });

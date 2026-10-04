@@ -2,9 +2,15 @@
  * scripts/experiment-worker.mjs — box 上的无人值守对弈 worker（纯 Node）
  *
  * 计划：docs/plans/2026-10-03-remote-batch-experiments.md §4（本轮不加浏览器依赖）。
+ *       P4（docs/plans/2026-10-03-tactics-fidelity-and-elo-ladder.md §5/§6）：`--store local`、
+ *       `--openings <file>`、D13 进度文件、`--device-id`。
  * 用法：node scripts/experiment-worker.mjs --plan .work/remote/<batch>/round-<i>/plan.json
  * 产出：
  *   <plan.outDir>/games/round-<r>-game-<n>.json    与线上归档同构的 payload（POST 原样体）
+ *   <plan.outDir>/games.jsonl                      **D11 的本地库**：每局一行同样的 payload（`--store local` 的唯一产物，
+ *                                                  也是上传桶的主文件；`loadRecords` 会按 gameUid 与上面的单局 JSON 去重）
+ *   <plan.outDir>/progress.json                    D13 进度快照（**原子写**，`ssh cat` 随时可读）
+ *   <plan.outDir>/events.jsonl                     D13 事件流（`tail -f` 看流水；只追加）
  *   <plan.outDir>/checkpoint/round-<r>-game-<n>.json 断点/失败隔离（kill -9 后重启跳过已完成局）
  *   <plan.outDir>/round-summary.json              轮次汇总
  * 关键口径（与浏览器实验路径逐字对齐的部份）：
@@ -13,6 +19,9 @@
  *   - meta.byAI = true（export.ts 的 aiMoveMeta/meta.ts 归因链依赖它）；
  *   - 归属信息 expInfo 字段同 experiment.ts:141-153（tag/gameNo/黑白渠道/战术档/思考）；
  *   - 自动退避 [4000,12000,25000] ms 复刻 loop.ts:66（限流/网络重试，机机无人值守必需）。
+ * `--store local`（默认）与 `d1` 的差别：**只有归档这一步不同** —— local 不碰网络（不 POST、
+ *   不 GET 核对），产物落 `games.jsonl`；`d1` 保持旧行为（POST + 按 uid 核对 + 轮末实验行）。
+ *   P4b 起 local 还会配 `--upstream direct`，那时整条链路零 CF 触碰（G3）。
  * 与浏览器路径的已知偏差（记录在案，P3 前评估）：
  *   - experience 不喂（浏览器从 localStorage 战绩簿经 /api/openings 构建；Node 无战绩簿）；
  *   - 限流监听走 decide 自带 onRetry + 我们自己的退避，没有面板的状态机。
@@ -39,6 +48,15 @@ import {
   identityOf,
 } from './lib/batch-common.mjs';
 import { installRapfiNodeLoader } from './lib/rapfi-node-loader.mjs';
+import {
+  newState,
+  recordGame,
+  snapshot,
+  writeProgress,
+  appendEvent,
+  formatProgress,
+} from './lib/progress.mjs';
+import { readLibrary, openingForNo } from './lib/openings.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -49,6 +67,9 @@ const RETRY_DELAYS_MS = [4000, 12000, 25000];
 const DEFAULTS = {
   games: 12, pauseMs: 2500, timeoutMin: 180, stallMin: 15, maxPlies: 225,
   topK: 3, seed: 20261003, dryRun: false, origin: 'https://jevqipan.logicc.top',
+  /* D11/D12：默认**不写生产 D1**。老调用方（experiment-batch submit）在 plan 里显式写
+     `store: 'd1'` 保持原行为；漏写就是「只落本地」，不会悄悄往业主库里灌三万行。 */
+  store: 'local',
 };
 
 const log = (msg) => {
@@ -91,8 +112,17 @@ function repoHead() {
 
 /** 远端批量不是浏览器设备，但带一个稳定的匿名身份：D1 里才能把这批机器跑出来的行
     与其它写入者（浏览器轮、历史导入）分开。ADR-0013 的 `X-Device-Id` 是可选的匿名身份，
-    格式 `^[A-Za-z0-9_-]{8,64}$`（`src/worker/lib/validate.ts`）。可用 `BATCH_DEVICE_ID` 覆盖。 */
-export const DEVICE_ID = process.env.BATCH_DEVICE_ID || 'ssh-batch';
+    格式 `^[A-Za-z0-9_-]{8,64}$`（`src/worker/lib/validate.ts`）。可用 `BATCH_DEVICE_ID` 覆盖，
+    CLI/plan 的 `--device-id` 优先级最高（阶梯编排给 `ladder-<batch>`，见计划 §5）。 */
+export let DEVICE_ID = process.env.BATCH_DEVICE_ID || 'ssh-batch';
+
+/** 值域与 `src/worker/lib/validate.ts` 的 DEVICE_ID_RE 同源；不合法直接抛（由 main 转 exit 2）。 */
+export function setDeviceId(id) {
+  if (id == null || id === '') return DEVICE_ID;
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(id))) throw new Error(`device-id 形状不合法（^[A-Za-z0-9_-]{8,64}$）：${id}`);
+  DEVICE_ID = String(id);
+  return DEVICE_ID;
+}
 
 let cachedCode = null;
 /** 远端跑的提交自报（H2）：Node 直载没有构建注入，`games.code_version` 否则恒为 `dev+nogit`，
@@ -257,11 +287,14 @@ async function main() {
   const argv = process.argv.slice(2);
   const planPath = argOf(argv, '--plan');
   if (!planPath) {
-    process.stderr.write('用法：node scripts/experiment-worker.mjs --plan <plan.json>\n');
+    process.stderr.write('用法：node scripts/experiment-worker.mjs --plan <plan.json> [--store local|d1] [--openings <file>] [--device-id <id>]\n');
     process.exitCode = 2;
     return;
   }
   const plan = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(planPath, 'utf8')) };
+  const cliStore = argOf(argv, '--store');
+  const cliOpenings = argOf(argv, '--openings');
+  const cliDevice = argOf(argv, '--device-id');
   const { round, tag, games, pauseMs, timeoutMin, stallMin, maxPlies, topK, seed, dryRun, origin } = plan;
   let a;
   let b;
@@ -273,10 +306,41 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  /* CLI 覆盖 plan（P4）：跑手不必改 plan 文件就能换存储、开局库、匿名身份。 */
+  if (cliStore) plan.store = cliStore;
+  if (cliOpenings) plan.openings = cliOpenings;
+  if (cliDevice) plan.deviceId = cliDevice;
+  const store = plan.store;
+  if (store !== 'local' && store !== 'd1') {
+    process.stderr.write(`--store 只认 local|d1，收到 ${store}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    setDeviceId(plan.deviceId);
+  } catch (err) {
+    process.stderr.write(`${err.message}\n`);
+    process.exitCode = 2;
+    return;
+  }
   // outDir 相对 cwd 解析（编排器在仓根启动 worker，plan 里通常给绝对路径）
   const outDir = path.resolve(process.cwd(), plan.outDir || `.work/remote/${plan.batchId}/round-${round}`);
   const gamesDir = path.join(outDir, 'games');
   const ckptDir = path.join(outDir, 'checkpoint');
+  const jsonlFile = path.join(outDir, 'games.jsonl');
+
+  /* 配对开局库（D9）：给了就必须能载入。载入失败要在这里退出——不然每局白跑十几分钟才炸
+     （与「缺 key 早退」同一条纪律）。 */
+  let lib = null;
+  if (plan.openings) {
+    try {
+      lib = readLibrary(path.resolve(process.cwd(), plan.openings));
+    } catch (err) {
+      process.stderr.write(`开局库载入失败：${err.message}\n`);
+      process.exitCode = 2;
+      return;
+    }
+  }
 
   /* 前置校验：渠道/档位（parseSpec 已拦）、tag 形状、真上游 key 是否在位。
      缺 key 必须在开局前退出——不然每局都白跑十几分钟才失败（AGENTS.md「不在事后日志里备案」）。 */
@@ -309,9 +373,21 @@ async function main() {
 
   ensureDir(gamesDir); ensureDir(ckptDir);
   const head = repoHead();
-  log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun} repoHead=${head} device=${DEVICE_ID}`);
+  log(`worker 起：batch=${plan.batchId} round=${round} tag=${tag} 对阵 ${a.channel} vs ${b.channel} ×${games} 局 dryRun=${dryRun} store=${store} repoHead=${head} device=${DEVICE_ID}`);
+  if (lib) log(`开局库：${plan.openings} 共 ${lib.openings.length} 本 / 前 ${lib.plies} 手（同一开局连续两局，换色双跑）`);
 
-  const summary = { batchId: plan.batchId, round, tag, repoHead: head, startedAt: new Date().toISOString(), games: [] };
+  /* D13：进度是**文件**不是服务（box 只有 1.3 GiB 内存，且 `ssh cat` 要能随时读到）。
+     state 在内存里累计，每局/每手落一次原子快照；events.jsonl 只追加流水。 */
+  let state = newState({ batchId: plan.batchId, round, tag, total: games, startedAtMs: Date.now() });
+  const flush = (current = null) => writeProgress(outDir, snapshot(state, { current }));
+  flush({ gameNo: 1, ply: 0 });
+  appendEvent(outDir, {
+    kind: 'round-start', batchId: plan.batchId, round, tag, games, store,
+    openings: plan.openings || null, repoHead: head, device: DEVICE_ID,
+    a: identityOf(a), b: identityOf(b),
+  });
+
+  const summary = { batchId: plan.batchId, round, tag, repoHead: head, store, startedAt: new Date().toISOString(), games: [] };
   for (let gameNo = 1; gameNo <= games; gameNo++) {
     const ckptFile = path.join(ckptDir, gameRecordName(round, gameNo));
     let resumeUid = null;
@@ -325,6 +401,12 @@ async function main() {
         /* 续跑也必须把胜负带回 summary：早先只带 status 会让实验档案里这局凭空消失，
            同时再把 skipped 计入正常局数 ⇒ 出口码 0 的假绿。 */
         summary.games.push({ gameNo, status: 'skipped', from: act.from, winner: act.winner, plies: act.plies, gameUid: act.gameUid });
+        state = recordGame(state, {
+          gameNo, status: 'skipped', durationMs: null, winner: act.winner ?? null,
+          gameUid: act.gameUid ?? null, plies: act.plies ?? null, aBlack: ((gameNo - 1) % 2) === 0,
+        });
+        flush({ gameNo, ply: null });
+        appendEvent(outDir, { kind: 'game-skip', gameNo, from: act.from, winner: act.winner ?? null });
         continue;
       }
       if (act.reason === 'tag-mismatch') log(`game-${gameNo} checkpoint 的 tag 与本轮 ${tag} 不一致，重跑本局`);
@@ -333,25 +415,54 @@ async function main() {
         log(`game-${gameNo} 上次归档未完成，复用 gameUid=${resumeUid} 重跑`);
       }
     }
-    const one = await playOne(plan, a, b, gameNo, { gamesDir, ckptDir, resumeUid });
+    /* 开局：同一本连续两局（换色双跑）⇒ 开局方差被按住（D9）。 */
+    const opening = lib ? openingForNo(lib, gameNo) : null;
+    flush({ gameNo, ply: 0 });
+    appendEvent(outDir, { kind: 'game-start', gameNo, opening: opening ? opening.key : null });
+    const one = await playOne(plan, a, b, gameNo, {
+      gamesDir, ckptDir, resumeUid, store, opening, jsonlFile,
+      /* 每手回写一次「跑到第几手」：长局里 progress.json 不写就会几分钟不动，看不出是死是活。 */
+      onPly: (ply) => flush({ gameNo, ply }),
+    });
     summary.games.push({ gameNo, ...one });
     writeJson(ckptFile, { gameNo, tag, head, ...one });
+    state = recordGame(state, {
+      gameNo, status: one.status, durationMs: one.durationMs ?? null, winner: one.winner ?? null,
+      gameUid: one.gameUid ?? null, plies: one.plies ?? null,
+      aBlack: ((gameNo - 1) % 2) === 0, error: one.error ?? null,
+    });
+    flush({ gameNo, ply: one.plies ?? null });
+    appendEvent(outDir, {
+      kind: 'game-done', gameNo, status: one.status, winner: one.winner ?? null,
+      plies: one.plies ?? null, durationMs: one.durationMs ?? null, gameUid: one.gameUid ?? null,
+      error: one.error ?? null, wdl: snapshot(state, {}).wdl,
+    });
+    log(`进度：${formatProgress(snapshot(state, {}))}`);
     if (gameNo < games) await sleep(pauseMs);
   }
   summary.endedAt = new Date().toISOString();
-  writeJson(path.join(outDir, 'round-summary.json'), summary);
   const okCount = summary.games.filter((g) => g.status === 'skipped' || g.status === 'ok' || g.status === 'ok-dry').length;
+  summary.progress = snapshot(state, {});
   /* 轮末补 experiments 行（只写真跑的局）：失败不坏出口码——棋谱才是主产物，
      实验行缺失时 status.md「实验轮」口径已在 ADR-0019 后果里交代。 */
-  if (!dryRun && okCount > 0) {
-    try {
-      const resp = await apiPostExperiment(origin, experimentEntryFrom(plan, a, b, summary));
-      log(`experiments 行已归档：tag=${plan.tag} total=${resp && resp.total != null ? resp.total : '?'}`);
-    } catch (e) {
-      log(`experiments 归档失败（棋谱不受影响）：${e.message || e}`);
+  if (store === 'd1') {
+    if (!dryRun && okCount > 0) {
+      try {
+        const resp = await apiPostExperiment(origin, experimentEntryFrom(plan, a, b, summary));
+        log(`experiments 行已归档：tag=${plan.tag} total=${resp && resp.total != null ? resp.total : '?'}`);
+      } catch (e) {
+        log(`experiments 归档失败（棋谱不受影响）：${e.message || e}`);
+      }
     }
+  } else {
+    /* local：一行都不发。把「本来会 POST 的实验行」留在 summary 里，桶留档（D14）时随 report 一起走。 */
+    summary.experimentEntry = experimentEntryFrom(plan, a, b, summary);
+    log(`store=local：未触碰业主 Worker（实验行留在 round-summary.json 的 experimentEntry 里）`);
   }
+  appendEvent(outDir, { kind: 'round-end', ok: okCount, total: games, progress: summary.progress });
+  writeJson(path.join(outDir, 'round-summary.json'), summary);
   log(`worker 完：${okCount}/${games} 局正常`);
+  log(`产物：${jsonlFile} · ${path.join(outDir, 'progress.json')} · ${path.join(outDir, 'events.jsonl')}`);
   /* rapfi 胶水的 Node 分支在程序退出时会 exit(1) 置位 process.exitCode
      （public/rapfi/rapfi-single-simd128.js:10 的 ha=(a,b)=>{process.exitCode=a;throw b}，
      stdin EOF/引擎 teardown 触发），纯噪声。这里按 summary 显式定出口码，把噪声与真实失败分开。 */
@@ -389,6 +500,29 @@ async function playOne(plan, a, b, gameNo, dirs) {
   };
   /* st 初值：引擎新局（createSession 只给空壳，浏览器由 resetSession 填，见 src/app/ctx.ts）。 */
   session.st = engine.newGame();
+  /* 配对开局（D9）：把开局库的 seq 当「脚本落子」写进历史。不是 AI 决策 ⇒ byAI:false，
+     但仍写 meta.code（归档里能看出这局跑的是哪个提交）。落不下去就整局记 error ——
+     开局库与引擎口径不一致必须立刻暴露，不能悄悄少走几手然后当成正常局收下。 */
+  if (dirs.opening) {
+    for (const n of dirs.opening.seq) {
+      const mv = engine.moveFromNotation(session.st, n);
+      if (!mv) {
+        return {
+          status: 'error',
+          error: `开局库着法无法落地：${n}（第 ${session.history.length + 1} 手，开局 ${dirs.opening.key}）`,
+          durationMs: Date.now() - startedAt,
+        };
+      }
+      const side = session.st.turn === 'white' ? 'white' : 'black';
+      session.history.push({
+        ply: session.history.length + 1,
+        side,
+        move: mv,
+        meta: { byAI: false, opening: true, side, code: codeOf() },
+      });
+      session.st = engine.applyMove(session.st, mv);
+    }
+  }
   /* sideConfig 两槽填实，buildGameExport 的 slug/duelLabel/渠道兜底才与浏览器同口径
      （export.ts:33 只按 'black'/'white' 两槽查）。 */
   session.settings.sideConfig = {
@@ -465,6 +599,8 @@ async function playOne(plan, a, b, gameNo, dirs) {
       });
       session.st = engine.applyMove(session.st, decision.move);
       lastProgress = Date.now();
+      /* D13：每手回写「跑到第几手」（长局里 progress.json 不写就会几分钟不动，看不出死没死）。 */
+      if (dirs.onPly) dirs.onPly(session.history.length);
     }
   } catch (e) {
     return { status: 'error', error: String(e && e.message ? e.message : e), durationMs: Date.now() - startedAt };
@@ -481,9 +617,19 @@ async function playOne(plan, a, b, gameNo, dirs) {
   if (wThink !== undefined) payload.whiteThink = wThink;
   const gameFile = path.join(dirs.gamesDir, gameRecordName(round, gameNo));
   writeJson(gameFile, payload);
+  /* D11 本地库：每局一行同样的 payload。单局 JSON 与 JSONL 故意都留（前者方便单局排查，
+     后者是「一个文件好上传」的形态）；`loadRecords` 按 gameUid 去重，不会算两次 Elo。 */
+  if (dirs.jsonlFile && !dryRun) {
+    try {
+      ensureDir(path.dirname(dirs.jsonlFile));
+      fs.appendFileSync(dirs.jsonlFile, JSON.stringify(payload) + '\n');
+    } catch (e) {
+      log(`games.jsonl 追加失败（单局 JSON 仍在）：${e.message || e}`);
+    }
+  }
 
   const result = {
-    status: dryRun ? 'ok-dry' : 'ok',
+    status: dryRun && dirs.store === 'd1' ? 'ok-dry' : 'ok',
     gameUid: session.gameUid,
     plies: session.history.length,
     seed: gameSeed,
@@ -496,7 +642,7 @@ async function playOne(plan, a, b, gameNo, dirs) {
     startedAt: t0.toISOString(),
   };
 
-  if (!dryRun) {
+  if (dirs.store === 'd1' && !dryRun) {
     /* 归档前先落一次 pending（带 gameUid）：kill -9 落在归档中途时，续跑能复用同一 uid，
        dedup_key 不变 ⇒ D1 里不会出现「同一轮同一局号两份棋谱且都算数」。 */
     writeJson(path.join(dirs.ckptDir, gameRecordName(round, gameNo)), {

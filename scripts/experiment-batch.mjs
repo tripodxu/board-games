@@ -6,6 +6,7 @@
 //           [--pause 2500] [--seed N] [--dry-run] [--force] [--batch 名]
 //           [--host IP] [--repo 远端仓根] [--user root] [--key-file 路径]
 //           [--origin https://…]（不给 origin 时必须 --allow-production 才写生产 D1）
+//           [--store d1|local]（缺省 d1；local = worker 只落远端 games.jsonl，零网络写，D11）
 //           [--parallel]（仅双本地臂）
 //     → 本地生成每轮 plan.json → scp 到远端 → nohup 起 worker，后台跑
 //       （--key-file 默认 /root/.jev-key：远端 shell source 它把 key 注入 worker 环境）
@@ -97,6 +98,10 @@ async function cmdSubmit(args) {
   const seed = args.seed !== undefined ? Number(args.seed) : Math.floor(Date.now() / 1000);
   if (!Number.isInteger(seed)) die('--seed 必须是整数');
   const dryRun = !!args['dry-run'];
+  /* P4 起 worker 的缺省是 `--store local`（D11：不写生产 D1）。本编排器是「旧行为」的持有者，
+     所以在这里**显式**写 `d1`；想只落远端 JSONL 就 `--store local`。 */
+  const store = String(args.store || 'd1');
+  if (store !== 'local' && store !== 'd1') die('--store 只认 local|d1');
   /* batchId 缺省带时分秒：早先只给日期（`YYYYMMDD`）⇒ 同一天第二次 submit 会撞上同一批目录，
      远程 checkpoint 全命中、一局不跑却 POST 一行 total 正常的实验档案（合入审查 M4）。 */
   const batchRaw = args.batch
@@ -156,7 +161,7 @@ async function cmdSubmit(args) {
       batchId, round: i, tag: batchTag(startedAt, batchId, i), games,
       a: formatSpec(a), b: formatSpec(b), pauseMs,
       timeoutMin, stallMin, maxPlies, topK, seed,
-      dryRun, origin,
+      dryRun, origin, store,
       outDir: `${repo}/.work/remote/${batchId}/round-${i}`,
     };
     plans.push(plan);
@@ -180,6 +185,7 @@ async function cmdSubmit(args) {
   console.log(`  速率预算：上游臂 ${budget.upstreamSides} 个，估计 ≈ ${budget.jevCallsPerMin} 次/分（按 4s/步），单轮 D1 写 ≈ ${budget.writesPerDay} 行`);
   console.log(`  tag：${plans.map((p) => p.tag).join(' , ')}`);
   console.log(`  origin：${origin}${maxPlies !== 225 || topK !== 3 ? `（maxPlies=${maxPlies} topK=${topK}）` : ''}`);
+  console.log(`  存储：${store === 'd1' ? '归档进 D1 + 按 uid 核对' : '仅落远端 games.jsonl（零网络写，D11）'}`);
 
   // 远端建目录 + 逐个上传 plan
   if (!ssh(host, user, `mkdir -p ${repo}/.work/remote/${batchId}/{plans,logs}`)) die('远端 mkdir 失败（ssh 不通？）');
@@ -338,6 +344,7 @@ function main() {
     console.log('         [--batch 名] [--host IP] [--user 用户] [--repo 远端仓路径]');
     console.log('         [--origin https://…]（换域即不写生产 D1）| 不给 --origin 时必须显式 --allow-production（写生产 D1 的闸门）');
     console.log('         [--max-plies 225] [--topk 3] [--timeout-min 180] [--stall-min 15] [--dry-run]');
+    console.log('         [--store d1|local]  缺省 d1（本编排器保持旧行为）；local = worker 只落远端 games.jsonl，不碰业主 Worker（D11）');
     console.log('         多轮（--rounds>1）**串行**：起一轮 → 等它退出 → 再起下一轮（限流口径要求 concurrency=1）');
     console.log('         [--parallel] 只对**双本地臂**放行（两侧都不是 proxy/official/openrouter）：不再逐轮等待，一次起全部轮次');
     console.log('  resume --batch 名 [--round N] [--key-file 路径]   按 checkpoint 续跑某一轮（kill 后恢复用）');

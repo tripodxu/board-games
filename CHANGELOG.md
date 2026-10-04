@@ -27,6 +27,20 @@
 
 ### 新增
 
+- **远端阶梯的地基：配对开局 + 进度可查 + 默认不碰业主 Worker（P4 阶梯地基，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
+  新增 `scripts/lib/openings.mjs`（开局库：归档决胜局取前 N 手、8 变换对称归一、去重计数、原子读写、
+  `openingForNo()` 让**连续两局同一开局、换色双跑** —— 配对样本是分辨 5 pt 差异的前提）与
+  `scripts/lib/progress.mjs`（`progress.json` 原子写 + `events.jsonl` 追加 + `eta()` 估算，
+  `etaS` 只按已完赛局取最近 5 局均值，样本不足给 `null` 而不编数字；`skipped` 不计入 W/D/L ——「没跑 ≠ 和棋」）。
+  `scripts/experiment-worker.mjs` 新增 `--openings <file>`、`--store local|d1`（**缺省 `local`** ⇒ 默认不写生产 D1，
+  老调用方在 plan 里显式写 `store:'d1'` 保持原行为）、`--device-id <id>`，每局落
+  `progress.json`/`events.jsonl`，并把每局 payload 追加进 `games.jsonl`（`--store local` 的唯一产物）；
+  `scripts/lib/batch-elo.mjs` 的 `loadRecords()` 学会读 `games.jsonl` 并按 `gameUid` 去重。
+  实测（脚本 `.work/p4-build-openings.mjs`、`.work/p4-verify.mjs`）：归档 54 局 ⇒ 45 局决胜用、4 本开局，
+  rapfi 自对弈 2 局**前 6 手逐手等于开局库**、`games.jsonl` 可被 `loadRecords` 读回 2 局（身份 `rapfi||500`）、
+  跑动中可读到 `{done,gameNo,ply,wdl,elapsedS,etaS}`、`store=local` 轮次零网络写（实验行留在 `round-summary.json`）。
+  顺带修掉归档两处坑：归档**没有 `winner` 字段**（只有中文 `result`）⇒ 新增 `winnerSideOf()`；
+  归档布局是 `games/<day>/*.json` ⇒ 路径闸门改成「路径上任何一级目录叫 `games`」（`loadRecords` 同步受益）。
 - **战术层可离线回溯（P3 回放 + 考古，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：新增离线重放工具
   [`scripts/tactics-replay.mjs`](scripts/tactics-replay.mjs)（纯核 [`scripts/lib/tactics-replay.mjs`](scripts/lib/tactics-replay.mjs)），
   拿**任意历史棋谱 × 任意档位**重放：`--dir/--file/--game <uid>/--tag <tag>/--tactics <id>/--sides/--limit/--max-games/--json/--show`。

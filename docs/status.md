@@ -332,6 +332,24 @@
   ③ 覆盖 **13/14 层**（缺 `threat`，结构性不可达：`you:open4` 标签判据与 `chance_points_you` 同源，且含 `threat` 的档都含 `open4` 而链里 `open4` 在前；
   取证 2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）；④ `⑭d` 证指纹与 `decide()` 全链路同解；
   ⑤ 引擎套件 **153 例**（+5）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净、`check:docs` 58 md / 397 链接。语料规模是实测定的：120 局面要 ~9 分钟（早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面），进不了 CI。决策记录 [ADR-0020](adr/0020-tactics-fidelity-freeze.md)。
+- **远端阶梯的地基：配对开局 + 进度可查 + 默认不碰业主 Worker（P4 阶梯地基，2026-10-04）**：
+  新增 `scripts/lib/openings.mjs`（269 行：从归档决胜局取前 N 手、8 变换对称归一、去重计数、
+  `openingForNo()` 让**连续两局同一开局、换色双跑**、原子读写 + 形状校验）与 `scripts/lib/progress.mjs`
+  （153 行：`progress.json` 原子写 + `events.jsonl` 追加 + `eta()` 只按已完赛局估，样本不足给 `null` 而不编数字）；
+  `scripts/experiment-worker.mjs` 新增 `--openings`/`--store local|d1`（**缺省 local** ⇒ 默认不写生产 D1，
+  老调用方在 plan 里显式写 `store:'d1'` 保持原行为）/`--device-id`；`scripts/lib/batch-elo.mjs` 的 `loadRecords()`
+  学会读 `games.jsonl` 并按 `gameUid` 去重（单局 JSON 与 JSONL 同时存在只算一次）。
+  证据（脚本 `.work/p4-build-openings.mjs`、`.work/p4-verify.mjs`，可复算）：① 归档 54 局 ⇒
+  `source={games:54,used:45,dropped:9}` + 4 本开局（`H8 E5 I8 B2 J8 G8` 13× 等），同输入逐字节同输出；
+  ② rapfi 自对弈真跑（`exp-20261004-p4smoke-r1`，2 局，同一开局换色）**前 6 手逐手等于开局库**，
+  第 7 手起才有 `ai` 块且 `ch=rapfi`；③ `games.jsonl` 可被 `loadRecords` 读回 2 局、身份 `rapfi||500`；
+  ④ 跑动中读到 `{total:2,done:1,gameNo:1,ply:50,wdl:{…},elapsedS:12,etaS:12}`（`ssh cat progress.json` 同形）；
+  ⑤ `store=local` 轮次零网络写（实验行留在 `round-summary.json` 的 `experimentEntry`）；
+  ⑥ scripts 单测 **6 文件 / 136 例**、vitest 全量 **41 文件 / 478 例**、引擎套件 **153 例**、`tsc --noEmit` 干净、
+  `check:docs` **59 md / 411 链接**、`node test/engines/fingerprint.mjs --check` 一致（210 行）。**归档的两处坑**（P4 建库时当场踩到）：
+  归档**没有 `winner` 字段**、只有中文 `result`（`"黑方 获胜（五连）"`/`"和棋（棋盘已满）"`），
+  且布局是 `games/<day>/*.json` ⇒ 旧的「父目录名叫 `games`」闸门对归档一局都匹配不上，
+  两条都已按「路径上任何一级目录叫 `games`」+ `winnerSideOf()` 修好（`loadRecords` 同步受益，P5 用归档算 Elo 才走得通）。
 - **战术层可离线回溯（P3 回放 + 考古，2026-10-04）**：新增离线重放 `scripts/tactics-replay.mjs`（纯核 `scripts/lib/tactics-replay.mjs`，
   `--dir/--file/--game/--tag/--tactics/--sides/--limit/--max-games/--json/--show`；23 例单测在 `test/scripts/tactics-replay.spec.mjs`），
   并产出考古文档 [战术档位考古](plans/2026-10-04-tactics-archaeology.md)（267 行）。
@@ -470,10 +488,10 @@
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
-   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅ 已完成**（见上「已验证」五条；
+   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅ 已完成**（见上「已验证」六条；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 P4/P4b 离线运行面**
-   （`--store local` + `--upstream direct` + 进度文件 + 桶留档，零 CF 触碰验收）→ P5 Elo 升级（BT + bootstrap CI）
+   **下一步 P4b 离线运行面 + 桶留档**
+   （`--upstream direct` + `--rate-limit` + 429 熔断 + `s3-put.mjs`/`batch-bucket.mjs` 与零 CF 触碰验收）→ P5 Elo 升级（BT + bootstrap CI）
    → P6 阶梯编排。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
    第一晚 L3 是否含 `rapfi@5000`、P7 `--rev` 是否做、**对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws
    ⇒ 纯 Node SigV4）、兜底是否进生产 Worker 路径。

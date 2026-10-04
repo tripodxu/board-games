@@ -88,13 +88,21 @@ export function gameRecord(exportJson) {
 }
 
 /**
- * 读一个目录（或目录数组）下的棋谱 JSON，按 exported/tag 稳定排序。
- * 只收 `<任意层级>/games/*.json`：worker 的产物布局是 round-i/games/，
- * 这样 round-summary.json / elo.json / plans/plan.json 都不会被当成棋谱。
+ * 读一个目录（或目录数组）下的棋谱，按 exported/tag 稳定排序。两种布局都认：
+ *   - `<任意层级>/games/*.json`：worker 的产物布局是 round-i/games/，
+ *     这样 round-summary.json / elo.json / plans/plan.json 都不会被当成棋谱；
+ *   - `<任意层级>/games.jsonl`（或 `games/*.jsonl`）：**D11 的 `--store local` 产物**，
+ *     每行一局（形状与 `games/*.json` 的 payload 逐字相同，只是攒在一个文件里）。
+ *     坏行跳过（和坏 JSON 同处置）：JSONL 是追加写的，`kill -9` 可能留半行。
  */
 export function loadRecords(dirOrDirs) {
   const dirs = Array.isArray(dirOrDirs) ? dirOrDirs : [dirOrDirs];
   const files = [];
+  const jsonls = [];
+  /* 「棋谱 JSON」= 路径上**任何一级目录**叫 `games`。两种布局都覆盖：
+     worker 的 `round-i/games/*.json`，以及归档的 `games/<day>/*.json`
+     （早先只认「父目录名叫 games」，归档 `games/2026-10-01/x.json` 会被全部漏掉）。 */
+  const inGamesDir = (p) => p.split(path.sep).slice(0, -1).includes('games');
   for (const dir of dirs) {
     if (!dir || !fs.existsSync(dir)) continue;
     const walk = (d) => {
@@ -102,7 +110,8 @@ export function loadRecords(dirOrDirs) {
         const p = path.join(d, name);
         const st = fs.statSync(p);
         if (st.isDirectory()) walk(p);
-        else if (/\.json$/i.test(name) && path.basename(d) === 'games') files.push(p);
+        else if (/\.json$/i.test(name) && inGamesDir(p)) files.push(p);
+        else if (/\.jsonl$/i.test(name) && (name === 'games.jsonl' || inGamesDir(p))) jsonls.push(p);
       }
     };
     walk(dir);
@@ -114,8 +123,31 @@ export function loadRecords(dirOrDirs) {
     const rec = gameRecord(json);
     if (rec) recs.push(rec);
   }
-  recs.sort((a, b) => (a.exported || a.tag).localeCompare(b.exported || b.tag) || (a.gameUid || '').localeCompare(b.gameUid || ''));
-  return recs;
+  for (const f of jsonls) {
+    let text = '';
+    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    for (const line of text.split('\n')) {
+      const s = line.trim();
+      if (!s) continue;
+      let json = null;
+      try { json = JSON.parse(s); } catch { continue; }
+      const rec = gameRecord(json);
+      if (rec) recs.push(rec);
+    }
+  }
+  /* 同一局可能同时出现在 `games/*.json` 与 `games.jsonl` 里（本地故意存两份：前者方便单局排查，
+     后者是 D11 的「一个文件好上传」形态）⇒ 按 gameUid 去重，否则同一局会被算两次 Elo。
+     没有 gameUid 的老记录退化成「同 exported + 同身份 + 同手数 + 同结果」当同一局。 */
+  const seen = new Set();
+  const uniq = [];
+  for (const r of recs) {
+    const key = r.gameUid || `${r.exported}|${r.black}|${r.white}|${r.plies}|${r.result}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(r);
+  }
+  uniq.sort((a, b) => (a.exported || a.tag).localeCompare(b.exported || b.tag) || (a.gameUid || '').localeCompare(b.gameUid || ''));
+  return uniq;
 }
 
 /**

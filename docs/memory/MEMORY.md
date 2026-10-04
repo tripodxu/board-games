@@ -19,6 +19,38 @@
 
 ---
 
+## 2026-10-04 · P4 阶梯地基：开局库 + 进度文件 + 默认 `--store local`；归档棋谱没有 `winner`
+
+- **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` P4）**：
+  ① [`scripts/lib/openings.mjs`](../../scripts/lib/openings.mjs)（269 行）：开局库生成/校验/原子读写，
+  `openingForNo()` = 每本开局连续两局、换色双跑（配对样本，分辨 5 pt 的前提）；
+  ② [`scripts/lib/progress.mjs`](../../scripts/lib/progress.mjs)（153 行）：`progress.json` 原子写 + `events.jsonl` + `eta()`；
+  ③ [`scripts/experiment-worker.mjs`](../../scripts/experiment-worker.mjs) 新增 `--openings`/`--store local|d1`（**缺省 local**）/`--device-id`，
+  每局落进度与 `games.jsonl`；④ [`scripts/lib/batch-elo.mjs`](../../scripts/lib/batch-elo.mjs) 的 `loadRecords()` 会读 `games.jsonl` 并按 `gameUid` 去重。
+- **坑①（最贵）归档棋谱的形状和 worker 产物不一样，判据写成注释里那种「看起来对」的就会静默读到 0 局**：
+  归档（`games/<day>/*.json`）顶层是 `format,exported,game,gid,mode,channel,result,notation,moves` ——
+  **没有 `winner` 字段**，胜负只在中文 `result`（`"黑方 获胜（五连）"` / `"白方 获胜（认输）"` / `"和棋（棋盘已满）"`），
+  uid 叫 `gid`；而 `loadRecords`/`recordsFromDir` 原来的路径闸门是「**父目录**名叫 `games`」，
+  对 `games/2026-09-29/` 这种布局**一局都匹配不上**（54 个归档文件全部漏掉）。
+  当场症状是 `buildLibrary()` 抛 `拒绝写出不合法的开局库：库是空的（openings 为空数组）`。
+  ⇒ 新增 `winnerSideOf()`（认 `winner` 与中文 `result` 两种口径），路径闸门改成
+  「**路径上任何一级目录**叫 `games`」（`loadRecords` 同步改，P5 拿归档算 Elo 才走得通）。
+  **教训：把归档当数据源前先打印 `records.length`** —— 「0 局」与「全是和棋」在下一步长得一模一样。
+- **坑② `--store` 缺省改成 `local` 是有意为之的行为变更**：这是「实验面默认不碰业主 Worker」（G3/m13876）的落地，
+  老调用方（`experiment-batch.mjs submit`）在 plan 里**显式写 `store:'d1'`** 才能保持旧行为 —— 已改，别再把缺省改回 d1。
+- **坑③ 脚本落子的识别口径**：`aiMoveMeta()`（`src/core/meta.ts:67`）对非 AI 手返回 `null` ⇒
+  导出里**没有 `ai` 块**。在 ai-ai 局里「没有 `ai` 块」⇔ 该手由开局库脚本落下（第 7 手起才有 `ch=rapfi`）。
+  想给开局手加显式标记就得动 `src/core` 的导出与金样，目前选择「不加字段、写清口径」。
+- **坑④ 单测抓到的口径 bug（最容易骗自己的那类）**：`outcomeForA` 起初只排除 `status==='error'`，
+  于是断点续跑时 `skipped`（上一轮已归档的局）被算成**和棋**进了 W/D/L。规矩：**「没跑 ≠ 和棋」**，
+  `skipped` 且没带回 `winner` ⇒ 不计入（`done` 仍含它）。
+- **验收口径**：`--store local` 一局的产物 = `games/round-1-game-N.json` + `games.jsonl` + `progress.json` +
+  `events.jsonl` + `round-summary.json`（实验行留在 `round-summary.json.experimentEntry`，「本会 POST 的行」不丢）。
+  **「跑动中可读」要留真证据**：把 `pauseMs` 调大（本次 30000）在局间窗口里 `cat progress.json` ⇒
+  读到 `done=1 / gameNo=1 / ply=50 / wdl{w0 d0 l1} / elapsedS=12 / etaS=12`；跑完再读只能证明「文件存在」，证明不了「跑动中可读」。
+- 实测：归档 54 局 ⇒ `used=45`（9 局和棋按 `decisiveOnly` 丢）+ 4 本开局；rapfi 自对弈 2 局前 6 手逐手等于开局库
+  （`H8 E5 I8 B2 J8 G8`）；`games.jsonl` 读回 2 局、身份 `rapfi||500`；scripts 单测 6 文件 / 136 例。
+
 ## 2026-10-04 · P3 回放 + 考古：层一致率 100%、14/14 档参数层确证、DSH 的 node 跑不了 wrangler
 
 - **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` P3）**：
