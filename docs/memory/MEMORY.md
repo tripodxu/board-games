@@ -19,6 +19,28 @@
 
 ---
 
+## 2026-10-04 · 给归档/D1 加「逐手字段」要动四处，显式类型漏一处就编不过
+
+- C3 加 `provider`/`prob_source` 的完整链条：① `migrations/000N_*.sql`（`ALTER TABLE … ADD COLUMN`，只能加在末尾）；
+  ② `src/shared/record-map.ts` 的 `MoveRow` + 逐手映射，**并且 `MoveAiMeta` 要跟着加可选键**；
+  ③ `src/worker/lib/record-input.ts` 的入参白名单（**显式搬运，不靠 camelize**）；
+  ④ `src/worker/db/games.ts` 的 `GAME_MOVE_COLUMNS` / `GAME_MOVE_INSERT` 的 `VALUES (?N)` / bind 三处。
+- 坑：`MoveAiMeta` 是**显式接口**，忘了加键时 `ai.prov` 直接 `TS2339`（`Property 'prov' does not exist`）而
+  `GamePayload['moves']` 那种宽松索引签名看不出来 —— 报错位置在 `record-map.ts`，但根因是类型没跟着加。
+- 纪律：新列一律 `?? null`，**非 Jev 侧与老归档写 NULL，不写 `primary`/`exact` 冒充**；迁移先应用再部署
+  （`node .work/wrangler-run.mjs d1 migrations apply jev-qiguan --local|--remote`，本地 `npx wrangler` 在这台机器上
+  只有这个入口能跑远程）；应用后用只读 SQL 复核老行零改写。
+
+## 2026-10-04 · 报表加信息别拼进「另一个条件的三元 else 支」
+
+- C3 第一版把「上游兜底 N 手」拼在「有候选样本 ? 有样本… : 该身份不过 Jev 候选集…」的 **else 支**里，
+  于是 `official` 身份在这条夹具（没有候选样本）上，兜底手数被前一个条件整条吞掉 —— UI 单测直接抓到
+  （`expected '该身份不过 Jev 候选集（Rapfi/mock），没有候选点样本' to contain '上游兜底 4 手（…）'`）。
+- 纪律：**两件不同的事实就用两个独立表达式拼接**（`A + (cond ? B : '')`），不要嵌套进彼此的分支；
+  UI 单测里同时钉「有兜底」与「无兜底」两种身份，才能暴露这类吞并。
+- 附带：`styles/style.css` 的 `.exp-agg-head/.exp-agg-row` 是 7 列固定 `grid-template-columns`，**加列会打乱既有
+  `.exp-agg-num` 位置断言** ⇒ 优先把新信息放进 tooltip/累计行，别动列数。
+
 ## 2026-10-04 · Hono：预备头只在 `c.json()/c.body()` 路径生效，直接 `return fetch` 响应会丢
 
 - `c.header(k, v)` 写的是 Context 上的「预备头」，**只有走 `c.body()`/`c.json()` 这类路径时才合并进响应**。

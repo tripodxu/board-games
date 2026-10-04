@@ -137,6 +137,31 @@ describe('POST /api/games', () => {
     ]);
   });
 
+  it('上游提供方归因落库：provider/prob_source 有值写值、非 Jev 侧与老归档写 NULL（C3）', async () => {
+    /* C2 的逐手归因（`ai.prov`/`ai.probs`）由 0004 迁移追加。三个负例都在这一条里：
+       Rapfi 侧不过上游 ⇒ NULL；0004 之前的老归档形状（没有这两个键）⇒ NULL。
+       两者都不许写成 'primary'/'exact' —— 缺失表示「当时没这个口径」，不表示主家答的。 */
+    const res = await post(gomokuPayload({
+      exported: '2026-10-04T06:00:00.000Z',
+      moves: [
+        { ply: 1, side: '黑方', notation: 'h8', ai: { ch: 'official', mdl: 'typesafe/jev', conf: 0.8, p: 0.7, rank: 1, ms: 900, tv: 'v14-live3-fresh', prov: 'backup', probs: 'exact' } },
+        { ply: 2, side: '白方', notation: 'i9', ai: { ch: 'rapfi', mdl: 'rapfi', conf: 0.5, p: 0.4, rank: 1, ms: 1000, tv: null } },
+        { ply: 3, side: '黑方', notation: 'h9', ai: { ch: 'proxy', mdl: 'jev-latest', conf: 0.6, p: 0.5, rank: 1, ms: 700, tv: 'v13-pressure-gate' } },
+      ],
+      notation: 'h8,i9,h9,',
+    }));
+    expect(res.status).toBe(200);
+
+    const rows = await env.DB.prepare(
+      'SELECT ply, provider, prob_source AS probSource FROM game_moves ORDER BY ply',
+    ).all<{ ply: number; provider: string | null; probSource: string | null }>();
+    expect(rows.results).toEqual([
+      { ply: 1, provider: 'backup', probSource: 'exact' },
+      { ply: 2, provider: null, probSource: null },
+      { ply: 3, provider: null, probSource: null },
+    ]);
+  });
+
   it('带 X-Device-Id 时先建设备行（外键），并写入 games.device_id', async () => {
     const deviceId = 'test-device-0001';
     const res = await post(gomokuPayload({ exported: '2026-10-02T04:00:00.000Z' }), { 'x-device-id': deviceId });

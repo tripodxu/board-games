@@ -45,6 +45,10 @@ export interface GameMoveInput {
   /** 交给 Jev 决定的候选点数 / 其中带战术标签的点数（`0003_move_cands.sql`）；非 Jev 侧 ⇒ null */
   candsSent?: number | null;
   candsLabeled?: number | null;
+  /** 这一手由哪个上游提供方应答（`primary`/`backup`/…）与逐点概率来源（`exact`/`derived`）
+   *  （`0004_move_provider.sql`，C3）；非 Jev 侧与老归档 ⇒ null */
+  provider?: string | null;
+  probSource?: string | null;
 }
 
 /** 落库输入：column-aligned，未给出的可空列一律写 NULL。 */
@@ -229,13 +233,16 @@ const GAME_COLUMNS = `id, game_uid AS gameUid, created_at AS createdAt, day, gam
 
 const GAME_MOVE_COLUMNS = `ply, side, notation, tactics, tactics_version AS tacticsVersion,
   channel, model, confidence, prob, rank, ms, tac_ms AS tacMs, cands,
-  cands_sent AS candsSent, cands_labeled AS candsLabeled`;
+  cands_sent AS candsSent, cands_labeled AS candsLabeled,
+  provider, prob_source AS probSource`;
 
 const GAME_MOVE_INSERT = `INSERT INTO game_moves
   (game_id, ply, side, notation, tactics, tactics_version, channel, model, confidence, prob, rank, ms, cands, tac_ms,
    -- 0003 追加列：与 games 表同款，ALTER 只能加在末尾，SQL 里也放末尾好对照
-   cands_sent, cands_labeled)
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`;
+   cands_sent, cands_labeled,
+   -- 0004 追加列（C3）：上游提供方归因
+   provider, prob_source)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)`;
 
 const GAME_INSERT = `INSERT INTO games
   (game_uid, dedup_key, created_at, day, game, game_id, mode, result, winner, end_reason, end_by,
@@ -328,6 +335,9 @@ function moveStatement(db: D1Database, gameId: number, ply: number, move: GameMo
       /* 0003 追加列（C0/m13627）：缺失写 NULL，不写 0 */
       move.candsSent ?? null,
       move.candsLabeled ?? null,
+      /* 0004 追加列（C3）：非 Jev 侧 / 老归档写 NULL，不写 'primary' 冒充 */
+      move.provider ?? null,
+      move.probSource ?? null,
     );
 }
 

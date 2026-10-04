@@ -265,6 +265,62 @@ describe('实验报告：按「渠道 · 战术版本」分桶的对比口径', 
     expect(need(proxyRow, 'proxy 行').querySelector('.exp-agg-cands')!.textContent).toBe('63/55/19');
   });
 
+  it('上游兜底手数：逐侧合并、按身份单列，累计行给出「未计入主口径」一行（C3/C2）', () => {
+    /* C2 之后每一手都带 `ai.prov`（谁答的）；`backup` = 主家失败后由备用网关应答的手。
+       这些手换了网关，读主口径时应排除 —— 所以报表要把它们单独数出来，不能混进均值。 */
+    const entry: ExperimentEntry = {
+      tag: 'exp-prov',
+      date: '2026-10-04T04:00:00.000Z',
+      chanA: 'official',
+      chanB: 'rapfi',
+      tacA: 'v14-live3-fresh',
+      tacB: null,
+      thinkA: 0,
+      thinkB: 500,
+      total: 2,
+      games: [
+        /* #1：A（official）执黑 24 手里 20 手主家、4 手兜底；B 是 Rapfi，不过上游 ⇒ 没有归因 */
+        { no: 1, blackChan: 'official', blackTac: 'v14-live3-fresh', whiteChan: 'rapfi',
+          blackProv: { primary: 20, backup: 4 }, winnerChan: 'A' },
+        /* #2：A 换到白方，这一局全在主家上；老棋谱那侧干脆没有这个键 */
+        { no: 2, blackChan: 'rapfi', whiteChan: 'official', whiteTac: 'v14-live3-fresh',
+          whiteProv: { primary: 18 }, winnerChan: null },
+      ],
+    };
+
+    const t = expTotals([entry]);
+    expect(t.providers).toEqual({ primary: 38, backup: 4 });
+    expect(t.fallbackMoves).toBe(4);
+
+    const rows = expSideStats([entry]);
+    const official = rows.find((r) => r.channel === 'official')!;
+    expect(official.providers).toEqual({ primary: 38, backup: 4 });
+    expect(official.fallbackMoves).toBe(4);
+    /* Rapfi 刻意不过上游：空表（不是 {primary: 0}），兜底手数也是 0 而不是 null */
+    const rapfi = rows.find((r) => r.channel === 'rapfi')!;
+    expect(rapfi.providers).toEqual({});
+    expect(rapfi.fallbackMoves).toBe(0);
+
+    const h = host();
+    renderExpHistory([entry], h);
+    const total = need(h.querySelector('.exp-total'), '.exp-total');
+    expect(total.textContent).toContain('上游兜底 4 手（未计入主口径 · 主口径 38 手 · primary 38 · backup 4）');
+    /* 轮注脚也带一行（只在这轮真出现过兜底手时才有） */
+    expect(need(h.querySelector('#expReportNote')).textContent).toContain('上游兜底 4 手（未计入主口径）');
+    /* 逐身份的兜底手数在「候选发评标」格子的 tooltip 里 */
+    const officialRow = [...h.querySelectorAll('.exp-agg-row')].find(
+      (r) => (r as HTMLElement).dataset.key === 'official|v14-live3-fresh|0',
+    )!;
+    expect(need(officialRow, 'official 行').querySelector('.exp-agg-cands')!.getAttribute('title'))
+      .toContain('上游兜底 4 手（占 42 手 · primary 38 · backup 4）');
+    /* 没有归因的身份不提兜底 */
+    const rapfiRow = [...h.querySelectorAll('.exp-agg-row')].find(
+      (r) => (r as HTMLElement).dataset.key === 'rapfi||500',
+    )!;
+    expect(need(rapfiRow, 'rapfi 行').querySelector('.exp-agg-cands')!.getAttribute('title'))
+      .not.toContain('上游兜底');
+  });
+
   it('空列表：只有空态提示，注脚清空', () => {
     const h = host();
     renderExpHistory([], h);

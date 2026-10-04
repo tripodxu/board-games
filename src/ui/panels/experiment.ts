@@ -81,6 +81,10 @@ export interface ExpResult {
    *  `graded` = 模型给了概率的点数、`labeled` = 其中带战术标签的点数。非 Jev 侧不过候选集 ⇒ null。 */
   blackCands?: CandsStat | null;
   whiteCands?: CandsStat | null;
+  /** 该局黑/白方的**逐提供方手数**（C3/C2）：`{primary: 24, backup: 3}`，非 Jev 侧为 null。
+   *  上游兜底的手要能在报表里单独数出来（它们不算主口径的样本）。 */
+  blackProv?: Record<string, number> | null;
+  whiteProv?: Record<string, number> | null;
 }
 
 /** 旧 `EXP` 全量（js/app.js:1139）。 */

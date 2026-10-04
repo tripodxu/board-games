@@ -66,6 +66,10 @@ export type MoveAiMeta = {
   /** 其中带战术标签的点数；同上（C0/m13627） */
   candsLabeled?: number | null;
   tv?: string | number | null;
+  /** 这一手是谁答的（`primary`/`backup`/`custom`/`random`）；非 Jev 侧与老归档没有这个键（C3） */
+  prov?: string | null;
+  /** 逐点概率的来源（`exact`/`derived`）；同上（C3） */
+  probs?: string | null;
   /** 新前端补的每手保险标记（win/block/vcfAttack…）；历史棋谱没有这个字段 */
   tac?: string | null;
 };
@@ -199,6 +203,10 @@ export type MoveRow = {
   /** 交给 Jev 决定的候选点数 / 其中带战术标签的点数（0003 追加列） */
   cands_sent: number | null;
   cands_labeled: number | null;
+  /** 这一手是谁答的（`primary`/`backup`/`custom`/`random`，见 core/jev/providers.ts）与
+   *  逐点概率的来源（`exact`/`derived`）；非 Jev 侧与 0004 之前的老归档记 null（0004 追加列） */
+  provider: string | null;
+  prob_source: string | null;
 };
 
 /** `experiments` 表的 upsert 行。 */
@@ -428,6 +436,9 @@ export function mapGameRecord(
       /* 0003 追加列：老归档没有这两个键 ⇒ null（与 tac_ms 同款，不许写 0 冒充缺失） */
       cands_sent: ai ? num(ai.candsSent) : null,
       cands_labeled: ai ? num(ai.candsLabeled) : null,
+      /* 0004 追加列（C3）：老归档没有 prov/probs ⇒ null 而不是 'primary'/'exact' */
+      provider: ai ? strOrNull(ai.prov) : null,
+      prob_source: ai ? strOrNull(ai.probs) : null,
     };
   });
 

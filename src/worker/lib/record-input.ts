@@ -53,6 +53,9 @@ export function moveRowToInput(move: MoveRow): GameMoveInput {
     /* 0003 追加列（C0/m13627）：两个都显式搬运，别让 camelize 漏掉 */
     candsSent: move.cands_sent,
     candsLabeled: move.cands_labeled,
+    /* 0004 追加列（C3）：上游提供方归因，同样显式搬运 */
+    provider: move.provider,
+    probSource: move.prob_source,
   };
 }
 

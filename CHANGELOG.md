@@ -37,6 +37,17 @@
 
 ### 新增
 
+- **上游归因落库与报表分桶（C3，plan `2026-10-03-cands-metric-and-provider-failover`）**：「这一手是谁答的」
+  现在从归档一路写进 D1 与实验报表。新增 `migrations/0004_move_provider.sql`（`game_moves` 加 `provider` /
+  `prob_source` 两列，**已应用到本地与远程 D1**，远程老数据 19298 手零改写）；`src/shared/record-map.ts` 逐手取
+  `ai.prov`/`ai.probs`（`strOrNull`：非空字符串才写），`src/worker/lib/record-input.ts` 显式搬运、`src/worker/db/games.ts`
+  的列清单/`VALUES (… ?17, ?18)`/bind 三处同步。口径：`provider ∈ primary|backup|custom|random`、
+  `prob_source ∈ exact|derived`；**Rapfi/mock/人类侧与 0004 之前的老归档一律 NULL**（缺失表示「当时还没这个口径」，
+  不冒充 `primary`/`exact`）。报表累计行新增「上游兜底 N 手（未计入主口径 · 主口径 M 手 · primary … · backup …）」一行，
+  轮注脚与逐身份 tooltip 各有一处；`experiment-report.ts` 暴露 `FALLBACK_PROVIDER='backup'` 与
+  `mergeProvs`/`provMovesOf`/`fmtProvs` 三个纯函数。单测：worker 往返三手（Jev 手写值 / Rapfi 手 NULL / 老归档 NULL）、
+  ui 两局（`{primary:38, backup:4}`、Rapfi 身份空表、文案与 tooltip）。**遗留**：生产 Worker 尚未重新部署
+  （`deploy.yml` 只留 `workflow_dispatch`）⇒ 生产棋谱要等一次手动部署才开始写这两列，列已就位不会 insert 失败。
 - **上游兜底提供方：两个运行面共用一套切换判据（C2，plan `2026-10-03-cands-metric-and-provider-failover`）**：
   新增纯叶模块 `src/core/jev/providers.ts`（提供方表 `primary`=TypeSafe `jev-latest`、`backup`=commandcode
   `typesafe/jev`；失败分类 `classifyStatus` 按状态码分 auth / rate-limit / server / client；状态机

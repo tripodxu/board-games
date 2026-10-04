@@ -161,6 +161,8 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 > **战术档标签同理只在 Jev 渠道有意义**：`games.black_tactics` / `white_tactics` 与 `game_moves.tactics_version` 描述的是**真正跑战术层的那一侧**；Rapfi / mock / 人类侧一律为空（NULL）。判一侧是什么身份要看 `black_channel` / `white_channel`，不要把 `*_tactics` 当成对手的属性（2026-10-02 计时轮的「幻影身份」就是这么来的：脚本旧默认值给 Rapfi 侧写了 `v9-vcf-sound`）。
 >
 > **固定思考档列（`games.black_think` / `white_think`）口径相同**：只有该侧渠道是 `rapfi` 且预算 > 0 时才写（毫秒，`src/core/record/export.ts` 的 `thinkMsOf()`）；`proxy` 侧的「思考时间」是模型往返、人类侧没有预算，一律 NULL——写 0 会在报表里变成「0 毫秒档」这种不存在的身份。**2026-10-03 之前的轮次这两列全是 NULL**（棋局 payload 从来没有这两个键，只有轮次表的 `think_a`/`think_b`），要报当时的 Rapfi 档位得翻轮次配置。
+>
+> **上游归因列（0004 追加）**：`game_moves.provider`（`primary`/`backup`/`custom`/`random`）与 `game_moves.prob_source`（`exact` = 模型给了逐点概率、`derived` = 没给，概率是派生/均匀的）记的是**这一手是谁答的**。同样是「有值才写」：Rapfi / mock / 人类侧根本不打上游，**0004 之前的老归档也没有这个口径**，两者一律 NULL——`NULL` 不表示 `primary`/`exact`，所以统计「兜底了几手」要写 `SUM(provider = 'backup')` 而不是 `COUNT(*) - COUNT(provider)`。实验报表把兜底手单列成「上游兜底 N 手（未计入主口径）」，避免把主家与备用网关的棋混进同一个胜率口径（计划 `2026-10-03-cands-metric-and-provider-failover` C3）。
 
 ## 5. 身份与限流（ADR-0013）
 

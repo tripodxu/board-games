@@ -62,6 +62,10 @@ export interface ExpHistoryGame {
   /** 该局黑/白方的候选点三数（C0/m13627）；非 Jev 侧不过候选集 ⇒ null（不是 0） */
   blackCands?: CandsStat | null;
   whiteCands?: CandsStat | null;
+  /** 该局黑/白方的逐提供方手数（C3/C2）：`{primary: 24, backup: 3}`；非 Jev 侧 ⇒ null。
+   *  上游兜底（`backup`）的手不计入主口径，报表要能把它们单独数出来。 */
+  blackProv?: Record<string, number> | null;
+  whiteProv?: Record<string, number> | null;
 }
 
 /** 一轮实验的战报（旧 entry，js/app.js:1307-1319）。 */
@@ -218,6 +222,44 @@ export interface ExpTotals {
   candsLabeled: number | null;
   /** 上面三个平均值的样本手数 */
   candsMoves: number;
+  /** 逐提供方手数汇总（C3/C2）：`{primary: 240, backup: 12}`；一手都没归因时是空表。
+   *  只有真问过模型的手才有提供方（Rapfi/mock/人类侧没有）。 */
+  providers: Record<string, number>;
+  /** 其中**兜底**（`backup`）手数：这些手换了个网关应答，不算主口径的样本 */
+  fallbackMoves: number;
+}
+
+/** 上游兜底的提供方 id（与 `core/jev/providers.ts` 的 `PROVIDER_BACKUP` 同值；
+ *  这里刻意不 import worker/core 的模块，报表只认字符串口径）。 */
+export const FALLBACK_PROVIDER = 'backup';
+
+/** 逐提供方手数合并（C3）：只认正整数值，缺字段的一方按空表处理。 */
+function mergeProvs(into: Record<string, number>, p: Record<string, number> | null | undefined): void {
+  if (!p) return;
+  for (const k of Object.keys(p)) {
+    const v = p[k];
+    if (typeof v === 'number' && v > 0) into[k] = (into[k] || 0) + v;
+  }
+}
+
+/** 逐提供方手数 → `primary 24 · backup 3`（报表 tooltip / 说明用；空表返回空串）。 */
+export function fmtProvs(p: Record<string, number> | null | undefined): string {
+  if (!p) return '';
+  return Object.keys(p)
+    .sort((a, b) => p[b]! - p[a]!)
+    .map((k) => `${k} ${p[k]}`)
+    .join(' · ');
+}
+
+/** 逐提供方手数合计（兜底手的占比分母用）。 */
+export function provMovesOf(p: Record<string, number> | null | undefined): number {
+  if (!p) return 0;
+  let n = 0;
+  for (const k of Object.keys(p)) {
+    const v = p[k];
+    if (typeof v === 'number' && v > 0) n += v;
+  }
+  return n;
 }
 
 /** 旧 `renderExpHistory()` 的累计行口径（js/app.js:1347-1390）。 */
@@ -233,6 +275,8 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
   let csSum = 0, csMoves = 0;
   let cgSum = 0, cgMoves = 0;
   let clSum = 0, clMoves = 0;
+  /* 逐提供方手数（C3/C2）：`{primary: 240, backup: 12}`；兜底手由 `fallbackMoves` 单列 */
+  const providers: Record<string, number> = {};
   /* 战术层耗时按「手」加权：一局里两边的样本合起来算，权重是该侧的样本手数 */
   const addTac = (avg: number | null | undefined, n: number | undefined) => {
     if (typeof avg !== 'number') return;
@@ -254,6 +298,9 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
       addTac(g.whiteTacMs, g.whiteTacN);
       addCands(g.blackCands);
       addCands(g.whiteCands);
+      /* 逐提供方手数（C3/C2）：两侧合并；兜底手单列，主口径按「不含兜底」读 */
+      mergeProvs(providers, g.blackProv);
+      mergeProvs(providers, g.whiteProv);
       const wside = g.winnerChan ?? null;
       const wchan = wside ? (wside === 'A' ? e.chanA : e.chanB) : null;
       if (!wside) draws++;
@@ -274,6 +321,8 @@ export function expTotals(list: readonly ExperimentEntry[]): ExpTotals {
     candsGraded: cgMoves ? Math.round((cgSum / cgMoves) * 10) / 10 : null,
     candsLabeled: clMoves ? Math.round((clSum / clMoves) * 10) / 10 : null,
     candsMoves: csMoves,
+    providers,
+    fallbackMoves: providers[FALLBACK_PROVIDER] || 0,
   };
 }
 
@@ -341,6 +390,10 @@ export interface SideStat extends SideIdentity {
   candsSent: number | null;
   candsGraded: number | null;
   candsLabeled: number | null;
+  /** 逐提供方手数（C3/C2）：`{primary: 24, backup: 3}`；该身份不过 Jev（Rapfi/mock）时为空表 */
+  providers: Record<string, number>;
+  /** 其中兜底（`backup`）手数：这些手换了网关应答，读主口径时应把它们排除 */
+  fallbackMoves: number;
 }
 
 /** 把一局的战术层耗时（某一侧）并进身份统计；`null` = 该侧没过战术层，不进样本。 */
@@ -367,7 +420,8 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
     if (!s) {
       s = { ...id, games: 0, wins: 0, draws: 0, losses: 0, rate: 0, tacSum: 0, tacMoves: 0, tacAvgMs: null,
             candSentSum: 0, candSentMoves: 0, candGradedSum: 0, candGradedMoves: 0,
-            candLabeledSum: 0, candLabeledMoves: 0, candsSent: null, candsGraded: null, candsLabeled: null };
+            candLabeledSum: 0, candLabeledMoves: 0, candsSent: null, candsGraded: null, candsLabeled: null,
+            providers: {}, fallbackMoves: 0 };
       map.set(id.key, s);
     }
     return s;
@@ -383,6 +437,9 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
       addSideTac(white, g.whiteTacMs, g.whiteTacN);
       addSideCands(black, g.blackCands);
       addSideCands(white, g.whiteCands);
+      /* 逐提供方手数（C3/C2）：兜底手单独计数，读主口径时排除 */
+      mergeProvs(black.providers, g.blackProv);
+      mergeProvs(white.providers, g.whiteProv);
       if (!g.winnerChan) {
         black.draws++;
         white.draws++;
@@ -408,6 +465,7 @@ export function expSideStats(list: readonly ExperimentEntry[]): SideStat[] {
     s.candsSent = r1(s.candSentSum, s.candSentMoves);
     s.candsGraded = r1(s.candGradedSum, s.candGradedMoves);
     s.candsLabeled = r1(s.candLabeledSum, s.candLabeledMoves);
+    s.fallbackMoves = s.providers[FALLBACK_PROVIDER] || 0;
   });
   rows.sort((x, y) => y.games - x.games || y.rate - x.rate || x.label.localeCompare(y.label));
   return rows;
@@ -476,6 +534,10 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     t.candsSent == null
       ? null
       : ` · 候选点均值 发 ${t.candsSent} / 评 ${fmtCands(t.candsGraded)} / 标 ${fmtCands(t.candsLabeled)}（${t.candsMoves} 手）`,
+    /* 上游兜底（C3/C2）：兜底手换了网关应答，不计入主口径；主口径手数 = 有归因的手 − 兜底手 */
+    t.fallbackMoves
+      ? ` · 上游兜底 ${t.fallbackMoves} 手（未计入主口径 · 主口径 ${provMovesOf(t.providers) - t.fallbackMoves} 手 · ${fmtProvs(t.providers)}）`
+      : null,
   ]);
   const head = el('div', { class: 'exp-agg-head' }, [
     el('span', { text: '渠道 · 战术' }),
@@ -503,10 +565,14 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
       el('span', {
         class: 'mono exp-agg-num exp-agg-cands',
         title:
-          r.candsSent == null
+          /* 上游兜底（C3/C2）与候选点样本是两件事：有没有候选样本都要报兜底手数，
+             否则「这批手是备用网关答的」这件事会被前一个条件吞掉。 */
+          (r.candsSent == null
             ? '该身份不过 Jev 候选集（Rapfi/mock），没有候选点样本'
             : '候选点均值：发 ' + r.candsSent + '（交给 Jev 决定）· 评 ' + fmtCands(r.candsGraded) +
-              '（模型给了概率）· 标 ' + fmtCands(r.candsLabeled) + '（带战术标签）',
+              '（模型给了概率）· 标 ' + fmtCands(r.candsLabeled) + '（带战术标签）') +
+          (r.fallbackMoves ? ' · 上游兜底 ' + r.fallbackMoves + ' 手（占 ' + provMovesOf(r.providers) +
+            ' 手 · ' + fmtProvs(r.providers) + '）' : ''),
         text: r.candsSent == null ? '—' : r.candsSent + '/' + fmtCands(r.candsGraded) + '/' + fmtCands(r.candsLabeled),
       }),
       el('span', { class: 'exp-agg-rate' }, [
@@ -519,7 +585,7 @@ export function expAggregate(list: readonly ExperimentEntry[]): HTMLElement {
     total,
     head,
     rowEls,
-    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。「战术」= 战术层平均耗时，「候选发评标」= 候选点均值（发给 Jev / 模型给了概率 / 带战术标签），Rapfi/mock 刻意不过战术层与候选集故记 —。' }),
+    el('div', { class: 'hint', text: '胜率 =（胜 + 和 ÷ 2）÷ 局；重复局不计。「战术」= 战术层平均耗时，「候选发评标」= 候选点均值（发给 Jev / 模型给了概率 / 带战术标签），Rapfi/mock 刻意不过战术层与候选集故记 —。「上游兜底」= 主家失败后由备用网关应答的手数，这些手不计入主口径（鼠标停在「候选发评标」上看逐身份的兜底手数）。' }),
   ]);
 }
 
@@ -604,7 +670,9 @@ export function renderExpHistory(list: readonly ExperimentEntry[], root?: UiRoot
     qs(r, '#expReportNote'),
     `${list.length} 轮实验 · ${t.effective} 局有效` + (t.tacAvgMs == null ? '' : ` · 战术层均值 ${t.tacAvgMs}ms`)
       /* 候选点均值（C0/m13627）：只报「交给 Jev 几个点」这一个数，明细在分桶表里 */
-      + (t.candsSent == null ? '' : ` · 候选点均值 发 ${t.candsSent}`),
+      + (t.candsSent == null ? '' : ` · 候选点均值 发 ${t.candsSent}`)
+      /* 上游兜底（C3/C2）：一行就够 —— 只在这轮真出现过兜底手时才出现 */
+      + (t.fallbackMoves ? ` · 上游兜底 ${t.fallbackMoves} 手（未计入主口径）` : ''),
   );
 }
 
@@ -716,6 +784,9 @@ export function newEntryFromRun(state: ExperimentState, date: string = new Date(
       /* 候选点三数（C0/m13627）：非 Jev 侧没有样本 ⇒ null（不是 0） */
       blackCands: g.blackCands ?? null,
       whiteCands: g.whiteCands ?? null,
+      /* 逐提供方手数（C3/C2）：一手都没归因 ⇒ null（老棋谱与全 Rapfi 局都是这样） */
+      blackProv: g.blackProv ?? null,
+      whiteProv: g.whiteProv ?? null,
     })),
     note: '',
   };

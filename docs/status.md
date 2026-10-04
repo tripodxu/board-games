@@ -313,6 +313,21 @@
   （`events.jsonl` 四条 `outDir is not defined`）；逐手统计把非上游侧记成 `unknown` ⇒ 日志 `provider[backup:19 unknown:18]`
   读不出「兜底了几手」（`countProvider` 现在只认非空字符串 id）。实施记录与回滚见
   [plans/2026-10-03-cands-metric-and-provider-failover.md](plans/2026-10-03-cands-metric-and-provider-failover.md) §4.2 与 §5。
+- **上游归因落库与报表分桶**（2026-10-04，[候选点+兜底计划](plans/2026-10-03-cands-metric-and-provider-failover.md) C3）：
+  「这一手是谁答的」从归档一路写进 D1 与报表。**落库**：新增 `migrations/0004_move_provider.sql`
+  （`game_moves` 加 `provider` / `prob_source` 两列，已应用到本地与远程 D1），`src/shared/record-map.ts` 逐手取
+  `ai.prov`/`ai.probs`（`strOrNull`：非空字符串才写），`src/worker/lib/record-input.ts` 显式搬运（不靠 camelize），
+  `src/worker/db/games.ts` 的列清单/`VALUES (?1 … ?18)`/bind 三处同步。**口径**：`provider ∈ primary|backup|custom|random`、
+  `prob_source ∈ exact|derived`；Rapfi/mock/人类侧与 0004 之前的老归档一律 **NULL**（缺失表示「当时还没这个口径」，
+  **不冒充** `primary`/`exact`）。**报表**：累计行新增「上游兜底 N 手（未计入主口径 · 主口径 M 手 · primary … · backup …）」，
+  轮注脚与逐身份的「候选发评标」tooltip 各有一处；`experiment-report.ts` 暴露 `FALLBACK_PROVIDER='backup'` 与
+  `mergeProvs`/`provMovesOf`/`fmtProvs` 三个纯函数。证据：① 远程只读复核 `SELECT COUNT(*), SUM(provider IS NULL) … FROM game_moves`
+  ⇒ **19298 手不变、两列全 NULL**（老归档零改写；D1 仍 312 局 / 19298 手）；② 单测：worker「上游提供方归因落库」三手
+  （`backup`/`exact` 写值、Rapfi 侧 NULL、0004 前老归档形状 NULL）、ui「上游兜底手数」两局（`{primary:38, backup:4}`、
+  Rapfi 身份空表、累计行与轮注脚文案）、core 映射 `provider`/`prob_source` 断言；③ 全量验收 `tsc` 0 错、引擎 153/153、
+  vitest **49 文件 / 619 例**、`check:docs` 60 md / 422 链接、指纹一致（210 行）、`test/parity` 黄金零漂移。
+  **遗留**：生产 Worker 尚未重新部署（`deploy.yml` 只留 `workflow_dispatch`）⇒ 生产棋谱要等一次手动部署才开始写这两列
+  （列已就位，不会因缺列 insert 失败）；部署不改变任何默认行为（兜底仍 `off`）。
 - **对新旧两套入口对账**（计划 P4 执行记录）：`node scripts/verify-parity.mjs --base https://jev-qiguan.pages.dev --candidate https://jevqipan.logicc.top` → **差值 0**（54 局 / 五子棋 54 / 胜负 18-27-9 / 校准样本 26）。旧入口的截断口径仍是 40 份、胜负 16-16-8——差值 0 说明新侧不是靠「也多读一点」蒙对的。
 - **线上 HTTP 冒烟**（计划 P4 执行记录）：`npm run smoke:live` **29 项全过**（列表不含 payload、永久链接与列表指向同一局、旧深链带/不带 `.json` 都 200、`/api/stats` 无 `truncated`、导出为 JSONL、无 key 的 `/api/jev` 401、非法设备与非法日期 400、重传归档棋谱 `dedup: true` 且写 0 手、新房写 5 手、写后总数 54 → 55）。冒烟写入的行已删除，D1 复原 54/4379/0。
   2026-10-01 下午起该脚本改为 **30 项**，且总量断言一律**相对基线**（`stats.byGame` 只断言键是中文棋种名，`/api/experiments` 断言轮次 ≥ 6，写入后断言「基线 + 1」）——真实验一多，写死 54/6/55 就会天天空红（实测 `58 → 59` 通过；负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1）。
@@ -607,7 +622,8 @@
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
    ⇒ 兜底是「base URL + model + key」三元组直换；**C2 已完成并 box 验收**（`providers.ts` 表 + 两个运行面
    共用切换判据 + 离线夹具 + 逐手 `prov`/`probs` 归因；生产路径默认关，见上「已验证」条目）；
-   **下一步 C3（`provider`/`prob_source` 落库 + 报表分桶）→ C4（随下一次实验）**；
+   **C3 已完成**（`migrations/0004_move_provider.sql` 两列已应用到本地与远程 D1 + 报表「上游兜底 N 手（未计入主口径）」一行 + worker/ui 单测；见上「已验证」条目）；
+   **下一步 C4（随下一次实验：直连上游 + 兜底，并报战术层耗时与成本对照）**；唯一遗留是**生产 Worker 尚未重新部署**（列已就位，部署后生产棋谱才开始写这两列，属业主决定项）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
    P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅、
    P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（含 box 端到端真跑、中断续跑与 `--force` 重跑）

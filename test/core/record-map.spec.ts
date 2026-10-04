@@ -192,8 +192,8 @@ describe('record-map：解析与边界', () => {
       mock: true,
       deviceId: 'dev-1',
       moves: [
-        { ply: 1, side: '白方', notation: 'e2e4', ai: { ch: 'proxy', mdl: 'm', conf: 0.5, p: 0.25, rank: 1, cands: 8, candsSent: 12, candsLabeled: 3, ms: 900, tv: 'v9-vcf-sound', tac: 'block' } },
-        /* 老归档形状（0003 之前）：没有两个新键 ⇒ 必须映射成 null，不许冒 0 */
+        { ply: 1, side: '白方', notation: 'e2e4', ai: { ch: 'proxy', mdl: 'm', conf: 0.5, p: 0.25, rank: 1, cands: 8, candsSent: 12, candsLabeled: 3, prov: 'backup', probs: 'derived', ms: 900, tv: 'v9-vcf-sound', tac: 'block' } },
+        /* 老归档形状（0003/0004 之前）：没有四个新键 ⇒ 必须映射成 null，不许冒 0 或 'primary' */
         { ply: 2, side: '黑方', notation: 'e7e5', ai: { ch: 'proxy', mdl: 'm', conf: 0.4, p: 0.2, rank: 1, cands: 6, ms: 800, tv: 'v9-vcf-sound' } },
       ],
     };
@@ -212,6 +212,9 @@ describe('record-map：解析与边界', () => {
     /* 候选点三数（C0/m13627）：新键透出，老归档形状落 null */
     expect(moves[0]).toMatchObject({ cands_sent: 12, cands_labeled: 3 });
     expect(moves[1]).toMatchObject({ cands: 6, cands_sent: null, cands_labeled: null });
+    /* 上游提供方归因（C3/C2）：`ai.prov`/`ai.probs` 透出，老归档形状落 null（缺失 ≠ primary/exact） */
+    expect(moves[0]).toMatchObject({ provider: 'backup', prob_source: 'derived' });
+    expect(moves[1]).toMatchObject({ provider: null, prob_source: null });
   });
 
   it('脏输入只记 warning 不抛：无 moves / 未知棋种 / 未知 mode / 超限 payload', () => {

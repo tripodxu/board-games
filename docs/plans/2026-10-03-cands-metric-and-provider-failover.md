@@ -1,6 +1,6 @@
 # 计划：候选点数可观测（`cands` 家族）+ 上游 key 用尽自动兜底（commandcode 网关）
 
-- 状态：🚧 实施中（2026-10-03；**C0 已完成**，见 §4.1 与 §5；C1 探针已完成；**C2 已完成**，见 §4.2 与 §5；C3/C4 待做）
+- 状态：🚧 实施中（2026-10-03；**C0 已完成**，见 §4.1 与 §5；C1 探针已完成；**C2 已完成**，见 §4.2 与 §5；**C3 已完成**，见 §4.3 与 §5；C4 随下一次实验）
 - 来源：用户 2026-10-03（m13627）
 - 引块（逐字，含用户贴的第三方 token，按密钥纪律不入库、不写文档）：
 
@@ -109,6 +109,10 @@
 | `src/shared/record-map.ts` | 类型与映射（`ai ? num(ai.candsSent) : null` 同款） | ~15 行 |
 | `src/worker/lib/record-input.ts` + `src/worker/db/games.ts` | 入参白名单 + 列名（INSERT/SELECT 各一处） | ~12 行 |
 | `migrations/0003_move_cands.sql` | `ALTER TABLE game_moves ADD COLUMN cands_sent INTEGER;` …（两条）+ `provider`/`prob_source` 两列（B 部分） | ~8 行 |
+
+> 上表是**起草时的估算**。实施结果与此有偏差，以 §4.1/§4.2/§4.3 为准：`provider`/`prob_source` 最后单独落
+> `migrations/0004_move_provider.sql`（0003 当时已应用到远程，不再改历史迁移）；`src/worker/lib/upstream.ts`
+> 的改动落在新增的 `src/worker/lib/failover.ts` + `routes/jev.ts` 的 `providerAttempts()`。
 | `src/core/jev/providers.ts`（新） | provider 表 + 失败分类 + 粘滞选择（**无协议适配**；`kind: 'openai-chat'` 只留空位不实现） | ~110 行 |
 | `src/worker/lib/upstream.ts` + `src/worker/routes/jev.ts` | 依 provider 表选端点（url/model/key 三元组）、失败分类映射、切换粘滞状态与时序归因 | ~80 行 |
 | `src/ui/panels/experiment-report.ts` | `SideStat` 加候选均值、`expAggregate` 加列、`ExperimentEntry` 透传 | ~60 行 |
@@ -147,6 +151,22 @@
 
 验证：① `npx tsc --noEmit` 0 错；`node test/engines/run.mjs` **153/153**；`npx vitest run` **49 文件 / 617 例**；`check:docs` 60 md / 422 链接；指纹一致（210 行）。② 单测覆盖三条触发与反向不触发：`test/core/providers.spec.ts` 12 例（分类矩阵、状态生命周期、粘滞、全死回落）、`test/core/jev-failover.spec.ts` 10 例（401/429 用尽/5xx×3 三条触发、探活失败不切、无 backupKey 时老行为逐字不变、夹具形状）、`test/worker/jev.spec.ts` **+9 例**（`callUpstreamWithFailover` 六条 + `providerAttempts` 三条）。③ **离线夹具**：2026-10-04 在 box 上用我方真实三问打真网关抓的请求/响应对落 `test/fixtures/jev/commandcode-systemone-2026-10-03.json`（3152 B，`move.probabilities` 六点、`edge.noul 0.61`、`position.score 2.51`），协议漂移时单测先红。④ **box 端到端验收见 §5 C2 行**。
 
+### 4.3 C3 实施记录（2026-10-04，已完成）
+
+改动体量：11 文件（10 改 + 新增 `migrations/0004_move_provider.sql`）/ +221 / −18（代码与单测侧，文档回填另计）。口径与 §3 B2/B3 一致：**逐手**记「谁答的 + 概率是不是模型给的」，报表把兜底手从主口径里单列出来：
+
+| 落点 | 实际实现 |
+| --- | --- |
+| `migrations/0004_move_provider.sql`（新） | `ALTER TABLE game_moves ADD COLUMN provider TEXT;` + `prob_source TEXT;`，列注释列全四个 profile id（`primary`/`backup`/`custom`/`random`）与两个概率来源（`exact`/`derived`），并写明「Rapfi/mock/人类侧与 0004 之前的老归档一律 NULL——缺失表示当时还没这个口径，**不表示** primary/exact」 |
+| `src/shared/record-map.ts` | `MoveAiMeta` 补 `prov`/`probs` 两个可选键（**漏了这一步 tsc 会直接报 TS2339**，见「坑」）；`MoveRow` 补 `provider`/`prob_source`；映射沿用 `strOrNull`（非空字符串才算，`ai ? … : null`） |
+| `src/worker/lib/record-input.ts` · `src/worker/db/games.ts` | 入参白名单显式搬运 `provider`/`probSource`（不能靠 camelize）；`GAME_MOVE_COLUMNS` 加 `provider, prob_source AS probSource`；`GAME_MOVE_INSERT` 扩到 `?17, ?18`；bind 追加 `?? null` |
+| `src/app/experiment.ts` | `sideStats()` 一次 `aiGameMeta()` 多取一个 `providers`（`g.providers ?? null`）；`onExperimentGameEnd()` 透传 `blackProv`/`whiteProv` |
+| `src/ui/panels/experiment.ts` · `experiment-report.ts` | `ExpResult`/`ExpHistoryGame` 透传 `blackProv`/`whiteProv`；`ExpTotals.providers`/`fallbackMoves` 与 `SideStat.providers`/`fallbackMoves`（`mergeProvs` 只认正整数、`provMovesOf` 给分母）；累计行新增**「上游兜底 N 手（未计入主口径 · 主口径 M 手 · primary … · backup …）」**，轮注脚多一行「上游兜底 N 手（未计入主口径）」，逐身份的兜底手数进「候选发评标」格 tooltip |
+
+**坑（写在这里，MEMORY 也记了）**：① 报表里兜底手数与候选点样本是**两件事**——第一版把兜底后缀拼在「有候选样本」那个三元表达式的 else 支里，于是「这一手是谁答的」被前一个条件整条吞掉（UI 单测直接抓到）；② `MetaMove` 这类**显式类型**必须跟着加键，否则映射代码编不过（TS2339），而宽松的 `GamePayload['moves']` 看不出来。
+
+验证：① `npx tsc --noEmit` 0 错；`node test/engines/run.mjs` **153/153**；`npx vitest run` **49 文件 / 619 例**（原 617，+1 worker +1 ui）；`npm run check:docs` 60 md / 422 链接；`node test/engines/fingerprint.mjs --check` 210 行一致；`test/parity` 黄金零漂移（只加列，没有新归档键进黄金）。② 新单测：worker「上游提供方归因落库」三手（`backup`/`exact` 写值、Rapfi 侧 NULL、0004 前老归档形状 NULL）、ui「上游兜底手数」两局（`{primary: 38, backup: 4}`、Rapfi 身份空表、累计行与轮注脚文案、tooltip 有/无兜底）。③ **迁移已应用到本地与远程 D1**（`node .work/wrangler-run.mjs d1 migrations apply jev-qiguan --local` / `--remote`，各 3 条语句）；远程只读复核：`game_moves` **19298 手不变、provider/prob_source 全为 NULL**（老归档 0 改写）。④ 生产 Worker **尚未重新部署**（`deploy.yml` 刻意只留 `workflow_dispatch`）：部署后生产棋谱才会开始写这两列，属业主决定项（见 §7）。
+
 ---
 
 ## 5 阶段与验收
@@ -156,10 +176,10 @@
 | **C0**（✅ 已完成 2026-10-03） | A 部分：三数落库 + D1 迁移 + 报表列 + 测试 | ✅ `tsc` 0 错；引擎自检 144 例 + vitest 37 文件 / 385 例全绿；黄金零漂移；D1 新列对 Jev 手非空、对 Rapfi 手与老归档 NULL（`test/worker/routes.spec.ts` 往返用例钉住）；报表新列与累计行见 §4.1 |
 | **C1**（✅ 已完成 2026-10-03） | 只读探针：端点、协议同形、逐点概率、配额线索 | 结论见 §2.1 表与探针记录（`/systemone` + `typesafe/jev` → 200，`answers.move.probabilities` 存在；`/chat/completions` 不接受 Jev 模型；无限流头） |
 | **C2**（✅ 已完成 2026-10-04） | B 部分：`providers.ts` + Worker 接线 + Node/box 直连路径共用同一策略 | ✅ 实现见 §4.2。**box 端到端真跑（坏主 key + 真兜底 key）**：`official\|v14-live3-fresh\|0 vs rapfi\|\|500` × 4 局（`--store local --upstream direct`，零 CF 触碰），**4/4 局全部终局**、比分 `W4-D0-L0`（27/26/25/30 手，A 奇数局执黑、偶数局执白各胜两局）；每局第 1–2 手即 `HTTP 401：key 或额度（不重试，直接切）` ⇒ 探活 `HTTP 200`（11–40 ms）⇒ 切到 `backup`，之后**局内粘滞不再回切**；**逐手可辨**：`games/*.json` 每手 `ai.prov='backup'`、`ai.probs='exact'`（55 手全部 `backup`，无一 `primary`、无一 `derived`），`events.jsonl` 四条 `kind:"provider"` 事件（`from/to/reason/probeStatus/probeMs`），日志 `provider[backup:14]` 逐局一行。**单测覆盖三条触发**：401（`providers.spec.ts` + `jev-failover.spec.ts` + worker 六条）、429 用尽（直连面 5 次重试后切、Worker 面一次即切）、5xx×3（`SERVER_FAILURE_LIMIT`），外加「探活不过不切」「无 backupKey 时老行为逐字不变」「4xx 不切」「网络错不切」四类反向用例。**测试期额外发现并修掉两处**（见 §4.2 与「回滚」）：切换事件回调 `outDir` 未定义（每次切换整局变 error）、逐手统计把 rapfi 侧记成 `unknown`。切换手成本记录（m07650/m08110 口径）：模型往返 mean 1692 / median 1462 / max 3531 ms，战术层 mean 823 / max 2839 ms（占单手 48.6%） |
-| **C3**（~0.5 天） | 归因与报表：`provider`/`prob_source` 落库 + 报表分桶 + 文档 | 报表能给出「兜底手 N 手 + 未计入主口径」一行；status 口径更新 |
+| **C3**（✅ 已完成 2026-10-04） | 归因与报表：`provider`/`prob_source` 落库 + 报表分桶 + 文档 | ✅ 实现见 §4.3。**落库**：`migrations/0004_move_provider.sql` 两列已应用到本地与远程 D1（各 3 条语句），逐手写 `provider`/`prob_source`，非 Jev 侧与老归档写 NULL（远程复核：19298 手全 NULL、计数不变 ⇒ 老数据零改写）。**报表分桶**：累计行给出**「上游兜底 N 手（未计入主口径 · 主口径 M 手 · primary … · backup …）」**，轮注脚与逐身份 tooltip 各有一处；`FALLBACK_PROVIDER='backup'`、`mergeProvs`/`provMovesOf`/`fmtProvs` 三个纯函数可单测。**护栏**：worker 往返用例钉住「Jev 手有值 / Rapfi 手 NULL / 0004 前老归档 NULL」，ui 用例钉住逐侧合并与「未计入主口径」文案，`test/parity` 黄金零漂移。**验证**：`tsc` 0 错、引擎 153/153、vitest **49 文件 / 619 例**、`check:docs` 60 md / 422 链接、指纹 210 行一致。**未做**：生产 Worker 尚未重新部署（`provider` 列在生产要等一次 `workflow_dispatch` 部署才开始写入，见 §7） |
 | **C4**（随下一次实验） | 与 G-B2 合并跑（直连上游 + 兜底），并报战术层耗时与成本对照 | 见 [fidelity-and-elo-ladder](2026-10-03-tactics-fidelity-and-elo-ladder.md) §7 报表第 ①②⑥ 项 |
 
-**回滚**：C0 与 C2 各自独立可回滚（迁移只加列、不改既有列；provider 表可由环境变量停用——生产路径的兜底本来就没开，`vars.JEV_FAILOVER: "off"` **且**不配 `COMMANDCODE_API_KEY` 时 `providerAttempts()` 只返回主家一个尝试，直连面的错误文案与尝试次数由单测逐字钉住；唯一的非对称处是 Worker 成功响应现在自带 CORS 头，那是修 bug 不是行为开关）。
+**回滚**：C0、C2、C3 各自独立可回滚（迁移只加列、不改既有列；C3 的报表行只在 `fallbackMoves` 非 0 时出现，回滚 = 不再部署新 Worker，已写入的 `provider` 值留着不影响任何口径；provider 表可由环境变量停用——生产路径的兜底本来就没开，`vars.JEV_FAILOVER: "off"` **且**不配 `COMMANDCODE_API_KEY` 时 `providerAttempts()` 只返回主家一个尝试，直连面的错误文案与尝试次数由单测逐字钉住；唯一的非对称处是 Worker 成功响应现在自带 CORS 头，那是修 bug 不是行为开关）。
 
 ---
 
@@ -192,6 +212,8 @@
   `COMMANDCODE_API_KEY` ⇒ 只走主家）。要不要给生产打开，取决于网关配额（§2.1 未覆盖项）与业主对第三方路径的接受度；
   打开只是一条 `wrangler secret put` + 一个变量，随时可回滚。
 - **是否单开 ADR（编号会是 0022，0020/0021 已占）**：若兜底进生产路径则开，否则只在本计划与 `status.md` 记录。
+- **生产 Worker 何时重新部署**：`deploy.yml` 只有 `workflow_dispatch`（ADR-0010），所以 C2/C3 的代码至今只活在实验面与本机；远程 D1 的 `provider`/`prob_source` 两列已就位，但**生产棋谱要等一次手动部署才会开始写这两列**。
+  部署本身不改变任何默认行为（兜底仍 `off`、报表只在有兜底手时才多一行），属业主决定项。
 
 ---
 
