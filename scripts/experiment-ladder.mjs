@@ -425,11 +425,21 @@ async function main(argv = process.argv.slice(2)) {
   const localBase = ladderDir(ROOT, ladderId);
   fs.mkdirSync(localBase, { recursive: true });
   const statePath = stateFile(ROOT, ladderId);
+  const remoteBatch = `${repo}/.work/remote/${ladderId}`;
+  // 远端目录必须先建：`remoteTagsOf()` 会在远端 `: > tags.txt` 再 scp 回来，
+  // 目录不存在时那是两次 `scp: ... No such file or directory` 噪音（L2 首跑实测）。
+  let remoteReady = false;
+  const ensureRemote = () => {
+    if (remoteReady) return true;
+    remoteReady = Boolean(ssh(host, user, `mkdir -p ${remoteBatch}/{plans,logs}`));
+    return remoteReady;
+  };
   const oldState = readLadderState(statePath);
   let remoteTags = {};
   // 续跑要沿用旧 tag（worker 的 checkpoint 按 tag 命中；换 tag ⇒ 整轮重放，见 lib 的 withReusedTags）。
   // --force 是真重跑：故意用新 tag，让 checkpoint 不再命中（旧产物由下面的 staleCleanups 挪开）。
   if (!dryRun) {
+    ensureRemote();
     const known = (r) => Boolean(oldState && oldState.rounds.some((x) => x.round === r.round && x.tag));
     // --force 也要问一次远端 tag：不然「旧产物要挪开」这件事判断不出来
     const needRemote = force || ladder.rounds.some((r) => !known(r));
@@ -471,12 +481,11 @@ async function main(argv = process.argv.slice(2)) {
   // 本地落 plan + 状态；远端也放一份 ladder.json（SSH 时能直接看进度，不是权威）
   writePlans(ROOT, ladder);
   writeLadderState(statePath, state);
-  const remoteBatch = `${repo}/.work/remote/${ladderId}`;
   const pushState = () => {
     scp([statePath, `${user}@${host}:${remoteBatch}/ladder.json`]); // 失败不算错（权威在本地）
   };
 
-  if (!ssh(host, user, `mkdir -p ${remoteBatch}/{plans,logs}`)) die('远端 mkdir 失败（ssh 不通？）');
+  if (!ensureRemote()) die('远端 mkdir 失败（ssh 不通？）');
   for (const r of ladder.rounds) {
     const rel = path.join(ROOT, '.work/remote', ladderId, 'plans', `round-${r.round}.json`);
     if (!scp([rel, `${user}@${host}:${remoteBatch}/plans/round-${r.round}.json`])) {

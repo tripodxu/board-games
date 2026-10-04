@@ -19,6 +19,18 @@
 
 ---
 
+## 2026-10-04 · 远端目录要先建，否则 `tags.txt` 是两次假失败
+
+- 阶梯编排的 `remoteTagsOf()` 会先在远端 `: > tags.txt` 再把它 scp 回来读；**这个调用发生在 `mkdir -p` 之前**
+  时，新 `--batch` 首跑会打两行 `scp: <repo>/.work/remote/<id>/tags.txt: No such file or directory`
+  （`scp()` 失败会重试一次 ⇒ 正好两次），然后**照常继续** —— 看着像错，其实是噪音，但会让人以为上传坏了。
+- 已修：`scripts/experiment-ladder.mjs` 把远端 `mkdir -p <batch>/{plans,logs}` 提到 `remoteTagsOf()` 之前，
+  用 `ensureRemote()` 记状态（只连一次 ssh，后面 `pushState`/上传 plan 复用）。
+- 顺带记住这台 box 的握手成本：**每次 ssh/scp ≈12–20 s**，15 轮 ×（上传 plan + 拉产物 + 行数快照）里
+  光是握手就是几分钟量级 —— 编排里「多连一次 ssh」是有代价的，能合并就合并。
+
+---
+
 ## 2026-10-04 · 「这一轮跑完没有」只看 round-summary.json（缺它 = 还在跑）
 
 - `round-<i>/games.jsonl` 是**逐局 append** 的，跑到一半也有内容；判「收尾」的唯一本地凭据是

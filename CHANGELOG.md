@@ -8,6 +8,11 @@
 
 ### 修复
 
+- **阶梯编排先建远端目录再读 tag（L2 首跑发现）**：`remoteTagsOf()` 会先在远端 `: > tags.txt` 再 scp 回来，
+  而这一步排在 `mkdir -p` 之前 ⇒ 新 `--batch` 首跑必然打两行
+  `scp: …/tags.txt: No such file or directory`（`scp()` 失败重试一次）再照常继续 —— 不是故障，是噪音，
+  但会让人误判上传坏了。现在 `mkdir -p <batch>/{plans,logs}` 提到最前（`ensureRemote()` 只连一次，后面复用）。
+  经验写进 `docs/memory/MEMORY.md`：这台 box 每次 ssh/scp 握手 ≈12–20 s，编排里「多连一次」是有代价的。
 - **阶梯编排的等待改成「本地轮询」，修掉一类「作业永远不结束」的悬挂（P6 修复）**：原先起完一轮后，编排进程会挂一条
   远端 `for i in $(seq 1 1440); do …; sleep 30; done` 的 ssh 等满 12 h。**那条 ssh 继承了编排进程的 stdout 管道**，
   所以编排进程一旦意外死掉（第一晚 L3 真的发生了：node 消失、ssh 还在），外层 `| Tee-Object` 就永远收不到 EOF，
