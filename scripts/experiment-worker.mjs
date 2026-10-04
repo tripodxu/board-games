@@ -407,6 +407,13 @@ async function main() {
   /* 前置校验：渠道/档位（parseSpec 已拦）、tag 形状、真上游 key 是否在位。
      缺 key 必须在开局前退出——不然每局都白跑十几分钟才失败（AGENTS.md「不在事后日志里备案」）。 */
   batchTag(new Date(), plan.batchId, round); // 形状校验（tag 本身用 plan 里的，时序以 submit 为准）
+  /* tag 缺失要早退：实验行的归属全靠它（D1 的 experiment_tag / 归档目录名），
+     缺了会写出一行没有标签的实验记录——手写 plan 最常漏这个键。 */
+  if (!plan.tag) {
+    process.stderr.write('plan 缺 tag（实验行与归档目录名都靠它；由 experiment-batch.mjs submit 生成，手写 plan 也要给，如 "tag": "exp-20261004-p4b-box-r1"）\n');
+    process.exitCode = 2;
+    return;
+  }
   /* rapfi 臂：装配 Node 侧胶水加载器（与浏览器同一条 core 协议路径，见
      scripts/lib/rapfi-node-loader.mjs 头部说明；缺资产会在这里早失败）。 */
   if (a.channel === 'rapfi' || b.channel === 'rapfi') {

@@ -41,6 +41,10 @@
   用 AWS 官方 GET/PUT 已知向量逐字节校验）+ `scripts/batch-bucket.mjs push|pull|ls`（产物白名单、凭据只读环境变量、
   缺任一 exit 3、上传失败只告警不阻断，`--strict` 才升 1）。进度仍走文件 + SSH：`experiment-batch.mjs status --watch`
   用纯 shell 循环复读 `progress.json`（远端非交互 shell 未必有 `node`，而这份文件本身是给人看的）。
+  验收在 box 上跑通整局：`official:v14-live3-fresh:0` vs `rapfi:v14-live3-fresh:1000` 两局 118 s、54 次上游请求、零 429，
+  跑前跑后 D1 行数 `games 312 / game_moves 19298 / experiments 28` 一字不变（零 CF 触碰的硬证据），
+  取回的 `games.jsonl` 可直接 `experiment-batch.mjs elo` 复算。另补一条守卫：手写 plan 缺 `tag` 原先会静默跑出
+  没有标签的实验行（`progress.tag` 落成 `""`）⇒ worker 现在开局前 exit 2 要求补 `tag`。
 - **远端阶梯的地基：配对开局 + 进度可查 + 默认不碰业主 Worker（P4 阶梯地基，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   新增 `scripts/lib/openings.mjs`（开局库：归档决胜局取前 N 手、8 变换对称归一、去重计数、原子读写、
   `openingForNo()` 让**连续两局同一开局、换色双跑** —— 配对样本是分辨 5 pt 差异的前提）与

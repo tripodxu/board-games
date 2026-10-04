@@ -19,6 +19,29 @@
 
 ---
 
+## 2026-10-04 · P4b 收尾：box 上跑通整局直连、plan 必填 `batchId`/`tag`、box 克隆是窄 refspec、查 D1 前先清代理
+
+- **做了什么**：在 box（`ssh qijia`，185.242.234.48）上把离线运行面跑通整局 —— `official:v14-live3-fresh:0`
+  vs `rapfi:v14-live3-fresh:1000` 两局 118 s（`27 手 winner=black 26s` / `80 手 winner=和棋 89s`，后者是 `maxPlies` 截断），
+  `已发 54 次上游请求、累计等待 17.6 s、连续 429 = 0`，日志打「store=local：未触碰业主 Worker」。
+  **零 CF 触碰的硬证据**：跑前跑后 `select count(*) from games/game_moves/experiments` 都是 **312 / 19298 / 28**。
+- **坑① 手写 plan 必带 `batchId` 与 `tag`**：缺 `batchId` 直接抛 `batchId 需匹配 /^[a-z0-9][a-z0-9-]{0,15}$/（1-16 位小写字母/数字/中划线）`
+  （调用栈 `sanitizeBatchId (batch-common.mjs:100)` ← `batchTag (batch-common.mjs:110)` ← `experiment-worker.mjs:409`，
+  且报错信息里的值**是空的**，一眼看不出缺的是哪个键）；缺 `tag` 原先**不报错**、静默写出 `progress.tag = ""`
+  和一行没有标签的实验记录 ⇒ 已加守卫：worker 开局前 `if (!plan.tag)` exit 2 并给出示例。
+  **教训：编排器生成的 plan 有一批隐式必填键，手写 plan 要先照 `experiment-batch.mjs submit` 的产物抄一遍。**
+- **坑② box 上的仓库克隆是窄 fetch refspec**（只有 `feat/ssh-batch-experiments`）⇒ `git checkout main` 报
+  `error: pathspec 'main' did not match any file(s) known to git`。正确做法：`git fetch origin main:refs/remotes/origin/main`
+  然后 `git checkout -B main origin/main`；随后 `npm ci --silent` 即可（box `node -v` v24.9.0、可用内存约 1.3 GiB）。
+- **坑③ 本机查 D1 前必须先清代理**（否则 wrangler 报 `Proxy environment variables detected` 外加
+  `Your auth token has expired … Cloudflare auth server could not be reached`，看着像登录过期，其实只是出口不通）：
+  `$env:HTTPS_PROXY=''; $env:HTTP_PROXY=''; $env:ALL_PROXY=''; $env:NO_PROXY=''`。
+- **验收证据的形态**：① 跑前后行数对照（不变 = 没碰生产）；② 产物取回后 `experiment-batch.mjs elo <dir>` 能复算
+  （这次 `official|v14-live3-fresh|0` 1508 vs `rapfi||1000` 1492，80 手那局按「未终局不计入 Elo」被丢弃 ⇒ 样本 1 局）；
+  ③ 日志里 `fetch:{gated:54,passed:0}` 证明限速只拦上游主机、其余请求放行。
+
+---
+
 ## 2026-10-04 · P4b 离线实验面：本机 Node 没外网、SigV4 要用官方向量自证、`KEY_CHANNELS.has` 只在缺 key 时炸
 
 - **做了什么（plan `2026-10-03-tactics-fidelity-and-elo-ladder` P4b，[ADR-0021](../adr/0021-standalone-experiment-plane.md)）**：

@@ -358,7 +358,14 @@
   未运行时 `fetch` 直接 `ECONNREFUSED`）⇒ 直连面的**整局**验收只能在 box 上做；⑥ scripts 单测 **10 文件 / 187 例**、
   vitest 全量 **45 文件 / 529 例**、引擎套件 **153 例**、`tsc --noEmit` 干净、`check:docs` **60 md / 421 链接**、
   `node test/engines/fingerprint.mjs --check` 一致（210 行）；⑦ 一条口径：未终局记录（`maxPlies` 截断）在
-  `progress.json` 里记和棋、在 `batch-elo.mjs` `gameRecord()` 被丢弃（「未终局不计入 Elo」），只有 `maxPlies < 225` 时两者不一致。
+  `progress.json` 里记和棋、在 `batch-elo.mjs` `gameRecord()` 被丢弃（「未终局不计入 Elo」），只有 `maxPlies < 225` 时两者不一致；
+  ⑧ **box 整局直连验收通过**（`15ddfa8`，日志 `/root/ladder/p4b-box.log`）：`official:v14-live3-fresh:0` vs
+  `rapfi:v14-live3-fresh:1000` 两局 118 s（`27 手 winner=black 26s` / `80 手 winner=和棋 89s`，后者是 `maxPlies` 截断），
+  `已发 54 次、累计等待 17.6s｜连续 429 0`、`fetch:{gated:54,passed:0}`、key 走 `file:/root/.jev-key`，
+  跑前后 `select count(*)` 都是 **games 312 / game_moves 19298 / experiments 28**（零 CF 触碰的硬证据）；
+  取回的 `games.jsonl` 喂 `experiment-batch.mjs elo` 复算正确（`official|v14-live3-fresh|0` 1508 vs `rapfi||1000` 1492，
+  80 手那局按「未终局不计入 Elo」被丢弃 ⇒ 样本 1 局）；⑨ 补一条守卫：手写 plan 缺 `tag` 原先会静默跑出无标签实验行
+  （`progress.tag` 落成 `""`）⇒ worker 现在开局前 exit 2 要求补 `tag`。
 - **远端阶梯的地基：配对开局 + 进度可查 + 默认不碰业主 Worker（P4 阶梯地基，2026-10-04）**：
   新增 `scripts/lib/openings.mjs`（269 行：从归档决胜局取前 N 手、8 变换对称归一、去重计数、
   `openingForNo()` 让**连续两局同一开局、换色双跑**、原子读写 + 形状校验）与 `scripts/lib/progress.mjs`
