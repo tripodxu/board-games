@@ -16,7 +16,8 @@
 //   status  --watch --batch 名 [--interval 30] [--iterations N]
 //                                  → 每 N 秒 cat 远端 progress.json 原文（D13：进度是文件，无服务）
 //   pull    --batch 名 [--out 目录] → 把远端 batch 目录整体拉回本地
-//   elo     <目录...> [--k 16] [--json 文件] → 对拉回来的棋谱算 Elo 排行
+//   elo     <目录...> [--k 16] [--json 文件] [--anchor 身份] [--bootstrap N] [--no-bt]
+//           → 对拉回来的棋谱算排行：BT Δ（点估计 + bootstrap 区间，锚点缺省 rapfi||500）+ 顺序 Elo
 //
 // 传输只用 ssh/scp（继承 stdio，不在 Node 里捕获子进程管道）；所有远端
 // 结果都落文件，本地再读——这样在没有 tty 的环境里也能跑。
@@ -34,7 +35,7 @@ import {
   parseSpec, formatSpec, sanitizeBatchId, batchTag, estimateBudget, UPSTREAM_CHANNELS,
   PRODUCTION_ORIGIN, productionGate, parallelGate,
 } from './lib/batch-common.mjs';
-import { loadRecords, rankTable, formatRankTable, computeElo, MIN_GAMES } from './lib/batch-elo.mjs';
+import { loadRecords, rankTable, formatRankTable, computeElo, bootstrapBt, DEFAULT_ANCHOR, MIN_GAMES } from './lib/batch-elo.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -360,9 +361,31 @@ function cmdElo(args) {
   const k = args.k ? Number(args.k) : 16;
   const records = loadRecords(dirs.map((d) => path.resolve(d)));
   if (records.length === 0) { console.log('没有可统计的棋谱'); return; }
-  const rows = rankTable(records, k);
+  /* P5：缺省算 BT + bootstrap 区间；--no-bt 退回纯顺序迭代（老报表逐字不变）。
+     `--bootstrap 0` 只关区间（点估计仍算）；`--anchor ''` 强制均值居中。 */
+  const btOpts = args['no-bt'] ? null : {
+    anchor: args.anchor === undefined ? DEFAULT_ANCHOR : String(args.anchor),
+    bootstrap: args.bootstrap === undefined ? 400 : Number(args.bootstrap),
+    seed: args.seed === undefined ? 20261004 : Number(args.seed),
+  };
+  if (btOpts && (!Number.isFinite(btOpts.bootstrap) || btOpts.bootstrap < 0)) die('--bootstrap 需要 ≥0 的整数');
+  const rows = rankTable(records, k, btOpts ? { bt: btOpts } : {});
   console.log(`样本：${records.length} 局，K=${k}（和棋 0.5，顺序迭代；<${MIN_GAMES} 局标注样本不足）\n`);
   console.log(formatRankTable(rows));
+  if (btOpts) {
+    const bt = bootstrapBt(records, btOpts);
+    console.log(`\nBT：锚点 ${bt.anchor ? bt.anchor + '（Δ=0）' : '均值居中（无锚点：数据里没有 ' + DEFAULT_ANCHOR + '）'}` +
+      `｜MM ${bt.point.iterations} 迭代${bt.point.converged ? '收敛' : '**未收敛**（到上限）'}｜ridge 先验 ${bt.point.prior}` +
+      `｜bootstrap ${bt.iterations} 次（seed ${bt.seed}）`);
+    if (bt.iterations > 0) {
+      const wide = rows.filter((r) => r.btWidth != null).sort((a, b) => b.btWidth - a.btWidth)[0];
+      const narrow = rows.filter((r) => r.btWidth != null).sort((a, b) => a.btWidth - b.btWidth)[0];
+      if (wide && narrow) {
+        console.log(`   区间宽度：最宽 ${wide.identity} ±${(wide.btWidth / 2).toFixed(0)} Elo（${wide.btDraws}/${bt.iterations} 次重采样命中）` +
+          `｜最窄 ${narrow.identity} ±${(narrow.btWidth / 2).toFixed(0)} Elo —— 判「谁更强」要拿这两个宽度去比差值`);
+      }
+    }
+  }
   const { matrix } = computeElo(records, k);
   if (matrix.size) {
     console.log('\n对阵明细（黑方视角）：');
@@ -373,7 +396,11 @@ function cmdElo(args) {
   if (args.json) {
     const out = path.resolve(String(args.json));
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify({ k, records, rows }, null, 2) + '\n');
+    const bt = btOpts ? bootstrapBt(records, btOpts) : null;
+    fs.writeFileSync(out, JSON.stringify({
+      k, records, rows,
+      bt: bt ? { anchor: bt.anchor, iterations: bt.iterations, seed: bt.seed, converged: bt.point.converged, ridge: bt.point.prior } : null,
+    }, null, 2) + '\n');
     console.log('\n已写 ' + out);
   }
 }
@@ -412,6 +439,9 @@ function main() {
     console.log('         → 不拉目录，直接每 N 秒 cat 远端 progress.json 原文（D13：进度是文件，无服务；N≥5，0=一直看）');
     console.log('  pull   --batch 名      拉回远端产物');
     console.log('  elo   <目录...>  [--k 16] [--json 输出路径]   本地算 Elo 排行');
+    console.log('         [--anchor 身份]  BT 的 0 点（缺省 rapfi||500；数据里没有就均值居中）');
+    console.log('         [--bootstrap 400] [--seed 20261004]  BT 区间的重采样次数与随机种子（0 = 只算点估计）');
+    console.log('         [--no-bt]  退回纯顺序迭代报表（老口径，逐字不变）');
     process.exit(cmd ? 2 : 0);
   }
 }

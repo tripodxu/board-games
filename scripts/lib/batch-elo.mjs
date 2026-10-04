@@ -10,6 +10,9 @@
 //     早先这里另有一份把空档写成 '-' 的实现 ⇒ 同一个配置两处口径（合入审查的中清单项）。
 //     mock 臂不过战术层、thinkMs 对非 rapfi 臂无意义，都自然落到空串/0。
 //   - 顺序迭代（按时间序逐局更新），K=16，和棋记 0.5。
+//   - **P5 起另给 Bradley–Terry 点估计 + bootstrap 区间**（`computeBt` / `bootstrapBt`）：
+//     顺序迭代的读数依赖局序，而阶梯实验要比的是跨档位的差 ⇒ 报表以 BT Δ 为主列
+//     （锚点缺省 `rapfi||500`，它自己恒为 0），顺序 Elo 作为老口径并排保留。
 //   - <MIN_GAMES 局的身份只展示不计 ranking 标注（本版不做 Glicko）。
 //   - 只统计 buildGameExport 里 result/winner 完整的局；dry-run 局也统计
 //     （mock/random 臂的冒烟同样有胜负，可用于验证链路）。
@@ -179,9 +182,192 @@ export function computeElo(records, K = 16) {
   return { rating, games, matrix, k: K };
 }
 
+/* ---------------- Bradley–Terry（P5）：比顺序 Elo 更稳的点估计 + bootstrap 区间 ----------------
+ *
+ * 为什么顺序 Elo 不够：`computeElo` 是**时间序**迭代（K=16 逐局更新），最终读数依赖局序与谁先跑，
+ * 且身份多、局数少时同一批棋谱换个顺序能差出十几 Elo；而」阶梯实验要比的是**跨档位**的差，
+ * 需要的是一个只依赖「谁跟谁打了多少局、拿到多少分」的点估计。
+ *
+ * 模型：P(i 胜 j) = 1 / (1 + 10^((Δj − Δi)/400))，和棋按 0.5 分（与 Wilson 的 `hits` 同口径）。
+ * 拟合：MM（minorization–maximization，Hunter 2004）迭代 `p_i ← (W_i + ridge/2) / (Σ_j n_ij/(p_i+p_j) + ridge)`，
+ * 其中 W_i 是 i 的总得分、n_ij 是 i–j 的局数；`ridge` 是 Gamma 先验的强度（默认 0.5），
+ * **它不是装饰**：全胜/全负的身份 MLE 在无穷远处，没有先验时 p_i 会一路发散（20 战全胜 ⇒ 有限但很大的数）。
+ *
+ * 尺度：BT 只能定到「加一个常数」（p 乘一个因子），所以必须选零点。约定
+ *   ① `anchor` 给了且数据里有 ⇒ 该身份 Δ = 1500、其他人 Δ 为相对它的差；
+ *   ② 没给 anchor ⇒ 按所有身份的**均值居中**（Δ 之和为 0），并在报表里写明用了哪种。
+ * 这与 `computeElo` 的 1500 起点兼容：`rating = 1500 + Δ`。
+ */
+
+/** BT 拟合的默认参数（`ridge` 见上；`iterations` 是 MM 上限）。 */
+export const BT_DEFAULTS = Object.freeze({ iterations: 500, tol: 1e-9, ridge: 0.5 });
+
+/** 阶梯实验的固定基线身份：给了就用它当 0 点，报表里跨轮可比。 */
+export const DEFAULT_ANCHOR = 'rapfi||500';
+
+/** 确定性 PRNG（bootstrap 要可复现：同样的输入 + 同样的 seed ⇒ 同样的区间）。 */
+export function mulberry32(seed) {
+  let a = (Number(seed) || 1) >>> 0;
+  return function next() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 把棋谱聚合成 BT 的充分统计量：{ids, pairs（无向对局数）, points（总得分）, games}。 */
+export function aggregateBt(records) {
+  const ids = [];
+  const index = new Map();
+  const idOf = (name) => {
+    if (!index.has(name)) { index.set(name, ids.length); ids.push(name); }
+    return index.get(name);
+  };
+  const pairs = new Map(); // `${min}|${max}` → {i, j, n}
+  const points = new Map(); // id → 总得分（胜 1 / 和 0.5 / 负 0）
+  const games = new Map();
+  const bump = (m, k, d) => m.set(k, (m.get(k) || 0) + d);
+  for (const r of records) {
+    const i = idOf(r.black);
+    const j = idOf(r.white);
+    if (i === j) continue; // 自己打自己（不该有）不计，免得分母出现 p_i+p_i 的退化项
+    const lo = Math.min(i, j); const hi = Math.max(i, j);
+    const key = lo + '|' + hi;
+    if (!pairs.has(key)) pairs.set(key, { i: lo, j: hi, n: 0 });
+    pairs.get(key).n += 1;
+    bump(points, i, r.blackScore);
+    bump(points, j, 1 - r.blackScore);
+    bump(games, i, 1);
+    bump(games, j, 1);
+  }
+  return { ids, pairs, points, games };
+}
+
+/**
+ * MM 拟合。返回 `{deltas: Map<id, Δ>, iterations, converged, maxDelta, anchor, prior}`。
+ * `agg` 来自 `aggregateBt()`；`anchor` 不在数据里时退化成均值居中并把 `anchor` 记成 null。
+ */
+export function fitBt(agg, opts = {}) {
+  /* `{...BT_DEFAULTS, ...opts}` 不够：调用方传 `ridge: undefined` 会把默认值覆盖成 undefined ⇒ 全程 NaN
+     （bootstrap 一路 `opts.ridge` 透传时就踩过）。逐个字段取默认。 */
+  const iterations = Number.isFinite(opts.iterations) ? opts.iterations : BT_DEFAULTS.iterations;
+  const tol = Number.isFinite(opts.tol) ? opts.tol : BT_DEFAULTS.tol;
+  const ridge = Number.isFinite(opts.ridge) ? opts.ridge : BT_DEFAULTS.ridge;
+  const n = agg.ids.length;
+  const deltas = new Map();
+  const anchorWanted = opts.anchor || null;
+  const anchor = anchorWanted && agg.ids.includes(anchorWanted) ? anchorWanted : null;
+  if (n === 0) return { deltas, iterations: 0, converged: true, maxDelta: 0, anchor: null, prior: ridge };
+  const p = new Array(n).fill(1);
+  const denom = new Array(n).fill(0);
+  let used = 0;
+  let maxDelta = 0;
+  let converged = false;
+  for (let it = 1; it <= iterations; it += 1) {
+    used = it;
+    denom.fill(ridge);
+    for (const { i, j, n: cnt } of agg.pairs.values()) {
+      denom[i] += cnt / (p[i] + p[j]);
+      denom[j] += cnt / (p[i] + p[j]);
+    }
+    let worst = 0;
+    const next = new Array(n);
+    for (let i = 0; i < n; i += 1) {
+      const w = (agg.points.get(i) || 0) + ridge / 2;
+      const v = w / denom[i];
+      next[i] = v;
+      worst = Math.max(worst, Math.abs(Math.log(v / p[i])));
+    }
+    for (let i = 0; i < n; i += 1) p[i] = next[i];
+    maxDelta = worst;
+    if (worst < tol) { converged = true; break; }
+  }
+  /* p → Δ（Elo 尺度）；再按 anchor / 均值定零点 */
+  const raw = p.map((v) => 400 * Math.log10(v));
+  let shift;
+  if (anchor) {
+    shift = raw[agg.ids.indexOf(anchor)];
+  } else {
+    shift = raw.reduce((s, v) => s + v, 0) / n;
+  }
+  for (let i = 0; i < n; i += 1) deltas.set(agg.ids[i], Math.round((raw[i] - shift) * 10) / 10);
+  if (anchor) deltas.set(anchor, 0); // 锚点严格 0（浮点误差也不许冒出来）
+  return { deltas, iterations: used, converged, maxDelta, anchor, prior: ridge };
+}
+
+/**
+ * BT 点估计。`opts.anchor` 缺省取 `DEFAULT_ANCHOR`（数据里有 `rapfi||500` 就用它当 0 点，
+ * 否则均值居中）；返回值里的 `rating` 是 1500 基准（= 1500 + Δ），与顺序 Elo 同表可读。
+ */
+export function computeBt(records, opts = {}) {
+  const wanted = opts.anchor === undefined ? DEFAULT_ANCHOR : opts.anchor;
+  const agg = aggregateBt(records);
+  const fit = fitBt(agg, { ...opts, anchor: wanted });
+  const rating = new Map();
+  for (const [id, d] of fit.deltas) rating.set(id, Math.round((1500 + d) * 10) / 10);
+  return { ...fit, rating, games: agg.games, ids: agg.ids };
+}
+
+/** 百分位（对已排序数组，线性插值）。 */
+export function percentile(sorted, q) {
+  if (!sorted.length) return null;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/**
+ * 局级 bootstrap 区间（percentile 法）：按**局**有放回重采样，每次重新拟合 BT，取 2.5%/97.5% 分位。
+ * 为什么按局：一局的胜负是这里唯一的随机单位；**注意它不利用配对结构**（同一开局换色双跑的两局
+ * 是相关的，按局重采样会把区间估得偏窄）——所以配对比分仍要单独看，这条只用来给「跨档位差」一个量级。
+ */
+export function bootstrapBt(records, opts = {}) {
+  const iterations = opts.bootstrap === undefined ? 400 : Number(opts.bootstrap);
+  const seed = opts.seed === undefined ? 20261004 : Number(opts.seed);
+  const wanted = opts.anchor === undefined ? DEFAULT_ANCHOR : opts.anchor;
+  const point = computeBt(records, opts);
+  if (!Number.isFinite(iterations) || iterations <= 0 || records.length === 0) {
+    return { point, samples: new Map(), iterations: 0, seed, anchor: point.anchor };
+  }
+  const rand = mulberry32(seed);
+  const draws = new Map(); // id → 排序后的 Δ 数组
+  for (const id of point.ids) draws.set(id, []);
+  for (let b = 0; b < iterations; b += 1) {
+    const sample = new Array(records.length);
+    for (let k = 0; k < records.length; k += 1) sample[k] = records[Math.floor(rand() * records.length)];
+    const fit = fitBt(aggregateBt(sample), {
+      anchor: wanted, ridge: opts.ridge, iterations: Math.min(opts.iterations || BT_DEFAULTS.iterations, 200), tol: 1e-7,
+    });
+    for (const [id, d] of fit.deltas) {
+      const arr = draws.get(id);
+      if (arr) arr.push(d);
+    }
+  }
+  const samples = new Map();
+  for (const [id, arr] of draws) {
+    if (arr.length === 0) { samples.set(id, null); continue; }
+    arr.sort((a, b) => a - b);
+    samples.set(id, {
+      lo: Math.round(percentile(arr, 0.025) * 10) / 10,
+      hi: Math.round(percentile(arr, 0.975) * 10) / 10,
+      median: Math.round(percentile(arr, 0.5) * 10) / 10,
+      draws: arr.length,
+      /* 出现率 < 80% 说明这个身份在重采样里经常缺席（局数太少）⇒ 区间不可读 */
+      coverage: arr.length / iterations,
+    });
+  }
+  return { point, samples, iterations, seed, anchor: point.anchor };
+}
+
 /** 排行行：Elo + 总局数 + 胜/和/负 + 得分率 + Wilson 95% 区间 + 样本不足标注。 */
-export function rankTable(records, K = 16) {
+export function rankTable(records, K = 16, opts = {}) {
   const { rating, games } = computeElo(records, K);
+  /* P5：给了 opts.bt 就一并算 BT 点估计 + bootstrap 区间（缺省不算，保持老调用方逐字不变）。 */
+  const bt = opts.bt ? bootstrapBt(records, opts.bt) : null;
   const sides = new Map(); // id -> {w,d,l}
   for (const r of records) {
     if (!sides.has(r.black)) sides.set(r.black, { w: 0, d: 0, l: 0 });
@@ -194,6 +380,8 @@ export function rankTable(records, K = 16) {
     const n = games.get(id);
     /* 得分率 = (胜 + 和/2) / 局数，与 formatRankTable 打印的那个数同口径 */
     const ci = wilson(s.w + s.d * 0.5, n);
+    const btDelta = bt ? bt.point.deltas.get(id) : null;
+    const btSample = bt ? bt.samples.get(id) : null;
     return {
       identity: id,
       rating: Math.round(rating.get(id) * 10) / 10,
@@ -204,16 +392,30 @@ export function rankTable(records, K = 16) {
       /* 半宽的百分点（报表里的 ±XX.Xpt）：n=20 时约 22 ⇒ 直接看去能不能分辨差异 */
       halfPt: ci ? Math.round(ci.half * 1000) / 10 : null,
       enough: n >= MIN_GAMES,
+      /* BT 三件套只在 `opts.bt` 打开时出现（关掉时行形状与老版本逐字一致）：
+         相对锚点的 Δ（锚点本人是 0）、bootstrap 区间、区间宽度（Elo 点）。 */
+      ...(bt ? {
+        btDelta,
+        btLo: btSample ? btSample.lo : null,
+        btHi: btSample ? btSample.hi : null,
+        btWidth: btSample ? Math.round((btSample.hi - btSample.lo) * 10) / 10 : null,
+        btDraws: btSample ? btSample.draws : 0,
+      } : {}),
     };
-  }).sort((a, b) => b.rating - a.rating || b.games - a.games);
+  }).sort((a, b) => (bt
+    ? (b.btDelta - a.btDelta) || b.games - a.games
+    : b.rating - a.rating || b.games - a.games));
 }
 
 /** 人读报表（页宽 96）。区间与样本量并排印：小样本先看 ±XX.Xpt，再看点估计。 */
 export function formatRankTable(rows) {
   const lines = [];
   const warn = rows.some((r) => !r.enough);
+  const withBt = rows.some((r) => r.btDelta != null);
   lines.push(
-    '身份（渠道|战术档|思考ms）'.padEnd(40) + 'Elo'.padStart(7) + '局数'.padStart(6) +
+    '身份（渠道|战术档|思考ms）'.padEnd(40) + 'Elo'.padStart(7) +
+    (withBt ? 'BT Δ'.padStart(8) + '95% 区间(BT Δ)'.padStart(19) : '') +
+    '局数'.padStart(6) +
     '胜'.padStart(5) + '和'.padStart(5) + '负'.padStart(5) + '得分率'.padStart(8) +
     '95% 区间(Wilson)'.padStart(19) + (warn ? '  ⚠样本不足(<' + MIN_GAMES + ')' : ''),
   );
@@ -222,9 +424,13 @@ export function formatRankTable(rows) {
     const ci = r.ci
       ? '[' + (r.ci.lo * 100).toFixed(1) + '–' + (r.ci.hi * 100).toFixed(1) + ']'
       : '—';
+    const btCols = withBt
+      ? String(r.btDelta == null ? '—' : r.btDelta).padStart(8) +
+        (r.btLo == null ? '—' : '[' + r.btLo + '–' + r.btHi + ']').padStart(19)
+      : '';
     lines.push(
       r.identity.padEnd(40) +
-      String(r.rating).padStart(7) +
+      String(r.rating).padStart(7) + btCols +
       String(r.games).padStart(6) + String(r.w).padStart(5) + String(r.d).padStart(5) + String(r.l).padStart(5) +
       rate.padStart(8) + ci.padStart(19) +
       (r.enough ? '' : '  ±' + (r.halfPt == null ? '?' : r.halfPt.toFixed(1)) + 'pt ⚠'),
@@ -233,6 +439,10 @@ export function formatRankTable(rows) {
   if (warn) {
     lines.push('注：样本 < ' + MIN_GAMES + " 局时得分率的 Wilson 95% 区间半宽常在 ±15～±25 pt —— " +
       '区间大面积重叠就不能读作「更强」；跨档位比分不是曲线，要判机制收益得上配对样本。');
+  }
+  if (withBt) {
+    lines.push('注：BT Δ 是 Bradley–Terry 点估计（和棋记 0.5，`ridge` 先验 0.5），区间是**按局** bootstrap 的 2.5%–97.5% 分位；' +
+      '它不利用配对结构（同一开局换色双跑的两局相关）⇒ 区间偏窄，判「跨档位是否有差」仍要看配对样本。');
   }
   return lines.join('\n');
 }

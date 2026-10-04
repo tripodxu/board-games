@@ -332,6 +332,23 @@
   ③ 覆盖 **13/14 层**（缺 `threat`，结构性不可达：`you:open4` 标签判据与 `chance_points_you` 同源，且含 `threat` 的档都含 `open4` 而链里 `open4` 在前；
   取证 2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）；④ `⑭d` 证指纹与 `decide()` 全链路同解；
   ⑤ 引擎套件 **153 例**（+5）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净、`check:docs` 58 md / 397 链接。语料规模是实测定的：120 局面要 ~9 分钟（早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面），进不了 CI。决策记录 [ADR-0020](adr/0020-tactics-fidelity-freeze.md)。
+- **Elo 升级：Bradley–Terry 点估计 + Bootstrap 区间（P5，2026-10-04）**：
+  `scripts/lib/batch-elo.mjs` 从 238 行扩到 **448 行**，新增 `aggregateBt()` / `fitBt()`（MM 迭代、`ridge` 先验 0.5、
+  **显式零点**）/ `computeBt()` / `bootstrapBt()`（按局有放回重采样 + 每次重拟合，2.5–97.5% 分位）/ `mulberry32()`；
+  `rankTable(records, K, { bt })` 只在开启 BT 时加 `BT Δ` 与 `95% 区间(BT Δ)` 两列（不开时行形状与老版本逐字一致，
+  由单测钉死），Wilson 列保留；`scripts/experiment-batch.mjs elo` 增 `--anchor/--bootstrap/--seed/--no-bt`，
+  报表印锚点/迭代收敛/`ridge`/重采样次数与宽度行。证据：① **估计量与区间的正确性对照理论**（两身份干净情形，
+  60 种子 / bootstrap 300 / 真差 100）：n=50 理论 SE **51.2** vs 经验 SD **52.6**（平均区间宽 208、覆盖 57/60）、
+  n=200 **25.6 / 25.8**（100、56/60）、n=800 **12.8 / 12.7**（49、55/60）⇒ 实现被独立验证（差 ≤2%、覆盖率 92–95%）；
+  ② **计划的判据按实测订正**：三身份轮转、40 种子的实测显示「200 局 ⇒ 点估计误差 < 25 Elo」过于乐观 ——
+  200 局（每对约 67 局）真差 100/200 时偏差 +4.4/+1.7、**平均绝对误差 27.9 / 35.6**、n=400 ⇒ 21.2/25.4、
+  n=800 ⇒ 20.6/17.3，于是判据改成「\|偏差\| < 10 + 200 局平均绝对误差 < 45 + 误差随 n 单调下降」，
+  并把「一次 200 局只能分辨 ~30 Elo」写进计划 §7；③ `rapfi\|\|500` = 0 锚成立，数据里没有锚时退化成均值居中
+  并在报表里写明「无锚点」；④ 同 seed 逐字可复现、`--bootstrap 0` 只算点估计、`--no-bt` 与旧报表逐字一致；
+  ⑤ 新增 `test/scripts/batch-elo-bt.spec.mjs`（**220 行 / 17 例 / 0.9 s**）；⑥ 全量验收：`tsc --noEmit` 干净、
+  引擎 **153/153**、vitest **46 文件 / 546 例**、`check:docs` 60 md / 421 链接、指纹一致（210 行）。
+  `rapfi\|\|500` 锚 + 「配对样本才判差」
+  与 §7 的 5 pt 分辨率门槛一致：**BT 区间按局重采样、不利用配对结构 ⇒ 偏窄**，报表脚注已印这条纪律。
 - **离线实验面：直连上游 + 本地 JSONL + 文件进度 + 对象桶留档（P4b，2026-10-04）**：
   新增 `scripts/lib/s3-put.mjs`（288 行：纯 Node `crypto` 自实现 AWS SigV4，覆盖 R2/S3/B2/MinIO 的
   path-style 与 virtual-host 两种寻址）、`scripts/lib/throttle.mjs`（148 行：滑窗自限速 + 连续 429 熔断，
@@ -522,10 +539,13 @@
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
-   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅
+   P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅、
+   P5 Elo 升级（BT + bootstrap 区间）✅
    已完成**（见上「已验证」条目；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 P5 Elo 升级（BT + bootstrap CI）→ P6 阶梯编排**；
+   **下一步 P6 阶梯编排（`experiment-ladder.mjs`）→ C2（`providers.ts` 表 + 离线夹具）**；
+   P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
+   所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂
    （[ADR-0021](adr/0021-standalone-experiment-plane.md)）。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
    第一晚 L3 是否含 `rapfi@5000`、P7 `--rev` 是否做、**对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws

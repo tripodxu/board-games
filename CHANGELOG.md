@@ -27,6 +27,19 @@
 
 ### 新增
 
+- **Elo 从「顺序迭代」升级为 Bradley–Terry + Bootstrap 区间（P5，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
+  `scripts/lib/batch-elo.mjs`（238 → 448 行）新增 `aggregateBt()` / `fitBt()`（MM 迭代、`ridge` 先验 0.5、
+  **显式零点**）/ `computeBt()` / `bootstrapBt()`（按局有放回重采样 + 每次重拟合，取 2.5–97.5% 分位）/ `mulberry32()`；
+  `rankTable(records, K, { bt })` 开启 BT 时多出 `BT Δ` 与 `95% 区间(BT Δ)` 两列（不开时行形状逐字不变），
+  Wilson 列与「样本 < 50」标注保留；`scripts/experiment-batch.mjs elo` 增 `--anchor`（缺省 `rapfi||500`）/
+  `--bootstrap`（缺省 400）/`--seed`（缺省 20261004）/`--no-bt`，并在报表下印锚点、MM 迭代收敛情况、
+  `ridge` 先验、重采样次数与区间宽度行。**为什么换**：顺序 Elo 的读数依赖局序、没有零点也没有区间，
+  跨轮次读出来的「位移」无法与噪声区分。**这次也订正了一条过度乐观的判据**：计划原先写「合成 200 局
+  （真差 100 Elo）⇒ 点估计误差 < 25 Elo」，实测（三身份轮转、40 种子）200 局时平均绝对误差是
+  **27.9 / 35.6 Elo**（真差 100 / 200），400 局 21.2/25.4、800 局 20.6/17.3；而两身份干净情形与理论 SE
+  吻合（n=200 理论 25.6 vs 经验 25.8，覆盖率 56/60）⇒ 估计量本身是对的，是「200 局能分辨多细」想错了。
+  新判据：\|偏差\| < 10 + 200 局平均绝对误差 < 45 + 误差随 n 单调下降；计划 §7 写明「一次 200 局只能分辨
+  ~30 Elo，不要用 `BT Δ` 的小数位讲 10 Elo 的进步」。测试 `test/scripts/batch-elo-bt.spec.mjs`（17 例 / 0.9 s）。
 - **离线实验面：默认直连上游、零 CF 依赖（P4b，plan `2026-10-03-tactics-fidelity-and-elo-ladder`，[ADR-0021](docs/adr/0021-standalone-experiment-plane.md)）**：
   远端批量实验过去每手都经业主 Cloudflare Worker（`proxy` 渠道 → `/api/jev`），既占连接数与 D1 写入额度，
   又把研究数据混进站点棋谱。现在**运行面默认不碰业主设施**：`scripts/experiment-worker.mjs` 的
