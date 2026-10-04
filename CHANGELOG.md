@@ -8,6 +8,16 @@
 
 ### 修复
 
+- **`/api/jev` 的成功响应其实没有 CORS 头（C2 期间发现）**：Hono 的 `c.header()` 写的是「预备头」，
+  只在 `c.body()`/`c.json()` 这类路径上合并进响应；**直接把 `fetch()` 的响应 `return` 出去时会被丢掉**
+  （`hono/dist/context.js` 的 res setter 只在 `#res` 已存在时合并，而 `compose` 首轮赋值时它还是 null）。
+  同源部署看不出来，跨源调用就是抓瞎。现在路由自己拼 `new Response(...)`：透传头 + CORS 头 + `X-Jev-Provider`
+  （+ 切换时的 `X-Jev-Provider-Switch`）显式合并，`Access-Control-Allow-Headers` 也补上了 `X-Jev-Provider`。
+- **实验运行面的两处缺陷（只有 box 真跑才露头，C2 验收轮抓到）**：① 兜底切换的回调里引用了 `main`
+  作用域的 `outDir`，而 `playOne()` 是顶层函数 ⇒ **每次切换整局变 error**（`events.jsonl` 四条
+  `"error":"outDir is not defined"`），改成把 `outDir` 一起塞进 `dirs`；② 逐手提供方统计把非上游侧
+  （Rapfi 的 `meta.provider === undefined`）也记成 `unknown` ⇒ 日志 `provider[backup:19 unknown:18]`
+  读不出「兜底了几手」，`countProvider()` 现在只认非空字符串 id 并导出供单测。
 - **战术档位不再静默换档（P0/D2，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   `src/core/tactics-versions.ts` 的 `resolve()` 过去对未知档号**静默回落到当前档**——
   「下拉里写着 v12、实际跑 v14」这种单变量破坏谁都看不见，实验结论会归因到错档位。
@@ -27,6 +37,18 @@
 
 ### 新增
 
+- **上游兜底提供方：两个运行面共用一套切换判据（C2，plan `2026-10-03-cands-metric-and-provider-failover`）**：
+  新增纯叶模块 `src/core/jev/providers.ts`（提供方表 `primary`=TypeSafe `jev-latest`、`backup`=commandcode
+  `typesafe/jev`；失败分类 `classifyStatus` 按状态码分 auth / rate-limit / server / client；状态机
+  `noteFailure`/`noteSuccess`/`pickProvider`；响应头常量），`src/worker/lib/failover.ts` 让 Worker 面用**同一套判据**
+  （差别只有一处：Worker 每请求独立、没有跨请求计数 ⇒ 429/529 一次即视为用尽），浏览器直连面走
+  `client.ts` 的 `callWithFailover`（局内粘滞、备用**探活通过才切**、失败原因回调给上层）。
+  `decide()` 把「这一手谁答的」写进 meta（`provider`/`probSource` → 归档逐手 `prov`/`probs`、局级
+  `providers`/`probSources`），`X-Jev-Provider`/`X-Jev-Provider-Switch` 两个响应头把 Worker 侧的决定带回浏览器。
+  实验面：`resolveBackupKey()`（`COMMANDCODE_API_KEY` → `/root/.cc-key`，拿不到不报错）+ worker
+  `--backup-key-file`/`--expect-backup` + `events.jsonl` 的 `provider` 事件 + 逐手 `provider[…]` 日志。
+  **生产路径默认关**：`vars.JEV_FAILOVER: "off"` 且未配 `COMMANDCODE_API_KEY` 时只走主家（客户端显式要求才用兜底）。
+  box 端到端验收（主 key 故意写坏）4/4 局终局、55 手全部由兜底答出、逐手可辨；协议形状用真实网关响应体做离线夹具钉住。
 - **阶梯编排：一条命令跑完一条 round-robin（P6，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   新增纯核 `scripts/lib/ladder.mjs`（468 行）与 CLI `scripts/experiment-ladder.mjs`（556 行）+
   `test/scripts/ladder.spec.mjs`（400 行 / 38 例）。`--ladder L1|L2|L3|all` 或 `--identities a,b,c` 二选一，

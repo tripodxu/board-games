@@ -224,8 +224,11 @@ Worker 侧的关键事实：
   `upstream_error`；客户端自己 abort（切棋种/重开）→ 非标准 **499**（用真 `Response` 返回，
   与真 502 区分）。
 - **429/529 由客户端退避，服务端不重试**——服务端重试会把一次用户点击变成 N 次上游计费（BYOK）。
-- **CORS 只在本路由**：回显 `Origin` + `Vary: Origin`、`Access-Control-Allow-Headers: Content-Type, X-Api-Key`、
-  `Max-Age: 86400`，**不回显 `Access-Control-Allow-Credentials`**（BYOK 不依赖 Cookie，开了只会放大风险面）。
+- **CORS 只在本路由**：回显 `Origin` + `Vary: Origin`、`Access-Control-Allow-Headers: Content-Type, X-Api-Key, X-Jev-Provider`、
+  `Access-Control-Expose-Headers: X-Jev-Provider, X-Jev-Provider-Switch`、`Max-Age: 86400`，
+  **不回显 `Access-Control-Allow-Credentials`**（BYOK 不依赖 Cookie，开了只会放大风险面）。
+  注意成功响应是路由自己拼的 `Response`（§3.2）：Hono 的 `c.header()` 预备头在「直接返回 `fetch()` 响应」
+  这条路径上会被丢掉。
 - 错误码与 HTTP 状态的映射集中在 `src/worker/lib/http.ts` 的 `statusFor()`。
 
 **上游响应里没有的东西**：429/529 的重试、退避节奏、超时都在客户端；Worker 不缓存、不排队。
@@ -239,6 +242,39 @@ Worker 侧的关键事实：
 - 401：直接抛「API Key 无效或缺失（401）」，不重试。
 - 其它状态码：直接抛 `API 错误 <status>：<前 300 字符响应体>`。
 - `opts.signal`（切棋种/重开）在每次尝试前与请求期间都检查，abort 即中止。
+
+### 3.2 上游兜底提供方与两个响应头（C2）
+
+BYOK 的 key 失效、额度用尽或官方网关抖动时，上面那条链路会整局停摆。C2 起有一张**提供方表**
+（`src/core/jev/providers.ts`，纯叶模块、无 import）：
+
+| id | 端点 | 模型 | key 来源 |
+|---|---|---|---|
+| `primary` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 客户端 BYOK / `TYPESAFE_API_KEY` |
+| `backup` | `https://api.commandcode.ai/provider/v1/systemone` | `typesafe/jev` | Worker 的 `COMMANDCODE_API_KEY`（实验面是 `/root/.cc-key`） |
+
+两家网关**协议同形**（C1 探针逐字段比对过），所以切换就是「基址 + 模型 + key」三元组直换，没有适配器层。
+
+**失败分类与切换条件**（`classifyStatus`）：401/402/403 ⇒ `auth`（立刻切）；429/529 ⇒ `rate-limit`
+（**本家用尽**才切）；5xx ⇒ `server`（连续 3 次才切，`SERVER_FAILURE_LIMIT`）；其它 4xx ⇒ `client`（不切，
+换一家只会把同一个错换个文案）；网络错/超时**不切**（连不上不代表对面也连不上，且重试还在手上）。
+切换前先对备用的 `/provider/v1/models` 做一次**探活**（`PROBE_TIMEOUT_MS = 10000`，200 才算通过）——
+探活不过就**不切**，把主家的原始响应照原样交给调用方。切过去之后**局内粘滞**（同一局不再回切），
+避免一局被切碎成两半。
+
+**两个响应头**（只在 `/api/jev` 的 POST 成功响应上，且不改变既有响应体）：
+
+- `X-Jev-Provider: primary|backup` —— 这一次请求**最后是谁答的**（客户端把它写进逐手
+  `meta.provider` → 归档 `ai.prov`；`random` 渠道不会出现这个头）。
+- `X-Jev-Provider-Switch: <from>-><to>; <urlencoded reason>` —— 只有发生切换时才带。
+  **值必须是 latin-1 可编码**，中文原因要 `encodeURIComponent`；客户端 `decodeSwitchReason()` 解得开就用、
+  解不开就照原样显示。切换的耗时/探活状态只在 Worker 日志里（`[jev] … provider=… switch=… upstreamCalls=…`）。
+
+**开关口径**：Worker 侧 `vars.JEV_FAILOVER`（默认 `"off"`）+ `wrangler secret put COMMANDCODE_API_KEY`。
+**两者缺一就不带兜底**——默认部署与 C2 之前逐字同行为；客户端显式带 `X-Jev-Provider: backup` 时才只用兜底。
+`Access-Control-Allow-Headers` 已放行该请求头，`Access-Control-Expose-Headers` 已放行上面两个响应头
+（否则跨源调用读不到它们）。浏览器直连面（`official` 渠道）走 `callWithFailover`，判据相同，
+差别是它的「用尽」由重试阶梯数出来，而 Worker 面每请求独立 ⇒ 429/529 一次就算用尽。
 
 **降级语义**（D8）：探不到本站后端（例如纯静态托管 `dist/`）时，
 `src/core/api/client.ts` 的每个方法返回 `null` 而不抛——对局、悔棋、导出功能不受影响，
@@ -272,6 +308,8 @@ isolate 内存 Map（多实例各算各的，等于没限）；`/api/stats` 靠 
 | `noul` / `score` | 局势优劣概率 / 0–10 局势分 |
 | `tactics` | 战术保险标记：`win`（走致胜点）/ `block`（挡对方致胜）/ `open4`（走己方活四点）/ `threat`（抢占造杀点）/ `vcfAttack`（走己方将死链首步）/ `vcfDefense`（破对方将死链）/ `parry`（拆对手造杀点，含 3-ply 安全排序）/ `parry3`（预挡对手活三/活四制造点）/ `parry4`（预挡对手冲四制造点）/ `null` |
 | `tacticsVersion` | 本次决策用的战术档 id（`src/core/tactics-versions.ts` 的 `resolveVersion()`） |
+| `provider` | 这一手**最后是谁答的**（`primary` / `backup` / `custom` / `random`；见 §3.2）。归档写进逐手 `ai.prov`，局级汇总在 `meta.providers` |
+| `probSource` | `exact` = 响应给了逐点概率；`derived` = 没给（例如只回了 `choice`），此时概率是按候选等权推出来的，**不许当模型概率用**。归档写进逐手 `ai.probs`，局级汇总在 `meta.probSources` |
 | `warning` | 非法响应回退等异常提示 |
 | `mock: true` | 离线演示标记（面板需显示"演示"角标） |
 

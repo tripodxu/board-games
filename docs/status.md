@@ -287,6 +287,32 @@
 
 ## 已验证（验收证据）
 
+- **上游兜底提供方：两个运行面共用一套切换判据（C2，2026-10-04）**：新增纯叶模块 `src/core/jev/providers.ts`
+  （~300 行：提供方表 `primary`=TypeSafe `jev-latest` / `backup`=commandcode `typesafe/jev`、失败分类 `classifyStatus`
+  （auth / rate-limit / server / client）、切换状态机 `noteFailure`/`noteSuccess`/`pickProvider`、两个响应头常量
+  `X-Jev-Provider`/`X-Jev-Provider-Switch`）、`src/worker/lib/failover.ts`（~175 行，Worker 面同判据）与
+  `src/core/jev/client.ts` 的 `callWithFailover`（直连面：局内粘滞、探活通过才切）。
+  `decide()` 把 `provider`/`probSource` 写进逐手 meta（`src/core/meta.ts` 的 `prov`/`probs` + 局级 `providers`/`probSources`，
+  沿用「有值才写」⇒ 黄金零漂移），归档 payload 因此能逐手读出「这一手谁答的」；脚本面加 `resolveBackupKey()`
+  （`COMMANDCODE_API_KEY` → `/root/.cc-key`，取不到**不抛**）+ worker `--backup-key-file`/`--expect-backup`
+  + `events.jsonl` 的 `provider` 事件。**生产路径默认关**：`wrangler.jsonc` 的 `vars.JEV_FAILOVER: "off"` 且不配
+  `COMMANDCODE_API_KEY` 时 `providerAttempts()` 只返回主家一个尝试（客户端显式带 `X-Jev-Provider: backup` 时才走兜底）。
+  证据：① **box 端到端真跑**（主 key 故意写坏 + 真兜底 key；`official|v14-live3-fresh|0` vs `rapfi||500` × 4 局，
+  `--store local --upstream direct` 零 CF 触碰）：**4/4 局终局、W4-D0-L0**（27/26/25/30 手），每局第 1–2 手即
+  `HTTP 401：key 或额度（不重试，直接切）` ⇒ 探活 `HTTP 200`（11–40 ms）⇒ 切兜底，之后局内粘滞不回切；
+  逐手 `ai.prov='backup'`、`ai.probs='exact'`（55 手全部兜底，无一 `primary`、无一 `derived`），日志逐局 `provider[backup:14]`；
+  ② 耗时与成本（m07650 / m08110 口径）：模型往返 mean **1692** / median **1462** / max **3531** ms，
+  战术层 mean **823** / max **2839** ms（占单手 **48.6%**）；③ 单测覆盖三条触发与四类反向（401 立刻切、
+  429 用尽后切、5xx 连试 3 次才切、探活不过不切、4xx 不切、网络错不切、无 backupKey 时老行为逐字不变）：
+  `test/core/providers.spec.ts` 12 例、`test/core/jev-failover.spec.ts` 10 例、`test/worker/jev.spec.ts` +9 例；
+  ④ 用**真实网关响应体**做离线夹具（`test/fixtures/jev/commandcode-systemone-2026-10-03.json`）钉住协议形状，
+  漂移时单测先红；⑤ **顺带修掉 Hono 的隐性缺陷**：`c.header()` 的预备头在「直接 `return fetch()` 响应」这条路径上会丢
+  ⇒ 旧实现的 `/api/jev` 成功响应其实没有 CORS 头（同源部署看不出来），现在成功路径自己拼 Response 并显式合并；
+  ⑥ 全量验收：`tsc --noEmit` 干净、引擎 **153/153**、vitest **49 文件 / 617 例**、`check:docs` 60 md / 422 链接、指纹一致（210 行）。
+  **只有真跑才露头的两处缺陷**（都由新增单测钉住）：切换事件回调引用了 `main` 作用域的 `outDir` ⇒ 每次切换整局变 error
+  （`events.jsonl` 四条 `outDir is not defined`）；逐手统计把非上游侧记成 `unknown` ⇒ 日志 `provider[backup:19 unknown:18]`
+  读不出「兜底了几手」（`countProvider` 现在只认非空字符串 id）。实施记录与回滚见
+  [plans/2026-10-03-cands-metric-and-provider-failover.md](plans/2026-10-03-cands-metric-and-provider-failover.md) §4.2 与 §5。
 - **对新旧两套入口对账**（计划 P4 执行记录）：`node scripts/verify-parity.mjs --base https://jev-qiguan.pages.dev --candidate https://jevqipan.logicc.top` → **差值 0**（54 局 / 五子棋 54 / 胜负 18-27-9 / 校准样本 26）。旧入口的截断口径仍是 40 份、胜负 16-16-8——差值 0 说明新侧不是靠「也多读一点」蒙对的。
 - **线上 HTTP 冒烟**（计划 P4 执行记录）：`npm run smoke:live` **29 项全过**（列表不含 payload、永久链接与列表指向同一局、旧深链带/不带 `.json` 都 200、`/api/stats` 无 `truncated`、导出为 JSONL、无 key 的 `/api/jev` 401、非法设备与非法日期 400、重传归档棋谱 `dedup: true` 且写 0 手、新房写 5 手、写后总数 54 → 55）。冒烟写入的行已删除，D1 复原 54/4379/0。
   2026-10-01 下午起该脚本改为 **30 项**，且总量断言一律**相对基线**（`stats.byGame` 只断言键是中文棋种名，`/api/experiments` 断言轮次 ≥ 6，写入后断言「基线 + 1」）——真实验一多，写死 54/6/55 就会天天空红（实测 `58 → 59` 通过；负向对照把 `+1` 改成 `+2` → 恰好那一项红、退出码 1）。
@@ -579,13 +605,15 @@
    ① [候选点三数 + 上游兜底](plans/2026-10-03-cands-metric-and-provider-failover.md)：**C0 已完成并部署**
    （`cands_sent`/`cands_labeled` 逐手落库 + `migrations/0003_move_cands.sql` + 报表「候选发评标」列，
    部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`），C1 探针已证明 commandcode 的 `/systemone` 与本协议同形
-   ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
+   ⇒ 兜底是「base URL + model + key」三元组直换；**C2 已完成并 box 验收**（`providers.ts` 表 + 两个运行面
+   共用切换判据 + 离线夹具 + 逐手 `prov`/`probs` 归因；生产路径默认关，见上「已验证」条目）；
+   **下一步 C3（`provider`/`prob_source` 落库 + 报表分桶）→ C4（随下一次实验）**；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
    P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅、
    P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（含 box 端到端真跑、中断续跑与 `--force` 重跑）
    已完成**（见上「已验证」条目；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 C2（`providers.ts` 表 + 离线夹具）→ P7（可选逃生门：`--rev <sha>`）→ 用阶梯跑第一晚的 L3/L2**；
+   **下一步 P7（可选逃生门：`--rev <sha>`）→ 用阶梯跑第一晚的 L3/L2**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂

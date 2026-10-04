@@ -19,6 +19,24 @@
 
 ---
 
+## 2026-10-04 · Hono：预备头只在 `c.json()/c.body()` 路径生效，直接 `return fetch` 响应会丢
+
+- `c.header(k, v)` 写的是 Context 上的「预备头」，**只有走 `c.body()`/`c.json()` 这类路径时才合并进响应**。
+  直接把一个 `fetch()` 的响应 `return` 出去时，`#res` 在 `compose` 首轮赋值时还是 `null`
+  （`node_modules/hono/dist/context.js` 的 res setter 只在已存在时合并）⇒ 这些头**静默消失**，不报错。
+- 后果实例：`/api/jev` 的 POST 成功路径一直 `return toPassthroughResponse(result)`，于是**成功响应没有 CORS 头**
+  而错误路径（`c.json()`）有。同源部署永远看不出来，跨源调用才会炸。
+- 纪律：凡是 `return` 外部响应对象的处理器，要**自己拼 `new Response(body, { headers })` 并显式合并**所有要带的头
+  （透传头 + CORS + 自定义判据头），别指望 `c.header()` 兜底；单测里显式断言这些头。
+
+## 2026-10-04 · 顶层函数的回调别引用调用方作用域；统计口径只认「有值的样本」
+
+- `scripts/experiment-worker.mjs` 的 `playOne()` 是**顶层函数**，`decide()` 的 `onProviderSwitch` 回调里直接读了
+  `main()` 作用域的 `outDir` ⇒ 真跑时每次切换都抛 `outDir is not defined`，`events.jsonl` 四条 error、**一局没跑成**。
+  单测碰不到这条路径（回调只在真触发时走），只有 box 端到端真跑才露头。修法：调用方把 `outDir` 一起塞进 `dirs`。
+- 逐手提供方统计原先把「没有 `meta.provider`」的 Rapfi 侧也记成 `unknown` ⇒ 日志 `provider[backup:19 unknown:18]`
+  把「兜底了几手」淹掉。纪律：**统计只认真正的样本**（这里是「非空字符串 id」），缺值不编桶名。
+
 ## 2026-10-04 · P6 box 端到端：checkpoint 按 tag 命中、行数不是局数、ssh 握手 18 s
 
 - **worker 的 checkpoint 是按 `tag` 命中的**（`ckptAction`：`prev.tag !== tag ⇒ tag-mismatch ⇒ 重跑本局`）。所以

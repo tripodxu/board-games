@@ -1,6 +1,6 @@
 # 计划：候选点数可观测（`cands` 家族）+ 上游 key 用尽自动兜底（commandcode 网关）
 
-- 状态：🚧 实施中（2026-10-03；**C0 已完成**，见 §4.1 与 §5；C1 探针已完成；C2 起待批）
+- 状态：🚧 实施中（2026-10-03；**C0 已完成**，见 §4.1 与 §5；C1 探针已完成；**C2 已完成**，见 §4.2 与 §5；C3/C4 待做）
 - 来源：用户 2026-10-03（m13627）
 - 引块（逐字，含用户贴的第三方 token，按密钥纪律不入库、不写文档）：
 
@@ -130,6 +130,23 @@
 
 验证：`npx tsc --noEmit` 0 错；`node test/engines/run.mjs` **144 例**（原 142 + 2，含 `candStats` 均值 `sent=63 / graded=51.7 / labeled=19 / n=2`）；`npx vitest run` **37 文件 / 385 例**（原 382；新增 worker「候选点三数落库」（第一手 58/64/21、第二手 Rapfi 三列全 NULL）与 ui「候选点三数：按手加权分桶，非 Jev 身份记 —」（63/55/19，`rapfi||1000` 行 `—`））；`test/parity` 黄金零漂移（未动引擎与既有键）。
 
+### 4.2 C2 实施记录（2026-10-04，已完成）
+
+改动体量：18 文件 / +1809 / −41（三个提交：`e70fcd1` 主体、`9a0c709` 与 `56bed31` 两个 box 真跑才会露头的缺陷修复）。落地口径与 §3 B 部分一致（三元组切换、局内粘滞、探活、逐手归属、默认关）：
+
+| 落点 | 实际实现 |
+| --- | --- |
+| `src/core/jev/providers.ts`（新，~300 行） | 提供方表（`primary` = TypeSafe `jev-latest`、`backup` = commandcode `typesafe/jev`）、失败分类 `classifyStatus`（auth/rate-limit/server/client）、切换状态机 `noteSuccess`/`noteFailure`/`pickProvider`（粘滞优先、判死不复活、全死回落主家）、`formatProviderSwitch`、两个头常量 `X-Jev-Provider`/`X-Jev-Provider-Switch`。**纯叶模块、无 import**：Worker 面为了两个头常量 import 整个 `client.ts` 会把战术链拉进包 |
+| `src/core/jev/client.ts` | `attemptsFor`/`callRaw`/`callWithRetry`/`probeProvider`/`callWithFailover`；`httpError()` 让错误带上状态码（切换层必须按状态分类，而 `markRetryable` 的静态类型是 `Error`）；`decide()` 把 `provider`/`probSource` 写进 meta（D-B6：`channel` 不动）；`decodeSwitchReason` 解 Worker 回执头 |
+| `src/worker/lib/failover.ts`（新，~175 行） | Worker 面同一套判据，但**每请求独立、无跨请求计数** ⇒ 429/529 一次即视为用尽；5xx 先在本家连试到 `SERVER_FAILURE_LIMIT` 才切；探活不过**不切**（切过去只是把同一个错换个文案） |
+| `src/worker/routes/jev.ts` · `src/worker/env.ts` | `providerAttempts()` 依 `env.COMMANDCODE_API_KEY` + `env.JEV_FAILOVER`（默认 off）或客户端显式 `X-Jev-Provider: backup` 决定是否带兜底；成功响应回 `X-Jev-Provider`（+ 切换时 `X-Jev-Provider-Switch`，中文原因百分号编码——HTTP 头只认 latin-1）；`wrangler.jsonc` 增 `vars.JEV_FAILOVER: "off"` |
+| `src/core/meta.ts` | 逐手 `prov`/`probs`、局级 `providers`/`probSources`，沿用「有值才写」纪律 ⇒ `test/parity` 黄金零漂移 |
+| `scripts/lib/upstream.mjs` · `scripts/experiment-worker.mjs` · `scripts/lib/ladder.mjs` · `scripts/experiment-ladder.mjs` | `resolveBackupKey`（`COMMANDCODE_API_KEY` → `/root/.cc-key`，取不到**不抛**）；worker 增 `--backup-key-file`/`--expect-backup`，逐手计数进 `result.providers`，切换写日志 + `events.jsonl` 的 `provider` 事件；阶梯把两个新参数写进每轮 plan |
+
+**顺带修掉的隐性缺陷（C2 之外，但同一次改动暴露）**：Hono 的 `c.header()` 预备头在「直接 return `fetch()` 响应」这条路径上会被丢掉（`node_modules/hono/dist/context.js:111-125` 的 res setter 只在 `#res` 已存在时合并）⇒ 旧实现的 POST 成功响应其实**没有 CORS 头**，同源部署看不出来、跨源就抓瞎；现在成功路径自己拼 Response 并显式合并。
+
+验证：① `npx tsc --noEmit` 0 错；`node test/engines/run.mjs` **153/153**；`npx vitest run` **49 文件 / 617 例**；`check:docs` 60 md / 422 链接；指纹一致（210 行）。② 单测覆盖三条触发与反向不触发：`test/core/providers.spec.ts` 12 例（分类矩阵、状态生命周期、粘滞、全死回落）、`test/core/jev-failover.spec.ts` 10 例（401/429 用尽/5xx×3 三条触发、探活失败不切、无 backupKey 时老行为逐字不变、夹具形状）、`test/worker/jev.spec.ts` **+9 例**（`callUpstreamWithFailover` 六条 + `providerAttempts` 三条）。③ **离线夹具**：2026-10-04 在 box 上用我方真实三问打真网关抓的请求/响应对落 `test/fixtures/jev/commandcode-systemone-2026-10-03.json`（3152 B，`move.probabilities` 六点、`edge.noul 0.61`、`position.score 2.51`），协议漂移时单测先红。④ **box 端到端验收见 §5 C2 行**。
+
 ---
 
 ## 5 阶段与验收
@@ -138,11 +155,11 @@
 | --- | --- | --- |
 | **C0**（✅ 已完成 2026-10-03） | A 部分：三数落库 + D1 迁移 + 报表列 + 测试 | ✅ `tsc` 0 错；引擎自检 144 例 + vitest 37 文件 / 385 例全绿；黄金零漂移；D1 新列对 Jev 手非空、对 Rapfi 手与老归档 NULL（`test/worker/routes.spec.ts` 往返用例钉住）；报表新列与累计行见 §4.1 |
 | **C1**（✅ 已完成 2026-10-03） | 只读探针：端点、协议同形、逐点概率、配额线索 | 结论见 §2.1 表与探针记录（`/systemone` + `typesafe/jev` → 200，`answers.move.probabilities` 存在；`/chat/completions` 不接受 Jev 模型；无限流头） |
-| **C2**（~0.5 天，无适配器） | B 部分：`providers.ts` + Worker 接线 + Node/box 直连路径共用同一策略 | 坏主 key 跑 4 局全部终局；`provider` 逐手可辨；切换有日志；单测覆盖 401/429/5xx 三条触发 |
+| **C2**（✅ 已完成 2026-10-04） | B 部分：`providers.ts` + Worker 接线 + Node/box 直连路径共用同一策略 | ✅ 实现见 §4.2。**box 端到端真跑（坏主 key + 真兜底 key）**：`official\|v14-live3-fresh\|0 vs rapfi\|\|500` × 4 局（`--store local --upstream direct`，零 CF 触碰），**4/4 局全部终局**、比分 `W4-D0-L0`（27/26/25/30 手，A 奇数局执黑、偶数局执白各胜两局）；每局第 1–2 手即 `HTTP 401：key 或额度（不重试，直接切）` ⇒ 探活 `HTTP 200`（11–40 ms）⇒ 切到 `backup`，之后**局内粘滞不再回切**；**逐手可辨**：`games/*.json` 每手 `ai.prov='backup'`、`ai.probs='exact'`（55 手全部 `backup`，无一 `primary`、无一 `derived`），`events.jsonl` 四条 `kind:"provider"` 事件（`from/to/reason/probeStatus/probeMs`），日志 `provider[backup:14]` 逐局一行。**单测覆盖三条触发**：401（`providers.spec.ts` + `jev-failover.spec.ts` + worker 六条）、429 用尽（直连面 5 次重试后切、Worker 面一次即切）、5xx×3（`SERVER_FAILURE_LIMIT`），外加「探活不过不切」「无 backupKey 时老行为逐字不变」「4xx 不切」「网络错不切」四类反向用例。**测试期额外发现并修掉两处**（见 §4.2 与「回滚」）：切换事件回调 `outDir` 未定义（每次切换整局变 error）、逐手统计把 rapfi 侧记成 `unknown`。切换手成本记录（m07650/m08110 口径）：模型往返 mean 1692 / median 1462 / max 3531 ms，战术层 mean 823 / max 2839 ms（占单手 48.6%） |
 | **C3**（~0.5 天） | 归因与报表：`provider`/`prob_source` 落库 + 报表分桶 + 文档 | 报表能给出「兜底手 N 手 + 未计入主口径」一行；status 口径更新 |
 | **C4**（随下一次实验） | 与 G-B2 合并跑（直连上游 + 兜底），并报战术层耗时与成本对照 | 见 [fidelity-and-elo-ladder](2026-10-03-tactics-fidelity-and-elo-ladder.md) §7 报表第 ①②⑥ 项 |
 
-**回滚**：C0 与 C2 各自独立可回滚（迁移只加列、不改既有列；provider 表可由环境变量停用）。
+**回滚**：C0 与 C2 各自独立可回滚（迁移只加列、不改既有列；provider 表可由环境变量停用——生产路径的兜底本来就没开，`vars.JEV_FAILOVER: "off"` **且**不配 `COMMANDCODE_API_KEY` 时 `providerAttempts()` 只返回主家一个尝试，直连面的错误文案与尝试次数由单测逐字钉住；唯一的非对称处是 Worker 成功响应现在自带 CORS 头，那是修 bug 不是行为开关）。
 
 ---
 
@@ -171,8 +188,10 @@
 
 仍开放（不阻塞 C0）：
 
-- **兜底是否进生产路径**：默认只给实验面（box 直连）开兜底，生产 Worker 是否也启用待定——取决于网关配额（§2.1 未覆盖项）与用户对第三方路径的接受度。
-- **是否单开 `docs/adr/0020-provider-failover.md`**：若兜底进生产路径则开 ADR，否则只在本计划与 `status.md` 记录。
+- **兜底是否进生产路径**：C2 已把两个运行面都接好，但**默认关**（`vars.JEV_FAILOVER: "off"` + 未配
+  `COMMANDCODE_API_KEY` ⇒ 只走主家）。要不要给生产打开，取决于网关配额（§2.1 未覆盖项）与业主对第三方路径的接受度；
+  打开只是一条 `wrangler secret put` + 一个变量，随时可回滚。
+- **是否单开 ADR（编号会是 0022，0020/0021 已占）**：若兜底进生产路径则开，否则只在本计划与 `status.md` 记录。
 
 ---
 
