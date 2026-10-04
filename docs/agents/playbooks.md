@@ -260,6 +260,10 @@ node scripts/experiment-ladder.mjs --ladder L2 --batch <id> --games 20 --poll 60
 8. **报表**：`node scripts/experiment-report.mjs --batch <id> --out .work/<id>-report.md --json .work/<id>-report.json`；
    多批合并用 `--dir a,b`（`gameUid` 全局去重、按身份聚合）；**未收尾的轮**默认读入并在报告头标注
    （收尾凭据 = `round-summary.json`），要排除就加 `--skip-incomplete`。
-9. **回读纪律**：n=20 的单对半宽 ≈ ±20 pt ⇒ 不许据此排版本名次；只有配对样本到 100–200 局才能写
-   「A 比 B 强」。战术层耗时与成本对照是**必报项**（第 6 条 + 阶梯计划 §7 的六项报表）。
+9. **败局解释（规则 11，必报项）**：`node scripts/loss-report.mjs --batch <id>`（形态 + 追因一次出；
+   同门对局加 `--mirror`，两侧各出一个视角 ⇒ 局数 = 棋谱 ×2）；只想要形态加 `--no-vcf`（秒级），
+   要控成本用 `--tail`/`--plies`。**追因数字必须带档报**（`--plies 7` 与 `--plies 9` 的「不可逆点」
+   是 13/49 与 14/49），且报告里要连边界句一起抄：「VCF 只解释 found/l，查不到 ≠ 没输在更早的地方」。
+10. **回读纪律**：n=20 的单对半宽 ≈ ±20 pt ⇒ 不许据此排版本名次；只有配对样本到 100–200 局才能写
+    「A 比 B 强」。战术层耗时与成本对照是**必报项**（第 6 条 + 阶梯计划 §7 的六项报表）。
 

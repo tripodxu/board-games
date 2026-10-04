@@ -287,6 +287,15 @@
 
 ## 已验证（验收证据）
 
+- **败局解释固化成工具（规则 11 可复算）（2026-10-05）**：新增 `scripts/lib/loss-report.mjs`（纯核：
+  `fatalSuffix()` 取**最长必败后缀**、`lossShape()` 归纳形态与追因、`formatLossMarkdown()` 强制印边界句）
+  + `scripts/loss-report.mjs`（CLI：`--dir/--batch/--ours/--theirs/--tail/--plies/--max-games/--no-vcf/--show/--json/--quiet`、
+  `--mirror` 让同门对局两侧各出一个视角）+ `test/scripts/loss-report.spec.mjs`（**28 例**：纯核 21 + CLI 7 —— 退出码、`--mirror` 计数与跳过、`--max-games` 截断）。
+  实测复算 L2：`node scripts/loss-report.mjs --batch l2n1` ⇒ 300 局 = 234/17/49、不败率 83.7%、
+  ≤40 手短败 20/49、必败后缀 0/3/7/4 + 查不到 35、不可逆点 14/49（`--plies 9`；`--plies 7` 是 13/49）。
+  实测复算 `vorder1`：`--mirror` ⇒ 120 个视角 = 31/58/31、不败率 74.2%、短败 16/31（51.6%）、
+  **必杀后缀只有 3/31（9.7%，L2 是 28.6%）** —— 同门对局的败局更少能用「对手已成 VCF」解释。
+  两条纪律入 MEMORY：**探针数字随窗口参数变（引用必须带 `--plies` 档位）**、`vcfWin()` 返回对象（`!!` 恒真）。
 - **L2 败局解释：49 局败局的形态与追因（2026-10-05，规则 11 口径）**：一次性探针（不入库，`.work/loss-{analysis,horizon,point}.mjs`
   ⇒ `.work/loss-analysis.txt` / `loss-horizon3.txt` / `loss-point.txt`）。① 形态：**49 局败局最后一手全是 `block`、
   全部被对手五连终局**（无认输、无盘满而败）；手数三形态分明 —— 胜局均 29–39 手、**17 局和棋全是 225 手满盘**、
@@ -734,7 +743,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 695 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 320 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 723 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 348 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
