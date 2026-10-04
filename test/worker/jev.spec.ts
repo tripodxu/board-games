@@ -545,8 +545,23 @@ describe('POST /api/jev（真中间件链 + 真 D1）', () => {
       expect(res.status).toBe(400);
     }
 
-    const limited = await postJev(TICKET_ONLY);
-    expect(limited.status).toBe(429);
+    /* 桶满后第一次必须是 429 —— 但**固定窗口会翻页**（`windowStartOf()` = 按 60 s 向下取整），
+     * 灌桶期间正好跨过边界时计数会重置，那一次就仍是 400。这不是缺陷，是用例自己踩了边界：
+     * 2026-10-04 的 CI run 37212423985 就因此在 549 行红过一次（本地复现不出来，概率 ≈ 灌桶耗时/60 s）。
+     * 所以这里按「当前窗口」判满：窗没翻就 429；翻页了就接着灌（`X-RateLimit-Reset` = 窗口起始 epoch 秒），
+     * 有界循环（2×limit+5 次）保证不会空转到超时。 */
+    const firstWindow = Number(first.headers.get('x-ratelimit-reset'));
+    expect(Number.isInteger(firstWindow)).toBe(true);
+    let limited: Response | null = null;
+    let rollovers = 0;
+    for (let i = 0; i <= limit * 2 + 5 && !limited; i++) {
+      const res = await postJev(TICKET_ONLY);
+      if (res.status === 429) { limited = res; break; }
+      expect(res.status).toBe(400);
+      if (Number(res.headers.get('x-ratelimit-reset')) !== firstWindow) rollovers += 1;
+    }
+    expect(limited, `灌了 ${limit * 2 + 5} 次仍未满（窗口翻页 ${rollovers} 次）`).not.toBeNull();
+    if (!limited) throw new Error('桶未满');
     const body = (await limited.json()) as { code: string; requestId: string | null };
     expect(body.code).toBe('rate_limited');
     expect(body.requestId === null || typeof body.requestId === 'string').toBe(true);
