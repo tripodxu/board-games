@@ -332,6 +332,25 @@
   ③ 覆盖 **13/14 层**（缺 `threat`，结构性不可达：`you:open4` 标签判据与 `chance_points_you` 同源，且含 `threat` 的档都含 `open4` 而链里 `open4` 在前；
   取证 2225 个归档候选 + 双活三/双四合成局面全部 chance=0 或被 `open4` 接管）；④ `⑭d` 证指纹与 `decide()` 全链路同解；
   ⑤ 引擎套件 **153 例**（+5）、vitest **38 文件 / 399 例**、`tsc --noEmit` 干净、`check:docs` 58 md / 397 链接。语料规模是实测定的：120 局面要 ~9 分钟（早/中盘棋盘稀疏，v12–v14 三档各 ~1.2 s/局面），进不了 CI。决策记录 [ADR-0020](adr/0020-tactics-fidelity-freeze.md)。
+- **阶梯编排：一条命令跑完一条 round-robin（P6，2026-10-04）**：
+  新增纯核 `scripts/lib/ladder.mjs`（413 行）与 CLI `scripts/experiment-ladder.mjs`（435 行）+ `test/scripts/ladder.spec.mjs`（334 行 / 33 例）。
+  阶梯**没有**做成 `experiment-batch.mjs` 的子命令：它要自己管「逐轮串行 → 等 pid → 拉该轮产物 → 推桶 → 冷却 → 下一轮」与续跑状态，
+  塞进 submit 会让一个命令同时是「单批次提交器」和「多轮编排器」。三条口径写死在纯核的文件头：
+  ① **颜色对称要求偶数局数**（worker 的 `sidesForGameSpec()` 让 A 奇数局执黑 + 开局库 `openingForNo()` 连续两局同开局换色；
+  奇数会让最后一局既没有换色对手也没有配对开局 ⇒ `normalizeGames()` 直接拒绝，`--allow-odd` 才放行）；
+  ② **身份口径 = 归档导出口径**（`rapfi:v14-live3-fresh:500` 的身份是 `rapfi||500`、`official:…:2000` 是 `official|…|0`，
+  镜像 `tacticsLabel()`/`thinkMsOf()`）；③ **「跑完了」由远端 `games.jsonl` 行数判定**（本地 `ok` 但行数 `2/4` 会重跑，
+  状态文件坏了也不重跑已完成的轮）。**L2 是笛卡尔积 15 对**（5 版 × 3 档 rapfi）而不是 8 个身份的 round-robin 28 对。
+  证据：① dry-run 逐项对齐（`--games 2`）：L1 10 轮/20 局、L2 15 轮/30 局、`all --with-5000` 29 轮/58 局、自定义 2 身份 1 轮/2 局；
+  ② **四道闸门真跑全过（exit 2 + 精确文案）**：未知预设、奇数局数、非法 `--batch`/`--store`/`--rate-limit`、
+  `--store d1` 无 `--origin`、`--upstream worker` 无 `--origin`、`--parallel`（阶梯一律串行）、
+  `experiment-batch.mjs submit --parallel` 双 proxy 臂被 `parallelGate` 点名拒绝；
+  **缺省 `--store local --upstream direct`（零 CF 触碰）不再被「会写生产 D1」的闸门误拦**（本轮修掉的误拦）；
+  ③ W/D/L 按**记录身份**判 A 执哪边（两臂同身份时才退回「奇数局 A 执黑」的位置推断 —— 缺行会让位置推断错位）；
+  ④ dry-run 印 `≈` 墙钟（每局 60 手、上游臂 1.1 s/手、rapfi `think/2`）：L3 120 局 ≈2–3 h、L2 300 局 ≈7 h、L1 200 局 ≈11 h，
+  并据此订正了计划 §7 里「L3 ~10 h」的粗估（起草时把两侧思考都算了一遍）；⑤ 全量验收：`tsc --noEmit` 干净、
+  引擎 **153/153**、vitest **47 文件 / 578 例**、`check:docs` 60 md / 421 链接、指纹一致（210 行）。
+  box 端到端真跑（小阶梯 + 中断续跑 + 桶前缀）见下一条 P6 验收记录。
 - **Elo 升级：Bradley–Terry 点估计 + Bootstrap 区间（P5，2026-10-04）**：
   `scripts/lib/batch-elo.mjs` 从 238 行扩到 **448 行**，新增 `aggregateBt()` / `fitBt()`（MM 迭代、`ridge` 先验 0.5、
   **显式零点**）/ `computeBt()` / `bootstrapBt()`（按局有放回重采样 + 每次重拟合，2.5–97.5% 分位）/ `mulberry32()`；
@@ -540,10 +559,10 @@
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
    P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅、
-   P5 Elo 升级（BT + bootstrap 区间）✅
+   P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（代码/单测/dry-run/闸门已过，box 端到端真跑待补）
    已完成**（见上「已验证」条目；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 P6 阶梯编排（`experiment-ladder.mjs`）→ C2（`providers.ts` 表 + 离线夹具）**；
+   **下一步 P6 的 box 端到端真跑（小阶梯 + 中断续跑 + 桶前缀）→ C2（`providers.ts` 表 + 离线夹具）→ P7（可选逃生门）**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂

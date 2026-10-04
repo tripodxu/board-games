@@ -1,0 +1,334 @@
+// ladder.spec.mjs — P6 阶梯编排纯逻辑 + CLI
+//
+// 测什么：身份口径（rapfi/mock 的战术档留空、思考档只认 rapfi —— 与归档导出口径一致）、
+// round-robin/笛卡尔积的**对数**（L1=10 / L2=15 / L3=3(+1)）、偶数局数的颜色对称闸门、
+// 计划的字段（tag/outDir/openings 逐项可对齐）、断点状态（本地 ok + 远端行数双条件）、
+// ETA 与一行汇总的文本形状、CLI 的四道闸门与 W/D/L 统计口径。
+import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  LADDER_VERSION, PRESETS, VERSION_SPECS, RAPFI_SPECS, RAPFI_5000, L3_EXTRA_5000,
+  identityOfSpec, pairKey, roundRobin, crossPairs, pairsForPreset, pairsForAll,
+  parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
+  newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress,
+  ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
+  estimateRoundSeconds,
+} from '../../scripts/lib/ladder.mjs';
+import { ladderMain, wdlOfGamesJsonl } from '../../scripts/experiment-ladder.mjs';
+
+const NOW = new Date('2026-10-04T12:00:00Z');
+const okRound = (round, games, w = { w: 1, d: 0, l: 1 }) => ({
+  round, label: `r${round}`, games, tag: `t${round}`, status: 'ok', wdl: w,
+  durationMs: 60000, error: null, at: NOW.toISOString(), remoteLines: games,
+});
+
+describe('身份口径（与归档导出口径一致）', () => {
+  it('rapfi/mock 的战术档写空串、思考档只认 rapfi', () => {
+    expect(identityOfSpec('rapfi:v14-live3-fresh:500').id).toBe('rapfi||500');
+    expect(identityOfSpec('rapfi:v10-live3:1000').id).toBe('rapfi||1000'); // 战术档只是占位
+    expect(identityOfSpec('mock:v14-live3-fresh:0').id).toBe('mock||0');
+    expect(identityOfSpec('rapfi:v14-live3-fresh').id).toBe('rapfi||0'); // 没写思考档 = 0
+  });
+  it('会跑战术层的渠道保留战术档；非 rapfi 的思考档丢弃（不造「0 毫秒档」幻影身份）', () => {
+    expect(identityOfSpec('official:v13-pressure-gate:0').id).toBe('official|v13-pressure-gate|0');
+    expect(identityOfSpec('official:v13-pressure-gate:2000').id).toBe('official|v13-pressure-gate|0');
+    expect(identityOfSpec('proxy:v14-live3-fresh:1000').id).toBe('proxy|v14-live3-fresh|0');
+  });
+  it('pairKey 无向：A vs B 与 B vs A 同键', () => {
+    expect(pairKey('rapfi::500', 'rapfi::1000')).toBe(pairKey('rapfi::1000', 'rapfi::500'));
+  });
+});
+
+describe('round-robin / 笛卡尔积', () => {
+  it('3 个身份 ⇒ 3 对；4 个 ⇒ 6 对；顺序确定', () => {
+    const three = roundRobin(['rapfi::500', 'rapfi::1000', 'rapfi::2000']);
+    // key 是去重用的规范化串（字典序，故 1000 排在 500 前）；label 与输入顺序一致，给人看。
+    expect(three.map((p) => p.key)).toEqual([
+      'rapfi||1000 vs rapfi||500', 'rapfi||2000 vs rapfi||500', 'rapfi||1000 vs rapfi||2000',
+    ]);
+    expect(three.map((p) => roundLabel(p))).toEqual([
+      'rapfi||500 vs rapfi||1000', 'rapfi||500 vs rapfi||2000', 'rapfi||1000 vs rapfi||2000',
+    ]);
+    expect(roundRobin(['rapfi::500', 'rapfi::1000', 'rapfi::2000', 'rapfi::5000']).length).toBe(6);
+  });
+  it('同一身份不自己打自己，重复身份不重复排', () => {
+    expect(roundRobin(['rapfi::500', 'rapfi::500']).length).toBe(0);
+    const withDup = roundRobin(['rapfi::500', 'rapfi::1000', 'rapfi::500']);
+    expect(withDup.length).toBe(1);
+  });
+  it('extras 追加且按 pairKey 去重；格式错要抛', () => {
+    const pairs = roundRobin(['rapfi::500', 'rapfi::1000'], {
+      extras: [['rapfi::500', 'rapfi::5000'], ['rapfi::5000', 'rapfi::500']],
+    });
+    expect(pairs.length).toBe(2); // 500vs1000 + extras 里的 500vs5000（两条 extras 是同一对）
+    expect(pairs.map((p) => p.key)).toContain('rapfi||500 vs rapfi||5000');
+    expect(() => roundRobin(['rapfi::500', 'rapfi::1000'], { extras: [['rapfi::500']] })).toThrow(/extras/);
+  });
+  it('少于两个身份直接抛（阶梯不是单机自测）', () => {
+    expect(() => roundRobin(['rapfi::500'])).toThrow(/至少要 2 个身份/);
+  });
+  it('crossPairs 是笛卡尔积（L2 的形状）', () => {
+    const pairs = crossPairs(VERSION_SPECS.slice(0, 2), RAPFI_SPECS);
+    expect(pairs.length).toBe(6);
+    expect(pairs[0].key).toBe('official|v10-live3|0 vs rapfi||500');
+  });
+  it('预设对数：L1=10 / L2=15 / L3=3（+1 加档）/ all=28', () => {
+    expect(pairsForPreset('L1').pairs.length).toBe(10);
+    expect(pairsForPreset('L2').pairs.length).toBe(15);
+    expect(pairsForPreset('L3').pairs.length).toBe(3);
+    expect(pairsForPreset('L3', { with5000: true }).pairs.length).toBe(4);
+    expect(pairsForPreset('L3', { with5000: true }).pairs.at(-1).key)
+      .toBe(pairKey(RAPFI_5000, L3_EXTRA_5000[1]));
+    expect(pairsForAll().pairs.length).toBe(10 + 15 + 3);
+    expect(pairsForAll({ with5000: true }).pairs.length).toBe(10 + 15 + 4);
+    expect(() => pairsForPreset('L9')).toThrow(/未知阶梯预设/);
+  });
+  it('L2 不含版本内战、不含 rapfi 内战（它是积，不是 8 个身份的 round-robin）', () => {
+    for (const p of pairsForPreset('L2').pairs) {
+      const a = identityOfSpec(p.a).channel;
+      const b = identityOfSpec(p.b).channel;
+      expect([a, b].sort().join('/')).toBe('official/rapfi');
+    }
+  });
+  it('预设常量自洽：5 版 + 3 档', () => {
+    expect(VERSION_SPECS.length).toBe(5);
+    expect(RAPFI_SPECS.length).toBe(3);
+    expect(Object.keys(PRESETS)).toEqual(['L1', 'L2', 'L3']);
+  });
+});
+
+describe('parseIdentityList / normalizeGames', () => {
+  it('逗号分隔、去空、去重保序；少于两个抛', () => {
+    expect(parseIdentityList(' rapfi::500 , rapfi::1000 ,, rapfi::500 ')).toEqual(['rapfi::500', 'rapfi::1000']);
+    expect(() => parseIdentityList('rapfi::500')).toThrow(/至少两个/);
+  });
+  it('奇数局数必须拒绝（颜色/开局都不再配对）', () => {
+    expect(normalizeGames(20)).toBe(20);
+    expect(() => normalizeGames(5)).toThrow(/必须是偶数/);
+    expect(normalizeGames(5, { allowOdd: true })).toBe(5); // 显式放行的临时跑动
+    expect(() => normalizeGames(1)).toThrow(/≥2/);
+    expect(() => normalizeGames('abc')).toThrow(/≥2/);
+  });
+});
+
+describe('buildLadder', () => {
+  const build = (over = {}) => buildLadder({
+    ladderId: 'lad1', specs: RAPFI_SPECS, games: 4, now: NOW, seed: 7, ...over,
+  });
+
+  it('每轮计划逐项可对齐（tag/outDir/开局/运行面/局数）', () => {
+    const lad = build({ openings: '/root/ladder/openings.json' });
+    expect(lad.version).toBe(LADDER_VERSION);
+    expect(lad.rounds.length).toBe(3);
+    expect(lad.totalGames).toBe(12);
+    const r1 = lad.rounds[0];
+    expect(r1.round).toBe(1);
+    expect(r1.label).toBe('rapfi||500 vs rapfi||1000');
+    expect(r1.plan).toMatchObject({
+      batchId: 'lad1', round: 1, games: 4, a: 'rapfi:v14-live3-fresh:500', b: 'rapfi:v14-live3-fresh:1000',
+      store: 'local', upstream: 'direct', rateLimit: 30, keyFile: '/root/.jev-key',
+      openings: '/root/ladder/openings.json', dryRun: false,
+      outDir: '/root/board-games/.work/remote/lad1/round-1',
+    });
+    expect(r1.plan.tag).toBe('exp-20261004120000-lad1-r1');
+    expect(lad.rounds[1].plan.tag).toBe('exp-20261004120000-lad1-r2');
+  });
+  it('要求显式 now（tag 要可复现）、batchId 要合法、局数要偶数', () => {
+    expect(() => buildLadder({ ladderId: 'lad1', specs: RAPFI_SPECS, games: 4, seed: 1 })).toThrow(/显式 now/);
+    expect(() => build({ ladderId: 'Bad Id' })).toThrow(/batchId 需匹配/);
+    expect(() => build({ games: 3 })).toThrow(/必须是偶数/);
+    expect(build({ games: 3, allowOdd: true }).gamesPerPair).toBe(3); // 显式放行的临时跑动
+  });
+  it('接受预计算的 pairs（预设路径）并保留顺序', () => {
+    const { pairs } = pairsForPreset('L3', { with5000: true });
+    const lad = build({ pairs });
+    expect(lad.rounds.length).toBe(4);
+    expect(lad.rounds.at(-1).label).toBe('rapfi||5000 vs rapfi||1000'); // label 按 extras 的书写顺序
+  });
+  it('身份重复到没有对决 ⇒ 抛', () => {
+    expect(() => build({ specs: ['rapfi::500', 'rapfi::500'] })).toThrow(/没有任何对决/);
+  });
+});
+
+describe('汇总文本', () => {
+  it('一行轮次汇总：编号/标记/对阵/局数/W-D-L/时长', () => {
+    const round = { round: 2, label: 'a|x|0 vs b|y|0', games: 20 };
+    expect(formatRoundLine(round, { status: 'ok', wdl: { w: 8, d: 4, l: 8 }, durationMs: 2520000 }))
+      .toBe('[2] ✅ a|x|0 vs b|y|0 20 局 W8-D4-L8 2520s');
+    expect(formatRoundLine(round, { status: 'failed', error: 'ssh 断了' })).toContain('❌');
+    expect(formatRoundLine(round, { status: 'failed', error: 'ssh 断了' })).toContain('ssh 断了');
+  });
+  it('dry-run 表格每轮一行，列为 # / 对阵 / 局数 / 开局 / 预计', () => {
+    const lad = buildLadder({ ladderId: 'lad1', specs: RAPFI_SPECS, games: 20, now: NOW, seed: 1 });
+    const table = formatLadderTable(lad.rounds, { avgGameS: 300 });
+    expect(table[0]).toBe('| # | 对阵 | 局数 | 开局 | 预计 |');
+    expect(table.length).toBe(2 + 3);
+    expect(table[2]).toContain('| 1 | rapfi||500 vs rapfi||1000 | 20 | （不用开局库） | ≈100m |');
+  });
+  it('预计墙钟：纯 rapfi 轮 ≈ Σthink/2，含上游臂的轮按 1.1 s/手', () => {
+    // 纯 rapfi：每手只有执子那一侧思考 ⇒ 每手 ≈ (500+1000)/2 ms。
+    expect(estimateRoundSeconds({ a: 'rapfi::500', b: 'rapfi::1000', games: 20 })).toBe(960);
+    expect(estimateRoundSeconds({ a: 'rapfi::500', b: 'rapfi::1000', games: 20 }))
+      .toBeLessThan(estimateRoundSeconds({ a: 'rapfi::1000', b: 'rapfi::2000', games: 20 }));
+    // 上游臂：1.1 s/手 + rapfi 那侧 think/2（60 手/局）。
+    expect(estimateRoundSeconds({ a: 'official:v14-live3-fresh:0', b: 'rapfi::1000', games: 20 })).toBe(1980);
+    expect(formatLadderTable([{ round: 1, label: 'x', games: 20, openings: null }], { estimateOf: (r) => estimateRoundSeconds(r) })[2])
+      .toContain('≈');
+  });
+});
+
+describe('断点状态', () => {
+  const lad = buildLadder({ ladderId: 'lad1', specs: RAPFI_SPECS, games: 4, now: NOW, seed: 1 });
+
+  it('初始全 pending；应用结果后按轮号排序、字段保留', () => {
+    let st = newLadderState(lad);
+    expect(st.rounds.map((r) => r.status)).toEqual(['pending', 'pending', 'pending']);
+    st = applyRoundResult(st, lad.rounds[1], { status: 'ok', wdl: { w: 2, d: 0, l: 2 }, durationMs: 1000, remoteLines: 4 }, { now: NOW });
+    const r2 = st.rounds.find((r) => r.round === 2);
+    expect(r2.status).toBe('ok');
+    expect(r2.wdl).toEqual({ w: 2, d: 0, l: 2 });
+    expect(r2.remoteLines).toBe(4);
+    expect(st.updatedAt).toBe(NOW.toISOString());
+  });
+  it('跳过条件是「本地 ok + 远端行数 ≥ 局数」双满足', () => {
+    let st = newLadderState(lad);
+    st = applyRoundResult(st, lad.rounds[0], { status: 'ok', wdl: { w: 1, d: 0, l: 1 }, remoteLines: 4 }, { now: NOW });
+    // 远端行数够 ⇒ 跳过
+    expect(resumeDecisions(st, { remoteLines: { 1: 4 } })[0]).toMatchObject({ skip: true, reason: 'ok' });
+    // 状态 ok 但远端只有 2 行 ⇒ 不能跳过（静默丢数据）
+    expect(resumeDecisions(st, { remoteLines: { 1: 2 } })[0]).toMatchObject({ skip: false });
+    expect(resumeDecisions(st, { remoteLines: { 1: 2 } })[0].reason).toMatch(/远端只有 2\/4 局/);
+    // 远端行数未知 ⇒ 保守重跑
+    expect(resumeDecisions(st, { remoteLines: {} })[0]).toMatchObject({ skip: false, reason: /行数未知/ });
+    // --force 全跑
+    expect(resumeDecisions(st, { force: true, remoteLines: { 1: 4 } })[0]).toMatchObject({ skip: false, reason: 'forced' });
+    // 没跑过的轮次当然不跳
+    expect(resumeDecisions(st, { remoteLines: { 2: 4 } })[1]).toMatchObject({ skip: false, reason: 'pending' });
+  });
+  it('汇总：done/failed/games/W-D-L/ETA（不足样本给 null）', () => {
+    let st = newLadderState(lad);
+    expect(summarizeLadder(st, { nowMs: NOW.getTime() }).etaS).toBeNull();
+    st = applyRoundResult(st, lad.rounds[0], { status: 'ok', wdl: { w: 2, d: 1, l: 1 }, durationMs: 120000, remoteLines: 4 }, { now: NOW });
+    st = applyRoundResult(st, lad.rounds[1], { status: 'failed', error: 'ssh' }, { now: NOW });
+    const s = summarizeLadder(st, { nowMs: NOW.getTime() });
+    expect(s).toMatchObject({ total: 3, done: 1, failed: 1, pending: 1, gamesDone: 4, gamesTotal: 12 });
+    expect(s.wdl).toEqual({ w: 2, d: 1, l: 1 });
+    expect(s.meanRoundS).toBe(120);
+    expect(s.etaS).toBe(240); // 还剩 2 轮 × 120s
+    st = applyRoundResult(st, lad.rounds[2], { status: 'ok', wdl: { w: 0, d: 0, l: 4 }, durationMs: 60000, remoteLines: 4 }, { now: NOW });
+    // 还剩 1 轮要跑 —— 失败的那轮也算「还没跑完」（要重跑），故 ETA = 已完成轮均时 90s × 1。
+    const done = summarizeLadder(st, { nowMs: NOW.getTime() });
+    expect(done).toMatchObject({ done: 2, failed: 1, pending: 0, etaS: 90 });
+    // 真正一轮不剩（没有 failed）才给 0。
+    let clean = newLadderState(lad);
+    clean = applyRoundResult(clean, lad.rounds[0], { status: 'ok', wdl: { w: 2, d: 0, l: 2 }, durationMs: 60000, remoteLines: 4 }, { now: NOW });
+    clean = applyRoundResult(clean, lad.rounds[1], { status: 'ok', wdl: { w: 2, d: 0, l: 2 }, durationMs: 60000, remoteLines: 4 }, { now: NOW });
+    clean = applyRoundResult(clean, lad.rounds[2], { status: 'ok', wdl: { w: 2, d: 0, l: 2 }, durationMs: 60000, remoteLines: 4 }, { now: NOW });
+    expect(summarizeLadder(clean, { nowMs: NOW.getTime() }).etaS).toBe(0);
+  });
+  it('一行进度文本含轮数/局数/W-D-L/已跑与 ETA', () => {
+    let st = newLadderState(lad);
+    st = applyRoundResult(st, lad.rounds[0], { status: 'ok', wdl: { w: 2, d: 1, l: 1 }, durationMs: 120000, remoteLines: 4 }, { now: NOW });
+    const line = formatLadderProgress(st, { nowMs: NOW.getTime() + 600000 });
+    expect(line).toContain('lad1 1/3 轮｜4/12 局｜W2-D1-L1');
+    expect(line).toContain('已跑 10m');
+    expect(line).toMatch(/ETA \d+m/);
+  });
+});
+
+describe('文件 IO', () => {
+  it('目录/文件命名固定（.work/remote/<ladderId>/…）', () => {
+    expect(ladderDir('E:/x', 'lad1')).toBe(path.join('E:/x', '.work/remote/lad1'));
+    expect(stateFile('E:/x', 'lad1')).toBe(path.join('E:/x', '.work/remote/lad1/ladder.json'));
+    expect(planFile('E:/x', 'lad1', 3)).toBe(path.join('E:/x', '.work/remote/lad1/plans/round-3.json'));
+  });
+  it('状态原子写 + 读回一致；坏文件读成 null 不抛', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-'));
+    const lad = buildLadder({ ladderId: 'lad1', specs: RAPFI_SPECS, games: 4, now: NOW, seed: 1 });
+    const file = stateFile(root, 'lad1');
+    writeLadderState(file, newLadderState(lad));
+    expect(readLadderState(file).rounds.length).toBe(3);
+    expect(fs.readdirSync(path.dirname(file)).some((f) => f.endsWith('.tmp'))).toBe(false);
+    fs.writeFileSync(file, '{ 坏 JSON');
+    expect(readLadderState(file)).toBeNull();
+    expect(readLadderState(path.join(root, 'nope.json'))).toBeNull();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  it('writePlans 落出每轮 plan 文件（内容 = round.plan）', () => {    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-'));
+    const lad = buildLadder({ ladderId: 'lad1', specs: RAPFI_SPECS, games: 4, now: NOW, seed: 1 });
+    const files = writePlans(root, lad);
+    expect(files.length).toBe(3);
+    const back = JSON.parse(fs.readFileSync(files[1], 'utf8'));
+    expect(back.round).toBe(2);
+    expect(back.tag).toBe('exp-20261004120000-lad1-r2');
+    expect(back.outDir).toContain('/.work/remote/lad1/round-2');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe('CLI：闸门与 W/D/L 口径', () => {
+  it('--ladder 与 --identities 二选一、必须给一个（exit 2）', async () => {
+    await expect(ladderMain([])).resolves.toBe(0); // 无参数 = 打用法
+    await expect(ladderMain(['--ladder', 'L3', '--identities', 'rapfi::500,rapfi::1000']))
+      .rejects.toMatchObject({ exitCode: 2 });
+    await expect(ladderMain(['--games', '4'])).rejects.toThrow(/--ladder L1\|L2\|L3\|all/);
+  });
+  it('未知预设 / 非法局数 / 非法 batchId 都是用法错（exit 2）', async () => {
+    const dry = ['--dry-run', '--batch', 'dry1'];
+    await expect(ladderMain(['--ladder', 'L9', ...dry])).rejects.toMatchObject({ exitCode: 2 });
+    await expect(ladderMain(['--ladder', 'L3', '--games', '3', ...dry])).rejects.toThrow(/必须是偶数/);
+    await expect(ladderMain(['--ladder', 'L3', '--dry-run', '--batch', 'Bad Id'])).rejects.toMatchObject({ exitCode: 2 });
+    await expect(ladderMain(['--ladder', 'L3', '--store', 'r2', ...dry])).rejects.toThrow(/--store 只认/);
+    await expect(ladderMain(['--ladder', 'L3', '--rate-limit', '0', ...dry])).rejects.toThrow(/--rate-limit/);
+  });
+  it('写生产 D1 要 --allow-production；零 CF 触碰的缺省跑动不受这条闸门拦', async () => {
+    await expect(ladderMain(['--ladder', 'L3', '--store', 'd1', '--dry-run', '--batch', 'dry1']))
+      .rejects.toThrow(/--allow-production/);
+    // 缺省 store=local + upstream=direct：dry-run 应该正常走完（不打上游、不落远端、不看 origin）
+    await expect(ladderMain(['--ladder', 'L3', '--games', '4', '--dry-run', '--batch', 'dry1'])).resolves.toBe(0);
+  });
+  it('--upstream worker 必须给 --origin；--parallel 一律拒绝（阶梯要串行）', async () => {
+    await expect(ladderMain(['--ladder', 'L3', '--upstream', 'worker', '--dry-run', '--batch', 'dry1']))
+      .rejects.toThrow(/--upstream worker 需要 --origin/);
+    await expect(ladderMain(['--ladder', 'L3', '--parallel', '--dry-run', '--batch', 'dry1']))
+      .rejects.toThrow(/阶梯不并行/);
+  });
+  it('W/D/L 按 A 视角算：和棋算和、未终局与半行不计数但算行数', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-wdl-'));
+    const rec = (result, winner, black = 'rapfi', white = 'rapfi') => JSON.stringify({
+      result, winner, blackChannel: black, whiteChannel: white, moves: [{}, {}],
+    });
+    const lines = [
+      rec('黑方 获胜（五连）', 'black'), // 局 1：A 执黑 → 胜
+      rec('白方 获胜（五连）', 'white'), // 局 2：A 执白 → 胜
+      rec('和棋（盘面满）', null), // 局 3：A 执黑 → 和
+      rec('', null), // 局 4：未终局 → 不计
+      '{"半截', // 局 5：kill -9 留下的半行 → 跳过（但仍占第 5 行的位置）
+      rec('白方 获胜（五连）', 'white'), // 局 6：A 执白 → 胜
+    ];
+    fs.writeFileSync(path.join(dir, 'games.jsonl'), lines.join('\n') + '\n');
+    // 身份分不出来（两臂同身份）⇒ 退回位置推断：偶数行（1 基）A 执白。
+    expect(wdlOfGamesJsonl(dir)).toEqual({ w: 3, d: 1, l: 0, lines: 6, counted: 4 });
+    expect(wdlOfGamesJsonl(dir, 'rapfi||0')).toEqual({ w: 3, d: 1, l: 0, lines: 6, counted: 4 });
+    fs.rmSync(dir, { recursive: true, force: true });
+    // 没跑过的目录：全 0（不编数字）
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-wdl-'));
+    expect(wdlOfGamesJsonl(empty)).toEqual({ w: 0, d: 0, l: 0, lines: 0, counted: 0 });
+    fs.rmSync(empty, { recursive: true, force: true });
+  });
+  it('身份能分清时按记录身份算 A 的胜负（不靠行号位置）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-wdl-'));
+    // 只有一行，且 A 执白并获胜 —— 位置推断会说「第一行 = A 执黑 = 负」，身份推断说「胜」。
+    fs.writeFileSync(path.join(dir, 'games.jsonl'), JSON.stringify({
+      result: '白方 获胜（五连）', winner: 'white',
+      blackChannel: 'rapfi', whiteChannel: 'official', whiteTactics: 'v14-live3-fresh', moves: [{}],
+    }) + '\n');
+    const aId = identityOfSpec('official:v14-live3-fresh:0').id;
+    expect(aId).toBe('official|v14-live3-fresh|0');
+    expect(wdlOfGamesJsonl(dir, aId)).toEqual({ w: 1, d: 0, l: 0, lines: 1, counted: 1 });
+    expect(wdlOfGamesJsonl(dir)).toEqual({ w: 0, d: 0, l: 1, lines: 1, counted: 1 }); // 无身份线索时的位置推断
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});

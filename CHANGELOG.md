@@ -27,6 +27,23 @@
 
 ### 新增
 
+- **阶梯编排：一条命令跑完一条 round-robin（P6，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
+  新增纯核 `scripts/lib/ladder.mjs`（413 行）与 CLI `scripts/experiment-ladder.mjs`（435 行）+
+  `test/scripts/ladder.spec.mjs`（334 行 / 33 例）。`--ladder L1|L2|L3|all` 或 `--identities a,b,c` 二选一，
+  逐轮生成与 `submit` 同形状的 plan，**串行**执行（起一轮 → 等 pid → 拉该轮产物 → 推桶 → 冷却 → 下一轮），
+  中断后重跑同一命令即续跑。三条口径写死在纯核里：① **偶数局数**（颜色对称：worker 让 A 奇数局执黑、
+  开局库连续两局同开局换色，奇数会让最后一局没有换色对手 ⇒ 直接拒绝，`--allow-odd` 才放行）；
+  ② **身份 = 归档导出口径**（`rapfi:v14-live3-fresh:500` → `rapfi||500`，rapfi/mock 的战术档留空）；
+  ③ **「跑完了」看远端 `games.jsonl` 行数**（本地 `ok` 但行数不足会重跑；状态文件坏了不重跑已完成的轮）。
+  **为什么独立 CLI 而不是 `experiment-batch.mjs ladder` 子命令**：阶梯要自己管等待/拉取/续跑状态，
+  塞进 submit 会让一个命令同时是「单批次提交器」和「多轮编排器」。**本轮还修掉一处误拦**：
+  缺省 `--store local --upstream direct`（零 CF 触碰）原先会被「会写生产 D1」的闸门拦死，现在只有 `--store d1`
+  才要 `--origin`/`--allow-production`。dry-run 表逐行印 `# / 对阵 / 局数 / 开局 / ≈墙钟`（每局 60 手、
+  上游臂 1.1 s/手、rapfi `think/2`；据此把计划里「L3 ~10 h」的粗估订正为 ≈2–3 h —— 起草时把两侧思考都算了一遍）。
+  验收：dry-run 逐项对齐（L1 10 轮/20 局、L2 15 轮/30 局、`all --with-5000` 29 轮/58 局）、
+  四道闸门 exit 2（未知预设/奇数局/非法参数/`--store d1` 无 origin/`--upstream worker` 无 origin/`--parallel`）、
+  `submit --parallel` 双 proxy 臂被点名拒绝、全量验收 `tsc` 干净 + 引擎 153/153 + vitest 47 文件 / 578 例 +
+  `check:docs` 60 md / 421 链接 + 指纹 210 行一致。
 - **Elo 从「顺序迭代」升级为 Bradley–Terry + Bootstrap 区间（P5，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   `scripts/lib/batch-elo.mjs`（238 → 448 行）新增 `aggregateBt()` / `fitBt()`（MM 迭代、`ridge` 先验 0.5、
   **显式零点**）/ `computeBt()` / `bootstrapBt()`（按局有放回重采样 + 每次重拟合，取 2.5–97.5% 分位）/ `mulberry32()`；

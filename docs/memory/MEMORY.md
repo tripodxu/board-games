@@ -19,6 +19,33 @@
 
 ---
 
+## 2026-10-04 · P6 阶梯编排：独立 CLI 而不是 submit 子命令；「跑完了」看远端行数；用法错必须包进 try
+
+- **做了什么**：纯核 `scripts/lib/ladder.mjs`（413 行）+ CLI `scripts/experiment-ladder.mjs`（435 行）+
+  `test/scripts/ladder.spec.mjs`（334 行 / 33 例）。一条命令跑完一条 round-robin：`--ladder L1|L2|L3|all`
+  或 `--identities a,b,c`，逐轮串行（起一轮 → 等 pid → 拉产物 → 推桶 → 冷却 → 下一轮），中断后重跑即续跑。
+- **为什么独立 CLI**：阶梯要自己管「等待 → 拉取 → 续跑状态」，做成 `experiment-batch.mjs ladder` 会让
+  submit 同时是「单批次提交器」和「多轮编排器」；拆开后 `submit` 保持单一职责，阶梯状态也能单独落 `ladder.json`。
+- **口径①：身份必须按归档导出口径写**（不是 spec 文本）：`rapfi:v14-live3-fresh:500` 的身份是 **`rapfi||500`**
+  （rapfi/mock 不过战术层 ⇒ 战术档留空），`official:v13-pressure-gate:2000` 是 `official|v13-pressure-gate|0`。
+  报表/断点状态/与历史轮次对齐全靠这条；写错就会把同一身份算成两个。
+- **口径②：偶数局数是颜色对称的前提**（A 奇数局执黑 + 开局库连续两局同开局换色）⇒ 奇数局数直接拒绝，
+  `--allow-odd` 才放行；`buildLadder` 也必须走 `normalizeGames()` 闸门（首版漏了这一步，奇数被静默放行）。
+- **口径③：「跑完了」= 远端 `games.jsonl` 行数 ≥ 局数**，不是本地状态说 ok —— 状态文件坏了/被删了也不该重跑
+  已完成的轮次；反之本地 ok 但远端只有 `2/4` 局必须重跑。`wdlOfGamesJsonl()` 同理：A 执哪边优先看**记录身份**，
+  拿不到线索才退回「奇数局 A 执黑」的位置推断（缺一行就会让位置推断错位）。
+- **坑①：`--batch` 这类 sanitize 调用要包进 try**。`sanitizeBatchId()` 抛的 Error 没有 `exitCode`，
+  直接冒到入口就变成 exit 1（运行时故障），而它其实是用法错（exit 2）。凡是「输入不合法」的 throw
+  都要在 CLI 里转成 `die()`（exit 2）—— 否则验收脚本按 exit code 分流时会误判。
+- **坑②：`parseArgs` 是「后者覆盖前者」**，所以测试里把 `--batch Bad` 写在 `...dry`（自带 `--batch dry1`）**之前**
+  时会被静默覆盖，表现为「坏值竟然通过了」。写 CLI 单测要么把待测参数放最后，要么别复用带同名参数的数组。
+- **坑③：`--store local --upstream direct` 是零 CF 触碰的缺省面**，不该被「会写生产 D1」的闸门拦；
+  闸门条件要写成 `store === 'd1'` 才要 `--origin`/`--allow-production`。**另外 `--parallel` 在阶梯里一律拒绝**
+  （串行 + 轮间冷却是成本纪律；要并行单批次请用 `submit --parallel`，那里只放行双本地臂）。
+- **预计墙钟的锚点（别自己编）**：每局 60 手（归档 312 局 / 19298 手 ≈ 62；P4b box 两局 27 与 80 手）、
+  上游臂 1.1 s/手（P4b box 实测 27 手 26 s / 80 手 89 s）、rapfi `think/2`（一手里只有执子那侧思考）
+  ⇒ L3 120 局 ≈2–3 h、L2 300 局 ≈7 h、L1 200 局 ≈11 h。计划里「L3 ~10 h」是把两侧思考都算了一遍的粗估，已订正。
+
 ## 2026-10-04 · P5 Elo 升级：BT 只定到「加常数」、200 局只能分辨 ~30 Elo、判据要按实测订正
 
 - **做了什么**：`scripts/lib/batch-elo.mjs` 238 → 448 行，把顺序迭代 Elo 换成 **Bradley–Terry**（`fitBt` MM 迭代、
