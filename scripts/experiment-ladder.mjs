@@ -456,6 +456,8 @@ async function main(argv = process.argv.slice(2)) {
     if (!Number.isInteger(n) || n < 1) die('--max-rounds 必须是 ≥1 的整数');
     ladder.rounds = ladder.rounds.slice(0, n);
     ladder.totalGames = ladder.rounds.reduce((s, r) => s + r.games, 0);
+    console.log(`⚠ --max-rounds ${n}：本次只编排前 ${n} 轮（共 ${ladder.totalGames} 局）—— 被截掉的轮次不在这次状态里，`);
+    console.log('  要跑全量就另起一次（不给 --max-rounds），别指望它「先跑 N 轮再接着跑」。\n');
   }
 
   const localBase = ladderDir(ROOT, ladderId);

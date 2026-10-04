@@ -4,7 +4,7 @@
 // round-robin/笛卡尔积的**对数**（L1=10 / L2=15 / L3=3(+1)）、偶数局数的颜色对称闸门、
 // 计划的字段（tag/outDir/openings 逐项可对齐）、断点状态（本地 ok + 远端行数双条件）、
 // ETA 与一行汇总的文本形状、CLI 的四道闸门与 W/D/L 统计口径。
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -477,6 +477,20 @@ describe('CLI：闸门与 W/D/L 口径', () => {
       .rejects.toThrow(/--upstream worker 需要 --origin/);
     await expect(ladderMain(['--ladder', 'L3', '--parallel', '--dry-run', '--batch', 'dry1']))
       .rejects.toThrow(/阶梯不并行/);
+  });
+  it('--max-rounds 是「截断本次编排」，并当场说清楚不是「先跑 N 轮再接着跑」', async () => {
+    const lines = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => { lines.push(a.join(' ')); });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c) => { lines.push(String(c)); return true; });
+    try {
+      await expect(ladderMain(['--ladder', 'L3', '--max-rounds', '1', '--dry-run', '--batch', 'dry2'])).resolves.toBe(0);
+    } finally {
+      logSpy.mockRestore();
+      writeSpy.mockRestore();
+    }
+    const out = lines.join('\n');
+    expect(out).toContain('--max-rounds 1：本次只编排前 1 轮');
+    expect(out).toContain('别指望它');
   });
   it('W/D/L 按 A 视角算：和棋算和、未终局与半行不计数但算行数', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-wdl-'));
