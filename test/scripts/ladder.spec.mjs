@@ -504,6 +504,24 @@ describe('CLI：闸门与 W/D/L 口径', () => {
     await expect(ladderMain(['--ladder', 'L3', '--parallel', '--dry-run', '--batch', 'dry1']))
       .rejects.toThrow(/阶梯不并行/);
   });
+  it('dry-run 印的启动命令与真跑同一条（含 pid 守卫、日志/pid 落点）', async () => {
+    const lines = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => { lines.push(a.join(' ')); });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c) => { lines.push(String(c)); return true; });
+    try {
+      await expect(ladderMain(['--ladder', 'L3', '--max-rounds', '1', '--dry-run', '--batch', 'dry3'])).resolves.toBe(0);
+    } finally {
+      logSpy.mockRestore();
+      writeSpy.mockRestore();
+    }
+    const out = lines.join('\n');
+    expect(out).toContain('与真跑同一条启动命令');
+    const sshLine = out.split('\n').find((l) => l.includes('ssh ') && l.includes('round-1.json'));
+    expect(sshLine).toContain('kill -0');                                   // 守卫在启动之前
+    expect(sshLine).toContain('>> /root/board-games/.work/remote/dry3/logs/round-1.log 2>&1 < /dev/null'); // 日志落点
+    expect(sshLine).toContain('echo $! > /root/board-games/.work/remote/dry3/logs/round-1.pid');
+    expect(sshLine).not.toContain('exec nohup');                            // 老写法（无守卫、无日志）不该再出现
+  });
   it('--max-rounds 是「截断本次编排」，并当场说清楚不是「先跑 N 轮再接着跑」', async () => {
     const lines = [];
     const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => { lines.push(a.join(' ')); });

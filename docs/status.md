@@ -334,7 +334,7 @@
 - **`L4` 高思考档预设：把 Rapfi 曲线补到 UI 上限（2026-10-04，业主点名）**：业主原话「补 500ms，
   7000ms，到 10000ms」⇒ `scripts/lib/ladder.mjs` 新增 `RAPFI_HIGH_SPECS`（`@7000`/`@10000`，后者 = UI 上限）
   与预设 `L4`（`cross(VERSION_SPECS, RAPFI_HIGH_SPECS)` = **10 对 / 200 局**）；**只列 L2 没有的档**
-  （`@500/@1000/@2000` 已各 100 局、分母配平），「两批右臂不重叠」由单测钉死（`test/scripts/ladder.spec.mjs` 54 例）。
+  （`@500/@1000/@2000` 已各 100 局、分母配平），「两批右臂不重叠」由单测钉死（`test/scripts/ladder.spec.mjs` 55 例）。
   dry-run 实测：10 轮、逐轮 `@7000` ≈93 min / `@10000` ≈123 min、**合计 ≈18.0 h**；
   **2026-10-05 按 `l2n1` 真实手数复算 ⇒ ≈13–17 h**（口径见「下一步」② 与阶梯计划 §7 的校准条）。
   合并报表口径：一次读两批 —— `node scripts/experiment-report.mjs --dir .work/remote/l2n1,.work/remote/rapfihi1`（`--dir` 支持逗号分隔的多根，`gameUid` 全局去重、按身份聚合 ⇒ 5 档曲线一次出）。
@@ -704,7 +704,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 694 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 319 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 695 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 320 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

@@ -8,6 +8,11 @@
 
 ### 修复
 
+- **`--dry-run` 印的启动命令与真跑不是同一条（2026-10-05）**：`experiment-ladder.mjs` 的 dry-run 预览还在手写
+  老命令串（`exec nohup node scripts/experiment-worker.mjs --plan …`），而真跑早就换成了
+  `launchRoundCommand()`（远端原子 pid 守卫 + 日志/pid 落同一处）。dry-run 是拿来看「今晚到底会执行什么」的，
+  印一条不会执行的命令等于骗人 ⇒ 预览改成直接调 `launchRoundCommand()`，与真跑逐字同源；单测加 1 例钉住
+  （守卫在启动之前、日志 `>> …/logs/round-N.log 2>&1 < /dev/null`、`echo $! > …/round-N.pid`、不再出现 `exec nohup`）。
 - **L4 的墙钟估算改正：≈13–17 h（不是 ≈26–35 h）（2026-10-05，用 `l2n1` 300 局真实手数重算）**：早先拿
   `vorder1`（**双上游臂**、手数均 90.3）的手数分布去外推「版本 vs Rapfi」的 L4，得到 ≈26–35 h —— 形态不同，
   结论作废。正确锚点是 `l2n1` 自己的 300 局：手数 **均 49.3 ／ 中位 33 ／ p90 75 ／ 最长 225**、Rapfi 侧手数

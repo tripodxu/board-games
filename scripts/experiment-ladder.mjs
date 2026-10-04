@@ -509,10 +509,17 @@ async function main(argv = process.argv.slice(2)) {
     console.log(`  预计墙钟合计 ≈${(estS / 3600).toFixed(1)}h（粗估：每局 60 手，上游臂 1.1 s/手、rapfi think/2；用来排序跑哪条，不是报表口径）`);
   }
   if (dryRun) {
-    console.log('\n--dry-run：不落远端。将要执行的命令（每轮一条）：');
+    console.log('\n--dry-run：不落远端。将要执行的命令（每轮一条，与真跑同一条启动命令）：');
+    const remote = `${repo}/.work/remote/${ladderId}`;
     for (const r of ladder.rounds) {
-      console.log(`  scp .work/remote/${ladderId}/plans/round-${r.round}.json → ${repo}/.work/remote/${ladderId}/plans/`);
-      console.log(`  ssh ${user}@${host} 'cd ${repo} && set -a; . ${keyFile}; set +a; exec nohup node scripts/experiment-worker.mjs --plan ${repo}/.work/remote/${ladderId}/plans/round-${r.round}.json'`);
+      console.log(`  scp .work/remote/${ladderId}/plans/round-${r.round}.json → ${remote}/plans/`);
+      console.log(`  ssh ${user}@${host} '${launchRoundCommand({
+        repo,
+        keyFile,
+        planPath: `${remote}/plans/round-${r.round}.json`,
+        logPath: `${remote}/logs/round-${r.round}.log`,
+        pidPath: `${remote}/logs/round-${r.round}.pid`,
+      })}'`);
     }
     return 0;
   }
