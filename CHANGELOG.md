@@ -88,6 +88,12 @@
 
 ### 新增
 
+- **运维手册新增「§8 远端阶梯作业」**（`docs/agents/playbooks.md`）：把「在 box 上本地跑 Elo 大数据、
+  不碰业主 Worker」的完整套路钉成一节 —— box 同步要用显式 refspec（普通 `git fetch origin main` 不会
+  更新 `origin/main`）、准备阶段 2–4 分钟别当启动失败、一次只跑一条（Rapfi 计的是墙钟）、
+  零 CF 依赖是默认、key 走 `/root/.jev-key` + `/root/.cc-key`、产物布局与 `pull --batch`、
+  报表 `--dir` 多根与未收尾轮的读法、以及「n=20 不许排版本名次」的回读纪律。
+
 - **阶梯计划 §9 又结掉两条开放问题（2026-10-04，只读勘察，没起引擎、没连线上）**：
   ③ **`games.device_id` 有**（`migrations/0001_init.sql:61` 的列 + `:70` 的索引），P0b 的
   「三条历史 tag 回填 `device_id='ssh-batch'`」**已完成**（26 局，`code_version` 仍 `dev+nogit`，

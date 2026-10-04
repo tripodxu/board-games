@@ -226,3 +226,40 @@ node scripts/experiment-run.mjs --games 12 --chanA proxy --tacA v14-live3-fresh 
     ③ **每个数都要带样本量与区间**：样本 < 50 局时 `formatRankTable()` 印 `±XX.Xpt ⚠`
     （20 局/对 ≈ ±20 pt），同档轮间方差实测 17.5 pt > 档位之间的差 ⇒ **跨档位比分不是曲线**，
     一句「这一档更强」在没有配对样本（同开局双跑）之前不成立。区间重叠就写「不可判」。
+
+## 8. 远端阶梯作业（在 box 上本地跑 Elo 大数据，不碰业主 Worker）
+
+对应口径（业主 m13876）：「最终可以使云服务器跑 elo 大量数据，不消耗太多 cfworker 资源」。
+
+```bash
+# 1) 先同步 box —— clone 的 refspec 很窄，普通 `git fetch origin main` 不会更新 origin/main
+ssh myserver 'cd /root/board-games && git fetch origin main:refs/remotes/origin/main -q && git checkout -B main origin/main -q && git log --oneline -1'
+# 2) 起一条阶梯（缺省串行、轮间冷却 30 s、产物留 box、上游直连）
+node scripts/experiment-ladder.mjs --ladder L2 --batch <id> --games 20 --poll 60
+```
+
+1. **一次只跑一条**：Rapfi 的思考时间是**墙钟**，两条并行会互相抢 CPU ⇒ 时间档失真
+   （`--parallel` 被直接拒跑；不同天先跑完 `vorder1` 再起 `rapfihi1` 也是同一个理由）。
+2. **准备阶段 2–4 分钟是正常的**（建目录 → 上传全部计划 → 逐轮读 tag，每趟 ssh 12–20 s）：这期间远端
+   只有 `plans/`、没有 `round-N/`，**别当启动失败手工补启动**（2026-10-04 双写事故就是这么来的；
+   现在远端有 pid 守卫，但手工起的 worker 绕开编排照样双写）。
+3. **进度看本地**：`--poll 60` 每分钟一次**捕获式**短 ssh（长命 ssh 会继承 stdout 管道，
+   编排一死作业就永不结束）；`--quiet` 只留轮首行。SSH 侧 `status --watch` 仍是有意保留的前台循环，
+   Ctrl-C 结束、**别塞进后台作业**。
+4. **零 CF 依赖是默认**：`--store local` + `--upstream direct` ⇒ 不写 D1、不连 Worker
+   （日志会打「store=local：未触碰业主 Worker」）；只有 `--store d1` 才需要 `--origin` + `--allow-production`。
+   要给「没碰生产」留证据就比对跑前跑后的 D1 行数（本机 D1 读路径 2026-10-04 起失效，
+   见 [../status.md](../status.md) 已知限制第 29 条）。
+5. **key 走文件**：box 上 `/root/.jev-key`（official）+ `/root/.cc-key`（commandcode 兜底）；
+   只有 `--expect-backup` 才要求兜底 key 存在；日志只报来源（`official←file:/root/.jev-key`），不打印 key。
+6. **规模与时长**看阶梯计划 §7 的四条阶梯表；`--games` 必须偶数（`--allow-odd` 才放行）；
+   `--max-rounds N` 是**截断本次编排**，不是「先跑 N 轮、之后再续」。
+7. **产物与拉回**：box `<batch>/{ladder.json,lines.txt,plans/,logs/,round-N/{games.jsonl,progress.json,
+   round-summary.json,events.jsonl,games/,checkpoint/}}`；`node scripts/experiment-batch.mjs pull --batch <id>`
+   （位置参数会被忽略，必须写 `--batch`）；桶推送是可选（缺凭据只告警、不阻断）。
+8. **报表**：`node scripts/experiment-report.mjs --batch <id> --out .work/<id>-report.md --json .work/<id>-report.json`；
+   多批合并用 `--dir a,b`（`gameUid` 全局去重、按身份聚合）；**未收尾的轮**默认读入并在报告头标注
+   （收尾凭据 = `round-summary.json`），要排除就加 `--skip-incomplete`。
+9. **回读纪律**：n=20 的单对半宽 ≈ ±20 pt ⇒ 不许据此排版本名次；只有配对样本到 100–200 局才能写
+   「A 比 B 强」。战术层耗时与成本对照是**必报项**（第 6 条 + 阶梯计划 §7 的六项报表）。
+
