@@ -287,6 +287,17 @@
 
 ## 已验证（验收证据）
 
+- **上游兜底补上决策记录 ADR-0022（2026-10-04，文档轮）**：C2/C3 的代码早已落地
+  （`src/core/jev/providers.ts` 311 行、`src/worker/lib/failover.ts` 159 行、`migrations/0004_move_provider.sql`），
+  但决策只散在计划与本文里；现补 [ADR-0022](adr/0022-upstream-provider-failover.md)：**换三元组
+  （端点/模型/key）不写协议适配器**、**同局粘滞、不回切**、**两条运行面各自处理「用尽」**
+  （Worker 单请求语义 ⇒ 429/529 即视为用尽、5xx 本请求内重试到 3 次；直连面把重试阶梯的
+  `exhausted` 传进 `noteFailure`）、**缺失 ≠ `primary`/`exact`**（0004 之前的老归档与 rapfi/mock/人类侧都是 NULL）、
+  **默认关闭**（`JEV_FAILOVER=off` + 未配 `COMMANDCODE_API_KEY`）。同时把 C1 的事实基线写死：
+  兜底网关响应与主网关**逐字段同构**（fixture 留档）、`GET /provider/v1/models` **不列** `typesafe/jev`、
+  响应**无** `x-ratelimit-*`（额度只能靠状态码判）。`docs/adr/README.md` 索引已加行；
+  计划 §7 里「是否单开 ADR」这条待办随之关闭（另两条仍然待业主：生产开不开兜底、生产 Worker 何时重部署）。
+
 - **L2 阶梯跑完：5 个版本 × 3 档 Rapfi（2026-10-04，[L2 报告](plans/2026-10-04-l2-version-vs-rapfi.md)）**：
   `--ladder L2 --batch l2n1 --games 20` ⇒ **15/15 轮 / 300 局 / W234-D17-L49**（Jev 侧得分率 78.0%），
   零网络写、零 CF 触碰，墙钟 316.7 分钟、7440 个 Jev 手全部 `provider=primary`（切换 0 次、兜底手 0）。

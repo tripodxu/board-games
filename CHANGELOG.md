@@ -83,6 +83,13 @@
 
 ### 新增
 
+- **上游兜底补上决策记录 [ADR-0022](docs/adr/0022-upstream-provider-failover.md)（2026-10-04）**：
+  C2/C3 的代码早已进 main（`src/core/jev/providers.ts`、`src/worker/lib/failover.ts`、
+  `migrations/0004_move_provider.sql`），但「为什么这样兜底」只散在计划里。ADR 写死五条：
+  换三元组不写协议适配器、同局粘滞不回切、两条运行面各自处理「用尽」（Worker 是单请求语义 ⇒
+  429/529 即用尽，直连面把重试阶梯的 `exhausted` 传进 `noteFailure`）、`provider`/`prob_source`
+  缺失 **≠** `primary`/`exact`、Worker 侧默认关闭（`JEV_FAILOVER=off`）；并留下 C1 的事实基线
+  （兜底网关响应逐字段同构、`/provider/v1/models` 不列 `typesafe/jev`、无 `x-ratelimit-*`）。
 - **L2 阶梯结果落档：5 个版本 × 3 档 Rapfi，300 局（2026-10-04）**：新增
   [docs/plans/2026-10-04-l2-version-vs-rapfi.md](docs/plans/2026-10-04-l2-version-vs-rapfi.md)。
   `--ladder L2 --batch l2n1 --games 20` ⇒ 15/15 轮 / 300 局 / **W234-D17-L49**（Jev 侧 78.0%），

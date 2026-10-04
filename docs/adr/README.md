@@ -29,3 +29,4 @@
 | [0019](0019-remote-batch-experiments.md) | SSH 远端批量对弈实验设施：纯 Node 对弈回路 + 本地编排器 submit/resume/status/pull/elo + 文件 checkpoint + 自研 Elo | accepted |
 | [0020](0020-tactics-fidelity-freeze.md) | 战术档位 = 冻结记录 + 决策指纹：预算集中登记、未知档号显式失败、接管链抽成纯函数、改共享代码必须亮红灯 | accepted |
 | [0021](0021-standalone-experiment-plane.md) | 离线实验面（默认直连上游 + 本地 JSONL + 文件进度 + 对象桶留档）：实验跑动零 CF 依赖，直连面复用 `official` 渠道，限流/熔断自实现 | accepted |
+| [0022](0022-upstream-provider-failover.md) | 上游提供方兜底：换三元组（端点/模型/key）不写适配器、同局粘滞不回切、逐手 `provider`/`prob_source` 归属，Worker 侧默认关闭 | accepted |
