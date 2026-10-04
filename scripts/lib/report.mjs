@@ -232,6 +232,165 @@ export function colorSplit(records) {
 }
 
 /**
+ * 版本筛查判读（把阶梯计划 §7 的「筛查判读规则」机械化）：只决定**下一场跑什么**，
+ * 不判谁更强（判强只看配对表与区间）。
+ *
+ * 只对版本身份（`official|v*`）生效，且必须是 3–5 个、两两都交过手 —— 否则返回 null（不是筛查形态）。
+ * 三条判据（全过才算「有值得决赛的差距」）：
+ *   ① 全序：两两点估计能排出一个无环全序（Copeland 赢场数排序，逐三元组查环）；
+ *   ② 共同对手：直接比较的方向与该对共同对手上的间接比较方向一致；
+ *   ③ 逐色格：不存在「换色翻面」（同一对里 A 执黑赢、执白输）。
+ * 偏离原文的地方写在 `note` 里：计划 §7 的 ② 按「≥2 个共同对手」写，3 版筛查每对只有 1 个 ⇒ 退化。
+ */
+export function screenVersions(records, opts = {}) {
+  const isVersion = (id) => typeof id === 'string' && /^official\|v[0-9]/.test(id);
+  const versions = [...new Set(records.flatMap((r) => [r.black, r.white]))].filter(isVersion).sort();
+  const maxVersions = opts.maxVersions == null ? 5 : opts.maxVersions;
+  if (versions.length < 3 || versions.length > maxVersions) return null;
+
+  const cells = new Map();
+  for (const r of records) {
+    const x = r.black;
+    const y = r.white;
+    if (!isVersion(x) || !isVersion(y) || x === y || !versions.includes(x) || !versions.includes(y)) continue;
+    const a = x < y ? x : y;
+    const b = a === x ? y : x;
+    const key = a + '\u0000' + b;
+    if (!cells.has(key)) {
+      cells.set(key, {
+        a, b, games: 0, scoreA: 0,
+        asBlack: { games: 0, score: 0 }, asWhite: { games: 0, score: 0 },
+      });
+    }
+    const c = cells.get(key);
+    const aScore = a === x ? r.blackScore : 1 - r.blackScore;
+    c.games += 1;
+    c.scoreA += aScore;
+    const side = a === x ? c.asBlack : c.asWhite;
+    side.games += 1;
+    side.score += aScore;
+  }
+  const pairs = [...cells.values()].map((c) => ({
+    a: c.a, b: c.b, games: c.games, rateA: c.games ? c.scoreA / c.games : null,
+    blackRate: c.asBlack.games ? c.asBlack.score / c.asBlack.games : null,
+    blackGames: c.asBlack.games,
+    whiteRate: c.asWhite.games ? c.asWhite.score / c.asWhite.games : null,
+    whiteGames: c.asWhite.games,
+  }));
+  const need = (versions.length * (versions.length - 1)) / 2;
+  const minPairGames = pairs.length ? Math.min(...pairs.map((p) => p.games)) : 0;
+  const base = { versions, pairs, minPairGames, games: pairs.reduce((n, p) => n + p.games, 0) };
+
+  /** x 对 y 的得分率（不分颜色）。 */
+  const rateOf = (x, y) => {
+    const p = pairs.find((q) => (q.a === x && q.b === y) || (q.a === y && q.b === x));
+    if (!p || !p.games) return null;
+    return p.a === x ? p.rateA : 1 - p.rateA;
+  };
+  /** x 对 y 的「执黑/执白」分色得分率（x 视角）。 */
+  const colorOf = (x, y) => {
+    const p = pairs.find((q) => (q.a === x && q.b === y) || (q.a === y && q.b === x));
+    if (!p) return { black: null, white: null };
+    return p.a === x ? { black: p.blackRate, white: p.whiteRate } : { black: p.whiteRate, white: p.blackRate };
+  };
+
+  if (pairs.length < need) {
+    return {
+      ...base, complete: false, order: null, consistent: null, cycles: [],
+      indirect: [], colorFlips: [], verdict: 'run-l1',
+      reasons: [`只凑齐 ${pairs.length}/${need} 对（版本之间没两两交过手）⇒ 筛查不成立`],
+    };
+  }
+
+  /* ① 全序：Copeland 赢场数排序 + 逐三元组查环（点估计，和棋记 0.5）。 */
+  const beats = (x, y) => {
+    const r = rateOf(x, y);
+    return r != null && r > 0.5;
+  };
+  const wins = new Map(versions.map((v) => [v, versions.filter((o) => o !== v && beats(v, o)).length]));
+  const meanRate = (v) => {
+    const rs = versions.filter((o) => o !== v).map((o) => rateOf(v, o)).filter((r) => r != null);
+    return rs.length ? rs.reduce((s, r) => s + r, 0) / rs.length : 0;
+  };
+  const order = [...versions].sort((x, y) =>
+    wins.get(y) - wins.get(x) || meanRate(y) - meanRate(x) || (x < y ? -1 : 1));
+  const cycles = [];
+  for (const x of versions) {
+    for (const y of versions) {
+      for (const z of versions) {
+        if (!(x < y && y < z)) continue;
+        if (beats(x, y) && beats(y, z) && beats(z, x)) cycles.push({ triple: [x, y, z], detail: `${x}>${y}>${z}>${x}（环）` });
+      }
+    }
+  }
+  const consistent = cycles.length === 0;
+
+  /* ② 共同对手：直接比较方向 vs 经共同对手的间接比较方向。 */
+  const indirect = [];
+  for (const x of versions) {
+    for (const y of versions) {
+      if (!(x < y)) continue;
+      const direct = rateOf(x, y) - 0.5;
+      for (const z of versions) {
+        if (z === x || z === y) continue;
+        const xz = rateOf(x, z);
+        const yz = rateOf(y, z);
+        if (xz == null || yz == null) continue;
+        const via = xz - yz;
+        indirect.push({
+          pair: [x, y], via: z, direct, viaDelta: via,
+          agrees: direct === 0 || via === 0 ? null : (direct > 0) === (via > 0),
+        });
+      }
+    }
+  }
+  const indirectBad = indirect.filter((i) => i.agrees === false);
+
+  /* ③ 逐色格：同一对里「A 执黑赢、执白输」就是换色翻面。 */
+  const colorFlips = [];
+  for (const p of pairs) {
+    if (p.blackRate == null || p.whiteRate == null) continue;
+    const dBlack = p.blackRate - 0.5;
+    const dWhite = p.whiteRate - 0.5;
+    if (dBlack !== 0 && dWhite !== 0 && (dBlack > 0) !== (dWhite > 0)) {
+      colorFlips.push({ pair: [p.a, p.b], asBlack: p.blackRate, asWhite: p.whiteRate, blackGames: p.blackGames, whiteGames: p.whiteGames });
+    }
+  }
+
+  const reasons = [];
+  if (!consistent) reasons.push(`点估计有环：${cycles.map((c) => c.detail).join('、')}`);
+  if (indirectBad.length) {
+    reasons.push('间接比较与直接比较不同向：' + indirectBad
+      .map((i) => `${i.pair[0]} vs ${i.pair[1]}（直接 ${fmtSigned(i.direct)}，经 ${i.via} ${fmtSigned(i.viaDelta)}）`).join('、'));
+  }
+  if (colorFlips.length) {
+    reasons.push('换色翻面：' + colorFlips
+      .map((f) => `${f.pair[0]} vs ${f.pair[1]}（执黑 ${fmtPt(f.asBlack)}／执白 ${fmtPt(f.asWhite)}）`).join('、'));
+  }
+  const verdict = reasons.length === 0 ? 'pass' : 'run-l1';
+  return {
+    ...base,
+    complete: true,
+    order,
+    consistent,
+    cycles,
+    indirect,
+    colorFlips,
+    verdict,
+    finalPair: verdict === 'pass' ? [order[0], order[1]] : null,
+    reasons: verdict === 'pass'
+      ? ['三条判据全过 ⇒ 有值得决赛的差距（只补头部两版的配对）']
+      : reasons,
+    note: '计划 §7 的 ② 按「≥2 个共同对手」写；3 版筛查每对只有 1 个共同对手 ⇒ ② 退化为「间接与直接同向」。',
+  };
+}
+
+/** 差值带符号的百分点写法（`+5.0pt` / `-5.0pt`）。 */
+function fmtSigned(x) {
+  return `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}pt`;
+}
+
+/**
  * 收尾机制：把「这局是怎么结束的」摊开 —— 直接决定结论怎么读（规则 11：和棋可接受，但要说清来路）。
  * 为什么单列：vorder1 round-1 实测 5 局和棋**全部**是 225 手「棋盘已满」（不是协议和、不是认输），
  * 「双方都守住了」与「双方都不敢下」是两种故事，报告里不写清就会被读成后者。
@@ -452,6 +611,34 @@ export function reportMarkdown(model) {
       `${s.blackWins}/${s.blackGames} | ${s.whiteWins}/${s.whiteGames} |`);
   }
   out.push('');
+  /* 版本筛查判读（只对「3–5 个版本身份、两两都交过手」生效）：把计划 §7 的规则摊成三条判据，
+     免得「要不要补 L1」靠肉眼在几张表之间来回看（n=20 的筛查本来就不许下强弱结论）。 */
+  const screen = screenVersions(model.records);
+  if (screen) {
+    out.push('版本筛查判读（阶梯计划 §7 规则机械化；**只决定下一场跑什么**，不判谁更强）：');
+    out.push('');
+    if (!screen.complete) {
+      out.push(`- ${screen.reasons[0]} ⇒ 判定：**筛查不成立**，按 §7 直接跑 L1。`);
+    } else {
+      const indirectBad = screen.indirect.filter((i) => i.agrees === false);
+      out.push(`- 全序（点估计）：${screen.order.join(' > ')}｜判据 ① 全序${screen.consistent ? '无环 ✅' : `有环 ❌（${screen.cycles.map((c) => c.detail).join('、')}）`}`);
+      out.push(`- 判据 ② 共同对手：` + (screen.indirect.length
+        ? screen.indirect.map((i) => `${i.pair[0]} vs ${i.pair[1]} 直接 ${fmtSigned(i.direct)}／经 ${i.via} ${fmtSigned(i.viaDelta)}`).join('、') +
+          ` ⇒ ${indirectBad.length ? `有 ${indirectBad.length} 处反向 ❌` : '全部同向 ✅'}`
+        : '共同对手不足 ⚠'));
+      out.push(`- 判据 ③ 逐色格：` + (screen.colorFlips.length
+        ? screen.colorFlips.map((f) => `${f.pair[0]} vs ${f.pair[1]} 执黑 ${fmtPt(f.asBlack)}／执白 ${fmtPt(f.asWhite)}`).join('、') + ' ⇒ 换色翻面 ❌'
+        : '无换色翻面 ✅'));
+      out.push(`- 样本：最小配对 ${screen.minPairGames} 局／合计 ${screen.games} 局` +
+        (screen.minPairGames < MIN_GAMES ? `（< ${MIN_GAMES} ⇒ 只作筛查，不能写进结论）` : ''));
+      out.push(screen.verdict === 'pass'
+        ? `- 判定：**有值得决赛的差距** ⇒ 只补决赛对 \`${screen.finalPair[0]} vs ${screen.finalPair[1]}\`（100–200 局配对），先不跑 L1。`
+        : `- 判定：**筛查不成立** ⇒ 按 §7 直接跑 L1（L1 也回答不了「A 比 B 强」，它只给梯队相对位置）。`);
+      if (screen.verdict !== 'pass') out.push(`  - 原因：${screen.reasons.join('；')}`);
+      out.push(`- 口径提示：${screen.note}`);
+    }
+    out.push('');
+  }
   if (!model.openings || model.openings.length === 0) {
     out.push('开局分层：**本轮未启用开局库**（`--openings` 未给）—— 对称性由「同一开局换色双跑」的偶数局保证，');
     out.push('每对内部的先后手已配平，但不控制具体开局形态。');

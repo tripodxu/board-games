@@ -11,7 +11,7 @@ import path from 'node:path';
 import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
   collectCost, colorCells, colorSplit, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
-  openingRows, pairTable, quantiles,
+  openingRows, pairTable, quantiles, screenVersions,
   rafiCurve, reportMarkdown, significance, curveDeltas,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
@@ -238,6 +238,124 @@ describe('逐色格 / 分开颜色（L3 第一晚的教训：先手优势 85%，
     expect(md).toContain('| rapfi||500（黑） vs rapfi||1000（白） | 1 | 1 | 0 | 0 |');
     expect(md).toContain('按身份分开颜色');
     expect(md).toContain('| rapfi||500 | 2–2 | 50.0% | 1/2 | 1/2 |');   // 总战绩是「胜–负」（2 胜 2 负，其中 1 和）
+  });
+});
+
+describe('版本筛查判读（阶梯计划 §7 规则机械化：只决定下一场跑什么）', () => {
+  /** 一对里 A 先执黑 10 局、再执白 10 局（阶梯每局换色，所以必须是这种形状）。 */
+  const pair = (a, b, { blackWins = 5, blackDraws = 0, whiteWins = 5, whiteDraws = 0 } = {}) => {
+    const out = [];
+    const N = 10;
+    for (let i = 0; i < N; i += 1) {
+      const score = i < blackWins ? 1 : i < blackWins + blackDraws ? 0.5 : 0;
+      out.push({ black: a, white: b, blackScore: score });
+    }
+    for (let i = 0; i < N; i += 1) {
+      /* A 执白：A 得 `whiteWins/whiteDraws` ⇒ 黑方（b）得分是它的补 */
+      const aScore = i < whiteWins ? 1 : i < whiteWins + whiteDraws ? 0.5 : 0;
+      out.push({ black: b, white: a, blackScore: 1 - aScore });
+    }
+    return out;
+  };
+  const V13 = 'official|v13-pressure-gate|0';
+  const V11 = 'official|v11-vct|0';
+  const V14 = 'official|v14-live3-fresh|0';
+
+  it('非筛查形态返回 null：Rapfi 对局、只有 2 版、超过 5 版', () => {
+    expect(screenVersions([{ black: 'rapfi||500', white: 'rapfi||1000', blackScore: 1 }])).toBeNull();
+    expect(screenVersions(pair(V13, V11))).toBeNull();
+    const six = ['v10', 'v11', 'v12', 'v13', 'v14', 'v15'].map((v) => `official|${v}|0`);
+    expect(screenVersions(six.flatMap((v, i) => (i ? pair(six[0], v) : [])))).toBeNull();
+  });
+
+  it('三对全过 ⇒ 全序 + 判据全绿 + verdict=pass（头部两版是决赛对）', () => {
+    const recs = [
+      ...pair(V13, V11, { blackWins: 7, whiteWins: 6 }),   // v13 0.65
+      ...pair(V13, V14, { blackWins: 7, whiteWins: 5 }),   // v13 0.60
+      ...pair(V11, V14, { blackWins: 5, whiteWins: 4 }),   // v11 0.45 ⇒ v14 0.55
+    ];
+    const s = screenVersions(recs);
+    expect(s.complete).toBe(true);
+    expect(s.order).toEqual([V13, V14, V11]);
+    expect(s.consistent).toBe(true);
+    expect(s.indirect.every((i) => i.agrees !== false)).toBe(true);
+    expect(s.colorFlips).toEqual([]);
+    expect(s.games).toBe(60);
+    expect(s.minPairGames).toBe(20);
+    expect(s.verdict).toBe('pass');
+    expect(s.finalPair).toEqual([V13, V14]);
+  });
+
+  it('点估计成环 ⇒ 判据 ① 不过（run-l1）', () => {
+    const recs = [
+      ...pair(V11, V13, { blackWins: 7, whiteWins: 7 }),   // v11 0.70
+      ...pair(V13, V14, { blackWins: 7, whiteWins: 7 }),   // v13 0.70
+      ...pair(V14, V11, { blackWins: 7, whiteWins: 7 }),   // v14 0.70
+    ];
+    const s = screenVersions(recs);
+    expect(s.consistent).toBe(false);
+    expect(s.cycles.length).toBe(1);
+    expect(s.verdict).toBe('run-l1');
+    expect(s.reasons.join('｜')).toMatch(/环/);
+  });
+
+  it('判据 ②：共同对手方向与直接比较相反 ⇒ 抓出来（直接比较本身仍是无环的）', () => {
+    const recs = [
+      ...pair(V13, V11, { blackWins: 6, whiteWins: 6 }),   // 直接 v13 0.60（+10pt）
+      ...pair(V11, V14, { blackWins: 6, whiteWins: 5 }),   // v11 0.55；v13 对 v14 也是 0.55 ⇒ 间接 −5pt
+      ...pair(V13, V14, { blackWins: 6, whiteWins: 5 }),   // v13 0.55
+    ];
+    const s = screenVersions(recs);
+    expect(s.consistent).toBe(true);
+    const bad = s.indirect.filter((i) => i.agrees === false);
+    expect(bad.map((i) => i.pair)).toEqual([[V11, V14]]);
+    expect(bad[0].via).toBe(V13);
+    expect(s.verdict).toBe('run-l1');
+    expect(s.reasons.join('｜')).toMatch(/间接比较与直接比较不同向/);
+  });
+
+  it('判据 ③：A 执黑赢、执白输 ⇒ 换色翻面', () => {
+    const recs = [
+      ...pair(V13, V11, { blackWins: 8, whiteWins: 2 }),   // v13 执黑 80%／执白 20% ⇒ 落到 a=V11 视角就是 80%/20% 反着
+      ...pair(V13, V14, { blackWins: 7, whiteWins: 6 }),
+      ...pair(V11, V14, { blackWins: 5, whiteWins: 4 }),
+    ];
+    const s = screenVersions(recs);
+    expect(s.colorFlips).toHaveLength(1);
+    expect(s.colorFlips[0]).toMatchObject({ pair: [V11, V13], asBlack: 0.8, asWhite: 0.2 });
+    expect(s.verdict).toBe('run-l1');
+    expect(s.reasons.join('｜')).toMatch(/换色翻面/);
+  });
+
+  it('只凑齐 2/3 对 ⇒ complete=false，按 §7 直接跑 L1', () => {
+    const s = screenVersions([...pair(V13, V11), ...pair(V13, V14)]);
+    expect(s.complete).toBe(false);
+    expect(s.verdict).toBe('run-l1');
+    expect(s.reasons[0]).toMatch(/只凑齐 2\/3 对/);
+  });
+
+  it('markdown 第 4 节印筛查判读块；不是筛查形态就不出现', () => {
+    const model = (recs) => ({
+      batchId: 't1', generatedAt: '2026-10-05T00:00:00Z', dirs: ['d'], rounds: 3,
+      games: [], records: recs, rows: [], pairs: pairTable(recs), openings: [],
+      cost: { rows: [], totalRow: costRow('全轮合计', collectCost([]).total) },
+      runtime: '', artifacts: [], anchor: DEFAULT_ANCHOR, bootstrap: 0, seed: 1, tags: [],
+    });
+    const recs = [
+      ...pair(V13, V11, { blackWins: 7, whiteWins: 6 }),
+      ...pair(V13, V14, { blackWins: 7, whiteWins: 5 }),
+      ...pair(V11, V14, { blackWins: 5, whiteWins: 4 }),
+    ];
+    const md = reportMarkdown(model(recs));
+    expect(md).toContain('版本筛查判读（阶梯计划 §7 规则机械化');
+    expect(md).toContain(`- 全序（点估计）：${V13} > ${V14} > ${V11}`);
+    expect(md).toContain('判据 ① 全序无环 ✅');
+    expect(md).toContain('判据 ② 共同对手');
+    expect(md).toContain('判据 ③ 逐色格：无换色翻面 ✅');
+    expect(md).toContain('（< 50 ⇒ 只作筛查，不能写进结论）');
+    expect(md).toContain(`**有值得决赛的差距** ⇒ 只补决赛对 \`${V13} vs ${V14}\``);
+    expect(reportMarkdown(model([{ black: 'rapfi||500', white: 'rapfi||1000', blackScore: 1 }])))
+      .not.toContain('版本筛查判读');
   });
 });
 
