@@ -88,6 +88,16 @@
 
 ### 新增
 
+- **阶梯计划 §9 又结掉两条开放问题（2026-10-04，只读勘察，没起引擎、没连线上）**：
+  ③ **`games.device_id` 有**（`migrations/0001_init.sql:61` 的列 + `:70` 的索引），P0b 的
+  「三条历史 tag 回填 `device_id='ssh-batch'`」**已完成**（26 局，`code_version` 仍 `dev+nogit`，
+  见 `docs/status.md:35-38`）⇒ 该条**按仓库迁移与 status 记录结案**，不再是线上待查项（本机
+  `wrangler d1 execute --remote` 已因凭据失效报 `code: 7403`，见 status 已知限制新增第 29 条）。
+  ② **Rapfi 的节点预算当不了控制变量**：本仓这侧是 WASM + Gomocup 风格协议，客户端只发
+  `START 15` / `INFO rule 0` / `INFO timeout_turn <ms>`（`src/core/jev/rapfi.ts:195`、`:240`），
+  节点数只能从 `INFO show_detail 1` 的 `MESSAGE` 行**读**、不能**设**（`parseMoveLine` 只认 `^\d+,\d+$`）
+  ⇒ 「等节点数」的公平对比不做；要坐实 `INFO nodes` 之类是否被忽略，得在 box 阶梯空档起一次真引擎另开探针。
+
 - **采样参数探针 `scripts/probe-model-params.mjs`（只读，2026-10-04）**：拿真实夹具请求体按变体表重复 POST，
   回答「上游认不认 `temperature` / `top_p` / `seed`」，印出每个变体的 HTTP 状态、答案是否逐字复现、
   自报概率的最大摆幅与耗时；`--dry-run` 零请求、key 永不入产物。实测结论：**官方端点对多余顶层字段直接

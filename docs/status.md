@@ -667,6 +667,8 @@
 
 28. **`v13-pressure-gate` 的代价（已量化、A/B 已判定）**：闸门真接管时会**用攻势换安全** —— 三个 v12 回合 800 个 Jev 回合的回归扫描里真接管 26 手，对手做四手数更优 14/26、平均 −1.08 个，**但我们自己的做四手数平均 −1.92 个、13/26 让掉了进攻**（典型案例：夹具 `e3e417e6` ply8 实走 `E9/live3Attack` 后我方做四 4 / 对手 2，削点 `D12` 后对手 0 / 我方 0）。**同口径 A/B 的答案（2026-10-03）**：`rapfi@1000ms` 12 局 9 胜 0 和 3 负（75.0%），v12 同档 10 胜 0 和 2 负（83.3%）—— 一局之差在 12 局样本里落在噪声内，**比分口径回答不了「划不划算」**；能回答的是接管标签 × 局结果交叉表：四个进攻类层在 9 个胜局命中 79 手、3 个负局 0 手，三局「我方有杀」全为 0 ⇒ 输在赢不了，本层是纯防守机制、结构上治不了 ⇒ **保留、不再加码**（代价结论：实测 3.2 ms/次，没有把胜局变成负局，但也没有把负局救回来）。**20 局档位复核（2026-10-03）**：`rapfi@1000ms` 20 局 11 胜 1 和 8 负（57.5%）、`rapfi@2000ms` 20 局 13 胜 2 和 5 负（70.0%），两轮合计 40 个「拆不掉」回合**全部是全盘无拆点**（`.work/round1-report.log` / `.work/round2-report.log`）⇒ 闸门的代价没有升级成新的败因，但也没有把败局救回来；`vctDefense` 两轮合计开火 3 次、**真救 0**，至今未被实战检验（见 [v14 证据评审](plans/2026-10-03-tactics-v14-evidence.md)）。另：`pressureCut` 是 1-ply 手数量，**不搜杀**，所以它必须由 `danger_points_opponent` 这条安全线兜住「对手下一步就有杀」的局面（p18 夹具抓到过反例），这条守卫是启发式，不是证明；`live3After` / `live3Deny` 的旧口径缺陷当时**有意未动**（保持 A/B 单变量），**随后由 v14 修正**（见上方 v14 条）。
 
+29. **本机 wrangler 的 D1 读路径也失效了**（2026-10-04 实测，比第 26 条更近一步）：`node .work/wrangler-run.mjs d1 execute jev-qiguan --remote --json --command "SELECT name FROM pragma_table_info('games')"` ⇒ `A request to the Cloudflare API (/accounts/6f8cd3a216c8de232d829099778d7c53/d1/database/f72390fe-a506-4a88-8db7-af7213657947/query) failed.`，notes `The given account is not valid or is not authorized to access this service [code: 7403]`（`kind: APIError`、`accountTag 6f8cd3a216c8de232d829099778d7c53`），exit 1。也就是说本机既有 OAuth 已过期（第 14 条），又**没有可用的 API Token** ⇒ 从这台机器上既不能查也不能导出 D1；阶梯计划的 §9 第 3 条因此改成**按仓库迁移 + `docs/status.md` 记录结案**（结论：`games.device_id` 存在，回填 26 局已完成）。恢复要业主补凭据（`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`）或重新登录，属业主决定项。
+
 ## 验收命令表
 
 命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 681 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 306 例））。
@@ -728,7 +730,11 @@
    **下一步（业主 2026-10-04 已定）**：① **版本排序筛查已在跑** —— `vorder1`：`v13-pressure-gate` vs `v11-vct`、
    `v13` vs `v14-live3-fresh`、`v11` vs `v14-live3-fresh` 三对 × 20 局 = 60 局（双方都是上游臂，预计 ≈2.3h），
    产物留 box；筛查出差距后再决定要不要跑完整 L1（5 版两两 10 对 × 20 = 200 局）；
-   ② Rapfi 是否再抬到 `@5000`（阶梯已备 `--with-5000`，L3 的 `@5000 vs @1000` 那对已有 20 局样本）；
+   ② **Rapfi 抬时间已按业主 2026-10-04 的口径改成「直接补到上限」**（原话「补 500ms，7000ms，到 10000ms」）：
+   跨过 `@5000` 不单独跑，改跑 **`L4`**（5 版 × `@7000`/`@10000` = 10 对 × 20 局 = 200 局，预设 `c68aba5`，
+   `--ladder L4`）；dry-run 粗估 ≈18 h，但 box 实测长局可到 225 手、Rapfi 按档计时 ⇒ 实际可能 ≈26 h。
+   编排链已备好（`vorder1` 收尾 ⇒ 自动出报表 ⇒ 同步 box ⇒ 串行起 `rapfihi1`，见 `.work/chain-l4.ps1`）；
+   `--with-5000` 仍留在 CLI 里，需要补那一点时随时能跑（L3 的 `@5000 vs @1000` 已有 20 局样本）；
    ③ **P7（可选逃生门：`--rev <sha>`）仍待业主定**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
