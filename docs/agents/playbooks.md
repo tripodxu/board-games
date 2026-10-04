@@ -121,6 +121,11 @@
    **push 不会自动部署**，也**不会**让旧站 `jev-qiguan.pages.dev` 变新——它是迁移前的只读旧站。
 5. 发版后可选核对：`npm run smoke:live`（HTTP 冒烟）、`npm run verify:backup`（备份校验）、
    `npm run db:export`（导出远程库到 `backups/`）。
+6. **仓库 secret 是自动备份与 `workflow_dispatch` 部署的前置**：`CLOUDFLARE_API_TOKEN`（D1:Read 即可导出）
+   与 `CLOUDFLARE_ACCOUNT_ID` 必须存在于仓库 Settings → Secrets and variables → Actions。
+   用 `gh secret list` 一秒核对；**空的话 `backup.yml` 每晚必红**（2026-10-02～04 连挂三晚就是这么来的，
+   日志只会说 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN…`）。
+   `backup.yml` 现在第一步就会把缺哪个 secret 明确报出来。
 
 ## 7. 跑对照实验（长跑无人值守）
 

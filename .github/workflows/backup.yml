@@ -23,6 +23,23 @@ jobs:
           cache: npm
       - run: npm ci
 
+      - name: 先检查仓库 secret（缺了要说清楚，别让 wrangler 报个含糊错误）
+        # 2026-10-02～04 连续三晚红在这里：仓库一个 secret 都没有，wrangler 只回一句
+        # "In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN…"，
+        # 看上去像网络问题，其实是没配。缺什么就在第一步点名。
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=''
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN（D1:Read）"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::仓库缺少 secret：$missing —— 到 Settings → Secrets and variables → Actions 添加后重跑（见 docs/status.md「已知限制」）"
+            exit 1
+          fi
+          echo "secret 就位（值不打印）"
+
       - name: 导出远程 D1 快照
         # 注意：wrangler 不会自己建目录，`--output` 指向不存在的目录会报
         # "The file was moved or deleted"，所以先 mkdir。

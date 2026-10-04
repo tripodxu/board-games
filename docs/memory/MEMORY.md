@@ -37,6 +37,9 @@
   （`for i in $(seq 1 1440); do kill -0 …; sleep 30; done`），长命 ssh 继承 stdout 管道 —— 与阶梯第一晚 L3
   那次「作业永不结束」同根因。现在两处都走 `scripts/lib/ladder.mjs` 的 `pollRoundCommand()`
   ＋本地每分钟一次**捕获式**短 ssh（阶梯 `pollRound` / batch `waitRoundLocally`）。
+- **有意留下的例外**：`experiment-batch.mjs status --watch` 仍是**一条前台远端循环 ssh**（D13：进度只有文件、
+  没有常驻服务）—— 它是给人盯着看的交互命令，Ctrl-C 就结束，不参与编排判定，所以不改成轮询；
+  但别把它塞进后台作业里等（那又会变成「本地进程死了、ssh 还挂着」的老问题）。
 
 ## 2026-10-04 · 这台 box 的链路会间歇性抽风：scp/ssh 都要三次重试
 
