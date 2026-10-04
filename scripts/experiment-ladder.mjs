@@ -36,7 +36,7 @@ import {
 } from './lib/batch-common.mjs';
 import {
   RAPFI_SPECS, pairsForPreset, pairsForAll, parseIdentityList, roundRobin, identityOfSpec,
-  buildLadder, newLadderState, applyRoundResult, resumeDecisions, summarizeLadder,
+  buildLadder, newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, stateMatchesLadder, withReusedTags, staleCleanups,
   formatRoundLine, formatLadderProgress, formatLadderTable, ladderDir, stateFile,
   estimateRoundSeconds,
   readLadderState, writeLadderState, writePlans,
@@ -117,8 +117,27 @@ function ssh(host, user, remoteCmd, timeoutMs, opts = SSH_OPTS, sigtermOk = fals
   return sh('ssh', [...opts, `${user}@${host}`, remoteCmd], timeoutMs, sigtermOk);
 }
 
+/**
+ * scp 的本地路径一律换成「仓库根相对 + POSIX 分隔」。
+ * 起因：P6 box 验收第一次上传 plan 时 `scp` 无输出地失败（重跑同一命令就过了，真因未定性 ——
+ * 反斜杠绝对路径 / 正斜杠绝对路径 / 相对路径三种写法后来都实测成功，见 docs/memory/MEMORY.md）。
+ * 保留这个转换的理由是「消除盘符冒号的歧义面」，不是「已证实的原因」；真正的兜底是下面的重试。
+ * 远程参数（`user@host:path`）原样放行。
+ */
+function localScpPath(p) {
+  const trailing = /[\\/]$/.test(p) ? '/' : '';
+  const abs = path.resolve(p);
+  const rel = path.relative(ROOT, abs);
+  if (rel.startsWith('..')) return p; // 仓库外：照原样试（一般就是错的，但别把路径改坏）
+  return (rel.split(path.sep).join('/') || '.') + trailing;
+}
+
+/** scp 失败重试一次：box 是低配机器，首连握手偶尔慢到无输出地失败，一次重试即可覆盖。 */
 function scp(args) {
-  return sh('scp', [...SSH_OPTS, ...args]);
+  const mapped = args.map((a) => (a.includes('@') && a.includes(':') ? a : localScpPath(a)));
+  if (sh('scp', [...SSH_OPTS, ...mapped])) return true;
+  console.log('（scp 第一次失败，重试一次…）');
+  return sh('scp', [...SSH_OPTS, ...mapped]);
 }
 
 /** 缺省阶梯 id：lad<MMDD>-<HHmm>（11 位，合法且一眼看得出是哪天起的）。 */
@@ -132,16 +151,24 @@ function defaultLadderId(now = new Date()) {
  * A 是黑是白优先看记录自己的身份（`black`/`white` 身份串与 A 比对）—— 某一局缺行时
  * 「奇数局 A 执黑」的位置推断就会错位；拿不到身份线索时才退回位置推断（idx 偶数 ⇒ A 执黑，
  * 与 worker 的 `sidesForGameSpec()` 同口径）。
+ * **按 `gameUid` 去重**：`games.jsonl` 是追加写的，同一轮被重跑过（例如 tag 变了 ⇒ checkpoint 不命中）
+ * 就会多出重复记录；不去重会把 W/D/L 和「这轮跑完没有」都算大。返回里的 `unique` 是去重后的记录数。
  */
 export function wdlOfGamesJsonl(dir, aIdentity = null) {
   const file = path.join(dir, 'games.jsonl');
-  if (!fs.existsSync(file)) return { w: 0, d: 0, l: 0, lines: 0, counted: 0 };
+  if (!fs.existsSync(file)) return { w: 0, d: 0, l: 0, lines: 0, unique: 0, counted: 0 };
   const lines = fs.readFileSync(file, 'utf8').split('\n').filter((s) => s.trim());
-  const wdl = { w: 0, d: 0, l: 0, lines: lines.length, counted: 0 };
+  const wdl = { w: 0, d: 0, l: 0, lines: lines.length, unique: 0, counted: 0 };
+  const seen = new Set();
+  let dupes = 0;
   lines.forEach((line, idx) => {
     let rec = null;
     try { rec = gameRecord(line); } catch { rec = null; }
     if (!rec) return; // 半行/未终局：不计入 W-D-L（和「未终局不进 Elo」同口径）
+    const key = rec.gameUid || `#${idx}`; // 没有 uid 的记录各算一条（手写棋谱才会出现）
+    if (seen.has(key)) { dupes += 1; return; }
+    seen.add(key);
+    wdl.unique += 1;
     // 两侧身份相同（手写棋谱才会出现）⇒ 分不出 A 执哪边，退回位置推断
     const byIdentity = !aIdentity ? null
       : (rec.black === aIdentity && rec.white !== aIdentity) ? true
@@ -152,7 +179,33 @@ export function wdlOfGamesJsonl(dir, aIdentity = null) {
     if (aScore === 1) wdl.w += 1; else if (aScore === 0.5) wdl.d += 1; else wdl.l += 1;
     wdl.counted += 1;
   });
+  if (dupes) wdl.dupes = dupes;
   return wdl;
+}
+
+/** 远端 plans/round-*.json 里记着的 tag（本地状态被删时用来接着续跑，而不是整轮重放）。 */
+function remoteTagsOf(host, user, remoteRoot, id, localBase) {
+  const remote = `${remoteRoot}/.work/remote/${id}`;
+  const cmd = [
+    `cd ${remote} 2>/dev/null || exit 0`,
+    ': > tags.txt',
+    'for f in plans/round-*.json; do',
+    '  [ -f "$f" ] || continue',
+    '  n=${f#plans/round-}; n=${n%.json}',
+    '  t=$(sed -n \'s/.*"tag": *"\\([^"]*\\)".*/\\1/p\' "$f" | head -1)',
+    '  echo "$n $t" >> tags.txt',
+    'done',
+  ].join('\n');
+  if (!ssh(host, user, cmd, 60000)) return {};
+  const local = path.join(localBase, 'tags.txt');
+  fs.mkdirSync(localBase, { recursive: true });
+  if (!scp([`${user}@${host}:${remote}/tags.txt`, local])) return {};
+  const out = {};
+  for (const line of fs.readFileSync(local, 'utf8').split('\n')) {
+    const m = /^(\d+)\s+(\S+)$/.exec(line.trim());
+    if (m) out[Number(m[1])] = m[2];
+  }
+  return out;
 }
 
 /** 拉一轮产物（先 staging 再 rename，避免半拉覆盖旧副本）。 */
@@ -310,7 +363,28 @@ async function main(argv = process.argv.slice(2)) {
   const localBase = ladderDir(ROOT, ladderId);
   fs.mkdirSync(localBase, { recursive: true });
   const statePath = stateFile(ROOT, ladderId);
-  let state = readLadderState(statePath) || newLadderState(ladder);
+  const oldState = readLadderState(statePath);
+  let remoteTags = {};
+  // 续跑要沿用旧 tag（worker 的 checkpoint 按 tag 命中；换 tag ⇒ 整轮重放，见 lib 的 withReusedTags）。
+  // --force 是真重跑：故意用新 tag，让 checkpoint 不再命中（旧产物由下面的 staleCleanups 挪开）。
+  if (!dryRun) {
+    const known = (r) => Boolean(oldState && oldState.rounds.some((x) => x.round === r.round && x.tag));
+    // --force 也要问一次远端 tag：不然「旧产物要挪开」这件事判断不出来
+    const needRemote = force || ladder.rounds.some((r) => !known(r));
+    remoteTags = needRemote ? remoteTagsOf(host, user, repo, ladderId, localBase) : {};
+    if (!force) {
+      const reused = withReusedTags(ladder, oldState, remoteTags);
+      const changed = reused.rounds.filter((r, i) => r.tag !== ladder.rounds[i].tag).length;
+      if (changed) console.log(`（${changed} 轮沿用已有 tag：worker 的 checkpoint 按 tag 命中，换 tag 会把整轮重放）`);
+      ladder = reused;
+    }
+  }
+  // 形状不同（改过 --games / --max-rounds，或上次是失败尝试留下的半截状态）⇒ 以本次计划重建：
+  // 「这轮跑没跑」由远端 games.jsonl 行数裁决（resumeDecisions），本地状态只管记账。
+  if (oldState && !stateMatchesLadder(oldState, ladder)) {
+    console.log('（本地 ladder.json 与本次计划形状不同 ⇒ 以本次计划重建；已跑完的轮次按远端产物行数跳过并补拉）');
+  }
+  let state = oldState && stateMatchesLadder(oldState, ladder) ? oldState : newLadderState(ladder);
 
   console.log(`阶梯 ${ladderId}：${title}｜${ladder.rounds.length} 轮｜每对 ${ladder.gamesPerPair} 局｜合计 ${ladder.totalGames} 局`);
   console.log(`  运行面：${upstream === 'direct' ? `直连上游（零 CF 触碰，G3）；自限速 ${rateLimit}/分，key 从远端 ${keyFile} 注入` : `经业主 Worker（${origin}）`}`);
@@ -355,11 +429,53 @@ async function main(argv = process.argv.slice(2)) {
   console.log(`\n续跑判定：${skipCount} 轮跳过 / ${decisions.length - skipCount} 轮要跑`
     + `${skipCount ? `（远端行数快照：${JSON.stringify(remoteLines)}）` : ''}`);
 
+  // tag 变了的轮（`--force`，或本地状态丢了只能新生成 tag）⇒ checkpoint 不再命中，本轮从头重下；
+  // 远端 `round-N/` 里旧 attempts 的产物先挪到 `stale-round-N-<旧tag>/`，否则 W/D/L 会把两次尝试加在一起。
+  {
+    const oldTags = {};
+    for (const r of ladder.rounds) {
+      const prev = oldState && Array.isArray(oldState.rounds)
+        ? oldState.rounds.find((x) => x.round === r.round && x.tag) : null;
+      oldTags[r.round] = (prev && prev.tag) || remoteTags[r.round] || null;
+    }
+    const cleanups = staleCleanups(ladder, oldTags, {
+      skipRounds: decisions.filter((d) => d.skip).map((d) => d.round), remoteLines,
+    });
+    for (const c of cleanups) {
+      const cmd = `[ -d ${remoteBatch}/round-${c.round} ] && mv ${remoteBatch}/round-${c.round} ${remoteBatch}/${c.stale}`;
+      if (ssh(host, user, cmd)) {
+        console.log(`  ⚠ round-${c.round} 旧产物挪到 ${c.stale}/（tag 变了：${c.oldTag} ⇒ 本轮从头重下）`);
+      } else {
+        console.log(`  ⚠ round-${c.round} 旧产物挪不动（ssh 失败）：本轮重下后 games.jsonl 可能混两次尝试`);
+      }
+    }
+  }
+
   let failed = 0;
   for (let i = 0; i < ladder.rounds.length; i++) {
     const r = ladder.rounds[i];
     const d = decisions.find((x) => x.round === r.round) || { skip: false, reason: '' };
     if (d.skip) {
+      const localRoundDir = path.join(localBase, `round-${r.round}`);
+      // 跳过 ≠ 不用管：本地缺产物就补拉一次（远端行数说这轮跑完了，本地得留下证据）
+      if (!fs.existsSync(path.join(localRoundDir, 'games.jsonl'))) {
+        console.log(`  ⏳ round-${r.round} 跳过但本地缺产物，补拉一次…`);
+        if (!pullRound(host, user, repo, ladderId, r.round, localBase)) {
+          failed += 1;
+          state = applyRoundResult(state, r, { status: 'failed', error: '跳过判定后补拉失败（scp）' }, { now: new Date() });
+          writeLadderState(statePath, state);
+          pushState();
+          console.log('  ' + formatRoundLine(r, { status: 'failed', error: '补拉失败' }));
+          continue;
+        }
+      }
+      const wdl = wdlOfGamesJsonl(localRoundDir, identityOfSpec(r.a).id);
+      if (r.status !== 'ok') {
+        // 补记：耗时未知记 0（summarize 会把它排除在均时样本外，不编 ETA）
+        state = applyRoundResult(state, r, { status: 'ok', wdl, durationMs: 0, remoteLines: wdl.unique }, { now: new Date() });
+        writeLadderState(statePath, state);
+        pushState();
+      }
       console.log(`  ⏭️  round-${r.round} 跳过（${d.reason}）`);
       continue;
     }
@@ -395,13 +511,18 @@ async function main(argv = process.argv.slice(2)) {
       continue;
     }
     const wdl = wdlOfGamesJsonl(path.join(localBase, `round-${r.round}`), identityOfSpec(r.a).id);
-    const status = wdl.lines >= r.games ? 'ok' : 'failed';
-    const error = status === 'ok' ? null : `远端只有 ${wdl.lines}/${r.games} 局产物`;
+    const status = wdl.unique >= r.games ? 'ok' : 'failed';
+    const error = status === 'ok' ? null : `远端只有 ${wdl.unique}/${r.games} 局产物`;
     if (status === 'failed') failed += 1;
-    state = applyRoundResult(state, r, { status, wdl, durationMs, remoteLines: wdl.lines, error }, { now: new Date() });
+    state = applyRoundResult(state, r, { status, wdl, durationMs, remoteLines: wdl.unique, error }, { now: new Date() });
     writeLadderState(statePath, state);
     pushState();
     console.log('  ' + formatRoundLine(r, { status, wdl, durationMs, error }));
+    if (wdl.dupes) {
+      console.log(`  ⚠ 本轮 games.jsonl 有 ${wdl.dupes} 条重复记录（共 ${wdl.lines} 行 ≥ ${r.games} 局）：`
+        + '说明这一轮被重复跑过（tag 变了 ⇒ checkpoint 不命中）。W/D/L 已按 uid 去重；'
+        + '若要清掉重复，删掉远端 round 目录后重跑该轮。');
+    }
     console.log('  ' + formatLadderProgress(state));
     await pushToBucket(localBase, ladderId, args);
     if (cooldownS > 0 && i < ladder.rounds.length - 1) {

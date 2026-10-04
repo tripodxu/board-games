@@ -19,6 +19,35 @@
 
 ---
 
+## 2026-10-04 · P6 box 端到端：checkpoint 按 tag 命中、行数不是局数、ssh 握手 18 s
+
+- **worker 的 checkpoint 是按 `tag` 命中的**（`ckptAction`：`prev.tag !== tag ⇒ tag-mismatch ⇒ 重跑本局`）。所以
+  阶梯续跑**必须沿用原 tag**（`withReusedTags()`：本地状态 tag → 远端 plan tag → 新 tag），否则被中断的那一轮
+  会整轮重放——实测 `p6kil`：4 局的一轮在 `games.jsonl` 里留下 **7 行**、状态记成 `W3-D1-L3`。
+  `--force` 是唯一的例外（故意用新 tag 真重下），但它**必须先把旧产物挪到 `stale-round-N-<旧tag>/`**
+  （`staleCleanups()`），否则新旧两次尝试会加在一起；且**状态里的 `tag` 要跟着本轮实际用的走**
+  （`applyRoundResult` 原先只 `...r` 展开，`--force` 后状态仍留旧 tag ⇒ 下次续跑又「沿用旧 tag」⇒ 又整轮重放）。
+- **行数不是局数**：`games.jsonl` 是追加写，重复跑过的轮会有重复记录。`wdlOfGamesJsonl()` 现在按
+  `gameUid` 去重并给 `{lines, unique, counted, dupes}`，判「这轮跑完没有」用 `unique ≥ games`。
+  **uid 去重只能抓住「同一局被恢复重放」**（resumeUid 保持同一个 uid）；换了 tag 的重放会生成**新的 uid**，
+  这种只能靠上面的 stale 挪开来避免，不能指望去重。
+- **「这轮跑没跑」以远端产物为权威**：本地 `ladder.json` 只是记账。原先判据要求「本地 ok **且** 远端行数够」，
+  于是远端明明跑完、只因一次 `scp` 拉产物失败就把整轮记成 failed（`p6val` round-3）；现在行数够就跳过并
+  **补拉一次**（`⏳ round-N 跳过但本地缺产物，补拉一次…`，补记 `durationMs: 0` 以免污染 ETA 样本）。
+  同理，状态文件与本次计划形状不同（改过 `--games`/`--max-rounds`）时以本次计划重建：`stateMatchesLadder()`。
+- **box 上每次 `ssh`/`scp` 握手 ≈18 s**（低配机器）⇒ 编排器的往返次数本身就是成本：远端 tag 只在
+  「本地状态缺 tag」或 `--force` 时问一次；行数扫描用一次 ssh 写文件再 scp 回来（本机 ssh 抓管道会 EPERM）。
+- **`scp` 的瞬时失败原因仍未定性**：`.work/p6-scp-probe.mjs` 实测反斜杠绝对 / 正斜杠绝对 / 仓库根相对
+  三种写法**都成功**（各 ~18 s）⇒ 「Windows 盘符冒号被当成主机名」的假设**不成立**（`sh()` 用 `execFileSync`，
+  无 shell，路径原样传参）。保留 `localScpPath()`（消歧义面）+ 一次重试；`.work/p6-kill-b.txt` 里真见过
+  `（scp 第一次失败，重试一次…）`，所以这个瞬时失败是**真实存在**的——别把它写成「已定位」。
+- 中断续跑的正解（实测 `p6kil2`）：一轮跑完 1 局时远端 `kill` ⇒ 同命令重跑 ⇒ `game-1 已完成（ok），跳过` +
+  只补跑 2–4 局，最终 4 行 / `unique 4` / 无 dupes。**别用「等 N 秒再杀」的方式做这种验收**：box 上
+  rapfi 自对弈一局只要 18–25 s，而一次 ssh 往返 18 s，杀点会飘；在**远端**写 `while [ 行数 < N ]; do sleep 2; done; kill …`
+  这类看守循环才可复现。
+
+---
+
 ## 2026-10-04 · P6 阶梯编排：独立 CLI 而不是 submit 子命令；「跑完了」看远端行数；用法错必须包进 try
 
 - **做了什么**：纯核 `scripts/lib/ladder.mjs`（413 行）+ CLI `scripts/experiment-ladder.mjs`（435 行）+

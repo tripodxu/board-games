@@ -349,8 +349,31 @@
   ③ W/D/L 按**记录身份**判 A 执哪边（两臂同身份时才退回「奇数局 A 执黑」的位置推断 —— 缺行会让位置推断错位）；
   ④ dry-run 印 `≈` 墙钟（每局 60 手、上游臂 1.1 s/手、rapfi `think/2`）：L3 120 局 ≈2–3 h、L2 300 局 ≈7 h、L1 200 局 ≈11 h，
   并据此订正了计划 §7 里「L3 ~10 h」的粗估（起草时把两侧思考都算了一遍）；⑤ 全量验收：`tsc --noEmit` 干净、
-  引擎 **153/153**、vitest **47 文件 / 578 例**、`check:docs` 60 md / 421 链接、指纹一致（210 行）。
+  引擎 **153/153**、vitest **47 文件 / 584 例**、`check:docs` 60 md / 421 链接、指纹一致（210 行）。
   box 端到端真跑（小阶梯 + 中断续跑 + 桶前缀）见下一条 P6 验收记录。
+- **阶梯编排的 box 端到端验收与四个续跑缺陷（P6，2026-10-04）**：
+  在 `root@185.242.234.48:/root/board-games` 上用 `--store local --upstream direct`（零 CF 触碰）真跑，
+  暴露并修掉四个**只有真跑才会露头**的缺陷（都由新增单测钉住，`ladder.spec.mjs` 33 → **38 例**）：
+  ① 本地 `ladder.json` 沿用上一次计划形状（`--max-rounds 1`）⇒ 汇总打 `1/1 轮` 而实际跑了 3 轮
+  ⇒ 新增 `stateMatchesLadder()`，形状不同就以本次计划重建；
+  ② 续跑判据要求「本地 `ok` **且** 远端行数够」⇒ `p6val` round-3 远端其实跑完、只因一次 scp 拉产物失败就记 failed
+  ⇒ 改成**远端 `games.jsonl` 行数为权威**（本地只记账），跳过时本地缺产物自动补拉一次；
+  ③ worker 的 checkpoint **按 tag 命中**，而 CLI 续跑生成了新 tag ⇒ `p6kil` 的 4 局一轮被整轮重放、
+  `games.jsonl` 变成 **7 行**、状态 `W3-D1-L3` ⇒ 新增 `withReusedTags()`（本地状态 tag → 远端 plan tag → 新 tag）
+  与 `remoteTagsOf()`（只在本机缺 tag 或 `--force` 时问一次远端）；
+  ④ 重复记录会被算进 W/D/L 与「跑完没有」⇒ `wdlOfGamesJsonl()` 按 `gameUid` 去重并给 `{lines, unique, counted, dupes}`，
+  判据改用 `unique ≥ games`，重复时打 `⚠ 本轮 games.jsonl 有 N 条重复记录…`。
+  另修：`--force` 会把旧产物挪到 `stale-round-N-<旧tag>/`（`staleCleanups()`；名字刻意不以 `round-` 开头，
+  免得被行数扫描的通配扫到）、`applyRoundResult()` 把状态里的 `tag` 更新成本轮实际用的（否则 `--force` 后
+  下次续跑又「沿用旧 tag」⇒ 又整轮重放）、`scp()` 加一次重试（瞬时失败真因**未证实**：三种路径写法实测都成功，
+  故「盘符冒号」假设被否证，如实记录为「原因未定性 + 重试兜住」）。
+  实测证据：`p6val` 三轮 ⇒ `续跑判定：3 轮跳过 / 0 轮要跑（{"1":2,"2":2,"3":2}）`、`⏳ round-3 跳过但本地缺产物，补拉一次…`、
+  `3/3 轮正常｜6/6 局｜W2-D0-L4`；`p6kil2` 中途 `kill` 后同命令续跑 ⇒ worker 日志 `game-1 已完成（ok），跳过`、
+  只补跑 2–4 局（23s/23s/59s）、最终 **4 行 / unique 4 / 无 dupes**；`--force` ⇒
+  `⚠ round-1 旧产物挪到 stale-round-1-exp-20261004030619-p6kil2-r1/`、新 tag、4 行、状态 tag 同步；
+  桶钩子在三次真跑里都走「缺凭据只告警」且 exit 0。CI：`15ba04d` 的 run `37170326312` success（2m1s）。
+  说明：box 上每次 ssh/scp 握手 ≈18 s、rapfi 自对弈一局 18–25 s ⇒ 验收不能在局中靠「等 N 秒再杀」卡点，
+  要在远端看守循环里 `kill`。
 - **Elo 升级：Bradley–Terry 点估计 + Bootstrap 区间（P5，2026-10-04）**：
   `scripts/lib/batch-elo.mjs` 从 238 行扩到 **448 行**，新增 `aggregateBt()` / `fitBt()`（MM 迭代、`ridge` 先验 0.5、
   **显式零点**）/ `computeBt()` / `bootstrapBt()`（按局有放回重采样 + 每次重拟合，2.5–97.5% 分位）/ `mulberry32()`；
@@ -559,10 +582,10 @@
    ⇒ 兜底是「base URL + model + key」三元组直换（**C2 待做**：`providers.ts` 表 + 离线夹具）；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
    P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅、
-   P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（代码/单测/dry-run/闸门已过，box 端到端真跑待补）
+   P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（含 box 端到端真跑、中断续跑与 `--force` 重跑）
    已完成**（见上「已验证」条目；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 P6 的 box 端到端真跑（小阶梯 + 中断续跑 + 桶前缀）→ C2（`providers.ts` 表 + 离线夹具）→ P7（可选逃生门）**；
+   **下一步 C2（`providers.ts` 表 + 离线夹具）→ P7（可选逃生门：`--rev <sha>`）→ 用阶梯跑第一晚的 L3/L2**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂

@@ -28,13 +28,15 @@
 ### 新增
 
 - **阶梯编排：一条命令跑完一条 round-robin（P6，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
-  新增纯核 `scripts/lib/ladder.mjs`（413 行）与 CLI `scripts/experiment-ladder.mjs`（435 行）+
-  `test/scripts/ladder.spec.mjs`（334 行 / 33 例）。`--ladder L1|L2|L3|all` 或 `--identities a,b,c` 二选一，
+  新增纯核 `scripts/lib/ladder.mjs`（468 行）与 CLI `scripts/experiment-ladder.mjs`（556 行）+
+  `test/scripts/ladder.spec.mjs`（400 行 / 38 例）。`--ladder L1|L2|L3|all` 或 `--identities a,b,c` 二选一，
   逐轮生成与 `submit` 同形状的 plan，**串行**执行（起一轮 → 等 pid → 拉该轮产物 → 推桶 → 冷却 → 下一轮），
   中断后重跑同一命令即续跑。三条口径写死在纯核里：① **偶数局数**（颜色对称：worker 让 A 奇数局执黑、
   开局库连续两局同开局换色，奇数会让最后一局没有换色对手 ⇒ 直接拒绝，`--allow-odd` 才放行）；
   ② **身份 = 归档导出口径**（`rapfi:v14-live3-fresh:500` → `rapfi||500`，rapfi/mock 的战术档留空）；
-  ③ **「跑完了」看远端 `games.jsonl` 行数**（本地 `ok` 但行数不足会重跑；状态文件坏了不重跑已完成的轮）。
+  ③ **「跑完了」看远端 `games.jsonl` 去重后的局数**（远端产物是权威、本地状态只记账；行数不足会重跑，状态文件坏了不重跑已完成的轮，
+  跳过时本地缺产物会补拉一次；同一局按 `gameUid` 去重并自报 `dupes`）。配套：**续跑沿用旧 tag**（worker 的 checkpoint 按 tag 命中，
+  换 tag 会整轮重放）、**`--force` 先把旧产物挪到 `stale-round-N-<旧tag>/`** 再从头重下。
   **为什么独立 CLI 而不是 `experiment-batch.mjs ladder` 子命令**：阶梯要自己管等待/拉取/续跑状态，
   塞进 submit 会让一个命令同时是「单批次提交器」和「多轮编排器」。**本轮还修掉一处误拦**：
   缺省 `--store local --upstream direct`（零 CF 触碰）原先会被「会写生产 D1」的闸门拦死，现在只有 `--store d1`
@@ -42,8 +44,21 @@
   上游臂 1.1 s/手、rapfi `think/2`；据此把计划里「L3 ~10 h」的粗估订正为 ≈2–3 h —— 起草时把两侧思考都算了一遍）。
   验收：dry-run 逐项对齐（L1 10 轮/20 局、L2 15 轮/30 局、`all --with-5000` 29 轮/58 局）、
   四道闸门 exit 2（未知预设/奇数局/非法参数/`--store d1` 无 origin/`--upstream worker` 无 origin/`--parallel`）、
-  `submit --parallel` 双 proxy 臂被点名拒绝、全量验收 `tsc` 干净 + 引擎 153/153 + vitest 47 文件 / 578 例 +
+  `submit --parallel` 双 proxy 臂被点名拒绝、全量验收 `tsc` 干净 + 引擎 153/153 + vitest 47 文件 / 584 例 +
   `check:docs` 60 md / 421 链接 + 指纹 210 行一致。
+- **阶梯的 box 端到端验收：四个只有真跑才会露头的续跑缺陷（P6 收尾，2026-10-04）**：
+  在 box（`root@185.242.234.48`）上用 `--store local --upstream direct`（零 CF 触碰）真跑，修掉四个缺陷并把单测
+  从 33 例扩到 **38 例**：① 本地 `ladder.json` 沿用上一次计划形状（`--max-rounds 1`）⇒ 汇总打 `1/1 轮` 而实际跑了 3 轮
+  ⇒ 新增 `stateMatchesLadder()`（形状不同以本次计划重建）；② 续跑判据要求「本地 `ok` **且** 远端行数够」⇒ 远端跑完、
+  只因一次 `scp` 失败就记 failed ⇒ 改成**远端行数为权威** + 跳过时补拉；③ worker checkpoint **按 tag 命中**，
+  而续跑生成了新 tag ⇒ `p6kil` 的 4 局一轮被整轮重放、`games.jsonl` 变成 7 行、状态 `W3-D1-L3`
+  ⇒ 新增 `withReusedTags()`/`remoteTagsOf()`；④ 重复记录被算进 W/D/L ⇒ `wdlOfGamesJsonl()` 按 `gameUid` 去重
+  （`{lines, unique, counted, dupes}`），判据改 `unique ≥ games`。另修 `--force` 的旧产物挪开
+  （`staleCleanups()`/`staleDirName()`）、`applyRoundResult()` 同步状态里的 `tag`、`scp()` 一次重试。
+  实测：`p6val` ⇒ `3 轮跳过 / 0 轮要跑（{"1":2,"2":2,"3":2}）` + 补拉 round-3 ⇒ `3/3 轮正常｜6/6 局｜W2-D0-L4`；
+  `p6kil2` 中途 `kill` 后同命令续跑 ⇒ worker `game-1 已完成（ok），跳过`、补跑 2–4 局 ⇒ 4 行 / unique 4 / 无 dupes；
+  `--force` ⇒ 旧产物挪到 `stale-round-1-exp-20261004030619-p6kil2-r1/`、新 tag、4 行、状态 tag 同步。
+  `scp` 瞬时失败的真因**未证实**（三种路径写法实测都成功，「盘符冒号」假设被否证）——如实记为「原因未定性 + 重试兜住」。
 - **Elo 从「顺序迭代」升级为 Bradley–Terry + Bootstrap 区间（P5，plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
   `scripts/lib/batch-elo.mjs`（238 → 448 行）新增 `aggregateBt()` / `fitBt()`（MM 迭代、`ridge` 先验 0.5、
   **显式零点**）/ `computeBt()` / `bootstrapBt()`（按局有放回重采样 + 每次重拟合，取 2.5–97.5% 分位）/ `mulberry32()`；

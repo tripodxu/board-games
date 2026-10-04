@@ -12,7 +12,7 @@ import {
   LADDER_VERSION, PRESETS, VERSION_SPECS, RAPFI_SPECS, RAPFI_5000, L3_EXTRA_5000,
   identityOfSpec, pairKey, roundRobin, crossPairs, pairsForPreset, pairsForAll,
   parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
-  newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress,
+  newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress, stateMatchesLadder, withReusedTags, staleCleanups,
   ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
   estimateRoundSeconds,
 } from '../../scripts/lib/ladder.mjs';
@@ -192,20 +192,70 @@ describe('断点状态', () => {
     expect(r2.remoteLines).toBe(4);
     expect(st.updatedAt).toBe(NOW.toISOString());
   });
-  it('跳过条件是「本地 ok + 远端行数 ≥ 局数」双满足', () => {
+  it('跳过条件以「远端产物行数 ≥ 局数」为准，本地状态只记账', () => {
     let st = newLadderState(lad);
     st = applyRoundResult(st, lad.rounds[0], { status: 'ok', wdl: { w: 1, d: 0, l: 1 }, remoteLines: 4 }, { now: NOW });
     // 远端行数够 ⇒ 跳过
     expect(resumeDecisions(st, { remoteLines: { 1: 4 } })[0]).toMatchObject({ skip: true, reason: 'ok' });
-    // 状态 ok 但远端只有 2 行 ⇒ 不能跳过（静默丢数据）
+    // 远端只有 2 行 ⇒ 不能跳过（静默丢数据）
     expect(resumeDecisions(st, { remoteLines: { 1: 2 } })[0]).toMatchObject({ skip: false });
     expect(resumeDecisions(st, { remoteLines: { 1: 2 } })[0].reason).toMatch(/远端只有 2\/4 局/);
     // 远端行数未知 ⇒ 保守重跑
     expect(resumeDecisions(st, { remoteLines: {} })[0]).toMatchObject({ skip: false, reason: /行数未知/ });
     // --force 全跑
     expect(resumeDecisions(st, { force: true, remoteLines: { 1: 4 } })[0]).toMatchObject({ skip: false, reason: 'forced' });
-    // 没跑过的轮次当然不跳
-    expect(resumeDecisions(st, { remoteLines: { 2: 4 } })[1]).toMatchObject({ skip: false, reason: 'pending' });
+    // 本地没记账但远端已经跑完（状态文件丢了/形状换了）⇒ 照样跳过，产物由调用方补拉
+    expect(resumeDecisions(st, { remoteLines: { 2: 4 } })[1])
+      .toMatchObject({ skip: true, reason: '远端已有 4/4 局' });
+    // 本地 pending 且远端也只有一半 ⇒ 跑
+    expect(resumeDecisions(st, { remoteLines: { 2: 1 } })[1]).toMatchObject({ skip: false, reason: /远端只有 1\/4 局/ });
+  });
+  it('续跑沿用旧 tag（checkpoint 按 tag 命中），--force 走新 tag', () => {
+    const fresh = buildLadder({ ladderId: 'lad1', pairs: roundRobin(['rapfi::500', 'rapfi::1000']), games: 4, now: NOW });
+    // 没有旧状态、也没有远端 plan ⇒ 不变
+    expect(withReusedTags(fresh, null, {}).rounds[0].tag).toBe(fresh.rounds[0].tag);
+    // 本地状态里有旧 tag ⇒ 沿用，且 plan 里的 tag 一并改掉（worker 读的是 plan）
+    const oldState = { rounds: [{ round: 1, tag: 'exp-20261004010000-lad1-r1' }] };
+    const reused = withReusedTags(fresh, oldState, {});
+    expect(reused.rounds[0].tag).toBe('exp-20261004010000-lad1-r1');
+    expect(reused.rounds[0].plan.tag).toBe('exp-20261004010000-lad1-r1');
+    expect(reused.rounds[0].plan.outDir).toBe(fresh.rounds[0].plan.outDir); // 别的字段不动
+    // 本地状态没了但远端 plan 还在 ⇒ 用远端的
+    expect(withReusedTags(fresh, null, { 1: 'exp-20261004020000-lad1-r1' }).rounds[0].tag)
+      .toBe('exp-20261004020000-lad1-r1');
+  });
+  it('tag 变了才把旧产物挪开（staleCleanups），挪开的名字不会被 round-* 扫到', () => {
+    const l = buildLadder({ ladderId: 'lad1', pairs: roundRobin(['rapfi::500', 'rapfi::1000']), games: 4, now: NOW });
+    const tag = l.rounds[0].tag;
+    // 同 tag + 有行数 ⇒ 不动（checkpoint 会命中，动了等于丢数据）
+    expect(staleCleanups(l, { 1: tag }, { remoteLines: { 1: 2 } })).toEqual([]);
+    // 行数为 0 ⇒ 不动
+    expect(staleCleanups(l, { 1: 'exp-old' }, { remoteLines: { 1: 0 } })).toEqual([]);
+    // 跳过的轮 ⇒ 不动
+    expect(staleCleanups(l, { 1: 'exp-old' }, { remoteLines: { 1: 4 }, skipRounds: [1] })).toEqual([]);
+    // 旧 tag 未知 ⇒ 不动（可能是同 tag，只是没记下来）
+    expect(staleCleanups(l, {}, { remoteLines: { 1: 4 } })).toEqual([]);
+    // 旧 tag 不同 + 有行数 ⇒ 挪开
+    const out = staleCleanups(l, { 1: 'exp-20261004020000-lad1-r1' }, { remoteLines: { 1: 4 } });
+    expect(out).toEqual([{ round: 1, oldTag: 'exp-20261004020000-lad1-r1', stale: 'stale-round-1-exp-20261004020000-lad1-r1' }]);
+    expect(out[0].stale.startsWith('round-')).toBe(false); // 不能被 remoteLineCounts 的 round-* 通配扫到
+  });
+  it('applyRoundResult 把状态里的 tag 更新成本轮实际用的（--force 换 tag 后不会又「沿用旧 tag」）', () => {
+    const l = buildLadder({ ladderId: 'lad1', pairs: roundRobin(['rapfi::500', 'rapfi::1000']), games: 4, now: NOW });
+    const st = newLadderState(l);
+    const forced = { ...l.rounds[0], tag: 'exp-forced-new' };
+    const after = applyRoundResult(st, forced, { status: 'ok', durationMs: 1 }, { now: NOW });
+    expect(after.rounds[0].tag).toBe('exp-forced-new');
+  });
+  it('本地状态与计划形状不符时重建（stateMatchesLadder）', () => {
+    const st = newLadderState(lad);
+    expect(stateMatchesLadder(st, lad)).toBe(true);
+    expect(stateMatchesLadder(null, lad)).toBe(false);
+    expect(stateMatchesLadder(st, { rounds: lad.rounds.slice(0, 1) })).toBe(false);
+    const reshaped = { ...lad, rounds: lad.rounds.map((r, i) => (i === 0 ? { ...r, games: r.games * 2 } : r)) };
+    expect(stateMatchesLadder(st, reshaped)).toBe(false);
+    const relabeled = { ...lad, rounds: lad.rounds.map((r, i) => (i === 0 ? { ...r, label: '别的对阵' } : r)) };
+    expect(stateMatchesLadder(st, relabeled)).toBe(false);
   });
   it('汇总：done/failed/games/W-D-L/ETA（不足样本给 null）', () => {
     let st = newLadderState(lad);
@@ -310,13 +360,29 @@ describe('CLI：闸门与 W/D/L 口径', () => {
     ];
     fs.writeFileSync(path.join(dir, 'games.jsonl'), lines.join('\n') + '\n');
     // 身份分不出来（两臂同身份）⇒ 退回位置推断：偶数行（1 基）A 执白。
-    expect(wdlOfGamesJsonl(dir)).toEqual({ w: 3, d: 1, l: 0, lines: 6, counted: 4 });
-    expect(wdlOfGamesJsonl(dir, 'rapfi||0')).toEqual({ w: 3, d: 1, l: 0, lines: 6, counted: 4 });
+    expect(wdlOfGamesJsonl(dir)).toEqual({ w: 3, d: 1, l: 0, lines: 6, unique: 4, counted: 4 });
+    expect(wdlOfGamesJsonl(dir, 'rapfi||0')).toEqual({ w: 3, d: 1, l: 0, lines: 6, unique: 4, counted: 4 });
     fs.rmSync(dir, { recursive: true, force: true });
     // 没跑过的目录：全 0（不编数字）
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-wdl-'));
-    expect(wdlOfGamesJsonl(empty)).toEqual({ w: 0, d: 0, l: 0, lines: 0, counted: 0 });
+    expect(wdlOfGamesJsonl(empty)).toEqual({ w: 0, d: 0, l: 0, lines: 0, unique: 0, counted: 0 });
     fs.rmSync(empty, { recursive: true, force: true });
+  });
+  it('games.jsonl 里同一局出现两次（整轮重放）时按 gameUid 去重，并自报 dupes', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-dup-'));
+    const rec = (uid, result, winner) => JSON.stringify({
+      gameUid: uid, result, winner, blackChannel: 'rapfi', whiteChannel: 'rapfi', moves: [{}],
+    });
+    fs.writeFileSync(path.join(dir, 'games.jsonl'), [
+      rec('u1', '黑方 获胜（五连）', 'black'), // 局 1
+      rec('u2', '白方 获胜（五连）', 'white'), // 局 2
+      rec('u1', '黑方 获胜（五连）', 'black'), // 重放出来的重复
+      rec('u3', '和棋（盘面满）', null),
+    ].join('\n') + '\n');
+    const w = wdlOfGamesJsonl(dir);
+    expect(w).toMatchObject({ lines: 4, unique: 3, dupes: 1, counted: 3 });
+    expect(w.w + w.d + w.l).toBe(3); // 去重后只算三条，不是四条
+    fs.rmSync(dir, { recursive: true, force: true });
   });
   it('身份能分清时按记录身份算 A 的胜负（不靠行号位置）', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-wdl-'));
@@ -327,8 +393,8 @@ describe('CLI：闸门与 W/D/L 口径', () => {
     }) + '\n');
     const aId = identityOfSpec('official:v14-live3-fresh:0').id;
     expect(aId).toBe('official|v14-live3-fresh|0');
-    expect(wdlOfGamesJsonl(dir, aId)).toEqual({ w: 1, d: 0, l: 0, lines: 1, counted: 1 });
-    expect(wdlOfGamesJsonl(dir)).toEqual({ w: 0, d: 0, l: 1, lines: 1, counted: 1 }); // 无身份线索时的位置推断
+    expect(wdlOfGamesJsonl(dir, aId)).toEqual({ w: 1, d: 0, l: 0, lines: 1, unique: 1, counted: 1 });
+    expect(wdlOfGamesJsonl(dir)).toEqual({ w: 0, d: 0, l: 1, lines: 1, unique: 1, counted: 1 }); // 无身份线索时的位置推断
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

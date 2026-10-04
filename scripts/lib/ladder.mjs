@@ -327,6 +327,9 @@ export function applyRoundResult(state, round, result, { now } = {}) {
       durationMs: result.durationMs ?? r.durationMs,
       error: result.error ?? null,
       remoteLines: result.remoteLines ?? r.remoteLines,
+      // tag 要跟着本轮实际用的走：--force（或状态里没记 tag）会生成新 tag，
+      // 状态若还留着旧 tag，下次续跑就会「沿用旧 tag」⇒ 与 checkpoint 的 tag 不符 ⇒ 整轮重放。
+      tag: round.tag || r.tag,
       at,
     }
     : r));
@@ -334,22 +337,74 @@ export function applyRoundResult(state, round, result, { now } = {}) {
 }
 
 /**
- * 该跳过哪些轮：本地状态 `ok` **且** 远端产物行数 ≥ 局数。
- * 只看本地状态会把「状态说 ok、产物被删/没写完」的轮次当成已完成（静默丢数据）；
- * 只看远端行数会把「上一轮 ok 但 games.jsonl 被截断」当成没跑（白烧上游）。
- * 两个都满足才跳过；`--force` 全跑。
+ * 旧尝试的产物目录名：`--force` 或 tag 变了 ⇒ checkpoint 不再命中 ⇒ 这一轮会从头重下，
+ * 旧 attempts 的 `games.jsonl` 若留在 `round-N/` 里，会把 W/D/L 与「这轮跑完没有」算成两次
+ * （实测：`p6kil` 4 局的一轮留下 **7 行**，W3-D1-L3）。挪开而不是删掉——证据留着，计数不受影响。
+ * 刻意**不以 `round-` 开头**，免得被 `remoteLineCounts` 的 `round-*` 通配扫到。
+ */
+export function staleDirName(round, oldTag) {
+  const t = String(oldTag || 'unknown').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 40);
+  return `stale-round-${round}-${t}`;
+}
+
+/**
+ * 哪些轮「这次要用新 tag 重跑，而远端还留着旧 tag 的产物」⇒ 起跑前把旧目录挪开。
+ * 只在**确知旧 tag 与新 tag 不同**时才动（tag 相同 ⇒ checkpoint 会命中，动了就等于丢数据）；
+ * 跳过的轮、远端行数为 0 的轮也不动。返回 `[{ round, oldTag, stale }]`。
+ */
+export function staleCleanups(ladder, oldTags = {}, { skipRounds = [], remoteLines = {} } = {}) {
+  const skip = new Set(skipRounds.map(Number));
+  return ladder.rounds
+    .filter((r) => !skip.has(Number(r.round)) && Number(remoteLines[r.round] || 0) > 0)
+    .map((r) => ({ round: r.round, oldTag: oldTags[r.round] || null, stale: staleDirName(r.round, oldTags[r.round]), tag: r.tag }))
+    .filter((x) => x.oldTag && x.oldTag !== x.tag)
+    .map(({ round, oldTag, stale }) => ({ round, oldTag, stale }));
+}
+
+/**
+ * 该跳过哪些轮：**以远端产物行数为准**（这一轮到底跑没跑，远端 games.jsonl 说了算），
+ * 本地状态只用来记账，不再当闸门 —— 状态文件丢了/形状换了（改过 --games、--max-rounds）
+ * 都不该让已经跑完的轮次再烧一遍上游。本地缺产物时由调用方补拉（CLI 的 pullRound）。
+ * 远端行数未知（ssh 不通）时不跳过：宁可白跑也不静默丢数据。
+ * `--force` 全跑。
  */
 export function resumeDecisions(state, { force = false, remoteLines = {} } = {}) {
   return state.rounds.map((r) => {
     if (force) return { round: r.round, skip: false, reason: 'forced' };
-    if (r.status !== 'ok') return { round: r.round, skip: false, reason: r.status };
     const lines = remoteLines[r.round];
-    if (Number.isFinite(lines) && lines < r.games) {
-      return { round: r.round, skip: false, reason: `状态 ok 但远端只有 ${lines}/${r.games} 局` };
+    if (!Number.isFinite(lines)) {
+      return { round: r.round, skip: false, reason: r.status === 'ok' ? '远端行数未知（不跳过）' : r.status };
     }
-    if (!Number.isFinite(lines)) return { round: r.round, skip: false, reason: '远端行数未知（不跳过）' };
-    return { round: r.round, skip: true, reason: 'ok' };
+    if (lines < r.games) return { round: r.round, skip: false, reason: `远端只有 ${lines}/${r.games} 局` };
+    return { round: r.round, skip: true, reason: r.status === 'ok' ? 'ok' : `远端已有 ${lines}/${r.games} 局` };
   });
+}
+
+/** 本地状态与本次计划是否同一个形状（轮数/轮号/对阵/局数）。不同就以本次计划重建。 */
+export function stateMatchesLadder(state, ladder) {
+  if (!state || !Array.isArray(state.rounds) || !ladder || !Array.isArray(ladder.rounds)) return false;
+  if (state.rounds.length !== ladder.rounds.length) return false;
+  return state.rounds.every((r, i) => r.round === ladder.rounds[i].round
+    && r.label === ladder.rounds[i].label
+    && r.games === ladder.rounds[i].games);
+}
+
+/**
+ * 复用已有轮次的 tag：`experiment-worker.mjs` 的 checkpoint 是**按 tag 命中**的
+ * （`ckptAction` 里 `prev.tag !== tag ⇒ tag-mismatch ⇒ 重跑本局`），所以续跑必须沿用原 tag，
+ * 否则被中断的那一轮会整轮重放，`games.jsonl` 追加出多于局数的记录。
+ * 取值优先级：本地状态里的 tag → 远端 plan 里的 tag → 本次新生成的 tag。
+ * `--force` 的真重跑不走这里（CLI 侧跳过），这样才可能真的重下一遍。
+ */
+export function withReusedTags(ladder, oldState, remoteTags = {}) {
+  const rounds = ladder.rounds.map((r) => {
+    const prev = oldState && Array.isArray(oldState.rounds)
+      ? oldState.rounds.find((x) => x.round === r.round && x.tag) : null;
+    const tag = (prev && prev.tag) || remoteTags[r.round] || r.tag;
+    if (tag === r.tag) return r;
+    return { ...r, tag, plan: { ...r.plan, tag } };
+  });
+  return { ...ladder, rounds };
 }
 
 /** 汇总：进度 + 按轮均时估的 ETA（样本不足给 null，不编数字）。 */
