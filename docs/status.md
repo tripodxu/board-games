@@ -287,6 +287,15 @@
 
 ## 已验证（验收证据）
 
+- **上游兜底在本机复现一次（2026-10-05，提交 `8c612b2`）**：`c2fb2` 的 box 验收之外，用**坏主 key + 真兜底 key**
+  在开发机再跑一遍（两臂皆 `official`，本机没有 Rapfi 二进制）：
+  `node scripts/experiment-worker.mjs --plan .work/c2e2-plan.json --store local --upstream direct --key-file .work/bad-key.txt --backup-key-file .work/cc-key.txt --expect-backup --rate-limit 30`
+  ⇒ `2/2 局正常`；两局**第 1 手**即 `HTTP 401：key 或额度（不重试，直接切）` ⇒ 探活 `HTTP 200`（478/166 ms）
+  ⇒ 切到 `backup`，game-2 收尾 `provider[backup:55]`、`events.jsonl` 两条 `kind:"provider"`，`--store local` 零 CF 触碰；
+  报表同口径可辨（`--dir .work/remote/c2e2` ⇒ `兜底手 280 / 上游手 280`，逐身份提供方列全 `backup`、零 `primary`）。
+  **运维要点**：直连路径的开关是**兜底 key 文件**（不是环境变量）——`resolveRunKey` 环境变量优先、其次 key 文件，
+  缺兜底 key 时静默不切换（只有 `--expect-backup` 才退码 2）；阶梯的 `--key-file`/`--backup-key-file` 是**远端**路径
+  （`launchRoundCommand` 在远端 shell `source`），本机复现只能直接跑 worker。
 - **败局解释固化成工具（规则 11 可复算）（2026-10-05）**：新增 `scripts/lib/loss-report.mjs`（纯核：
   `fatalSuffix()` 取**最长必败后缀**、`lossShape()` 归纳形态与追因、`formatLossMarkdown()` 强制印边界句）
   + `scripts/loss-report.mjs`（CLI：`--dir/--batch/--ours/--theirs/--tail/--plies/--max-games/--no-vcf/--show/--json/--quiet`、
@@ -824,9 +833,12 @@
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂
-   （[ADR-0021](adr/0021-standalone-experiment-plane.md)）。计划待批项：范围（全做 / P0+P3 / P4b 三件事）、
-   第一晚 L3 是否含 `rapfi@5000`、P7 `--rev` 是否做、**对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws
-   ⇒ 纯 Node SigV4，CLI 已就绪等地址）、兜底是否进生产 Worker 路径。
+   （[ADR-0021](adr/0021-standalone-experiment-plane.md)）。
+   **仍待业主拍板（2026-10-05 复核过的短名单）**：① 版本排序 **A/B**（见上）；② **P7 `--rev`** 做不做；
+   ③ **对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws ⇒ 纯 Node SigV4，CLI 已就绪等地址）；
+   ④ **生产 Worker 是否重新部署 + 兜底是否进生产路径**（`vars.JEV_FAILOVER` 仍为 `"off"`，列已就位）。
+   已闭环、不再作为待批项的：计划范围（P0–P7 全做）、「第一晚 L3 是否含 `rapfi@5000`」（业主 2026-10-04 改为
+   直接补到上限 ⇒ 跨过 `@5000` 跑 L4）。
 
 > 已完成（P8，2026-10-01）：旧实现删除（`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`）、样式搬到 `styles/style.css`、`package.json` 摘掉 `test:legacy`、`index.html` 去掉硬编码渠道名与「六种棋类」、三块数据面板接线、CI 移除旧实现契约步骤并加 `REQUIRE_SQLITE=1`、版本双源统一为 `1.0.0`、Rapfi 注入接线并上线（版本 `170c9d07-584b-48b4-8117-cf4ccef19cec`）。
 > 已核验（2026-10-02）：Cron `17 3 * * *` 的首次落库 —— `stats_cache` 有且只有一行 `daily:2026-10-02`，`updated_at = 2026-10-02T03:17:56.373Z`（调度时刻），`value` 报 `rateLimitsDeleted: 139`、`games: 82`、`moves: 7110`、`experiments: 11`，与 D1 当时的行数一致 ⇒ 定时维护真实执行、口径正确。
