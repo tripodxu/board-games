@@ -223,9 +223,9 @@ describe('逐色格 / 分开颜色（L3 第一晚的教训：先手优势 85%，
   it('colorSplit 把同一身份的执黑/执白战绩分开', () => {
     const rows = colorSplit(recs);
     const of = (id) => rows.find((r) => r.identity === id);
-    expect(of('rapfi||500')).toMatchObject({ blackGames: 2, blackWins: 1, whiteGames: 2, whiteWins: 1 });
+    expect(of('rapfi||500')).toMatchObject({ blackGames: 2, blackWins: 1, blackDraws: 1, whiteGames: 2, whiteWins: 1, whiteDraws: 0 });
     expect(of('rapfi||1000')).toMatchObject({ blackGames: 1, blackWins: 0, whiteGames: 1, whiteWins: 0 });
-    expect(of('rapfi||2000')).toMatchObject({ blackGames: 1, blackWins: 1, whiteGames: 1, whiteWins: 0 });
+    expect(of('rapfi||2000')).toMatchObject({ blackGames: 1, blackWins: 1, whiteGames: 1, whiteWins: 0, whiteDraws: 1 });
   });
   it('markdown 第 4 节印出逐色格两张表与先手优势行', () => {
     const md = reportMarkdown({
@@ -238,7 +238,11 @@ describe('逐色格 / 分开颜色（L3 第一晚的教训：先手优势 85%，
     expect(md).toContain('本轮黑方胜 2/4（50.0%）｜和棋 1');
     expect(md).toContain('| rapfi||500（黑） vs rapfi||1000（白） | 1 | 1 | 0 | 0 |');
     expect(md).toContain('按身份分开颜色');
-    expect(md).toContain('| rapfi||500 | 2–2 | 50.0% | 1/2 | 1/2 |');   // 总战绩是「胜–负」（2 胜 2 负，其中 1 和）
+    // 「胜–和–负」三列 + 得分率（与第 1 节同口径 =（胜 + 和/2）÷ 局数）：
+    // 旧版把「非胜局」写成「负」、又把胜率标成得分率 ⇒ 和棋多的批次会被读成惨败。
+    expect(md).toContain('| rapfi||500 | 2–1–1 | 62.5% | 1/2 | 1/2 |');
+    expect(md).toContain('| rapfi||1000 | 0–0–2 | 0.0% | 0/1 | 0/1 |');
+    expect(md).toContain('| rapfi||2000 | 1–1–0 | 75.0% | 1/1 | 0/1 |');
   });
 });
 

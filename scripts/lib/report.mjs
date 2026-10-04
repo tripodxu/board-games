@@ -216,16 +216,20 @@ export function colorCells(records) {
 export function colorSplit(records) {
   const map = new Map();
   const of = (id) => {
-    if (!map.has(id)) map.set(id, { identity: id, blackGames: 0, blackWins: 0, whiteGames: 0, whiteWins: 0 });
+    if (!map.has(id)) {
+      map.set(id, { identity: id, blackGames: 0, blackWins: 0, blackDraws: 0, whiteGames: 0, whiteWins: 0, whiteDraws: 0 });
+    }
     return map.get(id);
   };
   for (const r of records) {
     const b = of(r.black);
     b.blackGames += 1;
     if (r.blackScore === 1) b.blackWins += 1;
+    else if (r.blackScore === 0.5) b.blackDraws += 1;
     const w = of(r.white);
     w.whiteGames += 1;
     if (r.blackScore === 0) w.whiteWins += 1;
+    else if (r.blackScore === 0.5) w.whiteDraws += 1;
   }
   return [...map.values()].sort((a, b) =>
     (b.blackGames + b.whiteGames) - (a.blackGames + a.whiteGames) || (a.identity < b.identity ? -1 : 1));
@@ -610,12 +614,17 @@ export function reportMarkdown(model) {
   out.push('');
   out.push('按身份分开颜色（`执黑` 与 `执白` 两列都要看，只报总分会被先手优势带跑）：');
   out.push('');
-  out.push('| 身份 | 总战绩 | 得分率 | 执黑 | 执白 |');
+  out.push('| 身份 | 胜–和–负 | 得分率 | 执黑 胜/局 | 执白 胜/局 |');
   out.push('| --- | --- | --- | --- | --- |');
   for (const s of colorSplit(model.records)) {
     const total = s.blackGames + s.whiteGames;
     const wins = s.blackWins + s.whiteWins;
-    out.push(`| ${s.identity} | ${wins}–${total - wins} | ${total ? ((wins / total) * 100).toFixed(1) : '—'}% | ` +
+    const draws = s.blackDraws + s.whiteDraws;
+    const losses = total - wins - draws;
+    /* 得分率口径与第 1 节一致 =（胜 + 和/2）÷ 总局数 —— 别在这里改成「胜率」，
+       同一个词在一份报告里有两个意思就会读错（和棋多的批次差得尤其远）。 */
+    const score = total ? ((wins + draws / 2) / total) * 100 : 0;
+    out.push(`| ${s.identity} | ${wins}–${draws}–${losses} | ${total ? score.toFixed(1) : '—'}% | ` +
       `${s.blackWins}/${s.blackGames} | ${s.whiteWins}/${s.whiteGames} |`);
   }
   out.push('');
