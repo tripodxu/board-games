@@ -177,6 +177,7 @@ describe('reportMarkdown：六节齐全', () => {
     expect(md).toContain('本轮未启用开局库');               // openings 为空时的说明
     expect(md).toContain('deadbeefcafe');                 // 产物 sha256 前 12 位
     expect(md).toContain('⚠ <50');                        // 样本不足标注
+    expect(md).toContain('对手集不同的身份之间**不可横比**'); // §1：得分率是原始计数，不能跨对手集比较
     expect(md).toContain('未计入主口径');                   // 兜底手不计入主口径
   });
   it('曲线 ≥2 档时印相邻档差与「区间重叠」读数', () => {

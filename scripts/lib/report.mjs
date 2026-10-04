@@ -527,6 +527,10 @@ export function reportMarkdown(model) {
   out.push(formatRankTable(rows));
   out.push('```');
   out.push('');
+  out.push('> 得分率与胜负平是**原始计数**，对手集不同的身份之间**不可横比**（谁跟谁打过看第 4 节）：');
+  out.push('> 可比的只有 BT Δ（它按对手强度配平）与第 4 节的配对样本 —— 例：只跟 Rapfi 打过的版本');
+  out.push('> 与「一半局在跟其它版本打」的版本，两行得分率不是一回事。');
+  out.push('');
 
   out.push('## 2 Rapfi「思考时间 → Elo」曲线');
   out.push('');
