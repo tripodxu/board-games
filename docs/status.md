@@ -287,6 +287,12 @@
 
 ## 已验证（验收证据）
 
+- **`L4` 高思考档预设：把 Rapfi 曲线补到 UI 上限（2026-10-04，业主点名）**：业主原话「补 500ms，
+  7000ms，到 10000ms」⇒ `scripts/lib/ladder.mjs` 新增 `RAPFI_HIGH_SPECS`（`@7000`/`@10000`，后者 = UI 上限）
+  与预设 `L4`（`cross(VERSION_SPECS, RAPFI_HIGH_SPECS)` = **10 对 / 200 局**）；**只列 L2 没有的档**
+  （`@500/@1000/@2000` 已各 100 局、分母配平），「两批右臂不重叠」由单测钉死（`test/scripts/ladder.spec.mjs` 54 例）。
+  dry-run 实测：10 轮、逐轮 `@7000` ≈93 min / `@10000` ≈123 min、**合计 ≈18.0 h**。
+  合并报表口径：把 `l2n1` 的 15 轮与本批的 10 轮放进**同一目录树**再跑 `experiment-report.mjs`（按身份自动合并成 5 档曲线）。
 - **上游兜底补上决策记录 ADR-0022（2026-10-04，文档轮）**：C2/C3 的代码早已落地
   （`src/core/jev/providers.ts` 311 行、`src/worker/lib/failover.ts` 159 行、`migrations/0004_move_provider.sql`），
   但决策只散在计划与本文里；现补 [ADR-0022](adr/0022-upstream-provider-failover.md)：**换三元组
@@ -651,7 +657,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 659 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 280 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 660 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 285 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  LADDER_VERSION, PRESETS, VERSION_SPECS, RAPFI_SPECS, RAPFI_5000, L3_EXTRA_5000,
+  LADDER_VERSION, PRESETS, VERSION_SPECS, RAPFI_SPECS, RAPFI_5000, RAPFI_HIGH_SPECS, L3_EXTRA_5000,
   identityOfSpec, pairKey, roundRobin, crossPairs, pairsForPreset, pairsForAll,
   parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
   newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress, stateMatchesLadder, withReusedTags, staleCleanups,
@@ -74,16 +74,42 @@ describe('round-robin / 笛卡尔积', () => {
     expect(pairs.length).toBe(6);
     expect(pairs[0].key).toBe('official|v10-live3|0 vs rapfi||500');
   });
-  it('预设对数：L1=10 / L2=15 / L3=3（+1 加档）/ all=28', () => {
+  it('预设对数：L1=10 / L2=15 / L3=3（+1 加档）/ L4=10（高思考档）/ all=38', () => {
     expect(pairsForPreset('L1').pairs.length).toBe(10);
     expect(pairsForPreset('L2').pairs.length).toBe(15);
     expect(pairsForPreset('L3').pairs.length).toBe(3);
     expect(pairsForPreset('L3', { with5000: true }).pairs.length).toBe(4);
     expect(pairsForPreset('L3', { with5000: true }).pairs.at(-1).key)
       .toBe(pairKey(RAPFI_5000, L3_EXTRA_5000[1]));
-    expect(pairsForAll().pairs.length).toBe(10 + 15 + 3);
-    expect(pairsForAll({ with5000: true }).pairs.length).toBe(10 + 15 + 4);
+    expect(pairsForPreset('L4').pairs.length).toBe(10);
+    expect(pairsForAll().pairs.length).toBe(10 + 15 + 3 + 10);
+    expect(pairsForAll({ with5000: true }).pairs.length).toBe(10 + 15 + 4 + 10);
     expect(() => pairsForPreset('L9')).toThrow(/未知阶梯预设/);
+  });
+  it('L4 = L2 的形状换高思考档：只列 L2 没有的档（7000/10000），不含版本内战与 rapfi 内战', () => {
+    const { pairs, title } = pairsForPreset('L4');
+    expect(title).toContain('7000/10000');
+    const rungs = new Set();
+    const versions = new Set();
+    for (const p of pairs) {
+      const a = identityOfSpec(p.a);
+      const b = identityOfSpec(p.b);
+      expect([a.channel, b.channel].sort().join(',')).toBe('official,rapfi'); // 一版一 rapfi，绝不同渠道内战
+      expect(a.id).toMatch(/^official\|v/);
+      expect(a.tactics).not.toBe(''); // 上游臂带战术档
+      expect(b.tactics).toBe(''); // rapfi 不过战术层 ⇒ 战术档留空（口径见文件头）
+      const rung = a.channel === 'rapfi' ? a.think : b.think;
+      expect(rung).toBeGreaterThanOrEqual(7000);
+      versions.add(a.channel === 'official' ? a.id : b.id);
+      rungs.add(a.channel === 'rapfi' ? a.id : b.id);
+    }
+    expect(versions.size).toBe(5); // 5 个版本都上
+    // 右臂恰好是两档，且都 ≥7000（L2 已覆盖 500/1000/2000，不重复跑）
+    expect([...rungs].sort()).toEqual(['rapfi||10000', 'rapfi||7000']);
+    expect(RAPFI_HIGH_SPECS.every((s) => Number(s.split(':')[2]) >= 7000)).toBe(true);
+    // 与 L2 的右臂不重叠 ⇒ 合并两批数据时不会出现「同一对同一档跑两遍」
+    const l2Rungs = new Set(RAPFI_SPECS.map((s) => identityOfSpec(s).id));
+    for (const id of rungs) expect(l2Rungs.has(id)).toBe(false);
   });
   it('L2 不含版本内战、不含 rapfi 内战（它是积，不是 8 个身份的 round-robin）', () => {
     for (const p of pairsForPreset('L2').pairs) {
@@ -95,7 +121,7 @@ describe('round-robin / 笛卡尔积', () => {
   it('预设常量自洽：5 版 + 3 档', () => {
     expect(VERSION_SPECS.length).toBe(5);
     expect(RAPFI_SPECS.length).toBe(3);
-    expect(Object.keys(PRESETS)).toEqual(['L1', 'L2', 'L3']);
+    expect(Object.keys(PRESETS)).toEqual(['L1', 'L2', 'L3', 'L4']);
   });
 });
 
@@ -454,7 +480,7 @@ describe('CLI：闸门与 W/D/L 口径', () => {
     await expect(ladderMain([])).resolves.toBe(0); // 无参数 = 打用法
     await expect(ladderMain(['--ladder', 'L3', '--identities', 'rapfi::500,rapfi::1000']))
       .rejects.toMatchObject({ exitCode: 2 });
-    await expect(ladderMain(['--games', '4'])).rejects.toThrow(/--ladder L1\|L2\|L3\|all/);
+    await expect(ladderMain(['--games', '4'])).rejects.toThrow(/--ladder L1\|L2\|L3\|L4\|all/);
   });
   it('未知预设 / 非法局数 / 非法 batchId 都是用法错（exit 2）', async () => {
     const dry = ['--dry-run', '--batch', 'dry1'];

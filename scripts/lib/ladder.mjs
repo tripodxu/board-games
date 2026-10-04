@@ -42,16 +42,32 @@ export const RAPFI_SPECS = [
   'rapfi:v14-live3-fresh:2000',
 ];
 export const RAPFI_5000 = 'rapfi:v14-live3-fresh:5000';
+/**
+ * Rapfi 高思考档（业主 2026-10-04 定：把曲线补到 UI 上限）。
+ * 口径：**只列 L2 里没有的档**（500/1000/2000 已有各 100 局），所以这里是 7000 与 10000（= UI 上限）。
+ * 合并报表时要把 `l2n1` 的轮次与本档轮次放进同一个目录树（见 L4 的说明）。
+ */
+export const RAPFI_HIGH_SPECS = [
+  'rapfi:v14-live3-fresh:7000',
+  'rapfi:v14-live3-fresh:10000',
+];
 
 /**
- * 三条预设阶梯（§7 表）。注意 L2 **不是** 8 个身份的 round-robin（那会多出 10 对版本内战 + 3 对
+ * 四条预设阶梯（§7 表）。注意 L2 **不是** 8 个身份的 round-robin（那会多出 10 对版本内战 + 3 对
  * Rapfi 内战 = 28 对），而是「5 版 × 3 档」的**笛卡尔积 15 对**。`extras` 是不在配对里的额外对决
  * （L3 的 `rapfi@5000` 只跟 `@1000` 打，不打全部 —— 5000 档每局 ~8 min，全打烧不起）。
+ * L4 与 L2 同形，只是右臂换成高思考档（`@7000`/`@10000`）⇒ 10 对 / 200 局。
  */
 export const PRESETS = {
   L1: { title: 'L1 版本内侧梯（5 版两两）', mode: 'roundRobin', specs: VERSION_SPECS, extras: [] },
   L2: { title: 'L2 各版对 Rapfi（5 版 × 3 档）', mode: 'cross', left: VERSION_SPECS, right: RAPFI_SPECS },
   L3: { title: 'L3 Rapfi 思考时间曲线', mode: 'roundRobin', specs: RAPFI_SPECS, extras: [] },
+  L4: {
+    title: 'L4 各版对 Rapfi 高思考档（5 版 × 7000/10000 ms）',
+    mode: 'cross',
+    left: VERSION_SPECS,
+    right: RAPFI_HIGH_SPECS,
+  },
 };
 /** L3 的可选加档（`--with-5000`）：只加一条 `@5000 vs @1000`。 */
 export const L3_EXTRA_5000 = [RAPFI_5000, 'rapfi:v14-live3-fresh:1000'];
@@ -147,7 +163,7 @@ export function pairsForPreset(name, { with5000 = false } = {}) {
   return { title: preset.title, pairs: roundRobin(preset.specs, { extras: preset.extras || [] }) };
 }
 
-/** `all` = L1 + L2 + L3 合并（按 pairKey 去重）。 */
+/** `all` = L1 + L2 + L3 + L4 合并（按 pairKey 去重）。 */
 export function pairsForAll({ with5000 = false } = {}) {
   const out = [];
   const seen = new Set();

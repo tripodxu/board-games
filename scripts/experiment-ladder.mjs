@@ -54,10 +54,11 @@ const SSH_OPTS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15'];
 const SSH_LAUNCH_OPTS = ['-n', ...SSH_OPTS]; // 起 worker 用（stdin 走 /dev/null）
 
 const USAGE = `用法：
-  node scripts/experiment-ladder.mjs --ladder L1|L2|L3|all [--with-5000] [--games 20]
+  node scripts/experiment-ladder.mjs --ladder L1|L2|L3|L4|all [--with-5000] [--games 20]
   node scripts/experiment-ladder.mjs --identities 'rapfi::500,rapfi::1000' [--games 20]
 选项：
-  --ladder <预设>       L1（5 版两两 10 对）/ L2（5 版 × rapfi 3 档 15 对）/ L3（rapfi 3 档两两）/ all
+  --ladder <预设>       L1（5 版两两 10 对）/ L2（5 版 × rapfi 3 档 15 对）/ L3（rapfi 3 档两两）/
+                        L4（5 版 × rapfi @7000/@10000 高思考档 10 对）/ all
   --identities <a,b,c>  自定义身份（spec = 渠道[:战术档][:思考ms]），与 --ladder 二选一
   --with-5000           L3/all 追加一条 rapfi@5000 vs @1000
   --games <n>           每对局数（必须偶数；缺省 20）
@@ -380,7 +381,7 @@ async function main(argv = process.argv.slice(2)) {
   const repo = args.repo ? String(args.repo) : DEFAULT_REPO;
 
   if (args.ladder && args.identities) die('--ladder 与 --identities 二选一');
-  if (!args.ladder && !args.identities) die('要给一条阶梯：--ladder L1|L2|L3|all，或 --identities a,b,c');
+  if (!args.ladder && !args.identities) die('要给一条阶梯：--ladder L1|L2|L3|L4|all，或 --identities a,b,c');
   const with5000 = Boolean(args['with-5000']);
   const games = args.games !== undefined ? Number(args.games) : 20;
   const store = args.store !== undefined ? String(args.store) : 'local';

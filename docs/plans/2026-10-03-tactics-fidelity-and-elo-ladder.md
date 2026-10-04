@@ -143,7 +143,7 @@
 | `test/engines/version-freeze.test.mjs` | ✅ **已做**：5 例（形状/逐行重放/覆盖与必须覆盖层/与 `decide()` 同解/冻结字段完整），已进 `test/engines/runner.mjs:12-20` 的 `ALL_MODULES` | 117 行（实测） |
 | `scripts/tactics-replay.mjs` | ✅ **已做**：离线重放 `--dir/--file/--game <uid>/--tag <tag>/--tactics <id>/--sides/--limit/--max-games/--json/--show`（纯核在 `scripts/lib/tactics-replay.mjs`；`--all` 由「不给 `--tactics`」表达）；26 例单测（2026-10-04 加 3 例：实验面归档的 `slug` 是对阵描述 ⇒ 棋种回退链） | 纯核 287 行 + CLI（实测） |
 | `scripts/experiment-ladder.mjs` | ✅ **已做**：阶梯 CLI —— `--ladder L1\|L2\|L3\|all` / `--identities a,b,c`（二选一）、`--with-5000`、`--games`（必须偶数，`--allow-odd` 才放行）、`--openings`、`--store local\|d1`（缺省 local）、`--upstream direct\|worker`（缺省 direct）、`--rate-limit/--key-file/--origin/--allow-production`、`--cooldown`（缺省 30 s 轮间冷却）、`--max-rounds N`（**只编排前 N 轮**：当场打印「被截掉的轮次不在这次状态里，要跑全量就另起一次」——它不是「先跑 N 轮再接着跑」）、`--dry-run/--force`、`--no-upload/--prefix`；**串行**跑法（起一轮 → 等 pid → 拉该轮产物 → 桶 push → 冷却 → 下一轮），断点续跑判据 = **远端 `games.jsonl` 去重后的局数 ≥ 局数**（本地状态只记账），跳过时本地缺产物会补拉；`--force` 用新 tag 并把旧产物挪到 `stale-round-N-<旧tag>/`；`--parallel` 一律拒绝。**2026-10-04 修**：等待改**本地轮询**（`--poll <秒>`，缺省 60；`--quiet` 静音进度行）—— 原来是远端 `for i in $(seq 1 1440); … sleep 30; done` 一条 ssh 挂 12 h，**那条 ssh 继承 stdout 管道，编排进程一旦意外死掉，外层 `\| Tee-Object` 永远等不到 EOF，作业就假装还在跑**（第一晚 L3 round-1 实测踩到）；现在每分钟一次**捕获式**短 ssh（`timeout 60s`），并顺手把远端 `progress.json` 打成 `⏳ round-N d/total 局 · 秒 · 均 Xs/局 · W-D-L` | 672 行（实测；2026-10-04 加 `scp()` 与 `sshRetry()` 的三次重试 + `sh()` 的失败诊断 + 启动阶段的「准备中…」说明，见 L2 收尾与 vorder1 开局） |
-| `scripts/lib/ladder.mjs` | ✅ **已做**（P6 纯核）：身份口径 `identityOfSpec()`（镜像归档导出：rapfi/mock 战术档留空）、`roundRobin()`/`crossPairs()`/`pairsForPreset()`（L2 是**笛卡尔积 15 对**，不是 8 身份的 28 对）、`pairsForAll()`、`parseIdentityList()`、`normalizeGames()`（奇数拒绝）、`buildLadder()`（显式 `now`、逐轮 plan 与 submit 同形状）、`formatRoundLine()`/`formatLadderTable()`/`estimateRoundSeconds()`（预计墙钟，锚点实测）、断点状态 `resumeDecisions()`/`summarizeLadder()`/`stateMatchesLadder()`/`withReusedTags()`/`staleCleanups()`/`staleDirName()`/`readLadderState()`/`writeLadderState()`/`writePlans()`；**2026-10-04 加** `parsePollOutput()`/`formatPollTick()`（本地轮询一次回值的解析与一行进度，见 `experiment-ladder.mjs` 行的悬挂说明）；**2026-10-04 加** `launchRoundCommand({repo,keyFile,planPath,logPath,pidPath})` —— 三处启动（阶梯 + batch `submit`/`resume`）共用的启动 shell，守卫在远端原子判断「pid 还活着就不重复起」；`pollRoundCommand({pidPath,progressPath})` —— 本地轮询共用的一次探针（`alive`/`done` + `progress.json` 原文） | 575 行 + **53 例**单测（实测；2026-10-04 加 `sleepSync()`/`retrySync()` 与 6 例、`launchRoundCommand()`/`pollRoundCommand()` 与 6 例、`--max-rounds` 截断提示 1 例） |
+| `scripts/lib/ladder.mjs` | ✅ **已做**（P6 纯核）：身份口径 `identityOfSpec()`（镜像归档导出：rapfi/mock 战术档留空）、`roundRobin()`/`crossPairs()`/`pairsForPreset()`（L2 是**笛卡尔积 15 对**，不是 8 身份的 28 对）、`pairsForAll()`、`parseIdentityList()`、`normalizeGames()`（奇数拒绝）、`buildLadder()`（显式 `now`、逐轮 plan 与 submit 同形状）、`formatRoundLine()`/`formatLadderTable()`/`estimateRoundSeconds()`（预计墙钟，锚点实测）、断点状态 `resumeDecisions()`/`summarizeLadder()`/`stateMatchesLadder()`/`withReusedTags()`/`staleCleanups()`/`staleDirName()`/`readLadderState()`/`writeLadderState()`/`writePlans()`；**2026-10-04 加** `parsePollOutput()`/`formatPollTick()`（本地轮询一次回值的解析与一行进度，见 `experiment-ladder.mjs` 行的悬挂说明）；**2026-10-04 加** `launchRoundCommand({repo,keyFile,planPath,logPath,pidPath})` —— 三处启动（阶梯 + batch `submit`/`resume`）共用的启动 shell，守卫在远端原子判断「pid 还活着就不重复起」；`pollRoundCommand({pidPath,progressPath})` —— 本地轮询共用的一次探针（`alive`/`done` + `progress.json` 原文） | 591 行 + **54 例**单测（实测；2026-10-04 加 `sleepSync()`/`retrySync()` 与 6 例、`launchRoundCommand()`/`pollRoundCommand()` 与 6 例、`--max-rounds` 截断提示 1 例、`L4` 高思考档预设 1 例） |
 | `scripts/lib/report.mjs` | ✅ **已做**（2026-10-04，§7 报表口径的纯函数核）：`REPORT_VERSION`、`moveIdentity()`（走 `identityOf()` 唯一实现）、`isUpstreamMove()`（只有 `ai.ms` 是数字才算上游手）、`quantiles()`、`collectCost()`/`costRow()`（两种占比：`shareOfMove`、`shareOfRoundTrip`）、`pairTable()`（A 取字典序在前者）、`rafiCurve()`、`openingRows()`、`significance()`（区间重叠才算不可判）、`colorCells()`/`colorSplit()`（逐色格与分开颜色 —— L3 第一晚教训：先手优势 85%，只报总分会被带跑）、`reportMarkdown()`（六节 + 未收尾轮标注 + 逐色格两张表） | 383 行（实测） |
 | `scripts/experiment-report.mjs` | ✅ **已做**（2026-10-04）：`--batch <id>` / `--dir <path[,path]>`（互斥）、`--out <md\|->`、`--json <path>`、`--anchor/--bootstrap/--seed/--no-bt/--quiet/--skip-incomplete`；读 `round-<i>/games.jsonl`（缺失才退回 `games/*.json`）+ `round-summary.json` + `events.jsonl`（开局分层）；缺 `round-summary.json` 的轮标注「仍在跑」（`--skip-incomplete` 才排除）；产物清单算 sha256 前 12 位；用法错一律 exit 2（缺目录的提示语带 `experiment-batch.mjs pull`） | 285 行（实测） |
 | `test/scripts/report.spec.mjs` | ✅ **已做**（2026-10-04，21 例）：身份归属/上游手判定/`quantiles`/成本两占比/配对矩阵视角与同身份排除/Rapfi 曲线排序/开局分层/显著性/六节标题与兜底手与样本不足标注**未收尾的轮两种读法**/**逐色格与分开颜色**/CLI 五条用法错与正常落盘 | 317 行（实测） |
@@ -204,13 +204,19 @@
 
 📌 **为什么身份写成 `official|…` 而不是历史轮次的 `proxy|…`**：`proxy` 渠道在代码里是**相对端点** `api/jev` 且只发 `X-Api-Key`（`src/core/jev/client.ts:31`），它天然依赖业主 Worker；直连上游必须换成 `official`（绝对端点 + `Bearer`）。两个身份**协议同构、可比但不等同**（限流/重试方不同），所以 P4b 起阶梯报表一律标 `official|v14-live3-fresh|0` 这类写法，**不与历史 `proxy|…` 轮次混在一张表里算 Elo**，只在结论里注明同源。
 
-**三条阶梯**（可分别跑，也可合并成一次 round-robin）：
+**四条阶梯**（可分别跑，也可合并成一次 round-robin）：
 
 | 阶梯 | 对局 | 局数 | 估时（按 §2 锚点） | 回答什么 |
 |---|---|---|---|---|
-| **L3 Rapfi 自身思考时间曲线**（先跑，纯本地不耗上游） | `rapfi@500/1000/2000` 两两 + `@5000` 对 `@1000` | 6 对 × 20 = 120 局 | ~10 h（5000 档每局 ~8 min） | 「`rapfi@不同时间`真正的能力」——用户的直接问题 |
-| **L2 各版对 Rapfi** | 5 版 × `rapfi@{500,1000,2000}` | 15 对 × 20 = 300 局 | ~9 h | 版本能力沿时间轴的位移；同一版本在不同对手强度下的表现 |
-| **L1 版本内侧梯** | 5 版两两 | 10 对 × 20 = 200 局 | ~5 h（双上游臂，上游双倍负载，需限速） | 版本之间谁更强（**预期差异最小，最需要配对开局与大样本**） |
+| **L3 Rapfi 自身思考时间曲线**（先跑，纯本地不耗上游） | `rapfi@500/1000/2000` 两两 + `@5000` 对 `@1000` | 6 对 × 20 = 120 局 | ~2–3 h | 「`rapfi@不同时间`真正的能力」——用户的直接问题 |
+| **L2 各版对 Rapfi** | 5 版 × `rapfi@{500,1000,2000}` | 15 对 × 20 = 300 局 | ~7 h（实测 316.7 min） | 版本能力沿时间轴的位移；同一版本在不同对手强度下的表现 |
+| **L1 版本内侧梯** | 5 版两两 | 10 对 × 20 = 200 局 | ~11 h（双上游臂，上游双倍负载，需限速） | 版本之间谁更强（**预期差异最小，最需要配对开局与大样本**） |
+| **L4 各版对 Rapfi 高思考档**（2026-10-04 业主新增：把曲线补到 UI 上限） | 5 版 × `rapfi@{7000,10000}` | 10 对 × 20 = 200 局 | ~18 h（dry-run 实测：`@7000` ≈93 min/轮、`@10000` ≈123 min/轮） | 「抬到 UI 上限的 10 s 后，搜索还继续变强吗；各版本的相对位置会不会翻」 |
+
+> **L4 的口径**：业主 2026-10-04 原话「补 500ms，7000ms，到 10000ms」——`@500/@1000/@2000` 已由 L2 各覆盖 100 局
+> （分母配平），所以 L4 **只补 L2 没有的两档**（`@7000`/`@10000`，后者 = UI 上限）；做曲线报表时把 `l2n1` 的 15 轮
+> 与本轮的 10 轮放进**同一个目录树**（`round-*` 并列），`scripts/experiment-report.mjs` 会按身份自动合并。
+> 两批**不重叠**这一条由单测钉死（`test/scripts/ladder.spec.mjs`），避免「同一对同一档跑两遍还当新样本」。
 
 **样本与分辨率（诚实口径）**：单对 20 局、p≈0.5 时得分率 95% CI ≈ ±22 pt；60 局 ≈ ±13 pt；200 局 ≈ ±7 pt。⇒ **Stage 1（20 局/对）只做筛选**；**Stage 2 只对决赛对（前 2–3 名 + 锚 + 一档高 Rapfi）做 100–200 局配对确认**，才允许写「A 比 B 强」。分辨率目标 = 5 pt ⇒ 200 局/对起步（这正是机制线恢复的门槛）。
 
@@ -242,9 +248,14 @@
 ⇒ 对后续的硬性影响：**动作项 ①「版本排序」必须单独跑一条**（§9 第 9 条），② Rapfi 可以再抬一档（§9 第 4 条），③ 报告的逐色格与成本两占比已被两份报表实测用到，不再算「可选」。
 
 **第三份（业主 2026-10-04 批准，正在跑）**：`vorder1` —— `--identities 'official:v13-pressure-gate:0,official:v11-vct:0,official:v14-live3-fresh:0' --games 20`，
-3 对 × 20 局 = 60 局、**双方都是上游臂**（每手都要走 Jev，预计 ≈2.3h；产物留 box、暂不推桶）。
+3 对 × 20 局 = 60 局、**双方都是上游臂**（每手都要走 Jev，实测 ≈4h；产物留 box、暂不推桶）。
 先做筛查而不是直接上 L1 的理由：L2 已量出 200 局才分辨 ~30 Elo，L1 那 200 局同样回答不了「A 比 B 强」，
 但 60 局足以看出三版之间**有没有值得决赛的差距**；跑完再决定要不要补 L1。
+
+**第四份（业主 2026-10-04 定，排第三份之后）**：`rapfihi1` —— `--ladder L4 --batch rapfihi1 --games 20`，
+10 对 × 20 局 = 200 局（5 版 × `rapfi@{7000,10000}`）、预计 ≈18 h、产物留 box。
+业主当轮的原话是「补 500ms，7000ms，到 10000ms」：`@500/@1000/@2000` 已由 `l2n1` 各覆盖 100 局，
+所以这条只补高思考档；**与 `vorder1` 串行不并行**（box 上 Rapfi 的思考时间是墙钟，两个作业同时跑会互相抢 CPU ⇒ 时间档失真）。
 
 ---
 
@@ -274,12 +285,12 @@
 1. **proxy 是否接受采样参数**（temperature / top_p / seed）？若能冻结，跨轮方差会显著下降 ⇒ 加了 `--model-params` 后 L1 的 5 pt 目标可能用 100 局就能达到。探针：`scripts/probe-model-params.mjs`（只读，POST 两组参数比输出分布）。
 2. **Rapfi 是否支持节点数预算**（`-nodes` 之类）？支持 ⇒ 可以额外出一条「等节点数」的公平对比，并让 `--rev` 逐字复现更可行。
 3. **`games` 表是否有 `device_id` 列**（历史 26 局回填用）⇒ `pragma_table_info('games')`。
-4. **L3 的 5000 ms 档要不要跑**：单局 ~8 min，20 局 ≈ 2.7 h，只为一个点；业主决定。**2026-10-04 现状**：第一晚 L3（`l3n1`）在**不含 5000** 的三档上跑完 60 局，`@2000` 相对 `@500` 可见方向；CLI 已备 `--with-5000`（多出 `rapfi@5000 vs @1000` 一对 = +20 局 ≈ 1 h）。是否补这一档仍待业主定。
+4. **L3 的 5000 ms 档要不要跑**：单局 ~8 min，20 局 ≈ 2.7 h，只为一个点；业主决定。**2026-10-04 现状**：第一晚 L3（`l3n1`）在**不含 5000** 的三档上跑完 60 局，`@2000` 相对 `@500` 可见方向；CLI 已备 `--with-5000`（多出 `rapfi@5000 vs @1000` 一对 = +20 局 ≈ 1 h）。**业主 2026-10-04 的最新口径是把曲线直接补到上限**（「补 500ms，7000ms，到 10000ms」）⇒ 先跑 `L4`（`@7000`/`@10000`），`@5000` 这一档被跨过、不单独跑（`@7000` 已覆盖它到 UI 上限之间的区间）。
 5. **`--rev` 逃生门值不值得做**（P7）：只有在「确实要拿老版本逐字数据下结论」时才值得；否则考古 + `approximate` 标注够用。**2026-10-04 补充**：L2 的 300 局没有暴露任何「必须逐字复现老版本」的需求（回归核对层一致 640/640）⇒ 这条的优先级没有上升，仍待业主定。
 6. **桶是哪一个**（Cloudflare R2 / S3 / B2 / 自建 MinIO）与 endpoint、region、path-style vs virtual-host？决定 `BUCKET_ENDPOINT` 的默认写法与 `s3-put.mjs` 的默认寻址样式（两种样式都会实现，只需定默认）。
 7. ✅ **box 出网是否可达上游与桶**（P4b 第一步的探针）：**上游已答「可达」且已跑通整局**（2026-10-04，见 §6 P4b 行第 ⑧ 条与 §8 风险表该行；`/root/.jev-key` + `Bearer` POST ⇒ HTTP 422 = 鉴权通过、延迟 0.315 s；box `node -v` v24.9.0、可用内存 1336 MiB；`official:v14-live3-fresh:0` vs `rapfi:v14-live3-fresh:1000` 两局 118 s、54 次上游请求、零 429，跑前跑后 D1 行数 312/19298/28 不变）。**桶那半待第 6 条定桶后补 `HEAD`**。若桶不可达 ⇒ 只降级留档（本地 JSONL + SSH 进度照常）。
 8. **直连上游的额度是否与 Worker 共用同一 key 的配额**：若共用，30 req/min 的自限速要按「Worker 生产流量 + 阶梯流量」的合计来设；跑前先探 5 次看 `429` 与 `Retry-After`。**2026-10-04 实测**：L2 的 7440 个上游手（`--rate-limit 30`）**零 429、零切换**，说明 30/min 的档位与生产流量共存是安全的；但「是否共用配额」本身仍未直接验证（生产那晚几乎无流量）。
-9. **版本排序要单独跑哪一条**（L2 结论带来的新问题，待业主定）：L2 里 5 个版本各 60 局、12 对区间重叠 ⇒ 不可排序。两个候选：① **L1**（5 版两两 10 对 × 20 = 200 局，双上游臂、≈11 h，按 §7 分辨率只能分辨 ~30 Elo）；② **三对筛查**（v11 vs v13、v11 vs v14、v13 vs v14，3 对 × 20 = 60 局，≈1.5 h，先看有没有值得决赛的差）。按 §7「Stage 1 筛选 / Stage 2 决赛」的纪律，先跑 ② 更划算；要写「A 比 B 强」则决赛对必须 100–200 局配对。
+9. **版本排序要单独跑哪一条**（L2 结论带来的新问题）：**2026-10-04 第一步已定并开跑** —— 业主批准三对筛查 `vorder1`（60 局，见 §7 第三份）；跑完再看要不要补 L1。业主同一轮把「Rapfi 抬时间」的方向也定了（`L4`，见 §7 第四份）。原始候选：L2 里 5 个版本各 60 局、12 对区间重叠 ⇒ 不可排序。两个候选：① **L1**（5 版两两 10 对 × 20 = 200 局，双上游臂、≈11 h，按 §7 分辨率只能分辨 ~30 Elo）；② **三对筛查**（v11 vs v13、v11 vs v14、v13 vs v14，3 对 × 20 = 60 局，≈1.5 h，先看有没有值得决赛的差）。按 §7「Stage 1 筛选 / Stage 2 决赛」的纪律，先跑 ② 更划算；要写「A 比 B 强」则决赛对必须 100–200 局配对。
 
 ---
 
