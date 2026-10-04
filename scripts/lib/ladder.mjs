@@ -25,6 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { batchTag, formatSpec, identityOf, parseSpec, sanitizeBatchId, UPSTREAM_CHANNELS } from './batch-common.mjs';
+import { ETA_SAMPLES } from './progress.mjs';
 
 export const LADDER_VERSION = 1;
 
@@ -487,7 +488,7 @@ export function formatPollTick(round, progress, { elapsedS = null } = {}) {
     : (progress.elapsedS != null ? Number(progress.elapsedS) : null);
   const bits = [];
   if (secs !== null) bits.push(`${Math.round(secs)}s`);
-  if (progress.meanGameS) bits.push(`均 ${progress.meanGameS}s/局`);
+  if (progress.meanGameS) bits.push(`近${ETA_SAMPLES}局均 ${progress.meanGameS}s/局`);
   if (progress.wdl) bits.push(`W${progress.wdl.w}-D${progress.wdl.d}-L${progress.wdl.l}`);
   return `  ⏳ round-${round} ${done}/${total} 局${bits.length ? ` · ${bits.join(' · ')}` : ''}`;
 }

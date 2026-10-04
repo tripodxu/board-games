@@ -454,7 +454,8 @@
   用**捕获式** `sshCapture()`（`timeout: 60s`，失败返回 null）+ 本地 `pollRound()` 每分钟问一次「pid 还在吗 + progress.json」，
   新增 `--poll <秒>`（缺省 60）与 `--quiet`。最坏情况从「泄漏一条 12h 子进程」降到「泄漏一条 ≤60s 的子进程」。
   证据：① 恢复跑打印 `续跑判定：1 轮跳过 / 2 轮要跑（远端行数快照：{"1":20}）` → `⏭️ round-1 跳过（远端已有 20/20 局）`
-  → round-2 起跑并逐分钟打印 `⏳ round-2 7/20 局 · 215s · 均 30s/局 · W4-D0-L3`；② `ladder.spec.mjs` 新增 6 例
+  → round-2 起跑并逐分钟打印 `⏳ round-2 7/20 局 · 215s · 均 30s/局 · W4-D0-L3`（2026-10-05 起该标签改为
+  `近5局均 30s/局`：`meanGameS` 只取最近 `ETA_SAMPLES = 5` 局，读成整轮均时会算出错误的 ETA）；② `ladder.spec.mjs` 新增 6 例
   （`parsePollOutput` 四态、`formatPollTick` 三态与本地墙钟优先、`--poll 0`/`--cooldown -1` 两条闸门）。
 - **上游兜底提供方：两个运行面共用一套切换判据（C2，2026-10-04）**：新增纯叶模块 `src/core/jev/providers.ts`
   （~300 行：提供方表 `primary`=TypeSafe `jev-latest` / `backup`=commandcode `typesafe/jev`、失败分类 `classifyStatus`

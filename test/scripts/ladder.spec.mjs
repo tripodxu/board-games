@@ -16,6 +16,7 @@ import {
   ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
   estimateRoundSeconds, parsePollOutput, formatPollTick, retrySync, sleepSync, launchRoundCommand, pollRoundCommand,
 } from '../../scripts/lib/ladder.mjs';
+import { ETA_SAMPLES } from '../../scripts/lib/progress.mjs';
 import { ladderMain, wdlOfGamesJsonl } from '../../scripts/experiment-ladder.mjs';
 
 const NOW = new Date('2026-10-04T12:00:00Z');
@@ -213,9 +214,11 @@ describe('汇总文本', () => {
     expect(parsePollOutput('alive\n{半截').progress).toBeNull();
     expect(parsePollOutput('done\nnot json').progress).toBeNull();
   });
-  it('逐分钟进度行：有 progress 就打 done/total + 秒 + 均时 + W-D-L，没有也说话', () => {
+  it('逐分钟进度行：有 progress 就打 done/total + 秒 + 近 N 局均时 + W-D-L，没有也说话', () => {
     expect(formatPollTick(2, { done: 7, total: 20, elapsedS: 215, meanGameS: 30, wdl: { w: 4, d: 0, l: 3 } }))
-      .toBe('  ⏳ round-2 7/20 局 · 215s · 均 30s/局 · W4-D0-L3');
+      .toBe('  ⏳ round-2 7/20 局 · 215s · 近5局均 30s/局 · W4-D0-L3');
+    /* 标签必须点明窗口：`meanGameS` 只取最近 ETA_SAMPLES 局，读成整轮均时会算出错误的 ETA。 */
+    expect(ETA_SAMPLES).toBe(5);
     expect(formatPollTick(2, { done: 1, total: 20 })).toBe('  ⏳ round-2 1/20 局');
     expect(formatPollTick(2, null)).toContain('还没写 progress.json');
     // 本地墙钟优先于远端自报（远端 elapsedS 是它自己的计时，重启会归零）
