@@ -292,7 +292,7 @@
   与预设 `L4`（`cross(VERSION_SPECS, RAPFI_HIGH_SPECS)` = **10 对 / 200 局**）；**只列 L2 没有的档**
   （`@500/@1000/@2000` 已各 100 局、分母配平），「两批右臂不重叠」由单测钉死（`test/scripts/ladder.spec.mjs` 54 例）。
   dry-run 实测：10 轮、逐轮 `@7000` ≈93 min / `@10000` ≈123 min、**合计 ≈18.0 h**。
-  合并报表口径：把 `l2n1` 的 15 轮与本批的 10 轮放进**同一目录树**再跑 `experiment-report.mjs`（按身份自动合并成 5 档曲线）。
+  合并报表口径：一次读两批 —— `node scripts/experiment-report.mjs --dir .work/remote/l2n1,.work/remote/rapfihi1`（`--dir` 支持逗号分隔的多根，`gameUid` 全局去重、按身份聚合 ⇒ 5 档曲线一次出）。
 - **上游兜底补上决策记录 ADR-0022（2026-10-04，文档轮）**：C2/C3 的代码早已落地
   （`src/core/jev/providers.ts` 311 行、`src/worker/lib/failover.ts` 159 行、`migrations/0004_move_provider.sql`），
   但决策只散在计划与本文里；现补 [ADR-0022](adr/0022-upstream-provider-failover.md)：**换三元组

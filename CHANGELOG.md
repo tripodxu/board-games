@@ -87,7 +87,7 @@
   7000ms，到 10000ms」⇒ `scripts/lib/ladder.mjs` 加 `RAPFI_HIGH_SPECS` 与预设 `L4`
   （`cross(VERSION_SPECS, RAPFI_HIGH_SPECS)` = 10 对 / 200 局，dry-run ≈18.0 h）。**只列 L2 没跑的档**
   （`@500/@1000/@2000` 已各 100 局），单测钉死「两批右臂不重叠」；`all` 的对数 28 → **38**（+5000 = 39）。
-  曲线报表要把 `l2n1` 与本批放同一目录树合并（`scripts/experiment-report.mjs` 按身份聚合）。
+  曲线报表一次读两批：`experiment-report.mjs --dir .work/remote/l2n1,.work/remote/rapfihi1`（多根 + 按身份聚合）。
 - **上游兜底补上决策记录 [ADR-0022](docs/adr/0022-upstream-provider-failover.md)（2026-10-04）**：
   C2/C3 的代码早已进 main（`src/core/jev/providers.ts`、`src/worker/lib/failover.ts`、
   `migrations/0004_move_provider.sql`），但「为什么这样兜底」只散在计划里。ADR 写死五条：
