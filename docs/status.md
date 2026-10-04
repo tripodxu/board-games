@@ -287,6 +287,15 @@
 
 ## 已验证（验收证据）
 
+- **报告新增「收尾机制 + 接管层 × 结果」解释块（2026-10-04，`vorder1` round-1 之后）**：第 4 节内加
+  `endReasons()`（收尾原因分布 + 和棋手数 + 全局手数分位）与 `layersByResult()`（每身份一行
+  「接管层（开火次数；该层开火那几手的 胜/和/负）」）；`scripts/lib/report.mjs` 523 行、
+  `test/scripts/report.spec.mjs` 403 行 **28 例**全绿。这是规则 11 的**解释性口径**（败局要解释、和棋可接受），
+  **不参与判强**（判强只看 §1/§4），所以只作 §4 的子块、不打乱 §1–§6 编号。`vorder1` round-1 真数据读法：
+  收尾 `五连 15 局 · 棋盘已满 5 局`，**和棋 5 局全是 225 手满盘**（不是协议和）；v11 `vctAttack 21（21/0/0）`、
+  `open4 9（9/0/0）`（织出连续威胁就赢）、`live3Defense 123（29/69/25）`；v13 `block 46（4/7/35）`
+  （被压着堵时 35/46 输）、`pressureGate 122（23/82/17）`（122 次里 82 次出现在和局）。层字段取
+  `move.tactics || move.ai.tac`（**`ai.tv` 是战术版本，不是层**）。
 - **采样参数探针：官方端点不接受任何冻结类字段（2026-10-04，计划 §9 第 1 条结案）**：新增只读探针
   `scripts/probe-model-params.mjs`（5 变体 × 4 次 + baseline × 10 次复现，`test/scripts/probe-model-params.spec.mjs` 19 例）。
   本机直连 `https://api.typesafe.ai/v1/systemone`，请求体 = 客户端真正发的 `{state, questions, model}` 三个字段
@@ -296,8 +305,8 @@
   产物 `.work/probe-model-params.json`、`.work/probe-model-params-repeat.json`。
 - **报表的 Rapfi 曲线带「相邻档差 + 区间重叠」读数（2026-10-04，为 L4 铺路）**：第 2 节每行多一列
   **ΔElo（相对上一档）**，表下自动印相邻档差 + 重叠对数 + 每档样本；判据 = **相邻档 BT 区间重叠就不许说
-  「这一档更强」**（与 §1/§4 同一条纪律）。纯函数 `curveDeltas()`（`scripts/lib/report.mjs` 422 行、
-  `test/scripts/report.spec.mjs` 344 行 23 例）。`l2n1` 真数据复跑：500→1000 **不重叠**（+100.7）、
+  「这一档更强」**（与 §1/§4 同一条纪律）。纯函数 `curveDeltas()`（`scripts/lib/report.mjs` 523 行、
+  `test/scripts/report.spec.mjs` 403 行 28 例）。`l2n1` 真数据复跑：500→1000 **不重叠**（+100.7）、
   1000→2000 **重叠**（+107.6）⇒「抬时间有收益」踏实、「每抬一档都更强」不能说。
 - **`L4` 高思考档预设：把 Rapfi 曲线补到 UI 上限（2026-10-04，业主点名）**：业主原话「补 500ms，
   7000ms，到 10000ms」⇒ `scripts/lib/ladder.mjs` 新增 `RAPFI_HIGH_SPECS`（`@7000`/`@10000`，后者 = UI 上限）
@@ -671,7 +680,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 681 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 306 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 686 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 311 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

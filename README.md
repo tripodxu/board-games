@@ -153,7 +153,7 @@ npm run deploy           # 构建 + wrangler deploy（需 CLOUDFLARE_API_TOKEN�
 npm run typecheck        # tsc --noEmit
 
 # 测试（npm test 是最省事的总闸）
-npm test                 # test:engines（153 例）+ test:new（= 51 个文件 / 681 用例；**不含 test:tactics**）
+npm test                 # test:engines（153 例）+ test:new（= 51 个文件 / 686 用例；**不含 test:tactics**）
 npm run test:engines     # 纯 Node：七引擎 selfTest + 战术 + 档位指纹 + 54 局金样逐手差分
 npm run test:tactics     # 战术层单测（要单独跑）
 npm run test:new         # vitest 全部 project（worker / core / ui / scripts）

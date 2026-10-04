@@ -5,6 +5,10 @@
 // 显著性说明、产物清单。这些全是**纯计算**，文件读写留在 CLI（scripts/experiment-report.mjs），
 // 于是单测能拿合成 payload 直接钉住口径，不必造目录树。
 //
+// 第 4 节内另有一块**解释性**内容（`endReasons()` 收尾机制 + `layersByResult()` 接管层 × 结果）：
+// 规则 11 要求「败局要解释、和棋可接受」，所以和棋是不是满盘和、输在哪些层必须写出来 ——
+// 但它**不参与判强**（判强只看 §1/§4 的配对表），所以只作 §4 的子块，不打乱 §1–§6 编号。
+//
 // 口径纪律（与 batch-elo.mjs / batch-common.mjs 同一份）：
 //   - 身份 = `渠道|战术档|思考ms`，**唯一实现仍走 `identityOf()`**，这里不另写一份；
 //   - 成本只在**真的打了上游的那一侧**统计（`ai.ms` 是 number）—— Rapfi/mock 侧的 `ms` 是 null，
@@ -227,6 +231,74 @@ export function colorSplit(records) {
     (b.blackGames + b.whiteGames) - (a.blackGames + a.whiteGames) || (a.identity < b.identity ? -1 : 1));
 }
 
+/**
+ * 收尾机制：把「这局是怎么结束的」摊开 —— 直接决定结论怎么读（规则 11：和棋可接受，但要说清来路）。
+ * 为什么单列：vorder1 round-1 实测 5 局和棋**全部**是 225 手「棋盘已满」（不是协议和、不是认输），
+ * 「双方都守住了」与「双方都不敢下」是两种故事，报告里不写清就会被读成后者。
+ */
+export function endReasons(games) {
+  const reasons = new Map();
+  const draws = [];
+  const plies = [];
+  let unscored = 0;
+  for (const g of games) {
+    const raw = g.endReason ?? g.reason;
+    const reason = typeof raw === 'string' && raw.trim() ? raw.trim() : '未知';
+    reasons.set(reason, (reasons.get(reason) || 0) + 1);
+    const n = (g.moves || []).length;
+    plies.push(n);
+    const rec = gameRecord(g);
+    if (!rec) unscored += 1;
+    else if (rec.blackScore === 0.5) draws.push(n);
+  }
+  return {
+    reasons: [...reasons.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || (a.reason < b.reason ? -1 : 1)),
+    draws: { count: draws.length, plies: draws.sort((a, b) => a - b) },
+    plies: quantiles(plies),
+    unscored,
+  };
+}
+
+/**
+ * 接管层 × 局结果：每身份一行，层按开火次数降序，括号里是「该层开火的那几手所属局」的战绩（该身份视角）。
+ * 这是**解释性**口径（规则 11 要求解释败局：输在哪些层、和局靠哪些层守住），**不参与判强** —— 判强只看 §1/§4。
+ * 层的取法与 `scripts/lib/tactics-replay.mjs:52 recordedLayerOf()` 同源：`move.tactics || move.ai.tac`
+ * （`ai.tv` 是**战术版本**，不是层 —— 第一版探针在这里踩过）。
+ */
+export function layersByResult(games) {
+  const by = new Map();
+  for (const g of games) {
+    const rec = gameRecord(g);
+    if (!rec) continue;
+    const uid = rec.gameUid || '';
+    for (const m of g.moves || []) {
+      const ai = (m && m.ai) || {};
+      const layer = typeof m.tactics === 'string' && m.tactics ? m.tactics
+        : typeof ai.tac === 'string' && ai.tac ? ai.tac : null;
+      if (!layer) continue;
+      const id = moveIdentity(g, m);
+      if (!by.has(id)) by.set(id, { identity: id, uids: new Set(), layers: new Map() });
+      const row = by.get(id);
+      row.uids.add(uid);
+      const l = row.layers.get(layer) || { layer, total: 0, win: 0, draw: 0, loss: 0 };
+      const score = m.side === BLACK_SIDE ? rec.blackScore : 1 - rec.blackScore;
+      l.total += 1;
+      if (score === 1) l.win += 1;
+      else if (score === 0.5) l.draw += 1;
+      else l.loss += 1;
+      row.layers.set(layer, l);
+    }
+  }
+  return [...by.values()]
+    .map((r) => {
+      const layers = [...r.layers.values()].sort((a, b) => b.total - a.total || (a.layer < b.layer ? -1 : 1));
+      return { identity: r.identity, games: r.uids.size, moves: layers.reduce((n, l) => n + l.total, 0), layers };
+    })
+    .sort((a, b) => b.moves - a.moves || (a.identity < b.identity ? -1 : 1));
+}
+
 /** 显著性说明（CI 宽度与重叠、样本不足清单）。 */
 export function significance(rows, pairs) {
   const withCi = rows.filter((r) => r.ci);
@@ -397,6 +469,35 @@ export function reportMarkdown(model) {
     }
   }
   out.push('');
+  if (model.games && model.games.length) {
+    const ends = endReasons(model.games);
+    out.push('收尾机制与接管层（**解释性口径**，不参与判强 —— 判强只看上面的配对表；规则 11 要求解释和棋与败局）：');
+    out.push('');
+    out.push(`- 收尾：${ends.reasons.map((r) => `${r.reason} ${r.count} 局`).join(' · ')}` +
+      (ends.unscored ? `（${ends.unscored} 局无胜负，未计入）` : ''));
+    if (ends.draws.count) {
+      out.push(`- 和棋 ${ends.draws.count} 局的手数：${ends.draws.plies.join(' / ')}` +
+        '（满盘和 = 双方都守住了，不是协议和）');
+    }
+    if (ends.plies) {
+      out.push(`- 全局手数：均 ${ends.plies.mean} ／ 中位 ${ends.plies.median} ／ p90 ${ends.plies.p90} ／ 最长 ${ends.plies.max}`);
+    }
+    out.push('');
+    const layerRows = layersByResult(model.games);
+    if (layerRows.length) {
+      out.push('| 身份 | 局数 | 接管手 | 接管层（开火次数；该层开火那几手的 胜/和/负） |');
+      out.push('| --- | --- | --- | --- |');
+      for (const r of layerRows) {
+        const shown = r.layers.slice(0, 8).map((l) => `${l.layer} ${l.total}（${l.win}/${l.draw}/${l.loss}）`);
+        const rest = r.layers.length > 8 ? ` · …共 ${r.layers.length} 层` : '';
+        out.push(`| ${r.identity} | ${r.games} | ${r.moves} | ${shown.join(' · ')}${rest} |`);
+      }
+      out.push('');
+      out.push('> 「接管手」= 战术层真的接了手的手数（`ai.tac` 非空），含攻击层与防守层；');
+      out.push('> 同一层开火次数多不等于强 —— 它只说明这版**常在哪一层做决定**。');
+    }
+    out.push('');
+  }
 
   out.push('## 5 显著性说明');
   out.push('');

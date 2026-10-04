@@ -19,6 +19,21 @@
 
 ---
 
+## 2026-10-04 · 接管层在逐手记录里叫 `move.ai.tac` —— `ai.tv` 是**战术版本**（探针踩过）
+
+- **现象**：写「按接管层统计战绩」的探针时第一版读 `move.ai.tv`，得到的是 `v14-live3-fresh` 这类**版本名**，
+  直方图全是版本而不是层；换成 `move.ai.tac` 才拿到 `pressureGate` / `vcfDefense` / `live3Attack` 这些层。
+- **口径**：层 = `move.tactics || move.ai.tac`（与 `scripts/lib/tactics-replay.mjs:52 recordedLayerOf()` 同源），
+  逐手 `ai` 的字段是 `ch,mdl,conf,p,rank,cands,ms,tv,tacMs,candsSent,candsLabeled,prov,probs`（`tv`=版本、
+  `tac`=层）；`ai.tac` **只有战术层真的接了手才有值** —— vorder1 round-1 里 902 手只有 447 手带层，
+  所以「接管手数」不等于总局手数。
+- **另一条**：阶梯**每局换色**（A/B 交替执黑），按 `side` 聚合等于**按先后手**聚合；要按版本聚合必须读每局
+  `blackTactics`/`whiteTactics`（vorder1 round-1：黑方 11 胜 / 白方 4 胜 / 5 和 ⇒ 不分开就会被先手优势带跑）。
+- **落地**：`scripts/lib/report.mjs` 的 `layersByResult()` + `endReasons()`（收尾原因、和棋手数、手数分位），
+  印在报告第 4 节内、**不参与判强**；和棋是满盘和还是协议和由 `endReason` 一句话钉死。
+
+---
+
 ## 2026-10-04 · 官方 systemone 端点对**多余顶层字段**直接 400（curl 夹具不是「客户端真发的体」）
 
 - **现象**：拿 `test/fixtures/jev/commandcode-systemone-2026-10-03.json` 里的 `request` 原样 POST

@@ -88,6 +88,16 @@
 
 ### 新增
 
+- **阶梯报告新增「收尾机制 + 接管层 × 结果」解释块（2026-10-04，`vorder1` round-1 之后）**：
+  `scripts/lib/report.mjs` 加两个纯函数 —— `endReasons()`（收尾原因分布 + 和棋手数 + 全局手数分位）与
+  `layersByResult()`（每身份一行「接管层（开火次数；该层开火那几手的 胜/和/负）」），印在第 4 节内、
+  第 5 节之前。规则 11 要求「败局要解释、和棋可接受」，这块就是那份解释；但它**不参与判强**
+  （判强只看 §1/§4），所以只作 §4 的子块，不打乱 §1–§6 编号。层的取法与
+  `scripts/lib/tactics-replay.mjs:52 recordedLayerOf()` 同源：`move.tactics || move.ai.tac`
+  （**`ai.tv` 是战术版本，不是层**）。真数据实测（`vorder1` round-1，20 局）：收尾 `五连 15 局 ·
+  棋盘已满 5 局`，和棋 5 局全是 225 手满盘；v11 `vctAttack 21（21/0/0）`、`open4 9（9/0/0）`；
+  v13 `block 46（4/7/35）`、`pressureGate 122（23/82/17）`。单测 +5 例（`test/scripts/report.spec.mjs`
+  共 28 例）。
 - **运维手册新增「§8 远端阶梯作业」**（`docs/agents/playbooks.md`）：把「在 box 上本地跑 Elo 大数据、
   不碰业主 Worker」的完整套路钉成一节 —— box 同步要用显式 refspec（普通 `git fetch origin main` 不会
   更新 `origin/main`）、准备阶段 2–4 分钟别当启动失败、一次只跑一条（Rapfi 计的是墙钟）、

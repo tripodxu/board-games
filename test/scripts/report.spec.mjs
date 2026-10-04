@@ -10,24 +10,26 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
-  collectCost, colorCells, colorSplit, costRow, isUpstreamMove, moveIdentity, openingRows, pairTable, quantiles,
+  collectCost, colorCells, colorSplit, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
+  openingRows, pairTable, quantiles,
   rafiCurve, reportMarkdown, significance, curveDeltas,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
 
 /** 合成一局：只按渠道给该有的档位 —— Rapfi 侧战术档留空、Jev 侧思考档留空（与归档导出口径一致）。 */
 const game = ({ black = 'official', white = 'rapfi', blackTac = 'v14-live3-fresh', whiteTac = 'v14-live3-fresh',
-  blackThink = 500, whiteThink = 500, moves = [], winner = 'black', uid = '' } = {}) => ({
+  blackThink = 500, whiteThink = 500, moves = [], winner = 'black', uid = '', endReason = null } = {}) => ({
   format: 1, gameUid: uid, blackChannel: black, whiteChannel: white,
   blackTactics: black === 'rapfi' ? null : blackTac,
   whiteTactics: white === 'rapfi' ? null : whiteTac,
   blackThink: black === 'rapfi' ? blackThink : null,
   whiteThink: white === 'rapfi' ? whiteThink : null,
-  winner, result: winner === 'blue' ? '和棋（盘面满）' : winner === 'black' ? '黑方 获胜（五连）' : '白方 获胜（五连）',
+  winner, endReason: endReason === null ? undefined : endReason,
+  result: winner === 'blue' ? '和棋（盘面满）' : winner === 'black' ? '黑方 获胜（五连）' : '白方 获胜（五连）',
   moves,
 });
-const jevMove = (ply, side, { ms = 1000, tacMs = 500, prov = 'primary', tv = 'v14-live3-fresh', ch = 'official' } = {}) =>
-  ({ ply, side, notation: 'H8', ai: { ch, tv, ms, tacMs, prov, probs: 'exact' } });
+const jevMove = (ply, side, { ms = 1000, tacMs = 500, prov = 'primary', tv = 'v14-live3-fresh', ch = 'official', tac = null } = {}) =>
+  ({ ply, side, notation: 'H8', ai: { ch, tv, ms, tacMs, prov, probs: 'exact', tac } });
 const rafiMove = (ply, side) => ({ ply, side, notation: 'E11', ai: { ch: 'rapfi', ms: null, tv: null } });
 
 describe('身份归属 / 上游手判定', () => {
@@ -236,6 +238,63 @@ describe('逐色格 / 分开颜色（L3 第一晚的教训：先手优势 85%，
     expect(md).toContain('| rapfi||500（黑） vs rapfi||1000（白） | 1 | 1 | 0 | 0 |');
     expect(md).toContain('按身份分开颜色');
     expect(md).toContain('| rapfi||500 | 2–2 | 50.0% | 1/2 | 1/2 |');   // 总战绩是「胜–负」（2 胜 2 负，其中 1 和）
+  });
+});
+
+describe('收尾机制 / 接管层 × 结果（解释性和棋与败局，规则 11；不参与判强）', () => {
+  /** 两局：一局五连（黑胜）、一局满盘和；接管层写 `ai.tac`（`ai.tv` 是版本，别拿错）。 */
+  const withEnds = () => [
+    game({ uid: 'a', winner: 'black', endReason: '五连',
+      moves: [jevMove(1, '黑方', { tac: 'pressureGate' }), rafiMove(2, '白方'), jevMove(3, '黑方', { tac: 'vcfDefense' })] }),
+    game({ uid: 'b', winner: 'blue', endReason: '棋盘已满',
+      moves: [jevMove(1, '黑方', { tac: 'pressureGate' }), rafiMove(2, '白方')] }),
+  ];
+  it('endReasons：收尾原因降序、和棋手数、手数分位', () => {
+    const e = endReasons(withEnds());
+    expect(e.reasons).toEqual([{ reason: '五连', count: 1 }, { reason: '棋盘已满', count: 1 }]);
+    expect(e.draws).toEqual({ count: 1, plies: [2] });
+    expect(e.plies).toMatchObject({ n: 2, mean: 2.5, median: 2, p90: 3, max: 3 });
+    expect(e.unscored).toBe(0);
+  });
+  it('缺 endReason 记「未知」；无胜负的局算 unscored（不计和棋）', () => {
+    const e = endReasons([
+      game({ uid: 'x', winner: 'blue', moves: [] }),
+      { gameUid: 'y', blackChannel: 'official', whiteChannel: 'rapfi', result: '进行中', moves: [] },
+    ]);
+    expect(e.reasons).toEqual([{ reason: '未知', count: 2 }]);
+    expect(e.draws.count).toBe(1);
+    expect(e.unscored).toBe(1);
+  });
+  it('layersByResult：层按开火次数降序，战绩取该身份视角（和棋 0.5）', () => {
+    const rows = layersByResult(withEnds());
+    expect(rows.map((r) => r.identity)).toEqual(['official|v14-live3-fresh|0']);
+    expect(rows[0]).toMatchObject({ games: 2, moves: 3 });
+    expect(rows[0].layers).toEqual([
+      { layer: 'pressureGate', total: 2, win: 1, draw: 1, loss: 0 },
+      { layer: 'vcfDefense', total: 1, win: 1, draw: 0, loss: 0 },
+    ]);
+  });
+  it('layersByResult：只算战术层真的接了手的那几手（`ai.tac` 为空的手不进表）', () => {
+    const rows = layersByResult([game({ uid: 'a', moves: [jevMove(1, '黑方'), jevMove(3, '黑方', { tac: 'win' })] })]);
+    expect(rows[0]).toMatchObject({ moves: 1 });
+    expect(rows[0].layers.map((l) => l.layer)).toEqual(['win']);
+  });
+  it('markdown 第 4 节：给了 games 才印收尾机制与接管层表，没给就整块不出现', () => {
+    const model = (games) => ({
+      batchId: 't1', generatedAt: '2026-10-04T00:00:00Z', dirs: ['d'], rounds: 1,
+      games, records: [], rows: [], pairs: [], openings: [],
+      cost: { rows: [], totalRow: costRow('全轮合计', collectCost([]).total) },
+      runtime: '', artifacts: [], anchor: DEFAULT_ANCHOR, bootstrap: 0, seed: 1, tags: [],
+    });
+    const md = reportMarkdown(model(withEnds()));
+    expect(md).toContain('收尾机制与接管层');
+    expect(md).toContain('- 收尾：五连 1 局 · 棋盘已满 1 局');
+    expect(md).toContain('- 和棋 1 局的手数：2（满盘和');
+    expect(md).toContain('| official|v14-live3-fresh|0 | 2 | 3 | pressureGate 2（1/1/0） · vcfDefense 1（1/0/0） |');
+    expect(md).toContain('> 「接管手」= 战术层真的接了手的手数');
+    const bare = reportMarkdown(model([]));   // 没读到棋谱（空轮）时整块不出现
+    expect(bare).not.toContain('收尾机制与接管层');
+    expect(bare).toContain('## 5 显著性说明');
   });
 });
 
