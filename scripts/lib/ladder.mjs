@@ -440,6 +440,42 @@ export function formatLadderProgress(state, { nowMs = Date.now() } = {}) {
   return `${state.ladderId} ${s.done}/${s.total} 轮｜${s.gamesDone}/${s.gamesTotal} 局｜W${s.wdl.w}-D${s.wdl.d}-L${s.wdl.l}｜${elapsed}${eta}`;
 }
 
+/**
+ * 解析「本地轮询」那条 ssh 的一次性回值（纯函数，便于单测）。
+ * 远端一次回两段：第一行 `alive`（worker pid 还在）/ `done`（pid 没了），其后是 `progress.json` 原文。
+ *
+ * 为什么要本地轮询：早先的写法是让远端跑 `for i in $(seq 1 1440); do … sleep 30; done` 一条 ssh 挂 12h。
+ * 那条 ssh 继承了本进程的 stdout 管道 ⇒ 编排进程一旦意外死掉，管道写端还被它握着，外层 `| Tee-Object`
+ * 永远等不到 EOF，作业就「running」到天荒地老（真发生过：round-1 早跑完，作业却停在 started 一行）。
+ * 改成每分钟一次短 ssh、**捕获而非继承** stdout，最坏也只泄漏一个 ≤60s 的子进程。
+ */
+export function parsePollOutput(text) {
+  const raw = String(text ?? '');
+  const nl = raw.indexOf('\n');
+  const head = (nl === -1 ? raw : raw.slice(0, nl)).trim();
+  const rest = (nl === -1 ? '' : raw.slice(nl + 1)).trim();
+  let progress = null;
+  if (rest.startsWith('{')) {
+    try { progress = JSON.parse(rest); } catch { progress = null; }
+  }
+  return { alive: head === 'alive', done: head === 'done', progress };
+}
+
+/** 一行进度（本地轮询每分钟打一次；没有 progress.json 时也说话，别让日志看起来像卡死）。 */
+export function formatPollTick(round, progress, { elapsedS = null } = {}) {
+  if (!progress) return `  ⏳ round-${round} 进行中（远端还没写 progress.json）`;
+  const done = Number(progress.done || 0);
+  const total = Number(progress.total || 0);
+  const secs = elapsedS !== null && Number.isFinite(Number(elapsedS))
+    ? Number(elapsedS)
+    : (progress.elapsedS != null ? Number(progress.elapsedS) : null);
+  const bits = [];
+  if (secs !== null) bits.push(`${Math.round(secs)}s`);
+  if (progress.meanGameS) bits.push(`均 ${progress.meanGameS}s/局`);
+  if (progress.wdl) bits.push(`W${progress.wdl.w}-D${progress.wdl.d}-L${progress.wdl.l}`);
+  return `  ⏳ round-${round} ${done}/${total} 局${bits.length ? ` · ${bits.join(' · ')}` : ''}`;
+}
+
 export function readLadderState(file) {
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));

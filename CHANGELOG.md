@@ -8,6 +8,14 @@
 
 ### 修复
 
+- **阶梯编排的等待改成「本地轮询」，修掉一类「作业永远不结束」的悬挂（P6 修复）**：原先起完一轮后，编排进程会挂一条
+  远端 `for i in $(seq 1 1440); do …; sleep 30; done` 的 ssh 等满 12 h。**那条 ssh 继承了编排进程的 stdout 管道**，
+  所以编排进程一旦意外死掉（第一晚 L3 真的发生了：node 消失、ssh 还在），外层 `| Tee-Object` 就永远收不到 EOF，
+  作业一直显示 running、日志停在 `started pid=…`，而远端那轮早就跑完了。现在改成 `sshCapture()`（`execFileSync` +
+  `encoding:'utf8'` + `timeout: 60s`，**捕获 stdout 而不是继承**）每分钟问一次「pid 还在吗 + `progress.json`」，
+  最坏只泄漏一条 ≤60 s 的子进程；顺带把远端进度打成一行 `⏳ round-N d/total 局 · 秒 · 均 Xs/局 · W-D-L`，
+  阶梯日志本身就是进度面板。新增 `--poll <秒>`（缺省 60）与 `--quiet`。纯函数 `parsePollOutput()`/`formatPollTick()`
+  在 `scripts/lib/ladder.mjs`，单测 6 例。
 - **`/api/jev` 的成功响应其实没有 CORS 头（C2 期间发现）**：Hono 的 `c.header()` 写的是「预备头」，
   只在 `c.body()`/`c.json()` 这类路径上合并进响应；**直接把 `fetch()` 的响应 `return` 出去时会被丢掉**
   （`hono/dist/context.js` 的 res setter 只在 `#res` 已存在时合并，而 `compose` 首轮赋值时它还是 null）。
@@ -37,6 +45,17 @@
 
 ### 新增
 
+- **阶梯报告 CLI：计划 §7 的「六项必出报表」一条命令复算（plan `2026-10-03-tactics-fidelity-and-elo-ladder`）**：
+  `node scripts/experiment-report.mjs --batch <batchId> [--json <path>]`（或 `--dir <path[,path]>`）读
+  `round-<i>/games.jsonl` + `round-summary.json` + `events.jsonl`，产出 `report.md`：① 能力表（BT Elo + bootstrap
+  95% CI + 局数 + W/D/L + 得分率 + 锚点 + Wilson + `⚠样本不足(<50)`，直接内嵌既有 `formatRankTable()`，**不改它的形状**）
+  ② Rapfi「思考时间 → Elo」曲线 ③ 成本表（逐身份 Jev 手数 / 模型往返 ms（均值·中位·p90·最差）/ 战术层 ms / 单手合计 /
+  **战术占单手** 与 **战术/往返** 两个口径都印，m07650 + m08110 的必报项）④ 配对样本矩阵（A 取字典序在前者 + Wilson）
+  ⑤ 差异显著性说明（区间重叠才算不可判；样本 < 50 必标注）⑥ 产物清单（文件/字节/行数/sha256 前 12）。纯函数在
+  `scripts/lib/report.mjs`（`moveIdentity`/`isUpstreamMove`/`quantiles`/`collectCost`/`costRow`/`pairTable`/`rafiCurve`/
+  `openingRows`/`significance`/`reportMarkdown`），单测 `test/scripts/report.spec.mjs` 16 例。口径：逐手身份走
+  `identityOf()` 唯一实现（Rapfi 侧战术档留空、Jev 侧思考档留空）；只有 `ai.ms` 是数字的手才算上游手（Rapfi 侧
+  `ms=null` 不是 0）；`provider=backup` 的兜底手单列「提供方」列并明写**未计入主口径**（C3 口径）。
 - **上游归因落库与报表分桶（C3，plan `2026-10-03-cands-metric-and-provider-failover`）**：「这一手是谁答的」
   现在从归档一路写进 D1 与实验报表。新增 `migrations/0004_move_provider.sql`（`game_moves` 加 `provider` /
   `prob_source` 两列，**已应用到本地与远程 D1**，远程老数据 19298 手零改写）；`src/shared/record-map.ts` 逐手取

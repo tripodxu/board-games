@@ -287,6 +287,29 @@
 
 ## 已验证（验收证据）
 
+- **阶梯报告 CLI：六项必出报表可复算（ladder §7，2026-10-04）**：新增 `scripts/lib/report.mjs`（308 行纯函数）
+  + `scripts/experiment-report.mjs`（256 行 CLI）；`--batch <id>` / `--dir <path[,path]>`（互斥）读
+  `round-<i>/games.jsonl`（缺失才退回 `games/*.json`）+ `round-summary.json`（运行面与墙钟）+ `events.jsonl`
+  （`game-start.opening` ⇒ 开局分层），写 `report.md`（缺省 `.work/<batch>-report.md`）与 `--json`。
+  六节 = ① 能力表（内嵌 `formatRankTable`：BT Elo + bootstrap 95% CI + 局数 + W/D/L + 得分率 + 锚点 + Wilson + `⚠样本不足(<50)`）
+  ② Rapfi「思考时间 → Elo」曲线 ③ 成本表（逐身份：Jev 手数 / 模型往返 ms（均值·中位·p90·最差）/ 战术层 ms / 单手合计 /
+  **战术占单手** = `tac/(往返+tac)` 与 **战术/往返** = `tac/往返` 两个口径都印 ④ 配对样本矩阵（A 取字典序在前者 + Wilson；
+  未用开局库时明写「本轮未启用开局库」）⑤ 显著性说明（区间重叠才算不可判；样本 < 50 必须标注）⑥ 产物清单（文件/字节/行数/sha256 前 12）。
+  **口径**：逐手身份走 `identityOf()` 唯一实现（Rapfi 侧战术档留空、非 rapfi 侧思考档留空）；只有 `ai.ms` 是数字的手才算上游手
+  （Rapfi 侧 `ms=null` 不是 0）；`provider=backup` 的兜底手单列在「提供方」列、**未计入主口径**。
+  证据：① smoke（`.work/remote/c2fb2` 4 局）⇒ `✓ c2fb2：4 局 / 2 身份 / 1 对｜兜底手 55 / 上游手 55`，成本行
+  `official|v14-live3-fresh|0 | 55 | 1691.6／1462／2639／3531 | 823／516／1773／2839 | 2514.6 | 32.7% | 48.7% | backup 55`
+  （与 C2 手写脚本的 48.6% 同口径）；② `test/scripts/report.spec.mjs` 16 例（身份归属、`isUpstreamMove`、`quantiles`、
+  `collectCost`/`costRow` 两种占比、`pairTable` 字典序与同身份排除、`rafiCurve` 排序、`openingRows`、`significance` 重叠判据、
+  六节标题与兜底手/样本不足标注、CLI 五条用法错 + 正常落盘）；③ `tsc --noEmit` 干净。
+- **阶梯编排的进度轮询改本地（P6 修复，2026-10-04）**：第一晚 L3 出现「round-1 早已跑完，作业却停在 `started pid=…`」
+  —— 真因是**编排进程意外死掉后，它起的那条 12h 远端等待循环 `ssh` 还活着并继承着 stdout 管道**，外层 `| Tee-Object`
+  永远收不到 EOF。修法：`scripts/lib/ladder.mjs` 加 `parsePollOutput()`/`formatPollTick()`，`scripts/experiment-ladder.mjs`
+  用**捕获式** `sshCapture()`（`timeout: 60s`，失败返回 null）+ 本地 `pollRound()` 每分钟问一次「pid 还在吗 + progress.json」，
+  新增 `--poll <秒>`（缺省 60）与 `--quiet`。最坏情况从「泄漏一条 12h 子进程」降到「泄漏一条 ≤60s 的子进程」。
+  证据：① 恢复跑打印 `续跑判定：1 轮跳过 / 2 轮要跑（远端行数快照：{"1":20}）` → `⏭️ round-1 跳过（远端已有 20/20 局）`
+  → round-2 起跑并逐分钟打印 `⏳ round-2 7/20 局 · 215s · 均 30s/局 · W4-D0-L3`；② `ladder.spec.mjs` 新增 6 例
+  （`parsePollOutput` 四态、`formatPollTick` 三态与本地墙钟优先、`--poll 0`/`--cooldown -1` 两条闸门）。
 - **上游兜底提供方：两个运行面共用一套切换判据（C2，2026-10-04）**：新增纯叶模块 `src/core/jev/providers.ts`
   （~300 行：提供方表 `primary`=TypeSafe `jev-latest` / `backup`=commandcode `typesafe/jev`、失败分类 `classifyStatus`
   （auth / rate-limit / server / client）、切换状态机 `noteFailure`/`noteSuccess`/`pickProvider`、两个响应头常量
@@ -629,7 +652,12 @@
    P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（含 box 端到端真跑、中断续跑与 `--force` 重跑）
    已完成**（见上「已验证」条目；
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
-   **下一步 P7（可选逃生门：`--rev <sha>`）→ 用阶梯跑第一晚的 L3/L2**；
+   **阶梯报告 CLI 已落地**（`scripts/experiment-report.mjs` + `scripts/lib/report.mjs`：§7 的六项必出报表一条命令复算，
+   见上「已验证」条目）；**编排进度轮询已改本地**（`--poll`，修掉「作业停在被 kill 的 ssh 上永不结束」那类悬挂）；
+   **第一晚 L3 正在跑**（`l3n1`：round-1 `rapfi@500 vs @1000` 20 局 = W11-D0-L9/493s 已完成，round-2 起跑；
+   L3 双方都是 rapfi ⇒ **零上游调用、零配额消耗**）；L3 跑完后按业主已批的口径跑**完整 L2（5 版 × rapfi 三档 15 对 300 局）**，
+   产物留 box、**暂不推对象桶**（业主 2026-10-04 决定：桶地址未定，需要时再拉/推）；
+   **P7（可选逃生门：`--rev <sha>`）仍待业主定**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂

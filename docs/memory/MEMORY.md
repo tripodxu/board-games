@@ -19,6 +19,32 @@
 
 ---
 
+## 2026-10-04 · 编排进程起的「长命子进程」会握着 stdout 管道，父进程一死作业就永不结束
+
+- 现场：第一晚 L3 的 round-1 早跑完了（远端 `progress.json` 20/20），本地作业却一直 running、日志停在
+  `▶ round-1 … started pid=280411`。`Get-CimInstance Win32_Process` 才看出真因：**编排 node 进程（父）已经没了，
+  它起的那条 12 h 远端等待循环 `ssh` 还活着**，而 `execFileSync(..., {stdio:'inherit'})` 让这条 ssh 继承了 node 的
+  stdout ⇒ 外层 `node … | Tee-Object -FilePath …` 的管道写端始终有人握着，PowerShell 永远等不到 EOF。
+- 结论：**编排器不要用「一条 ssh 挂到天荒地老」来等待**。改成每分钟一次短 ssh + **捕获** stdout
+  （`execFileSync('ssh', args, {encoding:'utf8', timeout:60000})`，失败返回 null 当一次抖动），顺带每分钟把远端
+  `progress.json` 打成一行进度。最坏泄漏面从「一条 12 h 子进程」降到「一条 ≤60 s 子进程」。
+- 排查口径：作业「running 但日志不动」时，先 `Get-CimInstance Win32_Process | ? CommandLine -match 'ssh'` 看有没有
+  没人管的 ssh；Windows 上父进程死了子进程默认不跟着死（无进程组语义），所以「node 没了」不等于「什么都没在跑」。
+- 另外两条实测：PowerShell `Tee-Object -FilePath` 有 ~1 分钟缓冲（文件 mtime 落后 ≠ 卡死）；
+  `experiment-worker.mjs` 的 `games.jsonl` **只 append**（`:441/:793`）且 checkpoint 命中会跳过整局 ⇒ 重跑已完成的轮
+  不会产生重复行（断点续跑判据「远端去重局数 ≥ 本轮局数」因此安全）。
+
+## 2026-10-04 · 合成棋谱 fixture 必须按渠道给档位，否则凭空多出两个假身份
+
+- 身份 = `渠道|战术档|思考ms`（`identityOf()`）：**Rapfi 侧战术档必须 null、Jev 侧思考档必须 null**。
+  写报告单测时第一版给 `blackTactics='v14-live3-fresh'`/`whiteThink=500` 一股脑塞给两侧，
+  于是 `rapfi` 执黑那局多出 `rapfi|v14-live3-fresh|0`、`official` 执白那局多出 `official||500`，
+  报表里平白多出两个 1 局样本的假身份（断言直接炸）。
+- 同理：`reportMarkdown` 的成本脚注文案改一个字就会挂 spec（`**未计入主口径**` 与 C3 报表/UI 同字），
+  改文案要顺手改断言；`openingRows()` 内部的 `gameRecord()` 需要 `import`（漏了就是
+  `ReferenceError: gameRecord is not defined`，报错位置在 lib 而不是 spec）。
+- 块注释里别写 `round-*/`：`*/` 会提前闭合注释，报出来的是 `SyntaxError: Invalid regular expression flags`（`round-<i>` 才安全）。
+
 ## 2026-10-04 · 给归档/D1 加「逐手字段」要动四处，显式类型漏一处就编不过
 
 - C3 加 `provider`/`prob_source` 的完整链条：① `migrations/000N_*.sql`（`ALTER TABLE … ADD COLUMN`，只能加在末尾）；

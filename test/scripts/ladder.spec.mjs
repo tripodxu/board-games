@@ -14,7 +14,7 @@ import {
   parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
   newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress, stateMatchesLadder, withReusedTags, staleCleanups,
   ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
-  estimateRoundSeconds,
+  estimateRoundSeconds, parsePollOutput, formatPollTick,
 } from '../../scripts/lib/ladder.mjs';
 import { ladderMain, wdlOfGamesJsonl } from '../../scripts/experiment-ladder.mjs';
 
@@ -177,6 +177,24 @@ describe('汇总文本', () => {
     expect(formatLadderTable([{ round: 1, label: 'x', games: 20, openings: null }], { estimateOf: (r) => estimateRoundSeconds(r) })[2])
       .toContain('≈');
   });
+  it('本地轮询的一次性回值：alive/done + progress.json 原文（坏 JSON 当没有）', () => {
+    expect(parsePollOutput('done\n')).toEqual({ alive: false, done: true, progress: null });
+    expect(parsePollOutput('alive')).toEqual({ alive: true, done: false, progress: null });
+    expect(parsePollOutput('')).toEqual({ alive: false, done: false, progress: null });
+    const p = parsePollOutput('alive\n{"done":7,"total":20,"elapsedS":215,"meanGameS":30,"wdl":{"w":4,"d":0,"l":3}}');
+    expect(p.alive).toBe(true);
+    expect(p.progress).toMatchObject({ done: 7, total: 20 });
+    expect(parsePollOutput('alive\n{半截').progress).toBeNull();
+    expect(parsePollOutput('done\nnot json').progress).toBeNull();
+  });
+  it('逐分钟进度行：有 progress 就打 done/total + 秒 + 均时 + W-D-L，没有也说话', () => {
+    expect(formatPollTick(2, { done: 7, total: 20, elapsedS: 215, meanGameS: 30, wdl: { w: 4, d: 0, l: 3 } }))
+      .toBe('  ⏳ round-2 7/20 局 · 215s · 均 30s/局 · W4-D0-L3');
+    expect(formatPollTick(2, { done: 1, total: 20 })).toBe('  ⏳ round-2 1/20 局');
+    expect(formatPollTick(2, null)).toContain('还没写 progress.json');
+    // 本地墙钟优先于远端自报（远端 elapsedS 是它自己的计时，重启会归零）
+    expect(formatPollTick(1, { done: 1, total: 2, elapsedS: 5 }, { elapsedS: 65 })).toContain('65s');
+  });
 });
 
 describe('断点状态', () => {
@@ -332,6 +350,8 @@ describe('CLI：闸门与 W/D/L 口径', () => {
     await expect(ladderMain(['--ladder', 'L3', '--dry-run', '--batch', 'Bad Id'])).rejects.toMatchObject({ exitCode: 2 });
     await expect(ladderMain(['--ladder', 'L3', '--store', 'r2', ...dry])).rejects.toThrow(/--store 只认/);
     await expect(ladderMain(['--ladder', 'L3', '--rate-limit', '0', ...dry])).rejects.toThrow(/--rate-limit/);
+    await expect(ladderMain(['--ladder', 'L3', '--poll', '0', ...dry])).rejects.toThrow(/--poll/);
+    await expect(ladderMain(['--ladder', 'L3', '--cooldown', '-1', ...dry])).rejects.toThrow(/--cooldown/);
   });
   it('写生产 D1 要 --allow-production；零 CF 触碰的缺省跑动不受这条闸门拦', async () => {
     await expect(ladderMain(['--ladder', 'L3', '--store', 'd1', '--dry-run', '--batch', 'dry1']))

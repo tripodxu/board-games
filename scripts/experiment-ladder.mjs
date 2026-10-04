@@ -7,7 +7,7 @@
 //     [--batch lad1004-0930] [--openings /root/ladder/openings.json] [--seed N]
 //     [--store local|d1] [--upstream direct|worker] [--rate-limit 30] [--key-file /root/.jev-key]
 //     [--origin https://…] [--allow-production] [--max-plies 225] [--topk 3] [--pause 2500]
-//     [--timeout-min 180] [--stall-min 15] [--cooldown 30] [--max-rounds N] [--allow-odd]
+//     [--timeout-min 180] [--stall-min 15] [--cooldown 30] [--poll 60] [--max-rounds N] [--allow-odd]
 //     [--dry-run] [--force] [--host IP] [--user root] [--repo /root/board-games]
 //     [--no-upload] [--prefix ladders/<batch>]
 //
@@ -38,7 +38,7 @@ import {
   RAPFI_SPECS, pairsForPreset, pairsForAll, parseIdentityList, roundRobin, identityOfSpec,
   buildLadder, newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, stateMatchesLadder, withReusedTags, staleCleanups,
   formatRoundLine, formatLadderProgress, formatLadderTable, ladderDir, stateFile,
-  estimateRoundSeconds,
+  estimateRoundSeconds, parsePollOutput, formatPollTick,
   readLadderState, writeLadderState, writePlans,
 } from './lib/ladder.mjs';
 import { gameRecord } from './lib/batch-elo.mjs';
@@ -73,6 +73,8 @@ const USAGE = `用法：
   --origin <url>        经业主 Worker 时的地址（不给 origin 还要写生产 D1 必须 --allow-production）
   --max-plies/--topk/--pause/--timeout-min/--stall-min   透传给每轮 plan
   --cooldown <秒>       轮间冷却（缺省 30；单上游臂串行的成本纪律）
+  --poll <秒>           本地轮询远端进度的间隔（缺省 60；轮询是捕获式 ssh，不占 stdout 管道）
+  --quiet               轮询不打逐分钟进度行
   --max-rounds <n>      只跑前 n 轮（临时/验收用；不重编号，tag 保持原样）
   --dry-run             只打印计划表与将执行的命令，不落远端
   --force               忽略本地状态，全部重跑
@@ -117,6 +119,57 @@ function sh(cmd, args, timeoutMs, sigtermOk = false) {
 
 function ssh(host, user, remoteCmd, timeoutMs, opts = SSH_OPTS, sigtermOk = false) {
   return sh('ssh', [...opts, `${user}@${host}`, remoteCmd], timeoutMs, sigtermOk);
+}
+
+/**
+ * 捕获式 ssh（stdout 拿回来，不继承）：只给本地轮询用。
+ * 用继承式的话，子进程会握着本进程的 stdout 管道不放；本进程一旦意外死掉，
+ * 外层 `| Tee-Object` 就永远等不到 EOF（作业悬挂 12h 的真实成因，见 lib/ladder.mjs 的 parsePollOutput 注释）。
+ * 失败返回 null —— 轮询是尽力而为，一次 ssh 抖动不该改变状态。
+ */
+function sshCapture(host, user, remoteCmd, timeoutMs = 60000) {
+  try {
+    return execFileSync('ssh', [...SSH_OPTS, `${user}@${host}`, remoteCmd],
+      { encoding: 'utf8', timeout: timeoutMs });
+  } catch {
+    return null;
+  }
+}
+
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+/**
+ * 等这一轮在远端跑完（本地轮询：每分钟一次短 ssh，打印远端 progress.json 的进度）。
+ * 返回 false = 到了 maxHours 上限（不当作失败：后面照样去拉产物，按行数判 ok/failed）。
+ */
+async function pollRound({ host, user, remoteBatch, round, pollS, maxHours = 12, quiet = false }) {
+  const pidPath = `${remoteBatch}/logs/round-${round}.pid`;
+  const progressPath = `${remoteBatch}/round-${round}/progress.json`;
+  const cmd = `pid=$(cat ${pidPath} 2>/dev/null); `
+    + 'if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo alive; else echo done; fi; '
+    + `cat ${progressPath} 2>/dev/null`;
+  const started = Date.now();
+  const deadline = started + maxHours * 3600 * 1000;
+  let misses = 0;
+  for (;;) {
+    const out = sshCapture(host, user, cmd);
+    if (out === null) {
+      misses += 1;
+      if (misses % 3 === 0) {
+        console.log(`  ⚠ round-${round} 连续 ${misses} 次轮询 ssh 失败（远端是 nohup worker，不受影响）`);
+      }
+    } else {
+      misses = 0;
+      const p = parsePollOutput(out);
+      if (p.done) return true;
+      if (!quiet) console.log(formatPollTick(round, p.progress, { elapsedS: (Date.now() - started) / 1000 }));
+    }
+    if (Date.now() >= deadline) {
+      console.log(`  ⚠ round-${round} 轮询到 ${maxHours}h 上限（继续去拉产物，按行数判定）`);
+      return false;
+    }
+    await sleep(pollS * 1000);
+  }
 }
 
 /**
@@ -309,6 +362,10 @@ async function main(argv = process.argv.slice(2)) {
   if (!Number.isInteger(seed)) die('--seed 必须是整数');
   const cooldownS = args.cooldown !== undefined ? Number(args.cooldown) : 30;
   if (!Number.isFinite(cooldownS) || cooldownS < 0) die('--cooldown 必须是非负数（秒）');
+  if (args.poll !== undefined) {
+    const p = Number(args.poll);
+    if (!Number.isFinite(p) || p <= 0) die('--poll 必须是正数（秒）');
+  }
   const dryRun = Boolean(args['dry-run']);
   const force = Boolean(args.force);
 
@@ -502,10 +559,12 @@ async function main(argv = process.argv.slice(2)) {
       console.log(formatRoundLine(r, { status: 'failed', error: 'worker 启动失败' }));
       continue;
     }
-    // 等这一轮退出（最多 12 h，每 30 s 一次）；本地 ssh 断开不算失败
-    ssh(host, user,
-      `for i in $(seq 1 1440); do kill -0 "$(cat ${pidPath})" 2>/dev/null || { echo "round ${r.round} 已结束"; exit 0; }; sleep 30; done; echo "round ${r.round} 轮询到 12h 上限"`,
-      0);
+    // 等这一轮退出（本地轮询，每分钟一次短 ssh；最多 12 h）
+    await pollRound({
+      host, user, remoteBatch, round: r.round,
+      pollS: args.poll !== undefined ? Number(args.poll) : 60,
+      quiet: Boolean(args.quiet),
+    });
 
     const durationMs = Date.now() - started;
     if (!pullRound(host, user, repo, ladderId, r.round, localBase)) {
