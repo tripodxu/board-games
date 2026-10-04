@@ -299,16 +299,18 @@ function decideEnvFor(cfg, plan) {
   return { apiKey, endpoint, backupApiKey };
 }
 
-/** 逐提供方手数（C2/D-B6）：`{ primary: 24, backup: 3 }`；没见过的提供方也别丢，照实记。 */
-function countProvider(counts, id) {
-  const key = typeof id === 'string' && id ? id : 'unknown';
-  counts[key] = (counts[key] || 0) + 1;
+/** 逐提供方手数（C2/D-B6）：`{ primary: 24, backup: 3 }`；没见过的提供方也别丢，照实记。
+    只认非空字符串：`meta.provider` 是 undefined 的手（rapfi/mock/人类侧、老归档）**不计入**——
+    记成 `unknown` 会把「非 Jev 侧手数」混进同一个表，报表就读不出「兜底了几手」。 */
+export function countProvider(counts, id) {
+  if (typeof id !== 'string' || !id) return counts;
+  counts[id] = (counts[id] || 0) + 1;
   return counts;
 }
 
 /** 一行摘要（只在真有切换时才花字数）。 */
-function formatProviderCounts(counts) {
-  const keys = Object.keys(counts);
+export function formatProviderCounts(counts) {
+  const keys = Object.keys(counts || {});
   if (!keys.length) return '';
   keys.sort((a, b) => counts[b] - counts[a]);
   return keys.map((k) => `${k}:${counts[k]}`).join(' ');
@@ -751,7 +753,8 @@ async function playOne(plan, a, b, gameNo, dirs) {
       const meta = { ...(decision.meta || {}) };
       meta.byAI = true;
       meta.side = side;
-      /* C2/D-B6：逐手记「这一手是谁答的」（primary/backup/渠道名）。 */
+      /* C2/D-B6：逐手记「这一手是谁答的」（primary/backup）。非上游侧没有 provider ⇒ 由
+         countProvider 自己跳过（别记成 unknown，那会把 rapfi 的手混进兜底统计）。 */
       countProvider(providerCounts, meta.provider);
       /* 自报版本：`games.code_version` 读的是 `meta.code`（src/shared/record-map.ts:379），
          不写就恒为 `dev+nogit`，D1 里认不出是哪一版跑的。 */

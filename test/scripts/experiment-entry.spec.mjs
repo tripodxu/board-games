@@ -5,10 +5,11 @@
  *
  * 覆盖点：局级 sidesForGameSpec 黑白交替与臂口径分离、ok/skipped 计入而 dry-run/error 不计、
  * 战术档只写会跑战术层的渠道（rapfi/mock 侧留空）、思考档只写 rapfi 侧、
- * winner→winnerChan 映射、续跑按 tag 失配重跑、pending 复用 gameUid、tag ≤64、note 标明远端来源。
+ * 逐手提供方归属（非上游侧不计入）、winner→winnerChan 映射、续跑按 tag 失配重跑、
+ * pending 复用 gameUid、tag ≤64、note 标明远端来源。
  */
 import { describe, it, expect } from 'vitest';
-import { experimentEntryFrom, ckptAction, DEVICE_ID } from '../../scripts/experiment-worker.mjs';
+import { experimentEntryFrom, ckptAction, DEVICE_ID, countProvider, formatProviderCounts } from '../../scripts/experiment-worker.mjs';
 import { parseSpec, batchTag } from '../../scripts/lib/batch-common.mjs';
 
 const plan = {
@@ -105,6 +106,27 @@ describe('experimentEntryFrom', () => {
     const tag = batchTag(new Date('2026-10-03T05:26:04Z'), 'ut', 1);
     expect(tag).toMatch(/^exp-\d{14}-ut-r1$/);
     expect(tag.length).toBeLessThanOrEqual(64);
+  });
+});
+
+describe('countProvider / formatProviderCounts（C2 逐手归属）', () => {
+  it('只认非空字符串；非上游侧（rapfi/mock/人类、老归档）不计入', () => {
+    const c = {};
+    countProvider(c, 'primary');
+    countProvider(c, 'backup');
+    countProvider(c, 'backup');
+    countProvider(c, undefined);
+    countProvider(c, null);
+    countProvider(c, '');
+    // box 实测（c2fb）：整行曾混进 `unknown:18`（rapfi 侧的手），报表读不出兜底了几手
+    expect(c).toEqual({ primary: 1, backup: 2 });
+    expect(Object.keys(c)).not.toContain('unknown');
+  });
+
+  it('摘要按手数降序、只列见过的提供方；空表返回空串', () => {
+    expect(formatProviderCounts({ backup: 19, primary: 2 })).toBe('backup:19 primary:2');
+    expect(formatProviderCounts({})).toBe('');
+    expect(formatProviderCounts(null)).toBe('');
   });
 });
 
