@@ -283,7 +283,7 @@
 
 ## 9. 开放问题（需要探针，先问再写代码）
 
-1. **proxy 是否接受采样参数**（temperature / top_p / seed）？若能冻结，跨轮方差会显著下降 ⇒ 加了 `--model-params` 后 L1 的 5 pt 目标可能用 100 局就能达到。探针：`scripts/probe-model-params.mjs`（只读，POST 两组参数比输出分布）。
+1. **proxy 是否接受采样参数**（temperature / top_p / seed）？若能冻结，跨轮方差会显著下降 ⇒ 加了 `--model-params` 后 L1 的 5 pt 目标可能用 100 局就能达到。探针：`scripts/probe-model-params.mjs`（只读，POST 两组参数比输出分布）。**2026-10-04 已答「不接受」（本机直连官方端点实测，产物 `.work/probe-model-params.json`）**：夹具请求体（`test/fixtures/jev/commandcode-systemone-2026-10-03.json` 的 `request`，投影成客户端真正发的 `{state, questions, model}` 三个字段）原样 ⇒ 200；加 `temperature: 0`、`seed: 1234`、两者都给、`top_p: 1` ⇒ **四次全 400 `api_usage_error / Invalid request.`**（330–1200 ms）⇒ **这条方差捷径关掉了**，5 pt 分辨率只能靠样本量（或降低提示侧抖动），`--model-params` 这个开关不必做。附带读数：同一局面 baseline 连打 10 次**着法 10/10 都是 `H8`**（自报概率仍在摆：`H8` 0.10、`E5` 0.10、其余 ≤0.03，均 1262 ms）⇒ 该局面的**选择**是稳的（它是 `you:four` 的强着，算上界；模棱两可的局面另说），但**概率分布**不冻结，别把 `probabilities` 当逐字可复现的读数。
 2. **Rapfi 是否支持节点数预算**（`-nodes` 之类）？支持 ⇒ 可以额外出一条「等节点数」的公平对比，并让 `--rev` 逐字复现更可行。
 3. **`games` 表是否有 `device_id` 列**（历史 26 局回填用）⇒ `pragma_table_info('games')`。
 4. **L3 的 5000 ms 档要不要跑**：单局 ~8 min，20 局 ≈ 2.7 h，只为一个点；业主决定。**2026-10-04 现状**：第一晚 L3（`l3n1`）在**不含 5000** 的三档上跑完 60 局，`@2000` 相对 `@500` 可见方向；CLI 已备 `--with-5000`（多出 `rapfi@5000 vs @1000` 一对 = +20 局 ≈ 1 h）。**业主 2026-10-04 的最新口径是把曲线直接补到上限**（「补 500ms，7000ms，到 10000ms」）⇒ 先跑 `L4`（`@7000`/`@10000`），`@5000` 这一档被跨过、不单独跑（`@7000` 已覆盖它到 UI 上限之间的区间）。

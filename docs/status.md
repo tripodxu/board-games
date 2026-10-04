@@ -287,6 +287,13 @@
 
 ## 已验证（验收证据）
 
+- **采样参数探针：官方端点不接受任何冻结类字段（2026-10-04，计划 §9 第 1 条结案）**：新增只读探针
+  `scripts/probe-model-params.mjs`（5 变体 × 4 次 + baseline × 10 次复现，`test/scripts/probe-model-params.spec.mjs` 19 例）。
+  本机直连 `https://api.typesafe.ai/v1/systemone`，请求体 = 客户端真正发的 `{state, questions, model}` 三个字段
+  （`src/core/jev/client.ts:208`）⇒ baseline **200**；`temperature: 0` / `seed: 1234` / 两者都给 / `top_p: 1`
+  **四次全 400** `api_usage_error / Invalid request.` ⇒ **「冻结采样降方差」这条路关掉了**，5 pt 分辨率只能靠样本量，
+  `--model-params` 开关不必做。附带读数：同一局面连打 10 次**着法 10/10 相同**（自报概率仍摆 ≤0.10，均 1262 ms）。
+  产物 `.work/probe-model-params.json`、`.work/probe-model-params-repeat.json`。
 - **报表的 Rapfi 曲线带「相邻档差 + 区间重叠」读数（2026-10-04，为 L4 铺路）**：第 2 节每行多一列
   **ΔElo（相对上一档）**，表下自动印相邻档差 + 重叠对数 + 每档样本；判据 = **相邻档 BT 区间重叠就不许说
   「这一档更强」**（与 §1/§4 同一条纪律）。纯函数 `curveDeltas()`（`scripts/lib/report.mjs` 422 行、
@@ -662,7 +669,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 662 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 287 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **51 个测试文件 / 681 个用例**（含 `scripts` project：`test/scripts/**` 14 文件 / 306 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

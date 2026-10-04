@@ -19,6 +19,22 @@
 
 ---
 
+## 2026-10-04 · 官方 systemone 端点对**多余顶层字段**直接 400（curl 夹具不是「客户端真发的体」）
+
+- **现象**：拿 `test/fixtures/jev/commandcode-systemone-2026-10-03.json` 里的 `request` 原样 POST
+  `https://api.typesafe.ai/v1/systemone`（只把 `model` 换成 `jev-latest`）⇒ **HTTP 400**
+  `{"detail":{"error_type":"api_usage_error","message":"Invalid request."}}`，连「不带任何采样字段」的 baseline 都全败。
+- **原因**：那份夹具是 **curl 捕获**的，顶层多了一个 `options` 数组；而客户端真正发的只有三个字段 ——
+  `src/core/jev/client.ts:208`：`const payload = { state: body.state, model: attempt.provider.model, questions: body.questions };`。
+  官方端点 schema 收得很紧，**多一个顶层字段就 400**（commandcode 兜底网关当时容忍了它 ⇒ 两边宽容度不同）。
+- **顺带结案（计划 §9 第 1 条）**：`temperature: 0`、`seed: 1234`、两者都给、`top_p: 1` **四次全 400** ⇒
+  上游**没有**冻结采样这条路，「靠冻结采样把 5 pt 分辨率做进 100 局」的想法不成立，**`--model-params` 开关不必做**。
+- **通用教训**：① 探针/复现要以**客户端代码里的体**为准（`client.ts` 的 payload 三元组），别拿 curl 手写体当基准；
+  ② 上游对未知字段是**硬拒**而不是忽略，凡是「加个字段试试」的改动都要先跑一次单请求看状态码。
+- 探针：`scripts/probe-model-params.mjs`（只读，`--dry-run` 零请求；实测产物 `.work/probe-model-params.json`）。
+
+---
+
 ## 2026-10-04 · 固定窗口限流的用例会在窗口边界上随机红（CI 实测一次）
 
 - **现象**：`test/worker/jev.spec.ts` 的「桶满后 429 且带 Retry-After」在 CI 上红成
