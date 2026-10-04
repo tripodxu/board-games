@@ -19,11 +19,14 @@
  *   --bootstrap <n>     BT bootstrap 次数（缺省 400；0 = 只算点估计）
  *   --seed <n>          bootstrap 种子（缺省 20261004，同种子逐字可复现）
  *   --no-bt             不算 BT（只出顺序迭代的老排行）
+ *   --skip-incomplete   跳过仍在跑的轮（缺 `round-summary.json` 的那些）
  *   --quiet             不把 markdown 打到 stdout（仍落盘）
  *
  * 读什么：`<dir>/round-<i>/games.jsonl`（`--store local` 的产物；没有时退回 `round-<i>/games/*.json`）、
  * `round-summary.json`（逐局 W/D/L、providers、throttle、墙钟）、`events.jsonl`（开局键）。
  * 成本只在**真打了上游**的手上算（`ai.ms` 是 number）—— Rapfi/mock 侧是 null，缺失不记 0。
+ * 「这轮跑完没有」只看 `round-summary.json`（worker 收尾才写）：缺它的轮默认照读但在报告头显著标注，
+ * 加 `--skip-incomplete` 才真的不看它 —— 半轮的比分不许进结论。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,7 +57,8 @@ function parseArgs(argv) {
 }
 
 const USAGE = '用法：node scripts/experiment-report.mjs --batch <id> ｜ --dir <path[,path]> ' +
-  '[--out <md|->] [--json <path>] [--anchor <identity>] [--bootstrap <n>] [--seed <n>] [--no-bt] [--quiet]';
+  '[--out <md|->] [--json <path>] [--anchor <identity>] [--bootstrap <n>] [--seed <n>] [--no-bt] ' +
+  '[--skip-incomplete] [--quiet]';
 
 /** 一轮的产物根：`round-<i>`（按轮号排序）。 */
 function roundDirs(dir) {
@@ -105,6 +109,7 @@ export async function reportMain(argv = process.argv.slice(2)) {
   if (!Number.isFinite(seed)) die('--seed 需要数字');
   const noBt = Boolean(args['no-bt']);
   const quiet = Boolean(args.quiet);
+  const skipIncomplete = Boolean(args['skip-incomplete']);
 
   const missing = dirs.filter((d) => !fs.existsSync(d));
   if (missing.length) {
@@ -120,9 +125,15 @@ export async function reportMain(argv = process.argv.slice(2)) {
   const openingOf = new Map();
   const summaries = [];
   const artifacts = [];
+  const incomplete = [];
+  const skippedIncomplete = [];
   let badLines = 0;
   for (const dir of dirs) {
     for (const rd of roundDirs(dir)) {
+      const roundNo = Number(path.basename(rd).slice(6));
+      /* 「这轮跑完没有」的本地凭据只有一个：worker 收尾才写 round-summary.json。
+         缺它就是本轮还在跑 —— 默认照读但显著标注（报告头 + §5），--skip-incomplete 才真的不看。 */
+      const settled = fs.existsSync(path.join(rd, 'round-summary.json'));
       const jsonl = path.join(rd, 'games.jsonl');
       let got = [];
       if (fs.existsSync(jsonl)) {
@@ -138,6 +149,16 @@ export async function reportMain(argv = process.argv.slice(2)) {
           }
           artifacts.push({ path: posix(gamesDir), file: null, lines: got.length });
         }
+      }
+      if (!settled && got.length > 0) {
+        if (skipIncomplete) {
+          skippedIncomplete.push({ round: roundNo, games: got.length });
+          for (let k = artifacts.length - 1; k >= 0; k -= 1) {
+            if (artifacts[k].path.startsWith(`${posix(rd)}/`)) artifacts.splice(k, 1);
+          }
+          continue;
+        }
+        incomplete.push({ round: roundNo, games: got.length });
       }
       const eventsFile = path.join(rd, 'events.jsonl');
       const openingByNo = new Map();
@@ -217,6 +238,8 @@ export async function reportMain(argv = process.argv.slice(2)) {
     cost: { rows: costRows, totalRow: costRow('全轮合计', cost.total) },
     runtime: runtimeBits.join('｜') + (totalGames ? `｜${totalGames} 局／墙钟 ${(totalWallS / 60).toFixed(1)} 分钟` : ''),
     artifacts: artifacts.sort((a, b) => (a.path < b.path ? -1 : 1)),
+    incomplete,
+    skippedIncomplete,
     anchor,
     bootstrap: noBt ? 0 : bootstrap,
     seed,
@@ -238,6 +261,12 @@ export async function reportMain(argv = process.argv.slice(2)) {
   console.error(`\n✓ ${batchId}：${records.length} 局 / ${rows.length} 身份 / ${pairs.length} 对` +
     (badLines ? `（跳过 ${badLines} 行坏 JSON）` : '') +
     `｜兜底手 ${cost.total.prov.backup || 0} / 上游手 ${cost.total.moves}` +
+    (incomplete.length && !skipIncomplete
+      ? `\n  ⚠ 含未收尾的轮：${incomplete.map((r) => `round-${r.round}（${r.games} 局）`).join('、')}（要排除就加 --skip-incomplete）`
+      : '') +
+    (skippedIncomplete.length
+      ? `\n  已跳过未收尾的轮：${skippedIncomplete.map((r) => `round-${r.round}（${r.games} 局）`).join('、')}`
+      : '') +
     (out !== '-' ? `\n  已写 ${posix(out)}` : '') +
     (jsonOut ? ` + ${posix(jsonOut)}` : ''));
   return 0;

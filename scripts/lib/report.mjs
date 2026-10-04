@@ -162,6 +162,48 @@ export function openingRows(games, openingOf) {
     .sort((a, b) => b.games - a.games || (a.opening < b.opening ? -1 : 1));
 }
 
+/**
+ * 逐色格：同一格内**颜色固定**（黑方身份 vs 白方身份），因此排得掉先手优势。
+ * 为什么单列（L3 第一晚实测教训）：60 局里黑方赢了 51 局（85%）、和棋 0 ⇒ 只看总比分会被「谁执黑」带跑。
+ */
+export function colorCells(records) {
+  const cells = new Map();
+  let blackWins = 0;
+  let draws = 0;
+  for (const r of records) {
+    const key = `${r.black}\u0000${r.white}`;
+    const c = cells.get(key) || { black: r.black, white: r.white, games: 0, blackWins: 0, whiteWins: 0, draws: 0 };
+    c.games += 1;
+    if (r.blackScore === 1) { c.blackWins += 1; blackWins += 1; } else if (r.blackScore === 0) { c.whiteWins += 1; } else { c.draws += 1; draws += 1; }
+    cells.set(key, c);
+  }
+  return {
+    cells: [...cells.values()].sort((a, b) => b.games - a.games || (a.black < b.black ? -1 : a.black > b.black ? 1 : a.white < b.white ? -1 : 1)),
+    games: records.length,
+    blackWins,
+    draws,
+  };
+}
+
+/** 同一身份在两种颜色下的战绩（先手优势有多大，一眼看得出来）。 */
+export function colorSplit(records) {
+  const map = new Map();
+  const of = (id) => {
+    if (!map.has(id)) map.set(id, { identity: id, blackGames: 0, blackWins: 0, whiteGames: 0, whiteWins: 0 });
+    return map.get(id);
+  };
+  for (const r of records) {
+    const b = of(r.black);
+    b.blackGames += 1;
+    if (r.blackScore === 1) b.blackWins += 1;
+    const w = of(r.white);
+    w.whiteGames += 1;
+    if (r.blackScore === 0) w.whiteWins += 1;
+  }
+  return [...map.values()].sort((a, b) =>
+    (b.blackGames + b.whiteGames) - (a.blackGames + a.whiteGames) || (a.identity < b.identity ? -1 : 1));
+}
+
 /** 显著性说明（CI 宽度与重叠、样本不足清单）。 */
 export function significance(rows, pairs) {
   const withCi = rows.filter((r) => r.ci);
@@ -207,6 +249,18 @@ export function reportMarkdown(model) {
   out.push('');
   out.push('> 读数纪律：Wilson 与 BT 区间都会印在点估计旁边。样本 < ' + MIN_GAMES + ' 局的身份会被标注；');
   out.push('> **区间重叠就不允许说「A 比 B 强」**，跨档位的结论一律看第 4 节的配对样本。');
+  if (model.incomplete && model.incomplete.length) {
+    out.push('>');
+    out.push(`> ⚠ **有 ${model.incomplete.length} 轮仍在跑**（缺 \`round-summary.json\`）：` +
+      model.incomplete.map((r) => `round-${r.round}（${r.games} 局已计入）`).join('、') +
+      '。');
+    out.push('> 这些局不能进结论（对手还没打完）；等该轮收尾后重出报告，或加 `--skip-incomplete` 只算已收尾的轮。');
+  }
+  if (model.skippedIncomplete && model.skippedIncomplete.length) {
+    out.push('>');
+    out.push('> 已按 `--skip-incomplete` 跳过仍在跑的轮：' +
+      model.skippedIncomplete.map((r) => `round-${r.round}（${r.games} 局）`).join('、') + '。');
+  }
   out.push('');
 
   out.push('## 1 能力表（BT Elo + bootstrap 95% CI + W/D/L + 得分率 + Wilson）');
@@ -264,6 +318,29 @@ export function reportMarkdown(model) {
       `${p.enough ? '✅' : `⚠ <${MIN_GAMES}`} |`);
   }
   out.push('');
+  const cells = colorCells(model.records);
+  out.push('逐色格（同一格内颜色固定 ⇒ 排掉先手优势；先手优势本身也要报）：');
+  out.push('');
+  out.push(`- 本轮黑方胜 ${cells.blackWins}/${cells.games}` +
+    `（${cells.games ? ((cells.blackWins / cells.games) * 100).toFixed(1) : '—'}%）｜和棋 ${cells.draws}`);
+  out.push('');
+  out.push('| 局面格（黑方 vs 白方） | 局数 | 黑胜 | 白胜 | 和 |');
+  out.push('| --- | --- | --- | --- | --- |');
+  for (const c of cells.cells) {
+    out.push(`| ${c.black}（黑） vs ${c.white}（白） | ${c.games} | ${c.blackWins} | ${c.whiteWins} | ${c.draws} |`);
+  }
+  out.push('');
+  out.push('按身份分开颜色（`执黑` 与 `执白` 两列都要看，只报总分会被先手优势带跑）：');
+  out.push('');
+  out.push('| 身份 | 总战绩 | 得分率 | 执黑 | 执白 |');
+  out.push('| --- | --- | --- | --- | --- |');
+  for (const s of colorSplit(model.records)) {
+    const total = s.blackGames + s.whiteGames;
+    const wins = s.blackWins + s.whiteWins;
+    out.push(`| ${s.identity} | ${wins}–${total - wins} | ${total ? ((wins / total) * 100).toFixed(1) : '—'}% | ` +
+      `${s.blackWins}/${s.blackGames} | ${s.whiteWins}/${s.whiteGames} |`);
+  }
+  out.push('');
   if (!model.openings || model.openings.length === 0) {
     out.push('开局分层：**本轮未启用开局库**（`--openings` 未给）—— 对称性由「同一开局换色双跑」的偶数局保证，');
     out.push('每对内部的先后手已配平，但不控制具体开局形态。');
@@ -288,6 +365,10 @@ export function reportMarkdown(model) {
   out.push(`- 区间互相重叠的身份对：**${sig.overlapCount} 对**（重叠即不可判「更强」）`);
   if (sig.thin.length) out.push(`- 样本 < ${MIN_GAMES} 局的身份：${sig.thin.join('、')}`);
   if (sig.thinPairs.length) out.push(`- 样本 < ${MIN_GAMES} 局的配对：${sig.thinPairs.join('、')}`);
+  if (model.incomplete && model.incomplete.length) {
+    out.push(`- **未收尾的轮**：${model.incomplete.map((r) => `round-${r.round}（${r.games} 局）`).join('、')}` +
+      ' —— 这几轮的比分只作进度参考，不参与「谁更强」的判断');
+  }
   out.push('');
 
   out.push('## 6 产物清单');
@@ -299,10 +380,4 @@ export function reportMarkdown(model) {
   }
   out.push('');
   return out.join('\n');
-}
-
-/* significance() 在 markdown 里要被用三次，缓存一次避免重复算（纯函数，无副作用）。 */
-function sig(model) {
-  if (!model.__sig) model.__sig = significance(model.rows, model.pairs);
-  return model.__sig;
 }

@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
-  collectCost, costRow, isUpstreamMove, moveIdentity, openingRows, pairTable, quantiles,
+  collectCost, colorCells, colorSplit, costRow, isUpstreamMove, moveIdentity, openingRows, pairTable, quantiles,
   rafiCurve, reportMarkdown, significance,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
@@ -172,6 +172,46 @@ describe('reportMarkdown：六节齐全', () => {
   });
 });
 
+describe('逐色格 / 分开颜色（L3 第一晚的教训：先手优势 85%，只看总分会被带跑）', () => {
+  const recs = [
+    { black: 'rapfi||500', white: 'rapfi||1000', blackScore: 1 },
+    { black: 'rapfi||1000', white: 'rapfi||500', blackScore: 0 },   // 换色后 1000 输
+    { black: 'rapfi||2000', white: 'rapfi||500', blackScore: 1 },
+    { black: 'rapfi||500', white: 'rapfi||2000', blackScore: 0.5 }, // 和棋
+  ];
+  it('colorCells 按「黑身份 vs 白身份」成格，并单独报先手优势与和棋', () => {
+    const { cells, games, blackWins, draws } = colorCells(recs);
+    expect(games).toBe(4);
+    expect(blackWins).toBe(2);
+    expect(draws).toBe(1);
+    const key = (b, w) => cells.find((c) => c.black === b && c.white === w);
+    expect(key('rapfi||500', 'rapfi||1000')).toMatchObject({ games: 1, blackWins: 1, whiteWins: 0 });
+    expect(key('rapfi||1000', 'rapfi||500')).toMatchObject({ games: 1, blackWins: 0, whiteWins: 1 });
+    expect(key('rapfi||500', 'rapfi||2000')).toMatchObject({ games: 1, draws: 1 });
+    expect(cells.map((c) => c.games)).toEqual([1, 1, 1, 1]);
+  });
+  it('colorSplit 把同一身份的执黑/执白战绩分开', () => {
+    const rows = colorSplit(recs);
+    const of = (id) => rows.find((r) => r.identity === id);
+    expect(of('rapfi||500')).toMatchObject({ blackGames: 2, blackWins: 1, whiteGames: 2, whiteWins: 1 });
+    expect(of('rapfi||1000')).toMatchObject({ blackGames: 1, blackWins: 0, whiteGames: 1, whiteWins: 0 });
+    expect(of('rapfi||2000')).toMatchObject({ blackGames: 1, blackWins: 1, whiteGames: 1, whiteWins: 0 });
+  });
+  it('markdown 第 4 节印出逐色格两张表与先手优势行', () => {
+    const md = reportMarkdown({
+      batchId: 't1', generatedAt: '2026-10-04T00:00:00Z', dirs: ['d'], rounds: 1,
+      games: [], records: recs, rows: [], pairs: pairTable(recs), openings: [],
+      cost: { rows: [], totalRow: costRow('全轮合计', collectCost([]).total) },
+      runtime: '', artifacts: [], anchor: DEFAULT_ANCHOR, bootstrap: 0, seed: 1, tags: [],
+    });
+    expect(md).toContain('逐色格（同一格内颜色固定');
+    expect(md).toContain('本轮黑方胜 2/4（50.0%）｜和棋 1');
+    expect(md).toContain('| rapfi||500（黑） vs rapfi||1000（白） | 1 | 1 | 0 | 0 |');
+    expect(md).toContain('按身份分开颜色');
+    expect(md).toContain('| rapfi||500 | 2–2 | 50.0% | 1/2 | 1/2 |');   // 总战绩是「胜–负」（2 胜 2 负，其中 1 和）
+  });
+});
+
 describe('CLI：闸门与落盘', () => {
   const tmpBatch = (payloads) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'report-'));
@@ -214,6 +254,64 @@ describe('CLI：闸门与落盘', () => {
   it('空目录（没有 round-*）是读不到棋谱的用法错，不是崩溃', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'report-empty-'));
     await expect(reportMain(['--dir', root])).rejects.toThrow(/没读到棋谱/);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe('未收尾的轮（缺 round-summary.json）', () => {
+  /** 两轮：round-1 已收尾（有 round-summary.json）、round-2 还在跑（2 局已落盘）。 */
+  const twoRounds = () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'report-part-'));
+    const write = (no, payloads, settled) => {
+      const d = path.join(root, `round-${no}`);
+      fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, 'games.jsonl'), payloads.map((p) => JSON.stringify(p)).join('\n') + '\n');
+      if (settled) {
+        fs.writeFileSync(path.join(d, 'round-summary.json'),
+          JSON.stringify({ store: 'local', upstream: 'direct', tag: `exp-r${no}` }) + '\n');
+      }
+    };
+    write(1, [game({ uid: 'a', moves: [jevMove(1, '黑方')] })], true);
+    write(2, [game({ uid: 'b', moves: [jevMove(1, '黑方')] }), game({ uid: 'c', moves: [jevMove(1, '黑方')] })], false);
+    return root;
+  };
+  /** 跑 CLI 并吞掉两边输出（errLines 收 stderr 的行，用来断言收尾告警）。 */
+  const run = async (argv, errLines) => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation((s) => { errLines.push(String(s)); });
+    try { return await reportMain(argv); } finally { log.mockRestore(); err.mockRestore(); }
+  };
+  it('默认照读，但在报告头与 §5 标出「仍在跑」，收尾行也告警', async () => {
+    const root = twoRounds();
+    const out = path.join(root, 'r.md');
+    const errLines = [];
+    await expect(run(['--dir', root, '--out', out, '--no-bt'], errLines)).resolves.toBe(0);
+    const md = fs.readFileSync(out, 'utf8');
+    expect(md).toContain('有 1 轮仍在跑');
+    expect(md).toContain('round-2（2 局已计入）');
+    expect(md).toContain('- **未收尾的轮**：round-2（2 局）');
+    expect(md).toContain('round-2/games.jsonl');                 // 默认照读 ⇒ 仍在产物清单里
+    expect(md).not.toContain('已按 `--skip-incomplete`');
+    expect(errLines.join('\n')).toContain('⚠ 含未收尾的轮：round-2（2 局）');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  it('--skip-incomplete：这些局与它们的产物行都不进报告', async () => {
+    const root = twoRounds();
+    const out = path.join(root, 'r.md');
+    const json = path.join(root, 'r.json');
+    const errLines = [];
+    await expect(run(['--dir', root, '--out', out, '--json', json, '--no-bt', '--skip-incomplete'], errLines))
+      .resolves.toBe(0);
+    const md = fs.readFileSync(out, 'utf8');
+    expect(md).toContain('已按 `--skip-incomplete` 跳过仍在跑的轮：round-2（2 局）');
+    expect(md).not.toContain('有 1 轮仍在跑');
+    expect(md).not.toContain('- **未收尾的轮**');
+    expect(md).not.toContain('round-2/games.jsonl');
+    expect(md).toContain('1 局有胜负');
+    const model = JSON.parse(fs.readFileSync(json, 'utf8'));
+    expect(model.records).toHaveLength(1);
+    expect(model.skippedIncomplete).toEqual([{ round: 2, games: 2 }]);
+    expect(errLines.join('\n')).toContain('已跳过未收尾的轮：round-2（2 局）');
     fs.rmSync(root, { recursive: true, force: true });
   });
 });

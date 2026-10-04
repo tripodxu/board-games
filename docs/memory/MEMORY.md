@@ -19,6 +19,17 @@
 
 ---
 
+## 2026-10-04 · 「这一轮跑完没有」只看 round-summary.json（缺它 = 还在跑）
+
+- `round-<i>/games.jsonl` 是**逐局 append** 的，跑到一半也有内容；判「收尾」的唯一本地凭据是
+  `round-<i>/round-summary.json`（worker 收尾才写）、辅助凭据是 `progress.json.done === total`。
+- 因此 `scripts/experiment-report.mjs` 默认**照读半轮**但在报告头与第 5 节标注「有 N 轮仍在跑（X 局已计入）」、
+  收尾行也告警；要排除就 `--skip-incomplete`（连产物清单行一起排除）。**半轮的比分不许进结论** ——
+  阶梯设计里「每对偶数局 + 换色双跑」的对称性只在整轮跑完时才成立。
+- 同理：看远端进度用 `progress.json`，看「这晚能不能出报告」用 `round-summary.json` 齐不齐。
+
+---
+
 ## 2026-10-04 · 编排进程起的「长命子进程」会握着 stdout 管道，父进程一死作业就永不结束
 
 - 现场：第一晚 L3 的 round-1 早跑完了（远端 `progress.json` 20/20），本地作业却一直 running、日志停在

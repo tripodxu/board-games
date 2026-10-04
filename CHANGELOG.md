@@ -53,9 +53,11 @@
   **战术占单手** 与 **战术/往返** 两个口径都印，m07650 + m08110 的必报项）④ 配对样本矩阵（A 取字典序在前者 + Wilson）
   ⑤ 差异显著性说明（区间重叠才算不可判；样本 < 50 必标注）⑥ 产物清单（文件/字节/行数/sha256 前 12）。纯函数在
   `scripts/lib/report.mjs`（`moveIdentity`/`isUpstreamMove`/`quantiles`/`collectCost`/`costRow`/`pairTable`/`rafiCurve`/
-  `openingRows`/`significance`/`reportMarkdown`），单测 `test/scripts/report.spec.mjs` 16 例。口径：逐手身份走
+  `openingRows`/`significance`/`reportMarkdown`），单测 `test/scripts/report.spec.mjs` 18 例。口径：逐手身份走
   `identityOf()` 唯一实现（Rapfi 侧战术档留空、Jev 侧思考档留空）；只有 `ai.ms` 是数字的手才算上游手（Rapfi 侧
   `ms=null` 不是 0）；`provider=backup` 的兜底手单列「提供方」列并明写**未计入主口径**（C3 口径）。
+  同日补的读法纪律：**「这轮跑完没有」只看 `round-summary.json`（worker 收尾才写）** —— 缺它的轮默认照读但在报告头与
+  第 5 节显著标出、收尾行告警，`--skip-incomplete` 才真的不看它（半轮的比分不许进结论）。
 - **上游归因落库与报表分桶（C3，plan `2026-10-03-cands-metric-and-provider-failover`）**：「这一手是谁答的」
   现在从归档一路写进 D1 与实验报表。新增 `migrations/0004_move_provider.sql`（`game_moves` 加 `provider` /
   `prob_source` 两列，**已应用到本地与远程 D1**，远程老数据 19298 手零改写）；`src/shared/record-map.ts` 逐手取

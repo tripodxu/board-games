@@ -52,8 +52,9 @@ docs/
 │   ├── 2026-10-03-tactics-coupling-audit.md       ✅ 已完成（2026-10-03；战术版本耦合性审计，并行 A/B 安全性）
 │   ├── 2026-10-03-remote-batch-experiments.md     ✅ 已完成（2026-10-03；SSH 远端批量对弈实验设施 P0–P5）
 │   ├── 2026-10-03-tactics-v14-fresh-live3.md      ✅ 已上线（2026-10-03；v14 活三判据纠偏；`rapfi@1000ms` 9-1-2 / `@2000ms` 9-3-8）
-│   ├── 2026-10-03-tactics-fidelity-and-elo-ladder.md 🚧 实施中（P0–P6 ✅：档位冻结/指纹/回放·考古/阶梯地基/离线运行面 + 桶/Elo 升级/阶梯编排/**报告 CLI**；第一晚 L3 跑动中；P7 逃生门起待做）
+│   ├── 2026-10-03-tactics-fidelity-and-elo-ladder.md 🚧 实施中（P0–P6 ✅：档位冻结/指纹/回放·考古/阶梯地基/离线运行面 + 桶/Elo 升级/阶梯编排/**报告 CLI**；**第一晚 L3 ✅**；P7 逃生门起待做）
 │   ├── 2026-10-04-tactics-archaeology.md          ✅ 已完成（2026-10-04；14 档历史参数逐档考古 + P3 回放验收）
+│   ├── 2026-10-04-l3-rapfi-think-time.md          ✅ 已完成（2026-10-04；第一晚 L3：Rapfi 三档两两 60 局，@2000 看得见方向、@500 与 @1000 分不出，先手优势 85.0%）
 │   └── 2026-10-03-cands-metric-and-provider-failover.md 🚧 实施中（C0–C3 ✅：候选点三数落库 + 探针 + 上游兜底两运行面同判据 + 归因落库与报表分桶；C4 随下一次实验）
 ├── superpowers/
 │   ├── plans/

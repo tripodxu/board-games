@@ -287,8 +287,15 @@
 
 ## 已验证（验收证据）
 
-- **阶梯报告 CLI：六项必出报表可复算（ladder §7，2026-10-04）**：新增 `scripts/lib/report.mjs`（308 行纯函数）
-  + `scripts/experiment-report.mjs`（256 行 CLI）；`--batch <id>` / `--dir <path[,path]>`（互斥）读
+- **第一晚 L3 跑完：Rapfi 三个思考档两两对打（2026-10-04，[L3 报告](plans/2026-10-04-l3-rapfi-think-time.md)）**：
+  `--ladder L3 --batch l3n1 --games 20` ⇒ **3/3 轮 / 60 局 / W27-D0-L33**（A 侧口径），零上游调用、零 Worker 触碰，
+  墙钟 493 s + 833 s + 700 s ≈ 34 分钟。结果：**`@2000` 相对 `@500` 在两个颜色格都占优（执黑 10:0、执白 3:0），
+  `@500` 与 `@1000` 分不出来**（执黑 8 vs 7、执白 3 vs 2）—— 三对的 Wilson 区间全部重叠，没有一对「可判」。
+  结构发现：**60 局里黑方赢 51 局（85.0%）、和棋 0** ⇒ 先手优势盖过档位差，报表此后必须给逐色格。
+  证据：`.work/l3n1-report.md`（六节 + 逐色格）与 `.work/remote/l3n1/round-{1,2,3}/`（`games.jsonl` sha256 前 12
+  `3eb808afac9b` / `6d9d9d81cc72` / `d57ca93bf172`）。
+- **阶梯报告 CLI：六项必出报表可复算（ladder §7，2026-10-04）**：新增 `scripts/lib/report.mjs`（383 行纯函数）
+  + `scripts/experiment-report.mjs`（285 行 CLI）；`--batch <id>` / `--dir <path[,path]>`（互斥）读
   `round-<i>/games.jsonl`（缺失才退回 `games/*.json`）+ `round-summary.json`（运行面与墙钟）+ `events.jsonl`
   （`game-start.opening` ⇒ 开局分层），写 `report.md`（缺省 `.work/<batch>-report.md`）与 `--json`。
   六节 = ① 能力表（内嵌 `formatRankTable`：BT Elo + bootstrap 95% CI + 局数 + W/D/L + 得分率 + 锚点 + Wilson + `⚠样本不足(<50)`）
@@ -299,9 +306,13 @@
   （Rapfi 侧 `ms=null` 不是 0）；`provider=backup` 的兜底手单列在「提供方」列、**未计入主口径**。
   证据：① smoke（`.work/remote/c2fb2` 4 局）⇒ `✓ c2fb2：4 局 / 2 身份 / 1 对｜兜底手 55 / 上游手 55`，成本行
   `official|v14-live3-fresh|0 | 55 | 1691.6／1462／2639／3531 | 823／516／1773／2839 | 2514.6 | 32.7% | 48.7% | backup 55`
-  （与 C2 手写脚本的 48.6% 同口径）；② `test/scripts/report.spec.mjs` 16 例（身份归属、`isUpstreamMove`、`quantiles`、
+  （与 C2 手写脚本的 48.6% 同口径）；② `test/scripts/report.spec.mjs` 21 例（身份归属、`isUpstreamMove`、`quantiles`、
   `collectCost`/`costRow` 两种占比、`pairTable` 字典序与同身份排除、`rafiCurve` 排序、`openingRows`、`significance` 重叠判据、
-  六节标题与兜底手/样本不足标注、CLI 五条用法错 + 正常落盘）；③ `tsc --noEmit` 干净。
+  六节标题与兜底手/样本不足标注、**未收尾的轮两种读法**、**逐色格 `colorCells` 与分开颜色 `colorSplit`**、
+  CLI 五条用法错 + 正常落盘）；③ `tsc --noEmit` 干净。
+  **后来的读法纪律（同日）**：L3 跑到一半时发现 `--batch l3n1` 会把正在跑的 round-3 也读进来 ⇒ 「这轮跑完没有」的唯一本地凭据定为
+  `round-summary.json`（worker 收尾才写）：缺它的轮默认照读，但报告头与第 5 节显著标出、收尾行告警；加 `--skip-incomplete` 才排除它
+  （连同它的产物清单行）。半轮的比分不许进结论。
 - **阶梯编排的进度轮询改本地（P6 修复，2026-10-04）**：第一晚 L3 出现「round-1 早已跑完，作业却停在 `started pid=…`」
   —— 真因是**编排进程意外死掉后，它起的那条 12h 远端等待循环 `ssh` 还活着并继承着 stdout 管道**，外层 `| Tee-Object`
   永远收不到 EOF。修法：`scripts/lib/ladder.mjs` 加 `parsePollOutput()`/`formatPollTick()`，`scripts/experiment-ladder.mjs`
@@ -654,8 +665,9 @@
    P3 产出 [考古文档](plans/2026-10-04-tactics-archaeology.md)：14/14 档参数层确证 + 回放层一致率 100%），
    **阶梯报告 CLI 已落地**（`scripts/experiment-report.mjs` + `scripts/lib/report.mjs`：§7 的六项必出报表一条命令复算，
    见上「已验证」条目）；**编排进度轮询已改本地**（`--poll`，修掉「作业停在被 kill 的 ssh 上永不结束」那类悬挂）；
-   **第一晚 L3 正在跑**（`l3n1`：round-1 `rapfi@500 vs @1000` 20 局 = W11-D0-L9/493s 已完成，round-2 起跑；
-   L3 双方都是 rapfi ⇒ **零上游调用、零配额消耗**）；L3 跑完后按业主已批的口径跑**完整 L2（5 版 × rapfi 三档 15 对 300 局）**，
+   **第一晚 L3 已跑完**（`l3n1`：3/3 轮 60 局 W27-D0-L33、墙钟 ≈34 分钟、零上游调用；结论与限制见
+   [L3 报告](plans/2026-10-04-l3-rapfi-think-time.md)，摘要见上「已验证」条目）；
+   **下一步按业主已批的口径跑完整 L2（5 版 × rapfi 三档 15 对 300 局，约 7h）**，
    产物留 box、**暂不推对象桶**（业主 2026-10-04 决定：桶地址未定，需要时再拉/推）；
    **P7（可选逃生门：`--rev <sha>`）仍待业主定**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
