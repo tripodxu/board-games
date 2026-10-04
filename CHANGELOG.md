@@ -8,6 +8,15 @@
 
 ### 修复
 
+- **同一轮被两个 worker 双写：启动命令收敛到一处并加 pid 守卫（版本排序筛查开局发现）**：
+  编排的准备阶段要连好几趟 ssh（建目录 → 上传全部计划 → 逐轮读 tag，**每趟 12–20 s，合计 2–4 分钟**），
+  这段时间远端只有 `plans/`、没有 `round-N/`、没有 `.pid`，看着像「启动失败」；当时据此又手工起了一个
+  worker，两个进程写同一个 `round-1/`（同 plan、同 tag），`games.jsonl` 会被灌成两份。
+  现在三处启动（阶梯 + batch `submit`/`resume`）统一走 `scripts/lib/ladder.mjs` 的
+  `launchRoundCommand({repo,keyFile,planPath,logPath,pidPath})`，守卫放在**远端 shell** 里原子判断：
+  `if [ -f <pid> ] && kill -0 "$(cat <pid>)"` ⇒ 只回 `started pid=…（已在跑，不重复起）`；
+  编排同时先打印「准备中…这期间远端没有 `round-N/` 是正常的，别手动补启动」。
+  单测 3 例（`test/scripts/ladder.spec.mjs`，共 49 例）。
 - **链路抖动会把整晚掐死：`scp`/`ssh` 一律三次重试（L2 收尾发现）**：box 的 22 端口链路会**间歇性抽风** ——
   `scp` 直接 `exit=1` 且**没有任何 stderr**，同一条命令行手工跑、或换 `node -e` 的 `execFileSync` 跑就成功
   （轮询里还见过一次 `ssh: connect to host … port 22: Connection timed out`）。原来只重试一次，

@@ -617,7 +617,7 @@
 11. **旧深链对历史棋谱大多无效**：54 份里有 48 份没有 `slug`，`/api/games/:day/:name` 解析不到，只能用列表返回的 `path` 或永久链接 `/api/games/u/<gameUid>`。
 12. **`*.workers.dev` 不是入口**（wrangler 默认关闭；本机网络也无法直连），唯一入口是自定义域 `jevqipan.logicc.top`。
 13. **本地无法用 `--test-scheduled` 预演 Cron**：静态资产会先接管非 `/api/*` 路径，`/__scheduled` 拿回的是 SPA 兜底 HTML（200），`stats_cache` 不会有行——这不是 cron 失败。
-14. **备份靠 CI 每日导出**（UTC 04:23，artifact 保留 30 天）；Worker 侧做不到 D1 导出。本地 `npm run db:export` 需要本机网络能连上 Cloudflare。
+14. **备份靠 CI 每日导出**（UTC 04:23，artifact 保留 30 天）；Worker 侧做不到 D1 导出。本地 `npm run db:export` 需要本机网络能连上 Cloudflare。⚠️ **2026-10-04 实测：这条自动备份目前是坏的** —— `backup` 工作流 10-02 / 10-03 / 10-04 三次调度**全部失败**，日志停在 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable`，根因是**仓库里一个 secret 都没有**（`gh secret list` 为空）；`deploy.yml` 的 `workflow_dispatch` 部署同样依赖这两个 secret。补齐 `CLOUDFLARE_API_TOKEN`（需 D1:Read）+ `CLOUDFLARE_ACCOUNT_ID` 后重跑 `workflow_dispatch` 即可恢复；在那之前**没有新鲜备份**（本机 wrangler 的 OAuth token 也已过期且无法刷新，`backups/export.sql` 仍是迁移当天的旧快照：54 局 / 4379 手）。
 15. **离线降级是有意设计**（D8）：没有后端时是离线演示（mock 渠道）+ 本机战绩簿，不是白屏也不是报错。
 16. **限流的两个已知取舍**：每次判定写一行（读接口的限流也消耗当天写配额）；固定窗口边界允许 2× 突发。
 17. **`node:sqlite` 缺失时**，重放迁移的归因用例会被跳过；CI 用 `REQUIRE_SQLITE=1` 强制硬失败。
@@ -640,7 +640,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **38 个测试文件 / 399 个用例**（含 `scripts` project：`test/scripts/**` 57 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **50 个测试文件 / 655 个用例**（含 `scripts` project：`test/scripts/**` 13 文件 / 280 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
@@ -696,8 +696,9 @@
    **L2 也已跑完**（`l2n1`：15/15 轮 300 局 W234-D17-L49、墙钟 316.7 分钟、7440 个 Jev 手全 `primary`；
    结论与限制见 [L2 报告](plans/2026-10-04-l2-version-vs-rapfi.md)，摘要见上「已验证」条目）⇒
    产物留 box、**暂不推对象桶**（业主 2026-10-04 决定：桶地址未定，需要时再拉/推）；
-   **下一步（待业主定）**：① 版本排序要单独跑一条 —— L2 里 5 个版本区间大面积重叠（12 对重叠）不可排序，
-   要么跑 L1（5 版两两 10 对 × 20 = 200 局），要么先跑 v11 vs v13/v14 三对 60 局做筛查；
+   **下一步（业主 2026-10-04 已定）**：① **版本排序筛查已在跑** —— `vorder1`：`v13-pressure-gate` vs `v11-vct`、
+   `v13` vs `v14-live3-fresh`、`v11` vs `v14-live3-fresh` 三对 × 20 局 = 60 局（双方都是上游臂，预计 ≈2.3h），
+   产物留 box；筛查出差距后再决定要不要跑完整 L1（5 版两两 10 对 × 20 = 200 局）；
    ② Rapfi 是否再抬到 `@5000`（阶梯已备 `--with-5000`，L3 的 `@5000 vs @1000` 那对已有 20 局样本）；
    ③ **P7（可选逃生门：`--rev <sha>`）仍待业主定**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），

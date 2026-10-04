@@ -482,6 +482,24 @@ export function sleepSync(ms) {
 }
 
 /**
+ * 远端起一轮 worker 的 shell（阶梯编排与 batch 入口共用）。
+ *
+ * 为什么要有它：同一个 `round-N/` 目录被**两个 worker 双写**会把 `games.jsonl` 灌成两份
+ * （实测：编排自己起了一个，人手又起了一个，两分钟里两条进程同时写同一轮）。
+ * 所以「pid 还活着就别再起」这条守卫放在**远端 shell** 里原子判断，而不是本地先查一遍 ——
+ * 本地查完再起，中间隔着一次 12–20 s 的 ssh 握手，窗口关不掉。
+ *
+ * 两个分支都打印 `started pid=<数字>`：本地只当信息转述，不解析，也不靠它判断成功。
+ */
+export function launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }) {
+  const keyInject = `set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a;`;
+  return `cd ${repo} && ${keyInject}`
+    + ` if [ -f ${pidPath} ] && kill -0 "$(cat ${pidPath})" 2>/dev/null; then echo "started pid=$(cat ${pidPath})（已在跑，不重复起）";`
+    + ` else nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null &`
+    + ` echo $! > ${pidPath}; sleep 1; echo "started pid=$(cat ${pidPath})"; fi`;
+}
+
+/**
  * 同步重试（scp/ssh 用）。
  *
  * 为什么要有它：box 的 22 端口链路会**间歇性抽风** —— 几十次里挂一次，`scp` 直接 `exit=1`

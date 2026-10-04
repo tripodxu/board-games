@@ -19,6 +19,21 @@
 
 ---
 
+## 2026-10-04 · 编排的「准备阶段」有 2–4 分钟，别把它当成启动失败
+
+- **现象**：`experiment-ladder.mjs` 起来后先打计划表，然后远端**只有** `plans/`（3 份计划都已上传）、
+  `logs/`（空）、`tags.txt`（空），**没有 `round-N/`、没有 `logs/round-N.log`、没有 `.pid`、没有 node 进程**
+  —— 看上去像「启动失败」。实际是准备阶段还没走完：`ensureRemote`（mkdir）→ 逐轮 scp 上传全部计划 →
+  逐轮 ssh 读 tag，**每趟 ssh 12–20 s**，合计 2–4 分钟。等它走完，`started pid=…` 才出现。
+- **踩的坑**：当时误判成「编排的 launch ssh 坏了」，于是**手工又起了一个 worker**（同一条启动命令）——
+  两个进程写同一个 `round-1/` 目录（同一个 plan、同一个 tag），`games.jsonl` 会被灌成两份。
+  处置：`pkill -f experiment-worker` 两端全杀 → `rm -rf round-N lines.txt logs/round-N.*` → 重新起编排。
+- **已加的护栏**：启动命令收敛到 `scripts/lib/ladder.mjs` 的 `launchRoundCommand()`（阶梯 + batch 三处共用），
+  守卫放在**远端 shell** 里原子判断：`if [ -f <pid> ] && kill -0 "$(cat <pid>)"` ⇒ 只回
+  `started pid=…（已在跑，不重复起）`，不再起第二个；否则 nohup 起并写 pid。本地先查再起是关不掉窗口的
+  （中间隔着一次 12–20 s 的 ssh 握手）。编排自己也会在准备阶段先打印
+  `准备中：建远端目录 → 上传 N 份计划 → 读 tag（…这期间远端没有 round-N/ 是正常的，别手动补启动）`。
+
 ## 2026-10-04 · 这台 box 的链路会间歇性抽风：scp/ssh 都要三次重试
 
 - **症状**：`scp` 直接 `exit=1` 且**没有任何 stderr**（最费时间的就是这种静默失败），同一条命令行手工跑、

@@ -36,6 +36,7 @@ import {
   PRODUCTION_ORIGIN, productionGate, parallelGate,
 } from './lib/batch-common.mjs';
 import { loadRecords, rankTable, formatRankTable, computeElo, bootstrapBt, DEFAULT_ANCHOR, MIN_GAMES } from './lib/batch-elo.mjs';
+import { launchRoundCommand } from './lib/ladder.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -226,9 +227,8 @@ async function cmdSubmit(args) {
     const pidPath = `${remoteBatchDir}/logs/round-${p.round}.pid`;
     /* key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
        key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。 */
-    const keyInject = `set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a;`;
     const ok = ssh(host, user,
-      `cd ${repo} && ${keyInject} exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+      launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }),
       20000, SSH_LAUNCH_OPTS, true);
     if (!ok) die(`round-${p.round} worker 启动失败`);
     console.log(`  round-${p.round} 已启动（pid 见 ${pidPath}）`);
@@ -263,7 +263,7 @@ function cmdResume(args) {
   /* M3：resume 必须与 submit 一样注入 key —— 早先漏了这段，走上游的臂续跑必定 exit 2，
      而断点续跑正是这套设施唯一的容错手段（ADR-0019 D3）。 */
   const ok = ssh(host, user,
-    `cd ${repo} && set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a; exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+    launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }),
     20000, SSH_LAUNCH_OPTS, true);
   if (!ok) die(`round-${round} 续跑失败（plan 不存在？ssh 不通？）`);
   console.log(`已续跑 batch=${batchId} round=${round}（已完成的对局会按 checkpoint 跳过并原样计入实验档案）`);

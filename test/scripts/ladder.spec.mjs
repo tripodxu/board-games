@@ -14,7 +14,7 @@ import {
   parseIdentityList, normalizeGames, buildLadder, roundLabel, formatRoundLine, formatLadderTable,
   newLadderState, applyRoundResult, resumeDecisions, summarizeLadder, formatLadderProgress, stateMatchesLadder, withReusedTags, staleCleanups,
   ladderDir, stateFile, planFile, readLadderState, writeLadderState, writePlans,
-  estimateRoundSeconds, parsePollOutput, formatPollTick, retrySync, sleepSync,
+  estimateRoundSeconds, parsePollOutput, formatPollTick, retrySync, sleepSync, launchRoundCommand,
 } from '../../scripts/lib/ladder.mjs';
 import { ladderMain, wdlOfGamesJsonl } from '../../scripts/experiment-ladder.mjs';
 
@@ -249,6 +249,38 @@ describe('retrySync（链路抖动的重试）', () => {
     const t0 = Date.now();
     sleepSync(30);
     expect(Date.now() - t0).toBeGreaterThanOrEqual(25);
+  });
+});
+
+describe('launchRoundCommand（同一轮不许被两个 worker 双写）', () => {
+  const cmd = () => launchRoundCommand({
+    repo: '/root/board-games',
+    keyFile: '/root/.jev-key',
+    planPath: '/root/board-games/.work/remote/x1/plans/round-2.json',
+    logPath: '/root/board-games/.work/remote/x1/logs/round-2.log',
+    pidPath: '/root/board-games/.work/remote/x1/logs/round-2.pid',
+  });
+
+  it('pid 还活着就只回一句「已在跑」，不再起第二个 worker', () => {
+    const c = cmd();
+    expect(c).toMatch(/\[ -f .*round-2\.pid \] && kill -0 "\$\(cat .*round-2\.pid\)"/);
+    expect(c).toContain('已在跑，不重复起');
+    // 守卫必须在**远端**判断：本地查完再起，中间还隔着一次 ssh 握手，窗口关不掉
+    expect(c.indexOf('kill -0')).toBeLessThan(c.indexOf('nohup'));
+  });
+
+  it('否则 nohup 起 worker、日志与 pid 都落在远端同一处', () => {
+    const c = cmd();
+    expect(c).toContain('nohup node scripts/experiment-worker.mjs --plan /root/board-games/.work/remote/x1/plans/round-2.json');
+    expect(c).toContain('>> /root/board-games/.work/remote/x1/logs/round-2.log 2>&1 < /dev/null &');
+    expect(c).toContain('echo $! > /root/board-games/.work/remote/x1/logs/round-2.pid');
+    expect(c).toMatch(/fi$/);
+  });
+
+  it('key 仍然是运行时 source 进来的（不进仓库/日志/argv）', () => {
+    const c = cmd();
+    expect(c).toContain('set -a; [ -f /root/.jev-key ] && . /root/.jev-key; set +a;');
+    expect(c).not.toMatch(/JEV_API_KEY=/);
   });
 });
 

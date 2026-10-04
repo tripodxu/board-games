@@ -40,7 +40,7 @@ import {
   formatRoundLine, formatLadderProgress, formatLadderTable, ladderDir, stateFile,
   estimateRoundSeconds, parsePollOutput, formatPollTick,
   readLadderState, writeLadderState, writePlans,
-  retrySync,
+  retrySync, launchRoundCommand,
 } from './lib/ladder.mjs';
 import { gameRecord } from './lib/batch-elo.mjs';
 import { collectArtifacts, pushArtifacts, requireBucketCfg, defaultPrefix } from './batch-bucket.mjs';
@@ -523,17 +523,24 @@ async function main(argv = process.argv.slice(2)) {
     scp([statePath, `${user}@${host}:${remoteBatch}/ladder.json`]); // 失败不算错（权威在本地）
   };
 
+  // 准备阶段要连好几趟 ssh（每趟 12–20 s）：先把这段说出来 —— 否则远端此刻只有 plans/ 没有
+  // round-N/、没有 pid，看着就像「启动失败」，人手再去搓一条启动命令就会和编排**双写同一轮**。
+  console.log(`\n准备中：建远端目录 → 上传 ${ladder.rounds.length} 份计划 → 读 tag`
+    + `（每趟 ssh 12–20 s，合计约 2–4 分钟；这期间远端没有 round-N/ 是正常的，别手动补启动）`);
   if (!ensureRemote()) die('远端 mkdir 失败（ssh 不通？）');
+  console.log('  · 远端目录就绪');
   for (const r of ladder.rounds) {
     const rel = path.join(ROOT, '.work/remote', ladderId, 'plans', `round-${r.round}.json`);
     if (!scp([rel, `${user}@${host}:${remoteBatch}/plans/round-${r.round}.json`])) {
       die(`上传 round-${r.round} plan 失败`);
     }
   }
+  console.log(`  · ${ladder.rounds.length} 份计划已上传`);
   pushState();
 
   // 续跑判定：本地 ok + 远端行数够才跳过（状态文件坏了也不该重跑已跑完的轮次）
   const remoteLines = remoteLineCounts(host, user, repo, ladderId, localBase);
+  console.log('  · tag 已读');
   const decisions = resumeDecisions(state, { force, remoteLines });
   const skipCount = decisions.filter((d) => d.skip).length;
   console.log(`\n续跑判定：${skipCount} 轮跳过 / ${decisions.length - skipCount} 轮要跑`
@@ -594,9 +601,8 @@ async function main(argv = process.argv.slice(2)) {
     const logPath = `${remoteBatch}/logs/round-${r.round}.log`;
     const pidPath = `${remoteBatch}/logs/round-${r.round}.pid`;
     console.log(`\n▶ round-${r.round} ${r.label} ${r.games} 局（tag=${r.tag}）`);
-    const keyInject = `set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a;`;
     const ok = ssh(host, user,
-      `cd ${repo} && ${keyInject} exec nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null & echo $! > ${pidPath}; echo "started pid=$(cat ${pidPath})"`,
+      launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }),
       20000, SSH_LAUNCH_OPTS, true);
     if (!ok) {
       failed += 1;
