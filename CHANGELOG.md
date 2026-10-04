@@ -8,6 +8,17 @@
 
 ### 修复
 
+- **Rapfi 节点预算的结论改正（2026-10-04 真引擎复现探针）**：阶梯计划 §9 第 2 条里那句
+  「节点数只能读、不能设 ⇒ 等节点数当不了控制变量」**作废**。本机用真引擎复现（一次性探针
+  `.work/rapfi-node-info-probe.mjs` + `.work/rapfi-maxnode-probe.mjs`，都不入库）证实：**`INFO max_node <N>`
+  是真正的节点预算、按 N 单调生效** —— 同一 12 子中盘局面 + `INFO timeout_turn 3000` 实测
+  `N=1 → 7ms／最深深度 0`、`100 → 3ms／8`、`1000 → 2ms／12`、`10000 → 26ms／19`、`100000 → 116ms／29`、
+  `1000000 → 1087/1114ms／55`，`N=0`（不限）与 baseline 都是 `2631/2572ms／53`；而 `INFO nodes` /
+  `INFO depth` 这两个名字**不合法**（`MESSAGE Unknown Info Parameter: NODES` / `…: DEPTH`）
+  ⇒ 正确参数名是 `max_node` / `max_depth`。这与本仓 §2.1「探针 A」早已实测的结论（第 54/58/60 行）一致，
+  是那次「只读代码」的勘察把第 61 行读反了。**结论未变的部分**：客户端不发节点预算
+  （`src/core/jev/rapfi.ts:240` 只发 `INFO timeout_turn <ms>`）、在跑的阶梯按时间档计时、本轮**不动协议**；
+  「等节点数」的公平对比技术上已可行，但要另开 preset + 可选开关（规则 10，另开计划/ADR 决定）。
 - **限流用例不再在固定窗口边界上随机红（2026-10-04，CI run 37212423985 实测）**：`test/worker/jev.spec.ts`
   的「桶满后 429」用例灌满 60 次请求时若正好跨过 60 s 固定窗口边界，计数会重置 ⇒ 那一次仍是 400
   （`AssertionError: expected 400 to be 429`，本地几乎复现不出来，概率 ≈ 灌桶耗时/60 s）。现在读首个响应的
@@ -109,10 +120,11 @@
   「三条历史 tag 回填 `device_id='ssh-batch'`」**已完成**（26 局，`code_version` 仍 `dev+nogit`，
   见 `docs/status.md:35-38`）⇒ 该条**按仓库迁移与 status 记录结案**，不再是线上待查项（本机
   `wrangler d1 execute --remote` 已因凭据失效报 `code: 7403`，见 status 已知限制新增第 29 条）。
-  ② **Rapfi 的节点预算当不了控制变量**：本仓这侧是 WASM + Gomocup 风格协议，客户端只发
-  `START 15` / `INFO rule 0` / `INFO timeout_turn <ms>`（`src/core/jev/rapfi.ts:195`、`:240`），
-  节点数只能从 `INFO show_detail 1` 的 `MESSAGE` 行**读**、不能**设**（`parseMoveLine` 只认 `^\d+,\d+$`）
-  ⇒ 「等节点数」的公平对比不做；要坐实 `INFO nodes` 之类是否被忽略，得在 box 阶梯空档起一次真引擎另开探针。
+  ② **Rapfi 的节点预算（该条 2026-10-04 当天即被复现探针改正，见顶部修复条）**：本仓这侧是 WASM +
+  Gomocup 风格协议，客户端只发 `START 15` / `INFO rule 0` / `INFO timeout_turn <ms>`（`src/core/jev/rapfi.ts:195`、`:240`）
+  ⇒ **客户端当前确实不发节点预算**；但「节点数只能**读**（`INFO show_detail 1` 的 `MESSAGE` 行）、不能**设**」
+  是**误读** —— `INFO max_node N` / `INFO max_depth N` 都被静默接受且实测生效（§2.1 探针 A），
+  要坐实这一点的那次真引擎探针已于 2026-10-04 在本机跑完（见顶部修复条与计划 §9 第 2 条结案）。
 
 - **采样参数探针 `scripts/probe-model-params.mjs`（只读，2026-10-04）**：拿真实夹具请求体按变体表重复 POST，
   回答「上游认不认 `temperature` / `top_p` / `seed`」，印出每个变体的 HTTP 状态、答案是否逐字复现、

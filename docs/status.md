@@ -287,6 +287,19 @@
 
 ## 已验证（验收证据）
 
+- **Rapfi 的节点预算：`INFO max_node <N>` 真的生效，「设不了」是误读（2026-10-04，计划 §9 第 2 条结案 + 改正）**：
+  本机用**真引擎**跑一次性探针（同一份 `public/rapfi/rapfi-single-simd128.{js,wasm,data}`，**不抢 box 正在计时的
+  Rapfi**）⇒ `INFO max_node N` 被静默接受且**按 N 单调生效**：同一 12 子中盘局面 + `INFO timeout_turn 3000` 实测
+  `N=1 → 7ms／最深深度 0`、`100 → 3ms／8`、`1000 → 2ms／12`、`10000 → 26ms／19`、`100000 → 116ms／29`、
+  `1000000 → 1087/1114ms／55`；`N=0`（不限）与 baseline 同为 `2631/2572ms／53`，着法全部同一手 `9,10`。
+  合法参数名是 **`max_node` / `max_depth`**，而 `INFO nodes` / `INFO depth` 会被拒
+  （`MESSAGE Unknown Info Parameter: NODES` / `…: DEPTH` + `ERROR Unknown command: <v>`）。
+  ⇒ 同一天早先「节点数只能**读**（`show_detail 1` 的 `MESSAGE` 行）、不能**设** ⇒ 等节点数当不了控制变量」
+  那条**作废**（它把阶梯计划 §2.1 探针 A 第 61 行读反了；探针 A 第 54/58/60 行早已实测 `max_node` 生效且
+  固定预算可复现）。**未变的部分**：客户端仍只发 `INFO timeout_turn <ms>`（`src/core/jev/rapfi.ts:240`），
+  在跑的阶梯按**时间档**计时 ⇒ **本轮不换协议**（换了等于换臂）；「等节点数」的公平对比技术上已可行，但要
+  另开 preset + 给客户端加可选开关（规则 10：另开计划与 ADR 决定）。探针 `.work/rapfi-node-info-probe.mjs`、
+  `.work/rapfi-maxnode-probe.mjs`（一次性，不入库，产物 `.work/rapfi-info-probe.json`、`.work/rapfi-maxnode-probe.json`）。
 - **报告新增「收尾机制 + 接管层 × 结果」解释块（2026-10-04，`vorder1` round-1 之后）**：第 4 节内加
   `endReasons()`（收尾原因分布 + 和棋手数 + 全局手数分位）与 `layersByResult()`（每身份一行
   「接管层（开火次数；该层开火那几手的 胜/和/负）」）；`scripts/lib/report.mjs` 523 行、
@@ -744,7 +757,11 @@
    `--ladder L4`）；dry-run 粗估 ≈18 h（按每局 60 手），但 box 实测长局可到 225 手、Rapfi 按档计时 ⇒
    按 `vorder1` round-1 实测手数（均 90.3 / 最长 225）重估为 **≈26–35 h**（一局 225 手时 Rapfi 自己那半边
    ≈112 手 × 10 s ≈ 19 min ⇒ 单轮 2–6 h）。
-   编排链已备好（`vorder1` 收尾 ⇒ 自动出报表 ⇒ 同步 box ⇒ 串行起 `rapfihi1`，见 `.work/chain-l4.ps1`）；
+   编排链已备好（`vorder1` 收尾 ⇒ 自动出报表 ⇒ 同步 box ⇒ 串行起 `rapfihi1`，见 `.work/chain-l4.ps1`；
+   **2026-10-05 改成 v2**：窗口从 6 h 放宽到 **14 h**（v1 的窗口会在 round-2 中途到期 —— 两个强版本互守，
+   round-2 单局已涨到 ~7 min、12 局里 9 和），并新增**停滞判定**：连续 45 min 本地进度三元组不推进时，
+   用一次短 ssh 探远端 `/logs/round-N.pid` —— 活着（长局正常）就继续等，**死了就报警退出 3、不自动起 L4**
+   （否则会用半截对照解释 L4，且两个作业抢 CPU 会让 Rapfi 的墙钟时间档失真）；
    `--with-5000` 仍留在 CLI 里，需要补那一点时随时能跑（L3 的 `@5000 vs @1000` 已有 20 局样本）；
    ③ **P7（可选逃生门：`--rev <sha>`）仍待业主定**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
