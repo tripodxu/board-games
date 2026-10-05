@@ -21,6 +21,21 @@
 
 ---
 
+## 2026-10-05 · 想知道线上停在哪一版：抓静态包 grep **功能字面量**（`/api/health` 的 `schema` 不是代码版本）
+
+- **别读反的字段**：`GET /api/health` 的 `schema` 来自 `src/worker/routes/health.ts:46-49`
+  `SELECT name FROM d1_migrations ORDER BY id DESC LIMIT 1` ⇒ 它只说明 **D1 迁移应用到了哪一版**，
+  与 Worker / 前端代码新旧**无关**：线上报 `schema: "0004_move_provider.sql"` 时，代码完全可能是 0004 之前的构建。
+- **可靠判据 = 生产构建产物里的字符串字面量**：`https://jevqipan.logicc.top/` 引用的 `assets/index-<hash>.js`
+  是 `vite build` 的产物，**字符串字面量（版本 id、字段名、header 名、UI 文案）会原样保留**，
+  注释与局部变量名会被压缩丢弃 ⇒ 只能拿字面量做判据。
+- **实测（2026-10-05）**：该包 206,688 B，`v14-live3-fresh` 4 次 / `candsSent` 18 / `candsLabeled` 13 /
+  `候选发评标` 2 在，而 `X-Jev-` / `commandcode` / `primary` / `backup`（C2）与 `上游兜底` / `未计入主口径`（C3）
+  **全为 0** ⇒ 线上 = C0（`ffbcbf7`）之后、C2（`e70fcd1`）之前，**生产没有上游兜底**（主家 401 直接报错给用户）。
+  同类事实：`gh run list --workflow=deploy.yml` **一条都没有**（`deploy.yml` 是 `workflow_dispatch`，
+  按设计不随 push 跑）⇒ 线上历次都是本地 `npm run deploy` 推的，没有 CI 部署记录可查。
+- **复验手法**：部署后重新抓线上包 grep `X-Jev-`，出现即说明含 C2；grep 版本 id 可确认战术档位。
+
 ## 2026-10-05 · `vcfWin()` 的入口前提是「双方无一步杀」：攻方已一手成五时它报 `false`，**永远报不出「隔 1 手」**
 
 - **事实**：`engine.vcfWin(st, attackerId, plies)` 的逼迫着法生成器只收「落子后造出 ≥1 个**新**致胜点」的着法

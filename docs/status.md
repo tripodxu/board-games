@@ -784,6 +784,8 @@
 
 29. **本机 wrangler 的 D1 读路径也失效了**（2026-10-04 实测，比第 26 条更近一步）：`node .work/wrangler-run.mjs d1 execute jev-qiguan --remote --json --command "SELECT name FROM pragma_table_info('games')"` ⇒ `A request to the Cloudflare API (/accounts/6f8cd3a216c8de232d829099778d7c53/d1/database/f72390fe-a506-4a88-8db7-af7213657947/query) failed.`，notes `The given account is not valid or is not authorized to access this service [code: 7403]`（`kind: APIError`、`accountTag 6f8cd3a216c8de232d829099778d7c53`），exit 1。也就是说本机既有 OAuth 已过期（第 14 条），又**没有可用的 API Token** ⇒ 从这台机器上既不能查也不能导出 D1；阶梯计划的 §9 第 3 条因此改成**按仓库迁移 + `docs/status.md` 记录结案**（结论：`games.device_id` 存在，回填 26 局已完成）。恢复要业主补凭据（`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`）或重新登录，属业主决定项。
 
+30. **线上跑的不是当前 main，而是 C0 那一版（2026-10-05 实测，靠「抓线上静态包 + grep 功能字面量」判定）**：`deploy.yml` 是 `workflow_dispatch`（按设计不随 push 跑），`gh run list --workflow=deploy.yml` **一条记录都没有** ⇒ 线上历次都是本地 `npm run deploy` 推的，最后一条记录是 C0 的部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`。实测线上首页引用的 `https://jevqipan.logicc.top/assets/index-D9YZ3QAl.js`（206,688 B）：`v14-live3-fresh` 4 次、`candsSent` 18、`candsLabeled` 13、`候选发评标` 2，而 `X-Jev-` / `commandcode` / `primary` / `backup`（C2）与 `上游兜底` / `未计入主口径`（C3）**全部 0 次** ⇒ 线上 = **C0（`ffbcbf7`）之后、C2（`e70fcd1`）之前**。后果：**生产没有上游兜底**（主家 key 401/额度耗尽时直接给用户报错，不切备用网关）、没有逐手上游归因、报表也没有「兜底手」分桶；`/api/health` 里的 `schema: 0004` 只代表 **D1 迁移已应用**（它读 `d1_migrations` 最后一行），**不代表** Worker 代码是新的 —— 这条口径容易读反，别再拿它当「线上是新的」的证据。恢复路径：业主补第 26 条的两个 secret（或本机重新 `wrangler login`）⇒ `npm run deploy`；复验手法 = 重新抓线上包并 grep `X-Jev-`（出现即含 C2）。
+
 ## 验收命令表
 
 命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 732 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 357 例））。
@@ -829,7 +831,14 @@
    共用切换判据 + 离线夹具 + 逐手 `prov`/`probs` 归因；生产路径默认关，见上「已验证」条目）；
    **C3 已完成**（`migrations/0004_move_provider.sql` 两列已应用到本地与远程 D1 + 报表「上游兜底 N 手（未计入主口径）」一行 + worker/ui 单测；见上「已验证」条目）；
    **C4 已完成（2026-10-04，由 L2 阶梯轮覆盖：直连上游 7440 手全 `primary`、兜底 0 手，成本对照已出）**；
-   唯一遗留是**生产 Worker 尚未重新部署**（列已就位，部署后生产棋谱才开始写这两列，属业主决定项）；
+   唯一遗留是**生产 Worker 尚未重新部署**（列已就位，部署后生产棋谱才开始写这两列，属业主决定项）。
+   **2026-10-05 外部探测坐实了「线上正好停在 C0」**：抓线上首页引用的 `assets/index-D9YZ3QAl.js`（206,688 B）
+   逐字面量比对 —— `v14-live3-fresh` 4 / `candsSent` 18 / `candsLabeled` 13 / `候选发评标` 2 都在，
+   而 C2 的 `X-Jev-` / `commandcode` / `primary` / `backup` 与 C3 的 `上游兜底` / `未计入主口径` **全为 0**
+   ⇒ 线上构建落在 C0（`ffbcbf7`）之后、C2（`e70fcd1`）之前，**生产目前没有兜底**（主家 401/额度耗尽时直接报错，
+   不会切备用网关），也没有逐手上游归因；`/api/health` 报 `schema 0004` 只说明**迁移已应用**（它读的是 D1 的
+   `d1_migrations` 最后一行的名字，与 Worker 代码新旧无关）。恢复路径 = 第 26 条的 secrets（或本机 `wrangler login`）
+   ⇒ `npm run deploy`；部署后复验手法 = 重新 grep 线上包应出现 `X-Jev-` 字面量；
    ② [战术可回溯 + 远端 Elo 阶梯](plans/2026-10-03-tactics-fidelity-and-elo-ladder.md)：**P0 闸门收紧 ✅ 与
    P0b 数据卫生/报表口径 ✅、P1 冻结层 ✅、P2 指纹设施 ✅、P3 回放 + 考古 ✅、P4 阶梯地基 ✅、P4b 离线运行面 + 桶留档 ✅、
    P5 Elo 升级（BT + bootstrap 区间）✅、P6 阶梯编排 ✅（含 box 端到端真跑、中断续跑与 `--force` 重跑）
@@ -853,8 +862,9 @@
    每轮墙钟 50–90 分钟、零 CF 调用；已拉回 7 轮的败局解释（r1–r7 = 140 局 `59/15/66`）**66/66 局**能定位必败起点
    （见上「已验证」条目；按 2026-10-05 修正后的判据）；读数与硬边界见
    [L4 报告](plans/2026-10-05-rapfihi1-rapfi-high-think.md)（§3/§4 待收尾后填）。
-   同时报表新增**「版本 × 共同对手」矩阵**（第二把尺子，见上「已验证」条目）：截至 460 局，唯一在 5 个档位全部同向的
-   版本对是 `v11 > v10`（100 局合并 Wilson 不重叠），其余 8 对全部翻转 ⇒ 与 vorder1 的「三版不可分」同向，
+   同时报表新增**「版本 × 共同对手」矩阵**（第二把尺子，见上「已验证」条目）：截至 500 局（含 round-7 的 `v13@7000`），
+   唯一在 5 个档位全部同向的版本对是 `v11 > v10`（100 局合并 Wilson 不重叠，逐档 +2.5/+7.5/+12.5/+17.5/+50.0 pt），
+   另一对 `v13 ≥ v14` 只覆盖三个低档（`@1000` 并列），其余 **8 对全部翻转** ⇒ 与 vorder1 的「三版不可分」同向，
    **A/B 决策的推荐项（A）证据更足**。
    筛查判读已**机械化进报告第 4 节**（2026-10-05，`screenVersions()`，见上「已验证」条目）；
    ② **Rapfi 抬时间已按业主 2026-10-04 的口径改成「直接补到上限」**（原话「补 500ms，7000ms，到 10000ms」）：
