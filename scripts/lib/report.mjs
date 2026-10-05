@@ -399,6 +399,195 @@ function fmtSigned(x) {
 }
 
 /**
+ * 版本 × 共同对手 矩阵 —— 版本排序的**第二把尺子**（第一把是 `screenVersions()` 的版本互殴）。
+ *
+ * 为什么需要第二把：版本互殴的配对样本很小（vorder1 只有 3 对 × 20 局）且容易成环；而
+ * 「同一版本分别去打同样的对手」在 Rapfi 各思考档上天然构成**共同对手**，档位越多这条尺子越硬。
+ *
+ * 口径（写死，避免事后挑）：
+ *   - 行 = 版本身份（`official|v*`），列 = 与至少 2 个版本交过手的**非版本**对手（Rapfi 档按 ms 升序在前）；
+ *   - 单元格得分率是**版本视角**（`(胜 + 和/2) / 局数`），每格独立算 Wilson；
+ *   - 单元格之间**不是配对局**（同一对手的不同局换了开局与颜色）⇒ 只报点估计 + 区间，
+ *     「谁更强」仍要过区间不重叠那一关；
+ *   - 判读：对每个共同对手按得分率给一个点估计序（有并列则记 `ties`）；再**逐对**看向差符号 ——
+ *     一对版本在 ≥2 个共同对手上非零差值同号（无翻转）才算这对着 `consistent`；一对都没有时返回
+ *     `consistent=null`（判据 ② 无从检验，例如只有 1 个共同对手）。差值为 0 记成「并列档」
+ *     （那一档不给序，不算翻转）；全部并列则该对在这几档上「不可分」。这是计划 §7 判据 ② 的机械化。
+ *
+ * 版本 < 2 个、或没有「≥2 个版本都打过」的对手时返回 `null`（这块不印）。
+ */
+export function versionMatrix(records) {
+  const isVersion = (id) => typeof id === 'string' && /^official\|v[0-9]/.test(id);
+  const versions = [...new Set(records.flatMap((r) => [r.black, r.white]).filter(isVersion))].sort();
+  if (versions.length < 2) return null;
+
+  const cells = new Map(); // `${version}\u0000${opponent}` → {games, hits, wins, draws, losses}
+  const opponents = new Set();
+  for (const r of records) {
+    const [vb, ob] = isVersion(r.black) && !isVersion(r.white) ? [r.black, r.white]
+      : isVersion(r.white) && !isVersion(r.black) ? [r.white, r.black] : [null, null];
+    if (!vb) continue;
+    const score = vb === r.black ? r.blackScore : 1 - r.blackScore;
+    const key = vb + '\u0000' + ob;
+    if (!cells.has(key)) cells.set(key, { version: vb, opponent: ob, games: 0, hits: 0, wins: 0, draws: 0, losses: 0 });
+    const c = cells.get(key);
+    c.games += 1;
+    c.hits += score;
+    if (score === 1) c.wins += 1;
+    else if (score === 0.5) c.draws += 1;
+    else c.losses += 1;
+    opponents.add(ob);
+  }
+  if (opponents.size === 0) return null;
+
+  const cellOf = (version, opponent) => {
+    const c = cells.get(version + '\u0000' + opponent);
+    if (!c) return null;
+    const ci = wilson(c.hits, c.games);
+    return { ...c, rate: c.hits / c.games, ci, enough: c.games >= MIN_GAMES };
+  };
+  const msOf = (id) => {
+    const m = /\|(\d+)$/.exec(id);
+    return id.startsWith('rapfi|') && m ? Number(m[1]) : null;
+  };
+  /* 列顺序：Rapfi 各档（按思考时间升序）在前，其余对手按「打过它的版本数」降序、再按名字。 */
+  const oppList = [...opponents].sort((x, y) => {
+    const mx = msOf(x);
+    const my = msOf(y);
+    if (mx != null && my != null && mx !== my) return mx - my;
+    if (mx != null) return -1;
+    if (my != null) return 1;
+    const cx = versions.filter((v) => cellOf(v, x)).length;
+    const cy = versions.filter((v) => cellOf(v, y)).length;
+    return cy - cx || (x < y ? -1 : 1);
+  });
+  /* 只有列（= 共同对手）才进矩阵：至少 2 个版本打过。只被 1 个版本打过的对手单独列出，
+     免得读者以为这张表覆盖了全部对手。 */
+  const shared = oppList.filter((o) => versions.filter((v) => cellOf(v, o)).length >= 2);
+  if (shared.length === 0) return null;
+  const skipped = oppList.filter((o) => !shared.includes(o));
+
+  const matrix = versions.map((version) => ({
+    version,
+    cells: shared.map((o) => cellOf(version, o)),
+    total: (() => {
+      const list = shared.map((o) => cellOf(version, o)).filter(Boolean);
+      const games = list.reduce((n, c) => n + c.games, 0);
+      const hits = list.reduce((n, c) => n + c.hits, 0);
+      const ci = games ? wilson(hits, games) : null;
+      return { games, hits, rate: games ? hits / games : null, ci };
+    })(),
+  }));
+
+  const orders = shared.map((o) => {
+    const scored = versions
+      .map((v) => ({ version: v, rate: cellOf(v, o) ? cellOf(v, o).rate : null }))
+      .filter((s) => s.rate != null);
+    const ties = new Set(scored.map((s) => s.rate)).size !== scored.length;
+    return {
+      opponent: o,
+      order: [...scored].sort((x, y) => y.rate - x.rate || (x.version < y.version ? -1 : 1)).map((s) => s.version),
+      ties,
+    };
+  });
+  /* 判据 ②（机械化）：逐**对**看向差在共同对手上是否同号。
+     为什么不用「整条序字符串」比对：各对手上可出场的版本集合不同（2 元序 vs 5 元序），
+     字符串比对会把「A>B」与「A>B>C」当成两个不同结论，判出的「不一致」是假的（初版踩过这个坑）。 */
+  const pairDirs = [];
+  for (let i = 0; i < versions.length; i += 1) {
+    for (let j = i + 1; j < versions.length; j += 1) {
+      const dirs = shared
+        .map((o) => {
+          const a = cellOf(versions[i], o);
+          const b = cellOf(versions[j], o);
+          return a && b ? { opponent: o, d: a.rate - b.rate } : null;
+        })
+        .filter(Boolean);
+      if (dirs.length < 2) continue;
+      const signs = dirs.map((x) => Math.sign(x.d));
+      const nonzero = [...new Set(signs.filter((s) => s !== 0))];
+      pairDirs.push({
+        a: versions[i],
+        b: versions[j],
+        dirs,
+        flip: nonzero.length > 1,   // 非零差值方向不一致 ⇒ 真翻转
+        tie: signs.includes(0),     // 有档位并列 ⇒ 那一档不给序（不算翻转，但要写出来）
+        flat: nonzero.length === 0, // 每个共同对手都并列 ⇒ 这几档上不可分
+      });
+    }
+  }
+  const flips = pairDirs.filter((p) => p.flip);
+  const consistent = pairDirs.length === 0 ? null : flips.length === 0;
+  return {
+    versions,
+    opponents: shared,
+    skipped,
+    matrix,
+    orders,
+    pairDirs,
+    flips,
+    consistent,
+    note: '共同对手不是配对局（同对手的不同局换了开局与颜色）⇒ 只作第二把尺子；' +
+      '「谁更强」仍要过区间不重叠那一关，跨档位不许比 ΔElo。方向一致 ≠ 显著（每格 n 小）。',
+  };
+}
+
+/** 版本 × 共同对手 矩阵的 markdown 块（`versionMatrix()` 为 null 时返回空数组，不印）。 */
+export function versionMatrixBlock(model) {
+  const m = versionMatrix(model.records);
+  if (!m) return [];
+  const out = [];
+  out.push('');
+  out.push('版本 × 共同对手（**第二把尺子**：版本互殴（vorder1 那类）之外的独立证据；只读同一对手下的对照）：');
+  out.push('');
+  out.push(`| 版本 | ${m.opponents.map((o) => o).join(' | ')} | 合并（对上述对手） |`);
+  out.push(`| --- | ${m.opponents.map(() => '---').join(' | ')} | --- |`);
+  for (const row of m.matrix) {
+    const cells = row.cells.map((c) => (c
+      ? `${fmtPt(c.rate)}（${c.wins}/${c.draws}/${c.losses}，n=${c.games}${c.enough ? '' : ' ⚠'}）`
+      : '—'));
+    out.push(`| ${row.version} | ${cells.join(' | ')} | ${fmtPt(row.total.rate)}（n=${row.total.games}） |`);
+  }
+  out.push('');
+  for (const o of m.orders) {
+    out.push(`- ${o.opponent} 上的点估计序：${o.order.join(' > ')}${o.ties ? '（有并列 ⇒ 不成全序）' : ''}`);
+  }
+  if (m.skipped.length) {
+    out.push(`- 另有 ${m.skipped.length} 个对手只有 1 个版本打过，不进这张表：${m.skipped.join('、')}。`);
+  }
+  if (m.consistent === null) {
+    out.push('- 判读：**没有一对版本在 ≥2 个共同对手上都出场过** ⇒ 计划 §7 判据 ② 无从检验，这一列只能当方向参考。');
+  } else if (m.consistent) {
+    out.push(`- 判读：**${m.pairDirs.length} 对可比版本没有方向翻转**（判据 ② 通过；同向 ≠ 显著）：`);
+    const detail = (p, sign) => p.dirs.map((x) => `${shortOpp(x.opponent)} ${fmtSigned(sign * x.d)}`).join('、');
+    for (const p of m.pairDirs.filter((x) => !x.flat)) {
+      const dir = Math.sign(p.dirs.find((x) => x.d !== 0).d);
+      const winner = dir > 0 ? `${p.a} > ${p.b}` : `${p.b} > ${p.a}`;
+      out.push(`  - ${winner}｜${p.dirs.length} 个共同对手：${detail(p, dir)}` +
+        `${p.tie ? '（有并列档 ⇒ 那几档不给序）' : ''}`);
+    }
+    for (const p of m.pairDirs.filter((x) => x.flat)) {
+      out.push(`  - ${p.a} vs ${p.b}｜${detail(p, 1)} ⇒ **全平、不可分**`);
+    }
+  } else {
+    out.push(`- 判读：**方向翻转 ⇒ 不能据此排版本**（判据 ② 不通过；差值 = 前者 − 后者）：`);
+    for (const p of m.flips) {
+      out.push(`  - ${p.a} vs ${p.b}：` + p.dirs.map((x) => `${shortOpp(x.opponent)} ${fmtSigned(x.d)}`).join('、'));
+    }
+    const steady = m.pairDirs.length - m.flips.length;
+    if (steady > 0) out.push(`  - 另有 ${steady} 对版本方向一致（未被翻转波及），但全序仍不成立。`);
+  }
+  out.push(`- ${m.note}`);
+  return out;
+}
+
+/** 判读句里的对手短名：`rapfi||7000` → `@7000`，其余原样。 */
+function shortOpp(id) {
+  const m = /\|(\d+)$/.exec(id);
+  return id.startsWith('rapfi|') && m ? `@${m[1]}` : id;
+}
+
+/**
  * 收尾机制：把「这局是怎么结束的」摊开 —— 直接决定结论怎么读（规则 11：和棋可接受，但要说清来路）。
  * 为什么单列：vorder1 round-1 实测 5 局和棋**全部**是 225 手「棋盘已满」（不是协议和、不是认输），
  * 「双方都守住了」与「双方都不敢下」是两种故事，报告里不写清就会被读成后者。
@@ -600,6 +789,7 @@ export function reportMarkdown(model) {
       `${p.enough ? '✅' : `⚠ <${MIN_GAMES}`} |`);
   }
   out.push('');
+  out.push(...versionMatrixBlock(model));
   const cells = colorCells(model.records);
   out.push('逐色格（同一格内颜色固定 ⇒ 排掉先手优势；先手优势本身也要报）：');
   out.push('');

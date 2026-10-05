@@ -11,7 +11,7 @@ import path from 'node:path';
 import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
   collectCost, colorCells, colorSplit, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
-  openingRows, pairTable, quantiles, screenVersions,
+  openingRows, pairTable, quantiles, screenVersions, versionMatrix, versionMatrixBlock,
   rafiCurve, reportMarkdown, significance, curveDeltas,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
@@ -375,6 +375,101 @@ describe('版本筛查判读（阶梯计划 §7 规则机械化：只决定下�
     expect(md).toContain(`**有值得决赛的差距** ⇒ 只补决赛对 \`${V13} vs ${V14}\``);
     expect(reportMarkdown(model([{ black: 'rapfi||500', white: 'rapfi||1000', blackScore: 1 }])))
       .not.toContain('版本筛查判读');
+  });
+});
+
+describe('版本 × 共同对手矩阵（第二把尺子：同一版本分别去打同样的对手；不改变任何结论的强度）', () => {
+  /** 合成一个格子：`wins/draws/losses` 是**版本视角**，并让版本逐局换色（覆盖「执白取 1 − blackScore」这支）。 */
+  const cell = (version, opponent, { wins = 0, draws = 0, losses = 0 } = {}) => {
+    const scores = [...Array(wins).fill(1), ...Array(draws).fill(0.5), ...Array(losses).fill(0)];
+    return scores.map((s, i) => (i % 2 === 0
+      ? { black: version, white: opponent, blackScore: s }
+      : { black: opponent, white: version, blackScore: 1 - s }));
+  };
+  const V10 = 'official|v10-live3|0';
+  const V11 = 'official|v11-vct|0';
+  const V12 = 'official|v12-vct-def|0';
+  const V13 = 'official|v13-pressure-gate|0';
+
+  it('版本视角成立（执白也算自己赢）、列只留共同对手、单版本打过的对手另列', () => {
+    const m = versionMatrix([
+      ...cell(V11, 'rapfi||2000', { wins: 4 }),
+      ...cell(V10, 'rapfi||2000', { wins: 3, losses: 1 }),
+      ...cell(V11, 'rapfi||500', { wins: 2, losses: 2 }),   // 只有 v11 打过 ⇒ 不是共同对手
+    ]);
+    expect(m.versions).toEqual([V10, V11]);
+    expect(m.opponents).toEqual(['rapfi||2000']);
+    expect(m.skipped).toEqual(['rapfi||500']);
+    const v11 = m.matrix.find((r) => r.version === V11);
+    expect(v11.cells[0]).toMatchObject({ games: 4, wins: 4, draws: 0, losses: 0, rate: 1 });
+    expect(v11.cells[0].ci.lo).toBeGreaterThan(0.5);        // 执白的 2 局也算成胜
+    expect(v11.total).toMatchObject({ games: 4, rate: 1 });
+    expect(m.matrix.find((r) => r.version === V10).total.rate).toBeCloseTo(0.75, 10);
+  });
+
+  it('版本 <2 / 没有共同对手 ⇒ null（这块不印）', () => {
+    expect(versionMatrix(cell(V11, 'rapfi||2000', { wins: 2 }))).toBeNull();
+    expect(versionMatrix([...cell(V11, 'rapfi||2000', { wins: 1 }), ...cell(V10, 'rapfi||500', { wins: 1 })]))
+      .toBeNull();
+  });
+
+  it('判据 ②：一对版本在 ≥2 个共同对手上同向 ⇒ consistent=true；只有 1 个共同对手 ⇒ null（无从检验）', () => {
+    const two = versionMatrix([
+      ...cell(V11, 'rapfi||2000', { wins: 4 }),
+      ...cell(V10, 'rapfi||2000', { wins: 2, losses: 2 }),
+      ...cell(V11, 'rapfi||7000', { wins: 3, losses: 1 }),
+      ...cell(V10, 'rapfi||7000', { wins: 1, losses: 3 }),
+    ]);
+    expect(two.consistent).toBe(true);
+    expect(two.pairDirs).toHaveLength(1);
+    expect(two.pairDirs[0]).toMatchObject({ a: V10, b: V11, flip: false });
+    expect(two.pairDirs[0].dirs.map((d) => d.d)).toEqual([-0.5, -0.5]);
+    const one = versionMatrix([
+      ...cell(V11, 'rapfi||2000', { wins: 4 }),
+      ...cell(V10, 'rapfi||2000', { wins: 2, losses: 2 }),
+    ]);
+    expect(one.consistent).toBeNull();
+    expect(one.pairDirs).toEqual([]);
+  });
+
+  it('判据 ② 不通过：两个共同对手上方向相反 ⇒ 点名翻转对与档位', () => {
+    const m = versionMatrix([
+      ...cell(V12, 'rapfi||500', { wins: 4 }),
+      ...cell(V13, 'rapfi||500', { wins: 2, losses: 2 }),
+      ...cell(V12, 'rapfi||2000', { wins: 1, losses: 3 }),
+      ...cell(V13, 'rapfi||2000', { wins: 3, losses: 1 }),
+    ]);
+    expect(m.consistent).toBe(false);
+    expect(m.flips).toHaveLength(1);
+    expect(m.flips[0].dirs.map((d) => [d.opponent, d.d])).toEqual([['rapfi||500', 0.5], ['rapfi||2000', -0.5]]);
+  });
+
+  it('列序：Rapfi 档按思考时间升序在前；块里印表格 + 逐档序 + 判读句', () => {
+    const recs = [
+      ...cell(V11, 'rapfi||10000', { wins: 4 }),
+      ...cell(V10, 'rapfi||10000', { wins: 2, losses: 2 }),
+      ...cell(V11, 'rapfi||7000', { wins: 4 }),
+      ...cell(V10, 'rapfi||7000', { wins: 2, losses: 2 }),
+    ];
+    expect(versionMatrix(recs).opponents).toEqual(['rapfi||7000', 'rapfi||10000']);
+    const block = versionMatrixBlock({ records: recs }).join('\n');
+    expect(block).toContain('第二把尺子');
+    expect(block).toContain('| 版本 | rapfi||7000 | rapfi||10000 | 合并（对上述对手） |');
+    expect(block).toContain(`- ${V11} > ${V10}｜2 个共同对手：@7000 +50.0pt、@10000 +50.0pt`);
+    expect(block).toContain('判据 ② 通过');
+    expect(versionMatrixBlock({ records: cell(V11, 'rapfi||2000', { wins: 2 }) })).toEqual([]);
+  });
+
+  it('全平的一对：判据 ② 通过但写成「不可分」，不假装有序', () => {
+    const block = versionMatrixBlock({ records: [
+      ...cell(V11, 'rapfi||2000', { wins: 2, losses: 2 }),
+      ...cell(V10, 'rapfi||2000', { wins: 2, losses: 2 }),
+      ...cell(V11, 'rapfi||7000', { wins: 2, losses: 2 }),
+      ...cell(V10, 'rapfi||7000', { wins: 2, losses: 2 }),
+    ] }).join('\n');
+    expect(block).toContain(`${V10} vs ${V11}`);
+    expect(block).toContain('**全平、不可分**');
+    expect(block).not.toContain(`${V11} > ${V10}`);
   });
 });
 
