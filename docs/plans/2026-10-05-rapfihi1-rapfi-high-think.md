@@ -32,6 +32,8 @@
   （`checkpoint/round-<r>-game-<n>.json`）对 tag 相同的局返回 `skip` 并计入 summary，只有第 21–40 局真跑。
   前提：同一个 `--batch`（= 同一批 tag）+ 本地 `.work/remote/rapfihi1/ladder.json` 不丢。代价是**全局**的 ——
   `--games 40` 会让 10 轮各补 20 局（又约 13–17 h），不能只挑 `@7000`/`@10000` 那几轮（想只跑一段只能 `--identities` 另开批次）。
+  这条已**本机实测**（mock 双臂、零配额、不碰 box）：同 tag 先跑 2 局再改成 4 局重跑 ⇒ 日志 `game-1/game-2 已完成（ok），跳过`、
+  只真跑 game-3/4，`games.jsonl` 4 行 4 个不同 `gameUid`，`round-summary.json` 的 `games[]` = `skipped/skipped/ok/ok`。
 - **档位真的传下去了（round-1 产物复核）**：身份 → 逐手入参的链路是
   `scripts/experiment-worker.mjs:670-671`（`rapfiThinkMs: s.black/white.thinkMs`）→ `scripts/experiment-worker.mjs:711` → `src/core/jev/client.ts:550` → `src/core/jev/rapfi.ts:240`（`_send('INFO timeout_turn ' + thinkMs)`）。
   round-1 的 10 局里 Rapfi 执白、`whiteThink=7000`；另 10 局 Rapfi 执黑（`blackChannel=rapfi`）⇒ 换色双跑、档位随身份走。

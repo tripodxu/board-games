@@ -34,6 +34,12 @@
   会把旧产物挪到 `stale-round-N-<旧tag>/`，否则 W/D/L 会把两次尝试相加；④ 形状变化是**全局的** —— `--games 40` 会让每轮都补 20 局，
   不能只挑高档那几轮（想只跑一段只能用 `--identities` 另开批次）。
 - checkpoint 是**逐局一个文件**：`<plan.outDir>/checkpoint/round-<r>-game-<n>.json`。
+- **实测（2026-10-05，本机 mock 双臂、零配额、不碰 box）**：`.work/topup-plan.json`（`tag exp-topup1-r1`、`outDir .work/remote/topup1/round-1`）
+  先 `games: 2` 跑一遍（`games.jsonl` 2 行、2 个 checkpoint），再把 `games` 改成 `4` 用**同一个 tag** 重跑：
+  worker 打 `game-1 已完成（ok），跳过` / `game-2 已完成（ok），跳过`，只真跑 game-3（12 手）/game-4（38 手）；
+  收尾 `games.jsonl` **4 行 / 4 个不同 `gameUid`**（无重复），`round-summary.json` 的 `games[]` 依次是
+  `skipped/skipped/ok/ok`（skipped 那两条**带着 plies 与 winner**，不是空壳）。⇒ 「同 tag 加量 = 只补新局」这条是实测过的，不只是读码结论。
+  注意归档行里的局号字段叫 **`expGameNo`**（不是 `gameNo`），按 `gameNo` 过滤会得到空集。
 
 ## 2026-10-05 · 跨档/跨批合并值先比**组成**：出场的身份集合不同，落差里就混着组成差异
 
