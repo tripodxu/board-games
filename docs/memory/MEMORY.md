@@ -25,7 +25,9 @@
 
 - 现场：`rapfihi1` 的 `round-10`（`v14-live3-fresh@10000`）第 10 局第 8 手，主上游回 **HTTP 402**（`auth` 类）⇒ 按 `src/core/jev/providers.ts` 的
   判据**立刻切**兜底（探活 HTTP 200 / 51 ms），此后该轮 11 条 `kind:"provider"` 事件、**345 手** `ai.prov='backup'`（占该轮 Jev 手 69%）。
-  ⇒ 「跑长实验前先确认主 key 还活着」应进 checklist；402/401 也可能只是**额度**而非失效。
+  ⇒ 「跑长实验前先确认主 key 还活着」应进 checklist；402/401 也可能只是**额度**而非失效 —— 2026-10-05 13:15 本机独立复现确认是**账号级余额**
+  （合法请求 ⇒ `402 billing_error: Your organization has no available TypeSafe API credits`；同一 key 空体打 ⇒ 422 说明认证通过），
+  且 box key 与本地 key 不是同一串（sha256 前 12 位 `499b5d636bc6` vs `bbe6db022be4`）却都 402 ⇒ **换 key 绕不过，除非换账号或充值**。
 - 直连面的开关是**兜底 key 文件**（`--backup-key-file` / box `/root/.cc-key`），不是环境变量；Worker 面才是 `vars.JEV_FAILOVER`。
   **兜底 key 缺失不报错**（= 静默不启用切换），只有 `--expect-backup` 才退码 2 ⇒ 想验证兜底必须带这个开关。
 - 逐手归因在产物里可核：归档 payload `ai.prov` / `ai.probs`（`migrations/0004_move_provider.sql` 两列）+ `events.jsonl` 的 `kind:"provider"`；
