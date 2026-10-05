@@ -609,6 +609,40 @@ describe('CLI：闸门与落盘', () => {
     expect(model.records).toHaveLength(2);
     expect(model.rows.map((r) => r.identity).sort()).toEqual(['official|v14-live3-fresh|0', 'rapfi||500']);
     expect(model.cost.totalRow.moves).toBe(2);
+    // 判读结论也进 JSON：matrix 只有 1 个版本时为 null，但键必须在（下游不该靠 `in` 试探）
+    expect(model).toHaveProperty('versionMatrix', null);
+    expect(model.curveComposition.levels.map((l) => l.identity)).toEqual(['rapfi||500']);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  it('JSON 里的 versionMatrix / curveComposition 能直接点名结论（markdown 只写数量）', async () => {
+    // 动机：报表 §4 只写「另有 N 对版本方向一致」，要点名得从 records 重算 —— 于是把两块结论写进 JSON。
+    const vs = (uid, tac, ms, vWins) => game({
+      uid, black: 'official', blackTac: tac, white: 'rapfi', whiteThink: ms,
+      winner: vWins ? 'black' : 'white', moves: [jevMove(1, '黑方'), rafiMove(2, '白方')],
+    });
+    const root = tmpBatch([
+      vs('a', 'v11-vct', 500, true), vs('b', 'v14-live3-fresh', 500, false),
+      vs('c', 'v11-vct', 2000, true), vs('d', 'v14-live3-fresh', 2000, false),
+    ]);
+    const json = path.join(root, 'named.json');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(reportMain(['--dir', root, '--out', '-', '--json', json, '--no-bt'])).resolves.toBe(0);
+    } finally {
+      log.mockRestore();
+      err.mockRestore();
+    }
+    const model = JSON.parse(fs.readFileSync(json, 'utf8'));
+    expect(model.versionMatrix.opponents).toEqual(['rapfi||500', 'rapfi||2000']);
+    expect(model.versionMatrix.consistent).toBe(true);
+    expect(model.versionMatrix.pairDirs[0]).toMatchObject({
+      a: 'official|v11-vct|0', b: 'official|v14-live3-fresh|0', flip: false, flat: false,
+    });
+    expect(model.versionMatrix.pairDirs[0].dirs.map((d) => [d.opponent, d.d]))
+      .toEqual([['rapfi||500', 1], ['rapfi||2000', 1]]);
+    expect(model.curveComposition).toMatchObject({ consistent: true });
+    expect(model.curveComposition.levels.map((l) => l.thinkMs)).toEqual([500, 2000]);
     fs.rmSync(root, { recursive: true, force: true });
   });
   it('多根合并（--dir a,b）：batchId 与标题带上每一批（默认产物名不许只剩第一批）', async () => {
