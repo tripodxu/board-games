@@ -8,6 +8,16 @@
 
 ### 新增
 
+- **报表 §3 再印「逐档成本（与 Rapfi 固定预算同框）」表（2026-10-05）**：`scripts/lib/report.mjs` 加
+  `costByLevel(games)` / `costByLevelBlock(model)`。第 3 节原来的成本表按**身份**排，而阶梯批次里每个档位是不同轮
+  ⇒ 全轮合计会把低档短局与高档长局混在一起。新块按档位切：`局数 / Jev 手数 / 模型往返与战术层（均值／中位／p90／最差）/
+  单手合计均值 / 战术占单手 / 往返均值占预算`，末列 = 模型往返均值 ÷ 该档 `INFO timeout_turn <ms>`（UI 上限 10000 ms）。
+  归集只收「一侧 Rapfi、另一侧版本」的对局（版本互殴无档位、Rapfi 互殴双方都是 rapfi），档位识别直接读 payload 的
+  `blackChannel`/`blackThink`（`channel` 就是 `'rapfi'`，`startsWith('rapfi|')` 恒假 ⇒ 静默漏掉 Rapfi 执黑半局）；
+  零上游手的档位（Rapfi vs mock）不进表。**口径边界**：Rapfi 逐手实际耗时没有落盘（`ai.ms` 为 `null`）⇒ 只能说「占预算」。
+  实测 500 局：战术占单手 `@500` 29.8% → `@10000` 39.0%，往返均值占预算 **367.1% → 14.2%**。
+  形状复跑：三批合并有块，`vorder1`/`l3n1`/`c2e2` 都 0 命中。`--json` 变**四块**判读结论（`+costByLevel`）。
+  单测 +2 例（`test/scripts/report.spec.mjs` 累计 **51 例 / 836 行**）。
 - **报表 §2 再印「逐档合并（版本视角）」表（2026-10-05）**：`scripts/lib/report.mjs` 加 `levelTable(records)` /
   `levelTableBlock(model)`。§2 曲线上每行是 `rapfi||<ms>` 自己的得分（方向易读反），这张表把同一个 Rapfi 档位的全部对局
   合成**版本侧**一个数：只收「一侧 `rapfi||<ms>`、另一侧 `official|…`」的对局（版本互殴无档位、Rapfi 互殴无版本侧，

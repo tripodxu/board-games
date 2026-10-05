@@ -287,6 +287,17 @@
 
 ## 已验证（验收证据）
 
+- **报表 §3 再印一张「逐档成本（与 Rapfi 固定预算同框）」表（2026-10-05）**：`scripts/lib/report.mjs` 新增
+  `costByLevel(games)` / `costByLevelBlock(model)`。第 3 节原有的成本表按**身份**排，而阶梯批次里
+  **每个档位是不同轮** ⇒ 全轮合计会把低档短局与高档长局混在一起，也答不了 m08110 那一问。新块按档位切开：
+  `局数 / Jev 手数 / 模型往返（均值／中位／p90／最差）/ 战术层（同）/ 单手合计均值 / 战术占单手 / 往返均值占预算`。
+  归集只收「一侧 Rapfi、另一侧版本」的对局（版本互殴无档位、Rapfi 互殴双方都是 rapfi），档位识别直接读
+  payload 的 `blackChannel`/`blackThink`（`channel` 就是 `'rapfi'`，写成 `startsWith('rapfi|')` 恒假 ⇒ 静默漏掉 Rapfi 执黑半局），
+  一手上游都没打的档位（Rapfi vs mock）不进表。**口径边界**：Rapfi 逐手实际耗时没有落盘（`ai.ms` 为 `null`）⇒
+  只能说「占预算」，不能说「Rapfi 实际用了 X ms」。实测 500 局：战术占单手 `@500` 29.8% → `@10000` 39.0%，
+  往返均值占预算 **367.1% → 14.2%**（Jev 一次往返相对 Rapfi 预算从 3.7 倍降到 0.14 倍）。形状复跑：三批合并有块，
+  `vorder1`/`l3n1`/`c2e2` 都 0 命中。`--json` 由三块判读结论变**四块**（`+costByLevel`）。
+  单测 +2 例（归集与排除、占预算比、块渲染与「零上游手不印」两态），`test/scripts/report.spec.mjs` 累计 **51 例 / 836 行**。
 - **报表 §2 再印一张「逐档合并（版本视角）」表（2026-10-05）**：`scripts/lib/report.mjs` 新增
   `levelTable(records)` / `levelTableBlock(model)`。**为什么需要**：§2 曲线上每一行是 `rapfi||<ms>` **自己**的得分
   （方向容易读反），而「这一档版本侧强多少」要读的是版本视角 —— 只收「一侧 `rapfi||<ms>`、另一侧 `official|…`」的对局
@@ -815,7 +826,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 738 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 363 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 740 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 365 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

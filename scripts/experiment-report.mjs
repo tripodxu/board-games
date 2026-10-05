@@ -15,7 +15,8 @@
  *   --dir <path[,path]> 产物根目录（可多个，逗号分隔）
  *   --out <path>        markdown 落盘路径（缺省 .work/<batch>-report.md；`-` 表示不落盘）
  *   --json <path>       另写一份机器可读 JSON（同一次报告的全部数字，含 `records` 与
- *                       `versionMatrix` / `curveComposition` 两块判读结论 —— 便于下游点名而不必重算）
+ *                       `versionMatrix` / `curveComposition` / `levelTable` / `costByLevel`
+ *                       四块判读结论 —— 便于下游点名而不必重算）
  *   --anchor <identity> BT 零点（缺省 rapfi||500；不在数据里时退化成均值居中）
  *   --bootstrap <n>     BT bootstrap 次数（缺省 400；0 = 只算点估计）
  *   --seed <n>          bootstrap 种子（缺省 20261004，同种子逐字可复现）
@@ -34,7 +35,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { DEFAULT_ANCHOR, gameRecord, rankTable } from './lib/batch-elo.mjs';
-import { REPORT_VERSION, collectCost, costRow, curveComposition, levelTable, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
+import { REPORT_VERSION, collectCost, costByLevel, costRow, curveComposition, levelTable, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
 
 /** 用法错/读不到数据：抛 `{exitCode}`，由入口转成 exit code（可被单测直接断言，不杀测试进程）。 */
 function die(msg, code = 2) {
@@ -263,6 +264,7 @@ export async function reportMain(argv = process.argv.slice(2)) {
       versionMatrix: versionMatrix(records),
       curveComposition: curveComposition(records),
       levelTable: levelTable(records),
+    costByLevel: costByLevel(payloads),
     }, null, 2) + '\n');
   }
 

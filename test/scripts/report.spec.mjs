@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
-  collectCost, colorCells, colorSplit, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
+  collectCost, colorCells, colorSplit, costByLevel, costByLevelBlock, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
   openingRows, pairTable, quantiles, screenVersions, versionMatrix, versionMatrixBlock,
   rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas, levelTable, levelTableBlock,
 } from '../../scripts/lib/report.mjs';
@@ -74,6 +74,50 @@ describe('quantiles / collectCost / costRow', () => {
     expect(row.shareOfMove).toBe(50);
     expect(row.shareOfRoundTrip).toBe(100);
     expect(costRow('y', { moves: 0, ms: [], tac: [], prov: {} }).ms).toBeNull();
+  });
+});
+
+describe('costByLevel / costByLevelBlock（成本按 Rapfi 固定预算切开）', () => {
+  /* 四局里只有两局「版本 vs Rapfi」有档位：@500 与 @7000；另两局必须被排除
+     （版本互殴没档位、Rapfi 互殴双方都是 rapfi），Rapfi vs mock 那种「有档位但一手上游都没打」也不进表。 */
+  const games = [
+    game({ uid: 'l500', whiteThink: 500, moves: [jevMove(1, '黑方', { ms: 1000, tacMs: 500 }), rafiMove(2, '白方'),
+      jevMove(3, '黑方', { ms: 2000, tacMs: 700, prov: 'backup' }), rafiMove(4, '白方')] }),
+    game({ uid: 'l7000a', whiteThink: 7000, moves: [jevMove(1, '黑方', { ms: 3000, tacMs: 999 })] }),
+    game({ uid: 'l7000b', black: 'rapfi', white: 'official', blackThink: 7000, moves: [rafiMove(1, '黑方'),
+      jevMove(2, '白方', { ms: 4000, tacMs: 1000 })] }),
+    game({ uid: 'mirror', black: 'official', white: 'official', moves: [jevMove(1, '黑方'), jevMove(2, '白方')] }),
+    game({ uid: 'rafi-rafi', black: 'rapfi', white: 'rapfi', blackThink: 1000, whiteThink: 1000,
+      moves: [rafiMove(1, '黑方'), rafiMove(2, '白方')] }),
+    game({ uid: 'rafi-mock', black: 'rapfi', white: 'mock', blackThink: 9000, moves: [rafiMove(1, '黑方')] }),
+  ];
+  it('按档位归集上游手：没有 Rapfi / 双方都是 Rapfi 的对局都排除，零上游手的档位不进表', () => {
+    const { levels, total } = costByLevel(games);
+    expect(levels.map((l) => l.thinkMs)).toEqual([500, 7000]);
+    expect(levels.map((l) => l.games)).toEqual([1, 2]);
+    expect(levels.map((l) => l.row.moves)).toEqual([2, 2]);
+    /* 往返均值 ÷ 该档固定预算 —— Rapfi 逐手耗时没有落盘，只能说「占预算」 */
+    /* 中位数是「下中位」（quantiles() 既有口径：偶数个取较小的那个） */
+    expect(levels[0].row.ms).toMatchObject({ n: 2, mean: 1500, median: 1000, p90: 2000, max: 2000 });
+    expect(levels[0].row.tac).toMatchObject({ mean: 600, median: 500, max: 700 });
+    expect(levels[0].shareOfBudget).toBe(300);
+    expect(levels[1].row.ms).toMatchObject({ mean: 3500, median: 3000, max: 4000 });
+    expect(levels[1].row.shareOfRoundTrip).toBe(28.6);
+    expect(levels[1].shareOfBudget).toBe(50);
+    expect(total.moves).toBe(4);
+    expect(total.prov).toEqual({ primary: 3, backup: 1 });
+  });
+  it('块渲染：表 + 全轮合计 + 「Rapfi 实际耗时没有落盘」的口径句；没有上游手就不印', () => {
+    const md = costByLevelBlock({ games });
+    const text = md.join('\n');
+    expect(text).toContain('**逐档成本（与 Rapfi 固定预算同框，m08110）**');
+    expect(text).toContain('| `rapfi||500` | 1 | 2 | 1500／1000／2000／2000 | 600／500／700／700 | 2100 | 28.6% | 300% |');
+    expect(text).toContain('| `rapfi||7000` | 2 | 2 | 3500／3000／4000／4000 |');
+    expect(text).toContain('所以只能说预算，不能说「Rapfi 实际用了 X ms」');
+    expect(text).toContain('> 全轮合计：Jev 手 4｜');
+    /* 有档位但一手上游都没打（Rapfi vs mock 那种）⇒ 该档被 `moves > 0` 过滤掉，块不出现 */
+    expect(costByLevelBlock({ games: [game({ uid: 'x', moves: [rafiMove(1, '白方'), rafiMove(2, '黑方')] })] })).toEqual([]);
+    expect(costByLevelBlock({})).toEqual([]);
   });
 });
 

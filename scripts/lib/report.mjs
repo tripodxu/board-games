@@ -106,6 +106,84 @@ export function costRow(identity, bucket) {
 }
 
 /**
+ * 一局里的 Rapfi 固定预算档位（ms）：没有 Rapfi 或**双方都是 Rapfi**（L3 那种）时返回 `null`。
+ *
+ * 为什么直接读 `blackChannel`/`blackThink` 而不拼身份串：归档 payload 的 `channel` 就是 `'rapfi'`
+ * （没有竖线），`'rapfi||500'` 是 `identityOf()` 拼出来的**身份串**；写成 `channel.startsWith('rapfi|')`
+ * 会恒 false、把 Rapfi 执黑的整半局静默漏掉（2026-10-05 探针实测踩过，见 MEMORY）。
+ */
+function rapfiLevelOf(game) {
+  const b = game && game.blackChannel === 'rapfi' && typeof game.blackThink === 'number' ? game.blackThink : null;
+  const w = game && game.whiteChannel === 'rapfi' && typeof game.whiteThink === 'number' ? game.whiteThink : null;
+  const known = [b, w].filter((v) => v != null);
+  return known.length === 1 ? known[0] : null;
+}
+
+/**
+ * 成本按 Rapfi 固定预算切开（`costByLevel`）：`l2n1`/`rapfihi1` 这类批次里**每个档位是不同轮**，
+ * 只报全轮合计会把「低档短局」与「高档长局」的手数结构混在一起，也答不了 m08110 那一问
+ * （Jev 侧成本 vs Rapfi 的固定预算）。只统计真打过上游的手（`isUpstreamMove()`），口径与 `collectCost()` 一致。
+ */
+export function costByLevel(games) {
+  const byLevel = new Map();
+  const total = { moves: 0, ms: [], tac: [], prov: {} };
+  for (const g of games || []) {
+    const level = rapfiLevelOf(g);
+    if (level == null) continue;
+    if (!byLevel.has(level)) byLevel.set(level, { thinkMs: level, games: 0, moves: 0, ms: [], tac: [], prov: {} });
+    const L = byLevel.get(level);
+    L.games += 1;
+    for (const m of g.moves || []) {
+      if (!isUpstreamMove(m)) continue;
+      const ai = m.ai || {};
+      for (const b of [L, total]) {
+        b.moves += 1;
+        if (typeof ai.ms === 'number') b.ms.push(ai.ms);
+        if (typeof ai.tacMs === 'number') b.tac.push(ai.tacMs);
+        if (ai.prov) b.prov[ai.prov] = (b.prov[ai.prov] || 0) + 1;
+      }
+    }
+  }
+  const levels = [...byLevel.values()]
+    .filter((L) => L.moves > 0) // 该档一局上游手都没打（Rapfi vs mock 之类）⇒ 不进表
+    .sort((a, b) => a.thinkMs - b.thinkMs)
+    .map((L) => ({
+      thinkMs: L.thinkMs,
+      games: L.games,
+      budgetMs: L.thinkMs,
+      /* 模型往返均值 ÷ 该档 Rapfi 固定预算 —— Rapfi 逐手实际耗时没有落盘（`ai.ms` 为 null），只能说预算 */
+      shareOfBudget: L.ms.length ? Math.round((100 * (L.ms.reduce((x, y) => x + y, 0) / L.ms.length)) / L.thinkMs * 10) / 10 : null,
+      row: costRow(`rapfi||${L.thinkMs}`, L),
+    }));
+  return { levels, total: costRow('全轮合计', total) };
+}
+
+/** §3 的「逐档成本」块（有上游手才印）。 */
+export function costByLevelBlock(model) {
+  const c = costByLevel(model.games || []);
+  if (c.levels.length === 0) return [];
+  const out = [];
+  out.push('');
+  out.push('**逐档成本（与 Rapfi 固定预算同框，m08110）**：每个档位是不同轮 ⇒ 只报全轮合计会把低档短局与高档长局的' +
+    '手数结构混在一起。「占预算」= 模型往返均值 ÷ 该档 Rapfi 固定预算（`INFO timeout_turn <ms>`，UI 思考档上限 10000 ms）——' +
+    'Rapfi 逐手实际耗时**没有落盘**（归档里 Rapfi 侧 `ai.ms` 为 `null`），所以只能说预算，不能说「Rapfi 实际用了 X ms」。');
+  out.push('');
+  out.push('| Rapfi 档 | 局数 | Jev 手数 | 模型往返 ms（均值／中位／p90／最差） | 战术层 ms（均值／中位／p90／最差） | 单手合计均值 | 战术占单手 | 往返均值占预算 |');
+  out.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  for (const L of c.levels) {
+    const r = L.row;
+    out.push(`| \`rapfi||${L.thinkMs}\` | ${L.games} | ${r.moves} | ${fmtMs(r.ms)} | ${fmtMs(r.tac)} | ` +
+      `${r.perMove == null ? '—' : r.perMove} | ${r.shareOfMove == null ? '—' : r.shareOfMove + '%'} | ` +
+      `${L.shareOfBudget == null ? '—' : L.shareOfBudget + '%'} |`);
+  }
+  out.push('');
+  out.push(`> 全轮合计：Jev 手 ${c.total.moves}｜模型往返 ${fmtMs(c.total.ms)}｜战术层 ${fmtMs(c.total.tac)}｜` +
+    `战术占单手 ${c.total.shareOfMove == null ? '—' : c.total.shareOfMove + '%'}｜提供方 ` +
+    `${Object.entries(c.total.prov).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'}`);
+  return out;
+}
+
+/**
  * 无序配对矩阵（配对样本口径）：每对身份一行，A 取字典序在前的一方，得分率是 **A 的视角**。
  * 这是「判跨档位有没有差」该看的那张表 —— BT Δ 的区间按局重采样、不利用配对结构。
  */
@@ -917,6 +995,7 @@ export function reportMarkdown(model) {
     out.push('');
     out.push('> 「战术占单手」= 战术层均值 ÷（模型往返均值 + 战术层均值）；「战术/往返」是 C2 验收轮对外报的那个比值。');
     out.push('> 上游兜底手（`provider=backup`）单列在「提供方」列，**未计入主口径**。');
+    out.push(...costByLevelBlock(model));
   }
   out.push('');
 
