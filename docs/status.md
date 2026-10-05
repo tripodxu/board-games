@@ -287,6 +287,18 @@
 
 ## 已验证（验收证据）
 
+- **报表 §2 再印一张「逐档合并（版本视角）」表（2026-10-05）**：`scripts/lib/report.mjs` 新增
+  `levelTable(records)` / `levelTableBlock(model)`。**为什么需要**：§2 曲线上每一行是 `rapfi||<ms>` **自己**的得分
+  （方向容易读反），而「这一档版本侧强多少」要读的是版本视角 —— 只收「一侧 `rapfi||<ms>`、另一侧 `official|…`」的对局
+  （版本互殴没有档位、Rapfi 互殴没有版本侧，都不进表），每档印
+  `局数 / 版本侧 胜–和–负 / 得分率 / Wilson / Rapfi 侧得分率 / 对手集（逐对手局数）`，下面接相邻档差 + 重叠计数 +
+  组成两态（相同 `✓ 组成一致`／不同印「此刻不许把档位合并值连成一条曲线」）。**组成一致性连每对手局数一起比**
+  （某版只跑一半局数同样会把合并值带偏）。实测 `500 局` 与独立探针 `.work/l4-fill.mjs` **各算一遍逐位一致**
+  （5 档 89.5/79.5/73.5/53.8/39.2%；相邻档差 −10.0/−6.0/−19.8/−14.6 pt 且四对全部 Wilson 重叠；`consistent=false`），
+  `--json` 由两块判读结论变**三块**（`versionMatrix` / `curveComposition` / `levelTable`）。形状复跑：`l2n1` 有块，
+  `vorder1`（版本互殴）/`c2e2`（兜底探针）/`l3n1`（Rapfi 互殴）**都 0 命中** ⇒ 不改代码。
+  单测 +3 例（换色取反与和棋半分/排除三类非版本 vs Rapfi 对局/相邻档差与重叠/组成两态/块渲染；**n=1 时 Wilson 必然重叠**
+  —— 100% 的下界约 20.7%，要造「不重叠」得 10 局/档），`test/scripts/report.spec.mjs` 累计 **49 例 / 792 行**。
 - **报表 §2 曲线自动印「各档对手组成」警告（2026-10-05）**：`scripts/lib/report.mjs` 新增
   `curveComposition(records)`（逐档 `rapfi|…` 的对手集与局数；同身份镜像局不计入对手集；`consistent = 集合去重后 ≤1`），
   `reportMarkdown()` 第 2 节在「每档样本」之后按需印
@@ -301,7 +313,7 @@
   现在读 JSON 的 `pairDirs` 即可，不必重算。实测 500 局 ⇒ 10 对里 8 对翻转，仅 `v11 > v10`
   （五档同向 −2.5/−7.5/−12.5/−17.5/−50.0 pt）与 `v14 ≥ v13`（−15.0/0.0 并列/−22.5 pt）方向一致。
   单测 +3 例（集合不同要印且点名档位与对手／集合相同不印／JSON 两版 × 两档能点名 `pairDirs` 与对手集），
-  `test/scripts/report.spec.mjs` 累计 **46 例**。
+  `test/scripts/report.spec.mjs` 累计 **46 例**（后接「逐档合并表」3 例 ⇒ 49 例）。
 - **败局追因判据修正：裸 `vcfWin()` 漏判「对手已一手成五」（2026-10-05）**：`vcfWin()` 的入口前提是
   「双方无一步杀」（`src/core/engines/gomoku.ts:220`）—— 逼迫着法生成器只收「造出新致胜点」的着法，
   直接成五那一手窗口已满、被排除 ⇒ 攻方已能一手成五时它报 `false`，**永远报不出「隔 1 手」**。
@@ -803,7 +815,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 735 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 360 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 738 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 363 例））。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |

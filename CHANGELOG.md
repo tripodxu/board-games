@@ -8,6 +8,15 @@
 
 ### 新增
 
+- **报表 §2 再印「逐档合并（版本视角）」表（2026-10-05）**：`scripts/lib/report.mjs` 加 `levelTable(records)` /
+  `levelTableBlock(model)`。§2 曲线上每行是 `rapfi||<ms>` 自己的得分（方向易读反），这张表把同一个 Rapfi 档位的全部对局
+  合成**版本侧**一个数：只收「一侧 `rapfi||<ms>`、另一侧 `official|…`」的对局（版本互殴无档位、Rapfi 互殴无版本侧，
+  都不进表），每档印 `局数 / 版本侧 胜–和–负 / 得分率 / Wilson / Rapfi 侧得分率 / 对手集（逐对手局数）` + 相邻档差 +
+  重叠计数 + 组成两态。**组成一致性把每对手局数一起比**（某版只跑一半局数同样带偏合并值）。与独立探针
+  `.work/l4-fill.mjs` 各算一遍**逐位一致**（5 档 89.5/79.5/73.5/53.8/39.2%；相邻档差 −10.0/−6.0/−19.8/−14.6 pt
+  且四对全部 Wilson 重叠）⇒ L4 报告 §3.3 以后从报表抄。`--json` 由两块判读结论变**三块**
+  （`versionMatrix` / `curveComposition` / `levelTable`）。形状复跑：`l2n1` 有块，`vorder1`/`c2e2`/`l3n1` 都 0 命中。
+  单测 +3 例（`test/scripts/report.spec.mjs` 累计 **49 例 / 792 行**；**n=1 时 Wilson 必然重叠** ⇒ 造「不重叠」要 10 局/档）。
 - **报表 §2 曲线自动印「各档对手组成」警告（2026-10-05）**：`scripts/lib/report.mjs` 加 `curveComposition(records)`
   （逐档 `rapfi|…` 的对手集与局数、同身份镜像局不计入；`consistent = 集合去重后 ≤1`），`reportMarkdown()` 第 2 节
   在「每档样本」之后按需印「⚠ 各档对手集不同 ⇒ 档间差里混着组成差异」+ 逐档点名「N 局打过 M 个对手」。

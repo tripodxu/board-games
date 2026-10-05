@@ -34,7 +34,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { DEFAULT_ANCHOR, gameRecord, rankTable } from './lib/batch-elo.mjs';
-import { REPORT_VERSION, collectCost, costRow, curveComposition, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
+import { REPORT_VERSION, collectCost, costRow, curveComposition, levelTable, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
 
 /** 用法错/读不到数据：抛 `{exitCode}`，由入口转成 exit code（可被单测直接断言，不杀测试进程）。 */
 function die(msg, code = 2) {
@@ -256,12 +256,13 @@ export async function reportMain(argv = process.argv.slice(2)) {
   }
   if (jsonOut) {
     fs.mkdirSync(path.dirname(jsonOut), { recursive: true });
-    /* `versionMatrix` / `curveComposition` 进 JSON 是为了让下游脚本**点名**判读结论
+    /* `versionMatrix` / `curveComposition` / `levelTable` 进 JSON 是为了让下游脚本**点名**判读结论
        （markdown 里只写「另有 N 对方向一致」这种计数），不必再从 `records` 重算一遍。 */
     fs.writeFileSync(jsonOut, JSON.stringify({
       ...model, games: undefined, records,
       versionMatrix: versionMatrix(records),
       curveComposition: curveComposition(records),
+      levelTable: levelTable(records),
     }, null, 2) + '\n');
   }
 

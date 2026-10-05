@@ -12,7 +12,7 @@ import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
   collectCost, colorCells, colorSplit, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
   openingRows, pairTable, quantiles, screenVersions, versionMatrix, versionMatrixBlock,
-  rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas,
+  rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas, levelTable, levelTableBlock,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
 
@@ -133,6 +133,61 @@ describe('pairTable / rafiCurve / openingRows / significance', () => {
     expect(two.levels.map((l) => l.thinkMs)).toEqual([500, 7000]);
     expect(two.consistent).toBe(false);
     expect(curveComposition([])).toEqual({ levels: [], consistent: true });
+  });
+  it('逐档合并（版本视角）：只收版本 vs Rapfi，换色取反、和棋半分', () => {
+    const t = levelTable([
+      { black: 'rapfi||500', white: 'official|v10-live3|0', blackScore: 0 },   // Rapfi 执黑负 ⇒ 版本胜
+      { black: 'official|v10-live3|0', white: 'rapfi||500', blackScore: 1 },   // 换色后版本仍胜
+      { black: 'rapfi||500', white: 'official|v11-vct|0', blackScore: 0.5 },   // 和
+      { black: 'official|v10-live3|0', white: 'rapfi||1000', blackScore: 0 },  // 版本执黑负 ⇒ @1000 记负
+      { black: 'official|v10-live3|0', white: 'official|v11-vct|0', blackScore: 1 }, // 版本互殴：没有档位
+      { black: 'rapfi||500', white: 'rapfi||1000', blackScore: 1 },            // Rapfi 互殴：没有版本侧
+      { black: 'rapfi||500', white: 'mock||500', blackScore: 1 },              // 对手不是我们的版本
+    ]);
+    expect(t.levels.map((l) => l.thinkMs)).toEqual([500, 1000]);
+    expect(t.levels[0]).toMatchObject({ identity: 'rapfi||500', games: 3, w: 2, d: 1, l: 0, hits: 2.5 });
+    expect(t.levels[0].rate).toBeCloseTo(2.5 / 3, 10);
+    expect(t.levels[0].rapfiRate).toBeCloseTo(0.5 / 3, 10);       // Rapfi 侧 = 1 − 版本侧
+    expect(t.levels[0].opps).toEqual([{ id: 'official|v10-live3|0', games: 2 }, { id: 'official|v11-vct|0', games: 1 }]);
+    expect(t.levels[0].ci.lo).toBeLessThan(t.levels[0].rate);
+    expect(t.levels[1]).toMatchObject({ games: 1, w: 0, d: 0, l: 1, rate: 0, rapfiRate: 1 });
+    expect(levelTable([])).toEqual({ levels: [], deltas: [], consistent: true });
+  });
+  it('逐档合并：相邻档差 + Wilson 重叠 + 组成一致性（各档「对手 × 局数」不同就不许连曲线）', () => {
+    /* n=1 时 Wilson 区间宽到几乎覆盖 0–1（100% 的下界约 20.7%），所以要 10 局才谈得上「不重叠」。 */
+    const rep = (level, n, blackScore) => Array.from({ length: n },
+      () => ({ black: `rapfi||${level}`, white: 'official|v10-live3|0', blackScore }));
+    const same = levelTable([...rep(500, 10, 0), ...rep(1000, 10, 1)]);   // @500 版本全胜、@1000 全负
+    expect(same.consistent).toBe(true);                            // 组成相同 ⇒ 可读成档位效应
+    expect(same.levels.map((l) => [l.thinkMs, l.games, l.rate])).toEqual([[500, 10, 1], [1000, 10, 0]]);
+    expect(same.deltas).toHaveLength(1);
+    expect(same.deltas[0]).toMatchObject({ fromMs: 500, toMs: 1000 });
+    expect(same.deltas[0].delta).toBeCloseTo(-1, 10);              // 100% → 0%
+    expect(same.deltas[0].overlap).toBe(false);                    // 10 局全胜 vs 10 局全负 ⇒ 区间不重叠
+    const skew = levelTable([
+      { black: 'rapfi||500', white: 'official|v10-live3|0', blackScore: 0 },
+      { black: 'rapfi||500', white: 'official|v11-vct|0', blackScore: 0 },
+      { black: 'rapfi||7000', white: 'official|v10-live3|0', blackScore: 0 },   // @7000 缺 v11 ⇒ 组成不同
+    ]);
+    expect(skew.consistent).toBe(false);
+    expect(skew.levels[1].opps).toEqual([{ id: 'official|v10-live3|0', games: 1 }]);
+  });
+  it('逐档合并块：表 + 相邻档读数 + 组成两态（一致打 ✓、不一致印 ⚠）', () => {
+    const even = levelTableBlock({ records: [
+      { black: 'rapfi||500', white: 'official|v10-live3|0', blackScore: 0 },
+      { black: 'rapfi||1000', white: 'official|v10-live3|0', blackScore: 0 },
+    ] });
+    const md = even.join('\n');
+    expect(md).toContain('**逐档合并（版本视角）**');
+    expect(md).toContain('| 500 ms | 1 | 1–0–0 | 100.0% |');
+    expect(md).toContain('- 相邻档（版本侧）：500 → 1000 +0.0pt');
+    expect(md).toContain('✓ 组成一致');
+    const skewed = levelTableBlock({ records: [
+      { black: 'rapfi||500', white: 'official|v10-live3|0', blackScore: 0 },
+      { black: 'rapfi||7000', white: 'official|v11-vct|0', blackScore: 0 },
+    ] }).join('\n');
+    expect(skewed).toContain('⚠ **各档组成不同 ⇒ 此刻不许把档位合并值连成一条曲线**');
+    expect(levelTableBlock({ records: [] })).toEqual([]);
   });
   it('开局分层按 events 给的开局键分组；没有键就是空（= 报告写「未启用开局库」）', () => {
     const g1 = game({ uid: '1' });
@@ -612,6 +667,7 @@ describe('CLI：闸门与落盘', () => {
     // 判读结论也进 JSON：matrix 只有 1 个版本时为 null，但键必须在（下游不该靠 `in` 试探）
     expect(model).toHaveProperty('versionMatrix', null);
     expect(model.curveComposition.levels.map((l) => l.identity)).toEqual(['rapfi||500']);
+    expect(model.levelTable.levels.map((l) => l.thinkMs)).toEqual([500]);
     fs.rmSync(root, { recursive: true, force: true });
   });
   it('JSON 里的 versionMatrix / curveComposition 能直接点名结论（markdown 只写数量）', async () => {
@@ -643,6 +699,10 @@ describe('CLI：闸门与落盘', () => {
       .toEqual([['rapfi||500', 1], ['rapfi||2000', 1]]);
     expect(model.curveComposition).toMatchObject({ consistent: true });
     expect(model.curveComposition.levels.map((l) => l.thinkMs)).toEqual([500, 2000]);
+    // 逐档合并：v11 两档全胜、v14 两档全负 ⇒ 两档合并值都是 50%，且两档组成相同
+    expect(model.levelTable.levels.map((l) => [l.thinkMs, l.games, l.w, l.l, l.rate]))
+      .toEqual([[500, 2, 1, 1, 0.5], [2000, 2, 1, 1, 0.5]]);
+    expect(model.levelTable.consistent).toBe(true);
     fs.rmSync(root, { recursive: true, force: true });
   });
   it('多根合并（--dir a,b）：batchId 与标题带上每一批（默认产物名不许只剩第一批）', async () => {

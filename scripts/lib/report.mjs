@@ -201,6 +201,107 @@ export function curveComposition(records) {
 }
 
 /**
+ * 逐档合并（**版本视角**）：把「同一个 Rapfi 档位」的全部对局合成一个数 ——「这一档强多少」看这张表。
+ *
+ * 与 §2 曲线的分工：曲线上每一行是 `rapfi||<ms>` **自己**的得分（Elo/ΔElo 也按 Rapfi 身份排，方向容易读反），
+ * 本表换成**版本侧**得分（= 1 − Rapfi 侧，和棋半分），并把该档的对手集与各对手局数一并打出。
+ * 只收「一侧是 `rapfi||<ms>`、另一侧是 `official|…` 版本」的对局：版本互殴（`vorder1`）没有档位、
+ * Rapfi 互殴（L3）没有版本侧，两者都不进表。
+ *
+ * 为什么组成要连**每对手局数**一起比：合并值是「该档全部对局合成的一个数」，某版只跑了一半局数同样会把
+ * 合并值带偏（2026-10-05 L4 实测：`@7000` 80 局里缺 `v14-live3-fresh`，`2000 → 7000` 的 −19.8 pt 里混着组成差异）。
+ */
+export function levelTable(records) {
+  const byLevel = new Map();
+  for (const r of records) {
+    const mb = /^rapfi\|\|(\d+)$/.exec(r.black);
+    const mw = /^rapfi\|\|(\d+)$/.exec(r.white);
+    if (!mb && !mw) continue; // 与 Rapfi 无关
+    if (mb && mw) continue; // Rapfi 互殴（L3）
+    const opp = mb ? r.white : r.black;
+    if (typeof opp !== 'string' || !opp.startsWith('official|')) continue; // 对手不是我们的版本
+    const thinkMs = Number((mb || mw)[1]);
+    const score = mb ? 1 - r.blackScore : r.blackScore; // 版本侧得分
+    if (!byLevel.has(thinkMs)) {
+      byLevel.set(thinkMs, { thinkMs, identity: `rapfi||${thinkMs}`, games: 0, w: 0, d: 0, l: 0, opps: new Map() });
+    }
+    const L = byLevel.get(thinkMs);
+    L.games += 1;
+    if (score === 1) L.w += 1;
+    else if (score === 0.5) L.d += 1;
+    else if (score === 0) L.l += 1;
+    L.opps.set(opp, (L.opps.get(opp) || 0) + 1);
+  }
+  const levels = [...byLevel.values()]
+    .sort((a, b) => a.thinkMs - b.thinkMs)
+    .map((L) => {
+      const hits = L.w + L.d / 2;
+      const rate = L.games ? hits / L.games : null;
+      return {
+        thinkMs: L.thinkMs,
+        identity: L.identity,
+        games: L.games,
+        w: L.w,
+        d: L.d,
+        l: L.l,
+        hits,
+        rate,
+        ci: wilson(hits, L.games),
+        rapfiRate: rate == null ? null : 1 - rate,
+        opps: [...L.opps.entries()].map(([id, games]) => ({ id, games })).sort((a, b) => (a.id < b.id ? -1 : 1)),
+      };
+    });
+  const deltas = [];
+  for (let i = 1; i < levels.length; i += 1) {
+    const a = levels[i - 1];
+    const b = levels[i];
+    deltas.push({
+      fromMs: a.thinkMs,
+      toMs: b.thinkMs,
+      delta: (b.rate ?? 0) - (a.rate ?? 0),
+      overlap: a.ci && b.ci ? a.ci.lo <= b.ci.hi && b.ci.lo <= a.ci.hi : null,
+    });
+  }
+  const shape = (l) => l.opps.map((o) => `${o.id}:${o.games}`).join('\u0000');
+  const distinct = new Set(levels.map(shape));
+  return { levels, deltas, consistent: levels.length <= 1 ? true : distinct.size === 1 };
+}
+
+/** §2 里的「逐档合并」块：表 + 相邻档读数 + 组成一致性（不一致就不许连曲线）。 */
+export function levelTableBlock(model) {
+  const t = levelTable(model.records || []);
+  if (t.levels.length === 0) return [];
+  const out = [];
+  out.push('');
+  out.push('**逐档合并（版本视角）**：每档 = 该档全部对局合成一个数 ——「这一档强多少」看这张表（100 局时半宽 ≈±10 pt）。');
+  out.push('');
+  out.push('| Rapfi 档 | 局数 | 版本侧 胜–和–负 | 版本侧得分率 | Wilson 95% | Rapfi 侧得分率 | 对手集（局数） |');
+  out.push('| --- | --- | --- | --- | --- | --- | --- |');
+  for (const l of t.levels) {
+    out.push(`| ${l.thinkMs} ms | ${l.games} | ${l.w}–${l.d}–${l.l} | ${fmtPt(l.rate)} | ` +
+      `${l.ci ? `[${fmtPt(l.ci.lo)}–${fmtPt(l.ci.hi)}]` : '—'} | ${fmtPt(l.rapfiRate)} | ` +
+      `${l.opps.length} 个：${l.opps.map((o) => `${shortOpp(o.id)}×${o.games}`).join('、')} |`);
+  }
+  if (t.deltas.length) {
+    out.push('');
+    out.push('- 相邻档（版本侧）：' + t.deltas.map((d) => `${d.fromMs} → ${d.toMs} ${fmtSigned(d.delta)}` +
+      `${d.overlap === true ? '（Wilson 重叠）' : d.overlap === false ? '（Wilson 不重叠）' : ''}`).join('、') + '。');
+    const overlapN = t.deltas.filter((d) => d.overlap === true).length;
+    out.push(`- 读数（与 §1/§4 同一条纪律）：**跨档不是配对比较** ⇒ 不做显著性检验；本表 ${t.deltas.length} 对相邻档里 ` +
+      `**${overlapN} 对 Wilson 重叠**，重叠的那些只能写「不许说变了」。`);
+  }
+  if (t.levels.length > 1) {
+    if (t.consistent) {
+      out.push('- ✓ 组成一致：各档的「对手 × 局数」完全相同 ⇒ 档间差可以读成档位效应。');
+    } else {
+      out.push('- ⚠ **各档组成不同 ⇒ 此刻不许把档位合并值连成一条曲线**（各档的「对手 × 局数」见上表）：' +
+        '落差里混着组成差异，不是纯档位效应；等每档补齐成同一组对手 × 同样局数再读。');
+    }
+  }
+  return out;
+}
+
+/**
  * 开局分层表（§7 第 ④ 项）：按开局分组，每组给一张配对矩阵。
  * `openingOf(payload)` 由调用侧提供 —— 开局键在 `events.jsonl` 的 `game-start` 事件里，
  * 不在棋谱 payload 上（逐手 meta 只有 `opening: true` 标出「这几手是开局」）。
@@ -796,6 +897,7 @@ export function reportMarkdown(model) {
       }
     }
   }
+  out.push(...levelTableBlock(model));
   out.push('');
 
   out.push('## 3 成本表（战术层与模型往返分开，m07650/m08110 必报项）');
