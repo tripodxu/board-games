@@ -258,6 +258,11 @@ node scripts/experiment-ladder.mjs --ladder L2 --batch <id> --games 20 --poll 60
    只有 `--expect-backup` 才要求兜底 key 存在；日志只报来源（`official←file:/root/.jev-key`），不打印 key。
 6. **规模与时长**看阶梯计划 §7 的四条阶梯表；`--games` 必须偶数（`--allow-odd` 才放行）；
    `--max-rounds N` 是**截断本次编排**，不是「先跑 N 轮、之后再续」。
+   **加量**（把某批的样本翻倍以提高分辨率）**不需要重跑已完成的局**：同一个 `--batch` 把 `--games` 翻倍即可 ——
+   形状变了编排会「以本次计划重建」，但 `withReusedTags()` 只按**轮号**复用 tag ⇒ worker 的逐局 checkpoint 命中、
+   日志打 `game-N 已完成（ok），跳过`，只真跑新增的那一半（本机 mock 双臂实测：2→4 局只跑 game-3/4，
+   `games.jsonl` 4 行 4 个不同 `gameUid`）。前提：**别换 `--batch`**、本地 `.work/remote/<id>/ladder.json` 或远端 `plans/` 至少留一处
+   （tag 从这两处沿用）；代价是**全局**的 —— 想只给某几对加量只能 `--identities` 另开批次（新批次 = 新 tag = 从头跑）。
 7. **产物与拉回**：box `<batch>/{ladder.json,lines.txt,plans/,logs/,round-N/{games.jsonl,progress.json,
    round-summary.json,events.jsonl,games/,checkpoint/}}`；`node scripts/experiment-batch.mjs pull --batch <id>`
    （位置参数会被忽略，必须写 `--batch`）；桶推送是可选（缺凭据只告警、不阻断）。
