@@ -170,6 +170,37 @@ export function curveDeltas(curve) {
 }
 
 /**
+ * 曲线各档的**对手组成**（§2 的读数前提）。
+ *
+ * 为什么必须印：档位行（Elo / ΔElo / 得分率）是把该档**全部对局合成一个数** ——
+ * 各档对手集不同时，档间差里混着「对手换了」这个组成差异，不是纯档位效应。
+ * 2026-10-05 L4 实测：`@7000` 的 80 局里 `v14-live3-fresh` 还没跑到（它是最强的一版），
+ * 于是 `2000 → 7000` 的 −19.8 pt 里混着「少了 v14」；集合补齐后才可横比。
+ */
+export function curveComposition(records) {
+  const byLevel = new Map();
+  for (const r of records) {
+    for (const [id, opp] of [[r.black, r.white], [r.white, r.black]]) {
+      if (typeof id !== 'string' || !id.startsWith('rapfi|')) continue;
+      if (id === opp) continue; // 同身份镜像局不构成「对手集」
+      if (!byLevel.has(id)) byLevel.set(id, new Map());
+      const m = byLevel.get(id);
+      m.set(opp, (m.get(opp) || 0) + 1);
+    }
+  }
+  const levels = [...byLevel.entries()]
+    .map(([identity, m]) => ({
+      identity,
+      thinkMs: Number(/\|(\d+)$/.exec(identity)?.[1] ?? NaN),
+      opps: [...m.keys()].sort(),
+      games: [...m.values()].reduce((n, x) => n + x, 0),
+    }))
+    .sort((x, y) => x.thinkMs - y.thinkMs);
+  const distinct = new Set(levels.map((l) => l.opps.join('\u0000')));
+  return { levels, consistent: distinct.size <= 1 };
+}
+
+/**
  * 开局分层表（§7 第 ④ 项）：按开局分组，每组给一张配对矩阵。
  * `openingOf(payload)` 由调用侧提供 —— 开局键在 `events.jsonl` 的 `game-start` 事件里，
  * 不在棋谱 payload 上（逐手 meta 只有 `opening: true` 标出「这几手是开局」）。
@@ -754,6 +785,15 @@ export function reportMarkdown(model) {
       const thin = curve.filter((p) => p.row.games < 50).map((p) => `${p.thinkMs} ms`);
       out.push(`- 每档样本：${curve.map((p) => `${p.thinkMs} ms ${p.row.games} 局`).join('、')}；` +
         `${thin.length ? `样本 < 50 局的档：${thin.join('、')}` : '没有样本 < 50 局的档'}。`);
+      /* 组成一致性：档位行是「该档全部对局合成的一个数」，对手集不同就不等于档位效应。 */
+      const comp = curveComposition(model.records);
+      if (comp.levels.length > 1 && !comp.consistent) {
+        out.push('- ⚠ **各档对手集不同 ⇒ 档间差里混着组成差异，横比前先读这行**：' +
+          comp.levels.map((l) => `${l.thinkMs} ms（${l.games} 局）打过 ${l.opps.length} 个对手：${l.opps.join('、')}`).join('；') +
+          '。档位合并值与 ΔElo 是把该档全部对局合成一个数，对手集不同时两档之间的差**不等于**档位效应；');
+        out.push('  等每档的对手集补齐（同一组对手 × 同样的局数）再读曲线 —— 这条纪律 2026-10-05 由 L4 的 ' +
+          '`@7000` 缺 `v14-live3-fresh` 实测得出，见 `docs/plans/2026-10-05-rapfihi1-rapfi-high-think.md` §3.3。');
+      }
     }
   }
   out.push('');

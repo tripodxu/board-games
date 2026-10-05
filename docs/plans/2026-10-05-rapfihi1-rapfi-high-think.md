@@ -55,7 +55,10 @@
 > **组成一致性（2026-10-05 加，必须在读曲线之前看）**：跨档合并值只有「每档出场的版本集合相同」时才可比。
 > 7/10 轮时的实况：`@7000`（n=80）缺 `v14-live3-fresh`、`@10000`（n=60）缺 `v13-pressure-gate` 与 `v14-live3-fresh`
 > ⇒ 那时 `2000 → 7000` 的落差里混着「少了 v14」这个**组成差异**，不是纯档位效应（v14 自己的三档是 95.0/82.5/75.0，
-> 它一缺，高档合并值被压低）。`.work/l4-fill.mjs` 现在会自己打这条警告；10 轮全收尾后每档才是同一组 5 版 × 20 局 = 100 局。
+> 它一缺，高档合并值被压低）。`.work/l4-fill.mjs` 现在会自己打这条警告；**同一份警告也已进正式报表** ——
+> `scripts/lib/report.mjs` 的 `curveComposition()` 会在 §2 曲线下方逐档点名「局数 + 对手集」，集合不一致时印出
+> 「各档对手集不同 ⇒ 档间差里混着组成差异」，所以 `.work/rapfihi1-report.md` / `.work/l4-final-report.md` 自带这行，不用手动核对。
+> 10 轮全收尾后每档才是同一组 5 版 × 20 局 = 100 局，那时这行自动消失。
 > 同一条纪律也解释了为什么 7/10 轮时「`2000 → 7000` Wilson 不重叠」会随样本增长翻面：那一刻 `@7000` 只有 60 局
 > （51.7%，上界 63.8%）而 `@2000` 是 64.1% —— 只差 0.3 pt 的擦边，补到 80 局就变回重叠 ⇒ **不许把擦边不重叠当结论**。
 
@@ -139,3 +142,8 @@
 | `.work/remote/rapfihi1/round-<i>/` | 每轮 `games.jsonl` / `games/*.json` / `round-summary.json` / `events.jsonl`（box 端同步而来） |
 | `.work/rapfihi1-report.md` · `.work/rapfihi1-report.json` | 三批合并报表（本批 + `l2n1` + `vorder1`） |
 | `.work/rapfihi1-loss.md` · `.work/rapfihi1-loss.json` | 规则 11 败局解释（纯本批） |
+| `.work/rapfihi1-loss2.json` | 同上，2026-10-05 判据修正（一手成五 ∨ VCF）后的复算 |
+| `.work/l4-fill.mjs` | §3.2/§3.3 填表素材（只读探针）：档位合并 + 逐版 × 档位 + 相邻档单调性 + **组成一致性检查** |
+| `.work/loss-vct.json` · `.work/loss-vct-deep.json` | 一次性 VCT 级追因探针（108 局；窗口 tail 6/plies 9 与 tail 8/plies 13 两版） |
+| `.work/rapfihi1-regress/round-<i>.json` | 高思考档逐手回放回归（每轮抽 2 局，层一致率与接管落点） |
+| box：`/root/board-games/.work/remote/rapfihi1/` | 原始产物（桶凭据未配，暂不推送） |

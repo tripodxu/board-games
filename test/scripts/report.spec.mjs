@@ -12,7 +12,7 @@ import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
   collectCost, colorCells, colorSplit, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
   openingRows, pairTable, quantiles, screenVersions, versionMatrix, versionMatrixBlock,
-  rafiCurve, reportMarkdown, significance, curveDeltas,
+  rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
 
@@ -115,6 +115,25 @@ describe('pairTable / rafiCurve / openingRows / significance', () => {
     expect(curveDeltas(rafiCurve([{ identity: 'rapfi||500', rating: 1500 },
       { identity: 'rapfi||1000', rating: 1510 }]))[0].overlap).toBeNull(); // 缺 btLo/btHi ⇒ 不判
   });
+  it('曲线组成：逐档对手集 + 一致性（同身份镜像局不算对手）', () => {
+    const comp = curveComposition([
+      { black: 'rapfi||500', white: 'official|v14-live3-fresh|0', blackScore: 1 },
+      { black: 'official|v11-vct|0', white: 'rapfi||500', blackScore: 0 },
+      { black: 'rapfi||500', white: 'rapfi||500', blackScore: 1 },       // 镜像：不计入对手集
+      { black: 'official|v14-live3-fresh|0', white: 'official|v11-vct|0', blackScore: 1 }, // 与 Rapfi 无关
+    ]);
+    expect(comp.levels).toHaveLength(1);
+    expect(comp.levels[0]).toMatchObject({ identity: 'rapfi||500', thinkMs: 500, games: 2 });
+    expect(comp.levels[0].opps).toEqual(['official|v11-vct|0', 'official|v14-live3-fresh|0']);
+    expect(comp.consistent).toBe(true);   // 只有一档 ⇒ 谈不上不一致
+    const two = curveComposition([
+      { black: 'rapfi||500', white: 'official|v14-live3-fresh|0', blackScore: 1 },
+      { black: 'rapfi||7000', white: 'official|v11-vct|0', blackScore: 1 },
+    ]);
+    expect(two.levels.map((l) => l.thinkMs)).toEqual([500, 7000]);
+    expect(two.consistent).toBe(false);
+    expect(curveComposition([])).toEqual({ levels: [], consistent: true });
+  });
   it('开局分层按 events 给的开局键分组；没有键就是空（= 报告写「未启用开局库」）', () => {
     const g1 = game({ uid: '1' });
     const g2 = game({ uid: '2' });
@@ -192,6 +211,29 @@ describe('reportMarkdown：六节齐全', () => {
     expect(md).toContain('相邻档差：500→2000：+40.0（区间重叠）');
     expect(md).toContain('1 对区间重叠');
     expect(md).toContain('每档样本：500 ms 60 局、2000 ms 60 局；没有样本 < 50 局的档');
+    expect(md).not.toContain('各档对手集不同'); // base() 只有一档对手 ⇒ 组成一致
+  });
+  it('各档对手集不同时印组成警告（档位差里混着「对手换了」，L4 实测）', () => {
+    const m = base();
+    m.rows = [
+      { identity: 'rapfi||500', rating: 1480, games: 4, w: 2, d: 0, l: 2, rate: 0.5,
+        ci: { lo: 0.15, hi: 0.85 }, halfPt: 35, enough: false, btDelta: 0, btLo: -30, btHi: 30, btWidth: 60, btDraws: 2 },
+      { identity: 'rapfi||7000', rating: 1520, games: 2, w: 0, d: 1, l: 1, rate: 0.25,
+        ci: { lo: 0.03, hi: 0.65 }, halfPt: 35, enough: false, btDelta: 40, btLo: 0, btHi: 80, btWidth: 80, btDraws: 2 },
+    ];
+    m.records = [
+      { black: 'official|v14-live3-fresh|0', white: 'rapfi||500', blackScore: 1 },
+      { black: 'rapfi||500', white: 'official|v14-live3-fresh|0', blackScore: 0 },
+      { black: 'official|v11-vct|0', white: 'rapfi||500', blackScore: 1 },
+      { black: 'rapfi||500', white: 'official|v11-vct|0', blackScore: 0 },
+      { black: 'official|v11-vct|0', white: 'rapfi||7000', blackScore: 1 },   // v14 这一档还没跑到
+      { black: 'rapfi||7000', white: 'official|v11-vct|0', blackScore: 0.5 },
+    ];
+    const md = reportMarkdown(m);
+    expect(md).toContain('各档对手集不同');
+    expect(md).toContain('500 ms（4 局）打过 2 个对手：official|v11-vct|0、official|v14-live3-fresh|0');
+    expect(md).toContain('7000 ms（2 局）打过 1 个对手：official|v11-vct|0');
+    expect(md).toContain('不等于**档位效应');
   });
   it('开局分层非空时印每个开局的配对行', () => {
     const m = base();
