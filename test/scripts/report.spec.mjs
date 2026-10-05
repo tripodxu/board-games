@@ -12,7 +12,7 @@ import {
   DEFAULT_ANCHOR, MIN_GAMES, REPORT_VERSION,
   collectCost, colorCells, colorSplit, costByLevel, costByLevelBlock, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
   openingRows, pairTable, quantiles, screenVersions, versionMatrix, versionMatrixBlock,
-  rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas, levelTable, levelTableBlock,
+  rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas, levelPower, levelTable, levelTableBlock,
 } from '../../scripts/lib/report.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
 
@@ -219,6 +219,23 @@ describe('pairTable / rafiCurve / openingRows / significance', () => {
     expect(skew.consistent).toBe(false);
     expect(skew.levels[1].opps).toEqual([{ id: 'official|v10-live3|0', games: 1 }]);
   });
+  it('levelPower：给「要多少局/档」的量级（按观测率估算，扫描到 cap 就报 null）', () => {
+    const lv = (level, n, rate) => ({ thinkMs: level, games: n, rate });
+    /* 100% vs 0%：10 局就分得开 */
+    const far = levelPower([lv(500, 10, 1), lv(1000, 10, 0)]);
+    expect(far).toHaveLength(1);
+    expect(far[0]).toMatchObject({ fromMs: 500, toMs: 1000, needN: 10, atTarget: true });
+    /* L4 实测形状：73.5%（100 局）vs 53.8%（80 局） ⇒ 每档 ~95 局就够 */
+    const l4 = levelPower([lv(2000, 100, 0.735), lv(7000, 80, 0.538)]);
+    expect(l4[0].needN).toBeGreaterThan(80);
+    expect(l4[0].needN).toBeLessThan(120);
+    expect(l4[0].atTarget).toBe(true);            // 目标 200 局/档够
+    /* 差得少 ⇒ 扫到 cap 也分不开（1 pt 的差约需 3.8 万局/档，远超 cap） */
+    const close = levelPower([lv(1000, 100, 0.51), lv(2000, 100, 0.5)]);
+    expect(close[0].needN).toBeNull();
+    expect(close[0].atTarget).toBe(false);
+    expect(levelPower([lv(500, 10, 1)])).toEqual([]);
+  });
   it('逐档合并块：表 + 相邻档读数 + 组成两态（一致打 ✓、不一致印 ⚠）', () => {
     const even = levelTableBlock({ records: [
       { black: 'rapfi||500', white: 'official|v10-live3|0', blackScore: 0 },
@@ -229,11 +246,14 @@ describe('pairTable / rafiCurve / openingRows / significance', () => {
     expect(md).toContain('| 500 ms | 1 | 1–0–0 | 100.0% |');
     expect(md).toContain('- 相邻档（版本侧）：500 → 1000 +0.0pt');
     expect(md).toContain('✓ 组成一致');
+    expect(md).toContain('要分开相邻档要多少局（**按观测率估算**，不是检验）');
+    expect(md).toContain('500 → 1000 约需 **>20000 局/档（当前落差下基本分不开）**');   // 两档同为 100% ⇒ 分不开
     const skewed = levelTableBlock({ records: [
       { black: 'rapfi||500', white: 'official|v10-live3|0', blackScore: 0 },
       { black: 'rapfi||7000', white: 'official|v11-vct|0', blackScore: 0 },
     ] }).join('\n');
     expect(skewed).toContain('⚠ **各档组成不同 ⇒ 此刻不许把档位合并值连成一条曲线**');
+    expect(skewed).toContain('本表组成不一致 ⇒ 这些 n 基于被污染的落差，只当量级看');
     expect(levelTableBlock({ records: [] })).toEqual([]);
   });
   it('开局分层按 events 给的开局键分组；没有键就是空（= 报告写「未启用开局库」）', () => {
@@ -750,6 +770,8 @@ describe('CLI：闸门与落盘', () => {
     expect(model.levelTable.levels.map((l) => [l.thinkMs, l.games, l.w, l.l, l.rate]))
       .toEqual([[500, 2, 1, 1, 0.5], [2000, 2, 1, 1, 0.5]]);
     expect(model.levelTable.consistent).toBe(true);
+    expect(model.levelPower).toHaveLength(1);        // @500 与 @2000 同为 50% ⇒ 分不开
+    expect(model.levelPower[0]).toMatchObject({ fromMs: 500, toMs: 2000, needN: null, atTarget: false });
     fs.rmSync(root, { recursive: true, force: true });
   });
   it('多根合并（--dir a,b）：batchId 与标题带上每一批（默认产物名不许只剩第一批）', async () => {

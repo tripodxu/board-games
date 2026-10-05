@@ -15,7 +15,7 @@
  *   --dir <path[,path]> 产物根目录（可多个，逗号分隔）
  *   --out <path>        markdown 落盘路径（缺省 .work/<batch>-report.md；`-` 表示不落盘）
  *   --json <path>       另写一份机器可读 JSON（同一次报告的全部数字，含 `records` 与
- *                       `versionMatrix` / `curveComposition` / `levelTable` / `costByLevel`
+ *                       `versionMatrix` / `curveComposition` / `levelTable` / `levelPower` / `costByLevel`
  *                       四块判读结论 —— 便于下游点名而不必重算）
  *   --anchor <identity> BT 零点（缺省 rapfi||500；不在数据里时退化成均值居中）
  *   --bootstrap <n>     BT bootstrap 次数（缺省 400；0 = 只算点估计）
@@ -35,7 +35,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { DEFAULT_ANCHOR, gameRecord, rankTable } from './lib/batch-elo.mjs';
-import { REPORT_VERSION, collectCost, costByLevel, costRow, curveComposition, levelTable, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
+import { REPORT_VERSION, collectCost, costByLevel, costRow, curveComposition, levelPower, levelTable, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
 
 /** 用法错/读不到数据：抛 `{exitCode}`，由入口转成 exit code（可被单测直接断言，不杀测试进程）。 */
 function die(msg, code = 2) {
@@ -257,14 +257,16 @@ export async function reportMain(argv = process.argv.slice(2)) {
   }
   if (jsonOut) {
     fs.mkdirSync(path.dirname(jsonOut), { recursive: true });
-    /* `versionMatrix` / `curveComposition` / `levelTable` 进 JSON 是为了让下游脚本**点名**判读结论
+    /* `versionMatrix` / `curveComposition` / `levelTable` / `levelPower` 进 JSON 是为了让下游脚本**点名**判读结论
        （markdown 里只写「另有 N 对方向一致」这种计数），不必再从 `records` 重算一遍。 */
+    const levels = levelTable(records);
     fs.writeFileSync(jsonOut, JSON.stringify({
       ...model, games: undefined, records,
       versionMatrix: versionMatrix(records),
       curveComposition: curveComposition(records),
-      levelTable: levelTable(records),
-    costByLevel: costByLevel(payloads),
+      levelTable: levels,
+      levelPower: levelPower(levels.levels),
+      costByLevel: costByLevel(payloads),
     }, null, 2) + '\n');
   }
 

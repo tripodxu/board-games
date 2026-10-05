@@ -348,6 +348,47 @@ export function levelTable(records) {
   return { levels, deltas, consistent: levels.length <= 1 ? true : distinct.size === 1 };
 }
 
+/**
+ * 「要多少局才能分开相邻档」的量级估算（**决策用，不是检验**）。
+ *
+ * 口径：假设两档的真实得分率就等于当前观测值、两档各拿**同样** n 局，用报表同款 Wilson
+ * （`wilson(hits, n)`，和棋记 0.5）判「区间不相交」；n 从 10 起按 `step` 扫到 `cap`，
+ * 返回每对相邻档的最小 n（扫不到就是 `null`）。
+ *
+ * 为什么做成估算而不是检验：跨档不是配对比较（对手集、开局都不同），报表 §1/§4 的纪律是
+ * 「跨档不做显著性检验」。这里只回答「继续加样本能不能买到分辨率、大概要买多少」，
+ * 所以读数必须连「观测率=真实率」这个假设一起说。
+ */
+export function levelPower(levels, opts = {}) {
+  const { targetN = 200, cap = 20000, step = 5 } = opts;
+  const disjoint = (pa, pb, n) => {
+    const a = wilson(Math.round(pa * n), n);
+    const b = wilson(Math.round(pb * n), n);
+    if (!a || !b) return false;
+    return a.hi < b.lo || b.hi < a.lo;
+  };
+  const out = [];
+  for (let i = 1; i < levels.length; i += 1) {
+    const A = levels[i - 1];
+    const B = levels[i];
+    if (A.rate == null || B.rate == null) continue;
+    let needN = null;
+    for (let n = 10; n <= cap; n += step) {
+      if (disjoint(A.rate, B.rate, n)) { needN = n; break; }
+    }
+    out.push({
+      fromMs: A.thinkMs,
+      toMs: B.thinkMs,
+      delta: B.rate - A.rate,
+      needN,
+      cap,
+      atTarget: disjoint(A.rate, B.rate, targetN),
+      targetN,
+    });
+  }
+  return out;
+}
+
 /** §2 里的「逐档合并」块：表 + 相邻档读数 + 组成一致性（不一致就不许连曲线）。 */
 export function levelTableBlock(model) {
   const t = levelTable(model.records || []);
@@ -370,6 +411,13 @@ export function levelTableBlock(model) {
     const overlapN = t.deltas.filter((d) => d.overlap === true).length;
     out.push(`- 读数（与 §1/§4 同一条纪律）：**跨档不是配对比较** ⇒ 不做显著性检验；本表 ${t.deltas.length} 对相邻档里 ` +
       `**${overlapN} 对 Wilson 重叠**，重叠的那些只能写「不许说变了」。`);
+    const pw = levelPower(t.levels);
+    if (pw.length) {
+      out.push('- 要分开相邻档要多少局（**按观测率估算**，不是检验）：' + pw.map((p) =>
+        `${p.fromMs} → ${p.toMs} 约需 **${p.needN == null ? `>${p.cap} 局/档（当前落差下基本分不开）` : `${p.needN} 局/档`}**`).join('；') +
+        `。假设「观测率就是真实率、两档同样局数」，只用来估「加样本能买到什么分辨率」` +
+        (t.consistent ? '。' : '；本表组成不一致 ⇒ 这些 n 基于被污染的落差，只当量级看。'));
+    }
   }
   if (t.levels.length > 1) {
     if (t.consistent) {
