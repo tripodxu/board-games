@@ -27,6 +27,11 @@
 - **中断恢复**：同一条命令重跑即续跑 —— 「这轮跑没跑」由远端 `games.jsonl` 行数 ≥ 局数裁决，本地 `ladder.json` 只是缓存，
   `--force` 才全部重跑（`scripts/experiment-ladder.mjs:18-19`、`resumeDecisions()` 在 `:552`）。
   所以某一轮 `failed`（网络/SSH 抖动）不需要重跑整批：原命令再来一次，已完成轮按行数跳过并补拉。
+- **加量（提高分辨率）不会重放已跑的局**：`--games 20 → 40` 会让本地 `ladder.json` 形状不符，编排会打印
+  「以本次计划重建」，但 `withReusedTags()` 只按**轮号**复用 tag（不要求 `games` 相同）⇒ worker 的逐局 checkpoint
+  （`checkpoint/round-<r>-game-<n>.json`）对 tag 相同的局返回 `skip` 并计入 summary，只有第 21–40 局真跑。
+  前提：同一个 `--batch`（= 同一批 tag）+ 本地 `.work/remote/rapfihi1/ladder.json` 不丢。代价是**全局**的 ——
+  `--games 40` 会让 10 轮各补 20 局（又约 13–17 h），不能只挑 `@7000`/`@10000` 那几轮（想只跑一段只能 `--identities` 另开批次）。
 - **档位真的传下去了（round-1 产物复核）**：身份 → 逐手入参的链路是
   `scripts/experiment-worker.mjs:670-671`（`rapfiThinkMs: s.black/white.thinkMs`）→ `scripts/experiment-worker.mjs:711` → `src/core/jev/client.ts:550` → `src/core/jev/rapfi.ts:240`（`_send('INFO timeout_turn ' + thinkMs)`）。
   round-1 的 10 局里 Rapfi 执白、`whiteThink=7000`；另 10 局 Rapfi 执黑（`blackChannel=rapfi`）⇒ 换色双跑、档位随身份走。
@@ -148,6 +153,10 @@
 1. **是否继续抬 Rapfi 时间**：取决于 §3.2 的单调性是否被 Wilson 区间排除。十轮收尾后每档都是**同样组成**
    （5 版 × 20 = 100 局），报表 §2 的「各档对手集不同」警告会自动消失 —— 那时相邻档的区间对比才是可引用的；
    本次真正新增的高档对比只有 `@7000 → @10000`（`@500/@1000/@2000` 是 L2 已有的）。
+   **`@10000` 已经是产品里的上限**（`src/ui/panels/options.ts:37-42` 的档位表到 `['10000','10s']` 为止，中间还有 `3000`/`5000` 两档没跑）
+   ⇒ m08704 的「提高思考时间」这一步到此为止：再往上只能靠**加样本提高分辨率**（把每档从 20 局加到 40 局，
+   同一批 `--games 40` 即可，已跑的 20 局由 checkpoint 跳过、不重放；代价是 10 轮各补 20 局 ≈13–17 h），
+   或换新机制（v15，仍暂停）。若只想把分辨率投在最高档，用 `--identities 'official|v14-live3-fresh:0,official|v13-pressure-gate:0' --games 40` 另开批次更省（新批次 = 新 tag，会从头跑）。
 2. **版本排序 A/B**：仍是 vorder1 §7 那条待批项（A 推荐：接受不可分，把 box 时间投给曲线；B：只堆 `v11 vs v14` 100 局）。
    第二把尺子（§3.7）只给出两对方向一致：`v11 > v10`（五档全同向）与 `v14 ≥ v13`（含一个并列档）；
    vorder1 那个环 `v11>v13>v14>v11` 的「对角」正是 **`v11 vs v14`**（第二把尺子上它是翻转对）⇒ B 要堆的就是这一对。

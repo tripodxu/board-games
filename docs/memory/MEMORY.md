@@ -21,6 +21,20 @@
 
 ---
 
+## 2026-10-05 · 改 `--games` 加量跑同一批次：tag 仍沿用、已跑的局由 checkpoint 跳过，不会重放
+
+- **机制**（2026-10-05 逐行核过）：`scripts/lib/ladder.mjs:405-411 stateMatchesLadder()` 要求轮数/轮号/`label`/**`games`** 全同，
+  所以 `--games 20 → 40` 会让本地 `ladder.json` 形状不符，`scripts/experiment-ladder.mjs:495-497` 会打印
+  「以本次计划重建」；但 `withReusedTags()`（`scripts/lib/ladder.mjs:420-429`，在 CLI `:487` 的 `!force` 分支里**先于**形状重建执行）
+  **只按轮号匹配** `oldState.rounds.find(x => x.round === r.round && x.tag)`，不要求 `games` 相同
+  ⇒ tag 沿用 ⇒ `scripts/experiment-worker.mjs:328-339 ckptAction(prev, tag)` 对 `tag` 相同的局返回 `skip`
+  ⇒ 前 20 局从 checkpoint 直接计入 summary（`:226` 注释：`ok` 与 `skipped` 都要计），只有第 21–40 局真跑。
+- **前提与风险**：① 必须用**同一个 `--batch`**（换批次 = 换 tag = 整轮重放）；② 本地 `.work/remote/<批次>/ladder.json`
+  不能丢（丢了就退到远端 `plans/round-N.json` 的 tag，再不行才新生成）；③ tag 若真的变了，`experiment-ladder.mjs:557-565`
+  会把旧产物挪到 `stale-round-N-<旧tag>/`，否则 W/D/L 会把两次尝试相加；④ 形状变化是**全局的** —— `--games 40` 会让每轮都补 20 局，
+  不能只挑高档那几轮（想只跑一段只能用 `--identities` 另开批次）。
+- checkpoint 是**逐局一个文件**：`<plan.outDir>/checkpoint/round-<r>-game-<n>.json`。
+
 ## 2026-10-05 · 跨档/跨批合并值先比**组成**：出场的身份集合不同，落差里就混着组成差异
 
 - **事实**：L4 跑到 7/10 轮时「`@7000` 比 `@2000` 掉 19.8 pt」是不可引用的 —— `@7000` 那一档（n=80）

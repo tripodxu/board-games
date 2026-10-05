@@ -383,6 +383,13 @@ describe('断点状态', () => {
     // 本地状态没了但远端 plan 还在 ⇒ 用远端的
     expect(withReusedTags(fresh, null, { 1: 'exp-20261004020000-lad1-r1' }).rounds[0].tag)
       .toBe('exp-20261004020000-lad1-r1');
+    // 加量（--games 翻倍）：形状不同（编排会重建状态），但 tag 按**轮号**沿用 ⇒ checkpoint 仍命中、旧局不重放
+    const bigger = buildLadder({ ladderId: 'lad1', pairs: roundRobin(['rapfi::500', 'rapfi::1000']), games: 8, now: NOW });
+    expect(stateMatchesLadder(newLadderState(fresh), bigger)).toBe(false);
+    const topped = withReusedTags(bigger, oldState, {});
+    expect(topped.rounds[0].tag).toBe('exp-20261004010000-lad1-r1');
+    expect(topped.rounds[0].games).toBe(8);
+    expect(topped.rounds[0].plan.games).toBe(8);
   });
   it('tag 变了才把旧产物挪开（staleCleanups），挪开的名字不会被 round-* 扫到', () => {
     const l = buildLadder({ ladderId: 'lad1', pairs: roundRobin(['rapfi::500', 'rapfi::1000']), games: 4, now: NOW });
