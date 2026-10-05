@@ -21,6 +21,19 @@
 
 ---
 
+## 2026-10-05 · 归档棋谱里的 `channel` 是 `'rapfi'`（不是 `'rapfi||500'`）；判定写错会静默丢掉 Rapfi 执黑的整半局
+
+- **事实**：`games.jsonl` 每行的 `blackChannel`/`whiteChannel` 是**通道名**（`'official'` / `'rapfi'` / `'human'` / `'mock'`），
+  档位在另一个字段（`blackThink`/`whiteThink`）；`'rapfi||500'` 那种形状是 `identityOf()` 拼出来的**身份串**，只出现在报表/分身层面。
+  探针里写 `channel.startsWith('rapfi|')` ⇒ 恒 false ⇒ **Rapfi 执黑的 10/20 局被静默跳过**，
+  第一版样本 202/420、每格 n 恰好 10（正确是 20）—— 这种「整齐减半」很容易被误读成「这一档只跑了 10 局」。
+- **正确写法**：判定用 `id === 'rapfi' || id.startsWith('rapfi|')`（兼容两种口径），或直接照 `scripts/lib/batch-elo.mjs` 的
+  `identityOf({ channel, tactics, thinkMs })` 先拼身份串再比；`scripts/lib/experiment-*.mjs` 侧同理。
+- **同一条家族**：和棋在归档 payload 里**没有 `winner` 字段**（`undefined`）⇒ 当异常局丢掉会得出「全程零和棋」，
+  权威口径是 `result` 串 `/^和棋(?:（(.+?)）)?\s*$/`（`scripts/lib/batch-elo.mjs:66-76`，与 `src/shared/record-map.ts` `parseResult()` 同形）。
+- **一般化**：分析脚本的样本量出现「整齐的整数倍缩减」时，先怀疑**判定条件恒假**（往往是拿身份串去比通道名），
+  而不是先怀疑数据缺失 —— 静默过滤比报错更难发现。
+
 ## 2026-10-05 · 「顺序一致」不能按整条序**字符串**比对：各对手上可出场的版本集合不同，会判出假的不一致
 
 - **事实**：版本 × 共同对手矩阵的判读句初版拿「各对手上的点估计序」整串比（`orders.every(o => o.order.join(' > ') === head)`），
