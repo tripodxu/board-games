@@ -90,10 +90,13 @@ describe('costByLevel / costByLevelBlock（成本按 Rapfi 固定预算切开）
     game({ uid: 'rafi-rafi', black: 'rapfi', white: 'rapfi', blackThink: 1000, whiteThink: 1000,
       moves: [rafiMove(1, '黑方'), rafiMove(2, '白方')] }),
     game({ uid: 'rafi-mock', black: 'rapfi', white: 'mock', blackThink: 9000, moves: [rafiMove(1, '黑方')] }),
+    /* 同档混进「Rapfi vs mock」（有档位、零上游手）⇒ 局数不许把它算进来（成本分母不能说大） */
+    game({ uid: 'rafi-mock7000', black: 'rapfi', white: 'mock', blackThink: 7000, moves: [rafiMove(1, '黑方')] }),
   ];
-  it('按档位归集上游手：没有 Rapfi / 双方都是 Rapfi 的对局都排除，零上游手的档位不进表', () => {
+  it('按档位归集上游手：没有 Rapfi / 双方都是 Rapfi 的对局都排除，零上游手的档位与局数都排除', () => {
     const { levels, total } = costByLevel(games);
     expect(levels.map((l) => l.thinkMs)).toEqual([500, 7000]);
+    /* @7000 有三局落在该档，只有两局真打了上游（第三局是 Rapfi vs mock）⇒ 局数 2 */
     expect(levels.map((l) => l.games)).toEqual([1, 2]);
     expect(levels.map((l) => l.row.moves)).toEqual([2, 2]);
     /* 往返均值 ÷ 该档固定预算 —— Rapfi 逐手耗时没有落盘，只能说「占预算」 */

@@ -132,10 +132,12 @@ export function costByLevel(games) {
     if (level == null) continue;
     if (!byLevel.has(level)) byLevel.set(level, { thinkMs: level, games: 0, moves: 0, ms: [], tac: [], prov: {} });
     const L = byLevel.get(level);
-    L.games += 1;
+    /* 「局数」只数**真的打了上游**的局：同一档里混进 Rapfi vs mock 那种局时，别把成本的分母说大 */
+    let played = false;
     for (const m of g.moves || []) {
       if (!isUpstreamMove(m)) continue;
       const ai = m.ai || {};
+      played = true;
       for (const b of [L, total]) {
         b.moves += 1;
         if (typeof ai.ms === 'number') b.ms.push(ai.ms);
@@ -143,6 +145,7 @@ export function costByLevel(games) {
         if (ai.prov) b.prov[ai.prov] = (b.prov[ai.prov] || 0) + 1;
       }
     }
+    if (played) L.games += 1;
   }
   const levels = [...byLevel.values()]
     .filter((L) => L.moves > 0) // 该档一局上游手都没打（Rapfi vs mock 之类）⇒ 不进表
