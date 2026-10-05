@@ -24,6 +24,9 @@
   `node scripts/experiment-report.mjs --dir .work/remote/l2n1,.work/remote/vorder1,.work/remote/rapfihi1 --out .work/rapfihi1-report.md --json .work/rapfihi1-report.json`。
   曲线**没有硬编码档位**（`rafiCurve()` 按身份尾段取 ms 升序），两档会自动进表。
 - 败局解释（规则 11）：`node scripts/loss-report.mjs --batch rapfihi1 --json .work/rapfihi1-loss.json`。
+- **中断恢复**：同一条命令重跑即续跑 —— 「这轮跑没跑」由远端 `games.jsonl` 行数 ≥ 局数裁决，本地 `ladder.json` 只是缓存，
+  `--force` 才全部重跑（`scripts/experiment-ladder.mjs:18-19`、`resumeDecisions()` 在 `:552`）。
+  所以某一轮 `failed`（网络/SSH 抖动）不需要重跑整批：原命令再来一次，已完成轮按行数跳过并补拉。
 - **档位真的传下去了（round-1 产物复核）**：身份 → 逐手入参的链路是
   `scripts/experiment-worker.mjs:670-671`（`rapfiThinkMs: s.black/white.thinkMs`）→ `scripts/experiment-worker.mjs:711` → `src/core/jev/client.ts:550` → `src/core/jev/rapfi.ts:240`（`_send('INFO timeout_turn ' + thinkMs)`）。
   round-1 的 10 局里 Rapfi 执白、`whiteThink=7000`；另 10 局 Rapfi 执黑（`blackChannel=rapfi`）⇒ 换色双跑、档位随身份走。
@@ -98,6 +101,9 @@
 - **Rapfi 侧逐手实际耗时没有落盘**（归档 payload 里 `ai.ms` 对 Rapfi 是 `null`）⇒ 与 Rapfi 的时间对比只能用
   **预算上限**（`INFO timeout_turn <ms>`，见 `src/core/jev/rapfi.ts:240`）；不许写成「Rapfi 实际用了 7 s」。
 - 一次 200 局之间的 BT 只能分辨 ~30 Elo（P5 实测），所以「谁更强」仍只写在配对样本上。
+- **与 L2 的可比性（2026-10-05 复核）**：两批的对局设置一致（`topK 3` / `maxPlies 225` / `pauseMs 2500` / `seed 20261004`），
+  且**都不用开局库**（`--openings` 未给）⇒ 跨档的两条限制（对手强度不同、开局形态不受控）在两批之间是同一条，不引入新的不可比因素；
+  但「开局形态不受控」本身没有消除，换色双跑只排掉了先后手。
 - L4 只覆盖 box 上那一个 Rapfi 二进制与固定开局种子；换二进制/换开局集都要重跑。
 
 ## 6 对下一步的硬性影响
