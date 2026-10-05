@@ -20,7 +20,8 @@ function game(over = {}) {
     ...over,
   };
 }
-const lossWith = (count, plies = []) => game({ result: 'loss', plies: 60, lastLayer: 'block', suffix: { count, plies } });
+const lossWith = (count, plies = [], cause = null) =>
+  game({ result: 'loss', plies: 60, lastLayer: 'block', suffix: { count, plies, cause } });
 
 describe('fatalSuffix', () => {
   it('取最长必败后缀，`at` 指向该后缀第一手', () => {
@@ -102,6 +103,16 @@ describe('lossShape', () => {
     expect(x.lostFrom.layers).toEqual([['block', 1]]);
   });
 
+  it('不可逆点按判据来源分开数（一手成五 / 需 VCF 链）', () => {
+    const x = lossShape([
+      lossWith(2, [{ ply: 57, layer: 'block' }, { ply: 59, layer: 'block' }], 'w1'),
+      lossWith(1, [{ ply: 41, layer: 'parry' }], 'vcf'),
+      lossWith(1, [{ ply: 31, layer: 'parry' }], null), // 老形状（没有 cause）不崩、也不计入任何一边
+    ]);
+    expect(x.lostFrom.found).toBe(3);
+    expect(x.lostFrom.cause).toEqual({ w1: 1, vcf: 1 });
+  });
+
   it('没跑引擎（suffix = null）时不计入后缀统计，也不崩', () => {
     const x = lossShape([game({ result: 'loss', plies: 44 })]);
     expect(x.suffix.known).toBe(0);
@@ -137,7 +148,7 @@ describe('formatLossMarkdown', () => {
       plies: 60,
       lastLayer: 'block',
       endReason: '五连',
-      suffix: { count: 2, plies: [{ ply: 57, layer: 'block' }, { ply: 59, layer: 'block' }] },
+      suffix: { count: 2, cause: 'w1', plies: [{ ply: 57, layer: 'block' }, { ply: 59, layer: 'block' }] },
     }),
   ]), { label: 'L2', plies: 9 });
 
@@ -148,11 +159,13 @@ describe('formatLossMarkdown', () => {
     expect(md).toContain('隔 2 手 1 局');
     expect(md).toContain('1/1 局能定位');
     expect(md).toContain('那一刻我方走的层 block 1');
+    expect(md).toContain('起点判据：**一手成五 1 局** / 需 ≤9 手 VCF 链 0 局');
   });
 
-  it('边界句一定印（VCF 只解释 x/y，查不到 ≠ 没输在更早）', () => {
-    expect(md).toContain('VCF 只解释 1/1 局');
+  it('边界句一定印（追因只解释 x/y、查不到 ≠ 没输在更早，且写明两条判据）', () => {
+    expect(md).toContain('追因（一手成五 ∨ ≤9 手 VCF）只解释 1/1 局');
     expect(md).toContain('不能读成「没输在更早的地方」');
+    expect(md).toContain('追因（逐手问对手：一手成五 ∨ ≤9 手 VCF，只统计败局）');
   });
 
   it('短败按阈值提示，和棋终局方式单独一行', () => {
@@ -175,7 +188,7 @@ describe('formatLossMarkdown', () => {
     const md2 = formatLossMarkdown(lossShape([game({ result: 'loss' })]), {});
     expect(md2).not.toContain('追因（逐手问对手');
     expect(md2).not.toContain('不可逆点');
-    expect(md2).toContain('VCF 只解释 0/1 局');
+    expect(md2).toContain('追因（一手成五 ∨ ≤9 手 VCF）只解释 0/1 局');
   });
 
   it('自定义边界补充句会追加在边界行', () => {
@@ -279,6 +292,29 @@ describe('scripts/loss-report.mjs（CLI）', () => {
     const dir = fixture({ 'mixed.json': archive({ white: 'rapfi', winner: 'white' }) });
     const r = await run(['--dir', dir, '--no-vcf']);
     expect(r.out).toContain('### 败局解释（规则 11）');
-    expect(r.out).toContain('VCF 只解释 0/1 局');
+    expect(r.out).toContain('追因（一手成五 ∨ ≤9 手 VCF）只解释 0/1 局');
+  });
+
+  /**
+   * 回归钉子（2026-10-05 修正的判据）：裸 `vcfWin()` 的入口前提是「双方无一步杀」，
+   * 对手**已经一手成五**的那一手它一定报 false。夹具是真实棋形：
+   * 白（rapfi）在 row 1 做 B1–E1 活四，我 7 手（A10）没堵 ⇒ 白已 VCF（`✗`）；
+   * 我 9 手（A1）堵一头 ⇒ 白 F1 直接成五（`✚`，裸 vcfWin 报不出来）⇒ 必败后缀必须是 2 而不是 1。
+   */
+  it('必败判据含「对手已一手成五」：后缀取 2 手（裸 vcfWin 只会给 1）', async () => {
+    const moves = [
+      ['黑方', 'H8'], ['白方', 'B1'], ['黑方', 'H10'], ['白方', 'C1'], ['黑方', 'A8'],
+      ['白方', 'D1'], ['黑方', 'A10'], ['白方', 'E1'], ['黑方', 'A1'], ['白方', 'F1'],
+    ].map(([side, notation], i) => ({ ply: i + 1, side, notation, tactics: 'block' }));
+    const dir = fixture({ 'artifact.json': { ...archive({ white: 'rapfi', winner: 'white' }), moves } });
+    const jsonPath = path.join(dir, 'out.json');
+    const r = await run(['--dir', dir, '--quiet', '--json', jsonPath]);
+    expect(r.code).toBe(0);
+    const [row] = JSON.parse(fs.readFileSync(jsonPath, 'utf8')).games;
+    expect([row.result, row.plies]).toEqual(['loss', 10]);
+    expect(row.suffix.marks).toBe('1· 3· 5· 7✗ 9✚');
+    expect(row.suffix.count).toBe(2);
+    expect(row.suffix.cause).toBe('vcf');
+    expect(r.out).toContain('起点判据 一手成五 0 / VCF 1');
   });
 });

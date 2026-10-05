@@ -21,6 +21,26 @@
 
 ---
 
+## 2026-10-05 · `vcfWin()` 的入口前提是「双方无一步杀」：攻方已一手成五时它报 `false`，**永远报不出「隔 1 手」**
+
+- **事实**：`engine.vcfWin(st, attackerId, plies)` 的逼迫着法生成器只收「落子后造出 ≥1 个**新**致胜点」的着法
+  （`src/core/engines/gomoku.ts:258-279` + `winsAfter` `:222-254`：找**含新子的** 5 窗口里 4 子 + 1 空）——
+  **直接成五那一手窗口已满、造不出新致胜点，被排除**；`:220-221` 的注释写明入口前提「双方无一步杀」。
+- **最小复现**（`.work/vcf-precondition-check.mjs`）：黑 (7,4)(7,5)(7,6)(7,7) 一条四、轮到黑
+  ⇒ `getLegalMoves` 里 D8/I8 两手成五（`getStatus().over`），而 `vcfWin(st,'black',9) = {win:false, first:null}`、
+  `vctWin = {win:true, first:'D8', line:['D8']}`。
+- **踩的坑**：拿裸 `vcfWin` 当「从哪一手起必败」的 oracle ⇒ 必败起点被系统性后推，且**h1 恒为 0**。
+  L2 报告初版据此写的「VCF 只解释 13–14/49 局、查不到 35 局」是**下界产物**，不是「VCF 解释不了」；
+  改用「一手成五 ∨ ≤plies 手 VCF」后同一批是 **49/49 局**（L2）+ **59/59 局**（高思考档）。
+- **正确口径**：权威「一步成五」判据 = 遍历 `engine.getLegalMoves(st)` → `applyMove` → `getStatus().over && winner === side`
+  （引擎对外**没有**暴露 `hasFivePoint`/`fiveCompletions`，只有 `vcfWin/vctWin/live3*/vctDefense/fourPressure/pressureCut`，
+  `:1297-1316`）；要深度再用 `vctWin`（它每个节点先判 `fivePointOf`，所以认一手成五）。
+- **同族事实**：`vctWin` 的**根节点**有闸门 `vctMoves(board, A, movesMax).length === 0 ⇒ {win:false}`（`:682-683`）
+  ⇒ 「有一手成五但一个逼迫手都没有」的根局面也会漏判 —— 判「必败」永远要自己先补一手成五这一条。
+  引擎自己在 `vctDefense()`（`:772-782`）就是这么写的：`let still = hasFivePoint(board, A); if (!still) { vcfWin… } if (!still) { vctWin… }`。
+- **一般化**：把**判定类**接口当 oracle 前，先读它的入口前提与返回形状 —— 这类「前提不满足就静默 `false`」的漏判
+  不会报错，只会让统计数字整体偏移一个方向（本仓已踩两次：`!!vcfWin(...)` 恒真、`vcfWin` 漏一手成五）。
+
 ## 2026-10-05 · 归档棋谱里的 `channel` 是 `'rapfi'`（不是 `'rapfi||500'`）；判定写错会静默丢掉 Rapfi 执黑的整半局
 
 - **事实**：`games.jsonl` 每行的 `blackChannel`/`whiteChannel` 是**通道名**（`'official'` / `'rapfi'` / `'human'` / `'mock'`），
@@ -79,6 +99,8 @@
 - **处置**：做成工具后**统一默认 9 手**（`scripts/loss-report.mjs`），老文档改引用时必须写清是哪一档
   （`--plies 7` / `--plies 9`）；报告里的追因行也把 `≤N 手 VCF` 的 N 印在句子里。
 - **自查口径**：任何「X/N 局查得到」的探针结论，都要能回答「窗口/阈值是多少、把它调大一档会怎样」。
+- **后注（同日）**：这里引用的 `13/49`、`14/49` 后来被证明**还叠着另一个错**（裸 `vcfWin` 漏判「对手已一手成五」）
+  ⇒ 正确读数是 **49/49**；见本文件置顶的 `vcfWin()` 入口前提条目。窗口参数的教训本身仍然成立。
 
 ## 2026-10-05 · 引擎的判定函数返回**对象**不是布尔：`!!engine.vcfWin(...)` 恒真，探针会得出「49 局败局早就全死了」这种假结论
 
@@ -86,6 +108,8 @@
   我第一次写败局探针时用了 `win = !!engine.vcfWin(...)` ⇒ 49 局败局**每一局**的「我方最后 6 手」都被判成
   「对手已有 VCF 必杀」，还得出「不可逆点全在第 1–2 手」的荒谬分布（第 1 手盘上只有 1 颗子）。
   正确写法 `engine.vcfWin(...).win === true` 之后：只有 13–14/49 局有必杀后缀，不可逆点落在 21–92 手。
+  （**后注（同日）**：这个 13–14/49 仍然偏低 —— 裸 `vcfWin` 另有「漏判对手已一手成五」的入口前提问题，
+  正确读数是 49/49，见本文件置顶条目；`!!` 恒真这条教训不受影响。）
 - **教训**：判定类 API 返回结构化结果时，`!!obj` / `if (obj)` 是**静默恒真**，比报错危险得多。
   写任何探针前先看一眼返回类型（`src/core/engines/gomoku.ts` 的 `VcfResult`、`vcfWin`/`vctWin` 都是这种）。
 - 自查口径：探针结果如果**整齐得可疑**（全真/全假、分布退化到 1–2 手），先怀疑真值判断，再怀疑结论。

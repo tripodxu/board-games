@@ -20,6 +20,7 @@
  *   --theirs <ch>     对手渠道（默认：我方之外那一侧，随便什么渠道）
  *   --tail <n>        只对我方最后 n 手做必败探针（默认全部我方手；n 越小越省，但不可逆点只能在窗口内找到）
  *   --plies <n>       追因用的 VCF 手数上限（默认 9；数字越大越慢、越能查到「早就必败」）
+ *                     实际判据 = **一手成五（权威）∨ ≤plies 手 VCF**，见下「必败判据」
  *   --max-games <n>   最多收 n 个视角（按文件名排序；先探便宜）
  *   --no-vcf          不跑引擎，只出形态（秒级）
  *   --mirror          两侧同渠道的对局也收，两侧各出一个视角（局数 = 棋谱数 ×2）
@@ -27,10 +28,16 @@
  *   --json <path>     把 shape + 逐局明细写成 JSON
  *   --quiet           不打印 markdown 正文，只打印一行小结
  *
- * 成本：`vcfWin(..., 9)` 一次约 5–50 ms ⇒ 一局败局约 60 次探针 ≈ 0.3–3 s；
+ * 成本：一次探针 ≈ 5–50 ms（`vcfWin(..., 9)` 主导，一手成五的扫描可忽略）⇒ 一局败局约 60 次探针 ≈ 0.3–3 s；
  * L2 的 300 局（49 局败局）全量探针约 1–3 分钟。`--no-vcf` 与 `--tail` 是成本闸门。
  *
- * 输出口径见 `scripts/lib/loss-report.mjs` 头部：**追因只到 VCF 级**，`查不到` 不等于「没输在更早的地方」。
+ * **必败判据（2026-10-05 修正）**：每个探针位置先判「对手现在有没有一步成五」（权威判据 =
+ * `getLegalMoves → applyMove → getStatus().over`），**再**退到 `vcfWin(st, 对手方, --plies)`。
+ * 理由是裸 `vcfWin()` 漏判一手成五：它的入口前提是「双方无一步杀」（`src/core/engines/gomoku.ts:220`），
+ * 逼迫着法生成器只收「造出新致胜点」的着法，直接成五那一手窗口已满、被排除 ⇒ **它永远报不出 h1**。
+ * 只用它会把必败起点系统性后推（L2 的 `13–14/49` 就是这么来的，实为下界）。
+ * 输出口径见 `scripts/lib/loss-report.mjs` 头部：`查不到` 只等于「一手成五与 ≤plies 手 VCF 都没有」，
+ * 更长的 VCT 链仍要另写探针，不能读成「没输在更早的地方」。
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -58,6 +65,20 @@ const thinkAt = (o, side) => (side === 'black' ? o.blackThink : o.whiteThink);
 /** 身份口径与阶梯报表完全一致：渠道|战术档|思考ms（走 identityOf）。 */
 function identityFor(o, side) {
   return identityOf({ channel: channelAt(o, side), tactics: tacticsAt(o, side), thinkMs: thinkAt(o, side) });
+}
+
+/**
+ * 权威判据：`side` 现在有没有「一步成五」（含引擎自己的禁手/长连规则）。
+ *
+ * 只有走 `getLegalMoves → applyMove → getStatus` 才与引擎口径一致：引擎对外没有暴露
+ * `hasFivePoint`/`fiveCompletions`（`src/core/engines/gomoku.ts:1297-1316`）。
+ */
+function winsIn1(engine, st, side) {
+  for (const mv of engine.getLegalMoves(st)) {
+    const s = engine.getStatus(engine.applyMove(st, mv));
+    if (s.over && s.winner === side) return true;
+  }
+  return false;
 }
 
 /** 每个根下找棋谱：`round-<i>/games/*.json` → `games/*.json` → `*.json`。 */
@@ -153,20 +174,26 @@ export function main(argv = process.argv.slice(2)) {
       st = engine.applyMove(st, mv);
       if (sideId !== ours) continue;
       const layer = m.tactics || (m.ai && m.ai.tac) || null;
-      // 探针点 = 我方走完、真轮到对手的局面（对手的 VCF 必杀才是真的必败）。
+      // 探针点 = 我方走完、真轮到对手的局面（对手的必杀才是真的必败）。
+      // 先判一手成五（权威），再退 VCF：裸 vcfWin 漏判一手成五（入口前提「双方无一步杀」）。
       // 注意 vcfWin 返回对象：必须取 .win === true（`!!` 恒真，见 MEMORY 2026-10-05）。
-      let fatal = false;
-      try { fatal = engine.vcfWin(st, theirs, PLIES).win === true; } catch { fatal = false; }
-      marks.push({ ply: m.ply ?? marks.length * 2 + 1, layer, fatal });
+      let byW1 = false;
+      let byVcf = false;
+      try { byW1 = winsIn1(engine, st, theirs); } catch { byW1 = false; }
+      if (!byW1) { try { byVcf = engine.vcfWin(st, theirs, PLIES).win === true; } catch { byVcf = false; } }
+      marks.push({ ply: m.ply ?? marks.length * 2 + 1, layer, fatal: byW1 || byVcf, byW1, byVcf });
     }
     const window = TAIL === null ? marks : marks.slice(-TAIL);
     const sfx = fatalSuffix(window.map((m) => m.fatal));
+    const at = sfx.start === null ? null : window[sfx.start];
     row.suffix = {
       count: sfx.count,
       window: window.length,
       tail: TAIL,
+      cause: at ? (at.byW1 ? 'w1' : 'vcf') : null,
+      w1: window.filter((m) => m.byW1).length,
       plies: sfx.start === null ? [] : window.slice(sfx.start).map((m) => ({ ply: m.ply, layer: m.layer })),
-      marks: window.map((m) => `${m.ply}${m.fatal ? '✗' : '·'}`).join(' '),
+      marks: window.map((m) => `${m.ply}${m.byW1 ? '✚' : m.byVcf ? '✗' : '·'}`).join(' '),
     };
     probed++;
     if (!QUIET) process.stderr.write('.');
@@ -212,7 +239,9 @@ export function main(argv = process.argv.slice(2)) {
     console.log(`✓ ${shape.games} 局 = ${shape.w} 胜 / ${shape.d} 和 / ${shape.l} 负｜不败率 ` +
       `${shape.unbeatenRate == null ? '—' : (shape.unbeatenRate * 100).toFixed(1) + '%'}｜必败后缀 ` +
       `${shape.suffix.buckets[1]}/${shape.suffix.buckets[2]}/${shape.suffix.buckets[3]}/${shape.suffix.buckets['4+']}` +
-      `/查不到 ${shape.suffix.none}｜不可逆点 ${shape.lostFrom.found} 局｜跳过 ${JSON.stringify(skipped)}`);
+      `/查不到 ${shape.suffix.none}｜不可逆点 ${shape.lostFrom.found} 局` +
+      `（起点判据 一手成五 ${shape.lostFrom.cause.w1} / VCF ${shape.lostFrom.cause.vcf}）` +
+      `｜跳过 ${JSON.stringify(skipped)}`);
   } else {
     console.log(md);
     if (SHOW > 0) {

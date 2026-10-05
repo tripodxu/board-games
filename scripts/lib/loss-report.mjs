@@ -12,8 +12,12 @@
  * `engine.vcfWin()` / `engine.vctWin()` 返回 `{win,first,line}` **对象**，`!!x` 恒真 ——
  * 注入方必须写 `engine.vcfWin(st, 对手方, plies).win === true`。
  *
- * 追因只到 **VCF 级**：`none` 那一档不等于「没输在更早的地方」，只等于「≤plies 手的 VCF 查不到」，
- * 想要更长的链要 VCT 级探针。报告里必须把这条边界和数字一起印出来。
+ * **必败判据 = 一手成五（权威）∨ ≤plies 手 VCF**：裸 `vcfWin()` 漏判一手成五（入口前提是
+ * 「双方无一步杀」，`src/core/engines/gomoku.ts:220`）⇒ 只用它会把必败起点后推、且**永远报不出 h1**。
+ * 注入方先走 `getLegalMoves → applyMove → getStatus`，判据来源记在 `suffix.cause`（`'w1'|'vcf'`）。
+ *
+ * 追因只到 **VCF 级**（在一手成五之后）：`none` 那一档不等于「没输在更早的地方」，
+ * 只等于「一手成五与 ≤plies 手 VCF 都查不到」，想要更长的链要 VCT 级探针。报告里必须把这条边界和数字一起印出来。
  */
 
 import { quantiles } from './report.mjs';
@@ -81,6 +85,7 @@ export function lossShape(games, opts = {}) {
   let suffixKnown = 0;
   const lostFromPlies = [];
   const lostFromLayers = new Map();
+  const lostFromCause = { w1: 0, vcf: 0 };
 
   for (const g of losses) {
     bump(lastLayers, g.lastLayer);
@@ -95,6 +100,8 @@ export function lossShape(games, opts = {}) {
         const first = g.suffix.plies[0];
         if (first && Number.isFinite(first.ply)) lostFromPlies.push(first.ply);
         bump(lostFromLayers, first && first.layer);
+        if (g.suffix.cause === 'w1') lostFromCause.w1++;
+        else if (g.suffix.cause === 'vcf') lostFromCause.vcf++;
       }
     }
   }
@@ -154,6 +161,7 @@ export function lossShape(games, opts = {}) {
       found: lostFromPlies.length,
       plies: quantiles(lostFromPlies),
       layers: tally(lostFromLayers),
+      cause: lostFromCause,
     },
     byIdentity: [...byIdentity.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
       .map(([identity, list]) => ({ identity, ...sub(list) })),
@@ -189,16 +197,17 @@ export function formatLossMarkdown(shape, opts = {}) {
   }
   const tailTotal = s.suffix.buckets[1] + s.suffix.buckets[2] + s.suffix.buckets[3] + s.suffix.buckets['4+'];
   if (s.suffix.known > 0) {
-    L.push(`- **追因（逐手问对手 ≤${plies} 手 VCF，只统计败局）**：${s.suffix.known} 局探过 —— ` +
+    L.push(`- **追因（逐手问对手：一手成五 ∨ ≤${plies} 手 VCF，只统计败局）**：${s.suffix.known} 局探过 —— ` +
       `最后一手前就有必杀 ${s.suffix.buckets[1]} 局、隔 2 手 ${s.suffix.buckets[2]} 局、隔 3 手 ${s.suffix.buckets[3]} 局、` +
-      `**早就必败（≥4 手）${s.suffix.buckets['4+']} 局**、**≤${plies} 手 VCF 查不到 ${s.suffix.none} 局**` +
+      `**早就必败（≥4 手）${s.suffix.buckets['4+']} 局**、**一手成五与 ≤${plies} 手 VCF 都查不到 ${s.suffix.none} 局**` +
       (tailTotal ? `（有必杀后缀合计 ${tailTotal}/${s.suffix.known} = ${pct(tailTotal / s.suffix.known)}）` : '') + '。');
     L.push(`- **不可逆点**：${s.lostFrom.found}/${s.loss.n} 局能定位（取「自此以后我方每一步都仍必败」的最大后缀），` +
       `落在 ${num(s.lostFrom.plies && s.lostFrom.plies.min)}–${num(s.lostFrom.plies && s.lostFrom.plies.max)} 手` +
-      (s.lostFrom.plies ? `（均 ${s.lostFrom.plies.mean} 手）` : '') + `；那一刻我方走的层 ${listLine(s.lostFrom.layers)}。`);
+      (s.lostFrom.plies ? `（均 ${s.lostFrom.plies.mean} 手）` : '') + `；那一刻我方走的层 ${listLine(s.lostFrom.layers)}；` +
+      `起点判据：**一手成五 ${s.lostFrom.cause.w1} 局** / 需 ≤${plies} 手 VCF 链 ${s.lostFrom.cause.vcf} 局。`);
   }
-  L.push(`- **边界**：VCF 只解释 ${s.lostFrom.found}/${s.loss.n} 局；` +
-    `「查不到」只等于「≤${plies} 手 VCF 里没有必杀」，更长的链要 VCT 级探针，不能读成「没输在更早的地方」。` +
+  L.push(`- **边界**：追因（一手成五 ∨ ≤${plies} 手 VCF）只解释 ${s.lostFrom.found}/${s.loss.n} 局；` +
+    `「查不到」只等于这两条都没有（更长的 VCT 链要另写探针），不能读成「没输在更早的地方」。` +
     (opts.note ? ` ${opts.note}` : ''));
   L.push('');
   if (s.byIdentity.length > 1) {
