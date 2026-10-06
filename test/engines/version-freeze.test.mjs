@@ -106,7 +106,8 @@ S.t('⑭e 指纹：档位冻结字段完整（fidelity 三档齐全、当前档 
     eq(v.openingMin, 4, v.id + ' 的 openingMin 应与冻结值一致（改它要重写指纹）');
     for (const k of Object.keys(v.mech)) ok(MECHS.indexOf(k) >= 0, v.id + ' 的机制键 ' + k + ' 没登记在 MECHS');
   }
-  eq(VERSIONS[VERSIONS.length - 1].id, CURRENT, '当前档应是登记表最后一档');
+  /* 2026-10-06 v14-plus 配对轮未过负局线，CURRENT 显式回退 ⇒ 末档可与 CURRENT 不同（登记保留） */
+  ok(VERSIONS.some((v) => v.id === CURRENT), '当前档应是已登记档位（回退时末档可与 CURRENT 不同）');
   eq(VERSIONS.find((v) => v.id === CURRENT).fidelity, 'exact', '当前档的 fidelity 应是 exact（活代码 = 精确语义）');
   /* 层顺序单一口径：接管链的分支顺序必须与 TAKEOVER_ORDER 一一对应（14 层） */
   eq(TAKEOVER_ORDER.length, 14, '接管链层数应为 14（十五级 = v0-off + 十四层）');

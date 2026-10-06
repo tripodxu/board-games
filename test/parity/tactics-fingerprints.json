@@ -1,10 +1,10 @@
 {
  "schema": 1,
- "generatedAt": "2026-10-06T06:15:00.052Z",
+ "generatedAt": "2026-10-06T09:46:14.264Z",
  "generator": "test/engines/fingerprint.mjs",
- "current": "v14-plus",
+ "current": "v14-live3-fresh",
  "versions": 16,
- "costMs": 45556,
+ "costMs": 56726,
  "buckets": [
   {
    "name": "early",

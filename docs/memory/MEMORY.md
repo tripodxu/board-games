@@ -37,6 +37,20 @@
 
 ---
 
+## 2026-10-06 · 从 Windows 本机给远端 shell 传 POSIX 路径参数：MSYS 会改写（vplus1 启动失败复盘）
+
+- 现象：阶梯在本机启动后远端 worker 秒死（pid 文件在、无 progress、无 checkpoint），远端 bash 报
+  `[: C:/Program: binary operator expected`——命令行**显式**传的 `--key-file /root/.jev-key` 被
+  Git Bash 的 MSYS 路径改写成了 `C:/Program Files/Git/root/.jev-key`（node 是 Windows 二进制，
+  argv 进它之前已被转换），远端命令模板里的 `[ -f <keyFile> ]` 于是拿到带空格的 Windows 路径。
+  脚本**内部默认值**（`/root/.jev-key`）不走 argv，所以历史轮次（不传这俩参数）从未触发。
+- 修法：`MSYS2_ARG_CONV_EXCL="*"` 前缀，或干脆不传与默认值相同的参数。tag 沿用机制正常工作：
+  重跑同命令复用 tag、checkpoint 逐局跳过，只补没跑的局。
+- 附带口径：编排器轮询 ssh 连续失败（⚠ ×N）只说明**本地链路抖**，远端 nohup worker 不受影响；
+  判 worker 死活要用 `ps -p <pid>` + progress.json，别把轮询失败当 worker 死亡。
+
+---
+
 ## 2026-10-06 · 败局逐手探针的纪律：判据弱的层不许排在判据强的层前面开火
 
 - v14 输 v13 的 4 局里 2 局同一死法：vcfDefense（只验纯四链，判据弱）先开火拿走「只拆纯四」的点，

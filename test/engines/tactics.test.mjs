@@ -60,14 +60,14 @@ const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
  * ① 版本登记表（git 历史 × 棋谱数据双锚定：13 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v14-plus', '当前档应为 v14-plus（整合收紧：v14 全机制 + 防守侧预算三键收紧）');
+  eq(R.CURRENT, 'v14-live3-fresh', '当前档应为 v14-live3-fresh（v14-plus 配对轮 35% 未过负局线，显式回退；档位保留）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
     'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
   eq(R.VERSIONS.length, 16, '应为 15 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
-  eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
+  ok(R.VERSIONS.some((v) => v.id === R.CURRENT), 'CURRENT 应是已登记档位（回退后末档可与 CURRENT 不同）');
 });
 
 S.t('版本登记表：机制集合沿梯级单调不减', () => {
