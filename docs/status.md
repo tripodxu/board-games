@@ -1,6 +1,6 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-05。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-06。
 
 ## 当前状态
 
@@ -40,11 +40,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| 棋谱 | **310 局 / 19249 手** = 导入基线 54 局 / 4379 手（全部五子棋；日期 2026-09-29 与 2026-09-30）**+ 4 局 proxy-vs-proxy 真实验**（2026-10-01，各 225 手，tag `exp-20261001132645`）**+ 24 局 v10 对照实验**（2026-10-02，tag `exp-20261001174212` / `…174837` / `…181244` / `…182552`）**+ 12 局 v11 对照实验**（2026-10-02，408 手，tag `exp-20261002055817`）**+ 12 局 v10 直连 v11**（2026-10-02，1202 手，tag `exp-20261002080446`）**+ 12 局 v11 计时轮**（2026-10-02，347 手，tag `exp-20261002094817`）**+ 12 局 v12 对照实验**（2026-10-02，390 手，tag `exp-20261002115126`）**+ 12 局 v12 vs `rapfi@1000ms`**（2026-10-02，474 手，tag `exp-20261002121700`）**+ 12 局 v12 vs `rapfi@2000ms`**（2026-10-02，725 手，tag `exp-20261002123631`）**+ 12 局 v13 vs `rapfi@1000ms`**（2026-10-02，535 手，tag `exp-20261002160819`）**+ 3 局被打断的 v13 首轮**（2026-10-02，119 手，tag `exp-20261002154056`，**无 `experiments` 行**，不计入实验轮）**+ 20 局 v13 vs `rapfi@1000ms`**（2026-10-03，937 手，tag `exp-20261003003108`）**+ 20 局 v13 vs `rapfi@2000ms`**（2026-10-03，1193 手，tag `exp-20261003020720`）**+ 12 局 v14 vs `rapfi@1000ms`**（2026-10-03，629 手，tag `exp-20261003035953`）**+ 2 局落库验证**（2026-10-03，118 手，tag `exp-20261003044054`，用来确认 `black_think`/`white_think` 与 `code_version` 归因）**+ 20 局 v14 vs `rapfi@2000ms`**（2026-10-03，1518 手，tag `exp-20261003050139`，用时 3453s）**+ 12 局 SSH 远端 `rapfi@500ms` vs `random/v13`**（2026-10-03，600 手，tag `exp-20261003042812-rapfi1-r1`）**+ 2 局 SSH 远端 `proxy/v13` vs `random/v13` 真上游冒烟**（2026-10-03，107 手，tag `exp-20261003052056-smoke1-r1`）**+ 12 局 SSH 远端 `proxy/v13` vs `rapfi@500ms`**（2026-10-03，957 手，tag `exp-20261003052604-x1-r1`，含 2 局 225 手满盘和棋）**+ 20 局 v14 vs `rapfi@3000ms`**（2026-10-03，881 手，tag `exp-20261003075310`，用时 2089s）**+ 20 局 v14 vs `rapfi@5000ms`**（2026-10-03，990 手，tag `exp-20261003082805`，用时 2898s）**+ 1 局未挂 tag 的 9 手 proxy-vs-proxy 短局**（2026-10-03，uid `ad0ca92a`）；54 份归档源仍是 [games/](../games) 那 54 局 |
-| 实验轮 | 28（导入 6 轮 + 2026-10-01 真跑的 `exp-20261001132645` + 2026-10-02 对照实验的 4 轮 + v11 单臂 `exp-20261002055817` + 直连 `exp-20261002080446` + 计时轮 `exp-20261002094817` + v12 单臂 `exp-20261002115126` + `rapfi@1s` 轮 `exp-20261002121700` + `rapfi@2s` 轮 `exp-20261002123631` + v13 `rapfi@1s` 轮 `exp-20261002160819` + 2026-10-03 的 20 局档位复核 `exp-20261003003108`（v13 vs `rapfi@1000ms`）与 `exp-20261003020720`（v13 vs `rapfi@2000ms`）+ v14 `rapfi@1s` 轮 `exp-20261003035953` + 落库验证轮 `exp-20261003044054`（2 局）+ v14 `rapfi@2s` 轮 `exp-20261003050139`（20 局）+ 远端批量三轮 `exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1` / `exp-20261003052604-x1-r1` + v14 `rapfi@3s` 轮 `exp-20261003075310`（20 局）+ v14 `rapfi@5s` 轮 `exp-20261003082805`（20 局），均已补 `/api/experiments` 行；被打断的 `exp-20261002154056` 无行、只在棋谱里；本仓库的 distinct tag 是 29 个） |
+| 棋谱 | **936 局 / 56723 手**（2026-10-06 阶梯导入后）= 导入基线 54 局 / 4379 手（全部五子棋；日期 2026-09-29 与 2026-09-30）**+ 4 局 proxy-vs-proxy 真实验**（2026-10-01，各 225 手，tag `exp-20261001132645`）**+ 24 局 v10 对照实验**（2026-10-02，tag `exp-20261001174212` / `…174837` / `…181244` / `…182552`）**+ 12 局 v11 对照实验**（2026-10-02，408 手，tag `exp-20261002055817`）**+ 12 局 v10 直连 v11**（2026-10-02，1202 手，tag `exp-20261002080446`）**+ 12 局 v11 计时轮**（2026-10-02，347 手，tag `exp-20261002094817`）**+ 12 局 v12 对照实验**（2026-10-02，390 手，tag `exp-20261002115126`）**+ 12 局 v12 vs `rapfi@1000ms`**（2026-10-02，474 手，tag `exp-20261002121700`）**+ 12 局 v12 vs `rapfi@2000ms`**（2026-10-02，725 手，tag `exp-20261002123631`）**+ 12 局 v13 vs `rapfi@1000ms`**（2026-10-02，535 手，tag `exp-20261002160819`）**+ 3 局被打断的 v13 首轮**（2026-10-02，119 手，tag `exp-20261002154056`，**无 `experiments` 行**，不计入实验轮）**+ 20 局 v13 vs `rapfi@1000ms`**（2026-10-03，937 手，tag `exp-20261003003108`）**+ 20 局 v13 vs `rapfi@2000ms`**（2026-10-03，1193 手，tag `exp-20261003020720`）**+ 12 局 v14 vs `rapfi@1000ms`**（2026-10-03，629 手，tag `exp-20261003035953`）**+ 2 局落库验证**（2026-10-03，118 手，tag `exp-20261003044054`，用来确认 `black_think`/`white_think` 与 `code_version` 归因）**+ 20 局 v14 vs `rapfi@2000ms`**（2026-10-03，1518 手，tag `exp-20261003050139`，用时 3453s）**+ 12 局 SSH 远端 `rapfi@500ms` vs `random/v13`**（2026-10-03，600 手，tag `exp-20261003042812-rapfi1-r1`）**+ 2 局 SSH 远端 `proxy/v13` vs `random/v13` 真上游冒烟**（2026-10-03，107 手，tag `exp-20261003052056-smoke1-r1`）**+ 12 局 SSH 远端 `proxy/v13` vs `rapfi@500ms`**（2026-10-03，957 手，tag `exp-20261003052604-x1-r1`，含 2 局 225 手满盘和棋）**+ 20 局 v14 vs `rapfi@3000ms`**（2026-10-03，881 手，tag `exp-20261003075310`，用时 2089s）**+ 20 局 v14 vs `rapfi@5000ms`**（2026-10-03，990 手，tag `exp-20261003082805`，用时 2898s）**+ 1 局未挂 tag 的 9 手 proxy-vs-proxy 短局**（2026-10-03，uid `ad0ca92a`）；54 份归档源仍是 [games/](../games) 那 54 局。**+ 624 局阶梯批量导入（2026-10-06）**：l2n1 / vorder1 / rapfihi1 / l3n1 / c2fb2 五批的 games.jsonl 经一次性驱动 `.work/ladder-import.mjs`（record-map 同源映射、payload 自带 gameUid 优先、dedup_key 幂等、9 分片带全 0002–0004 追加列）写入线上 D1：day 2026-10-04/05、source='import'、device_id NULL，含 21378 个带 `provider`/候选三数的 Jev 手 |
+| 实验轮 | 60（导入 6 轮 + 2026-10-01 真跑的 `exp-20261001132645` + 2026-10-02 对照实验的 4 轮 + v11 单臂 `exp-20261002055817` + 直连 `exp-20261002080446` + 计时轮 `exp-20261002094817` + v12 单臂 `exp-20261002115126` + `rapfi@1s` 轮 `exp-20261002121700` + `rapfi@2s` 轮 `exp-20261002123631` + v13 `rapfi@1s` 轮 `exp-20261002160819` + 2026-10-03 的 20 局档位复核 `exp-20261003003108`（v13 vs `rapfi@1000ms`）与 `exp-20261003020720`（v13 vs `rapfi@2000ms`）+ v14 `rapfi@1s` 轮 `exp-20261003035953` + 落库验证轮 `exp-20261003044054`（2 局）+ v14 `rapfi@2s` 轮 `exp-20261003050139`（20 局）+ 远端批量三轮 `exp-20261003042812-rapfi1-r1` / `exp-20261003052056-smoke1-r1` / `exp-20261003052604-x1-r1` + v14 `rapfi@3s` 轮 `exp-20261003075310`（20 局）+ v14 `rapfi@5s` 轮 `exp-20261003082805`（20 局），均已补 `/api/experiments` 行；被打断的 `exp-20261002154056` 无行、只在棋谱里；本仓库的 distinct tag 是 60 个（含 2026-10-06 导入的阶梯 32 轮 `exp-20261004…-<批次>-rN`） |
 | payload 总量 | 845578 B（54 局导入部分；最大单局 68.7 KB，远低于 512 KB 上限） |
 | 设备 | **1**（`ssh-batch`，26 局历史远端局回填而来，见上「口径说明」；其余归档都不带设备 id，`device_id` 为 NULL。2026-10-03 收口批起远端 worker 自己带 `ssh-batch`，此后新跑的远端轮次会直接挂上这个设备行） |
-| 一致性 | `game_uid` 去重后 310、孤儿 `game_moves` 0 行；`game_moves` 里 `v13-pressure-gate` 2282 手、`v14-live3-fresh` 3006 手、`v10-live3` 1186 手、`v11-vct` 983 手、`v9-vcf-sound` 1104 手、`v8-vcf-try` 765 手、`v12-vct-def` 800 手、`v0-off` 17 手、无声明 9106 手（= Rapfi/人类侧、历史导入与远端批量的 rapfi/random 侧），各组手数分别等于对应臂的 Jev 侧手数合计（与脚本统计交叉一致；九类相加 = 19249 手）。⚠️ 远端批量三轮（+1664 手）的 games JSON 是 trimmed 形式（moves 只有 ply/side/notation），其逐手明细只在 D1 `game_moves` 表里 |
+| 一致性 | `game_uid` 去重后 310、孤儿 `game_moves` 0 行；`game_moves` 里 `v13-pressure-gate` 2282 手、`v14-live3-fresh` 3006 手、`v10-live3` 1186 手、`v11-vct` 983 手、`v9-vcf-sound` 1104 手、`v8-vcf-try` 765 手、`v12-vct-def` 800 手、`v0-off` 17 手、无声明 9106 手（= Rapfi/人类侧、历史导入与远端批量的 rapfi/random 侧），各组手数分别等于对应臂的 Jev 侧手数合计（与脚本统计交叉一致；九类相加 = 19249 手）。⚠️ 远端批量三轮（+1664 手）的 games JSON 是 trimmed 形式（moves 只有 ply/side/notation），其逐手明细只在 D1 `game_moves` 表里；**2026-10-06 阶梯导入后核对**：distinct game_uid 936 / 孤儿 0 / 逐手与 move_count 偏差 0 / provider 与 cands_sent 各 21378 手（上方逐版手数直方图为导入前口径，未重算） |
 
 - **真实验（2026-10-01，proxy 渠道，4 局全和棋）**：`node scripts/experiment-run.mjs --games 4` 跑满
   A=`proxy/v9-vcf-sound` vs B=`proxy/v8-vcf-try`，902 次上游调用 / 输入 2586521 token / 输出 438798 token /
@@ -283,10 +283,46 @@
   [plans/2026-10-03-cands-metric-and-provider-failover.md](plans/2026-10-03-cands-metric-and-provider-failover.md) §4.1。
 - 源归档 [games/](../games) **冻结只读**：它是金样、对账与归因用例的源数据，不再写入（说明见 [games/README.md](../games/README.md)）。
 - 迁移期导入 SQL 在 [migrations/import/](../migrations/import)（`manifest.json` + `0001_games.sql`）。
-- 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物，1.9 MB / 7 张表，含 wrangler 的 `d1_migrations` 记账表；`backups/` 不入库，需要时重新导出）。
+- 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物；`backups/` 不入库，需要时重新导出）。**2026-10-06 重导**：10.4 MB / 312 局 / 19298 手 / 28 轮，`verify:backup --structural` 绿（payload 逐字节一致、派生列零漂移）；迁移当天的旧快照保留为 `backups/export-2026-10-01-stale.sql`（1.9 MB / 54 局）。
 
 ## 已验证（验收证据）
 
+- **v14-plus 整合收紧档（2026-10-06，[ADR-0023](adr/0023-v14-plus-integration.md)，业主指令「整合一版 v14-plus」）**：
+  先核实**整合在 v14 已结构性完成**（机制矩阵：v14 = v10 live3 两层 + v11 vctAttack + v12 vctDefense + v13 pressureGate
+  + v14 live3Fresh 的 14 层超集）⇒ 本档**零新机制**（规则 10；20 局/对 ±20pt 的分辨率无法验证任何新机制），
+  只做三处**防守侧预算减法**：`vctDefMax` 12→8（vctDefense 最坏 ≈26 次 VCF/VCT 搜索 → 18 次；六轮真救 0、
+  开火率每数百回合 1-3 次，却是全层最坏 13.8s 的主要来源）、`vctDefKeep` 3→2、`pressureCutMax` 120→80；
+  **攻击侧预算一个不动**，mech 集与 v14 一致 ⇒ 注入模型的句集逐字不变。`CURRENT` 切到 `v14-plus`（rank 15，fidelity exact）。
+  **验证（机制层口径，非比分）**：指纹重生成 14 局面 × 16 档 = 224 行，**旧 210 行逐字节一致**、新增 14 行全属 v14-plus
+  （13 层覆盖与 v14 同形，threat 仍结构性不可达）；6 局真实归档局（l2n1 round-1 两局 + rapfihi1 round-10 高档两局
+  含 225 手满盘和 + vorder1 round-2 同门长局两局）v14-plus 与 v14 **双档重放逐手（层，落点）序列逐字节一致**——
+  预算收紧没有改变这些局的任何一手；v12 夹具 f463acff ply24 在 vctDefMax=8 下仍被 vctDefense 接管走 K9（⑤d 用例加行）；
+  登记表三键预算断言 + 其余 12 键与 v14 逐键相等。`npm test` **52 文件 / 746 例全绿**（引擎 153/153 含金样差分）、
+  `smoke:browser` 14/14。**未部署**：线上 CURRENT 仍是 v14-live3-fresh（e998ad32）；上线必须先提交
+  （`code_version` 归因要求 sha 真实，部署未提交代码会让新棋谱挂错版本）⇒ 提交后回填登记表 commit 字段（现为占位 `pending`）再部署。
+  `VERSION_SPECS` 保持 5 版冻结形状（预设被历史批次与单测钉死），v14-plus 验证轮用 `--identities` 显式指定（命令见 ADR-0023）。
+  **当日第二轮增补 `vctFirst` 防线优先级纠偏（业主追问「v14 为什么打不过 v11/v13」）**：分析面 = v14 的
+  **全部 56 局败局**（自己 10-03 四轮的 22 局 + L2 r13–r15 的 8 局 + vorder1 的 8 局 + rapfihi1 的 18 局；
+  22 局早于本地 JSONL 时代、payload 由 D1 直出；合计 **1387 个我方手位**）——比分层：vorder1 直面对决 v14 实为
+  **2 胜 13 和 5 负**（13 局满盘和；对 v11 反而 57.5% 胜）；重放层：**v13 与 v14 逐手零分岔**（败局非 v14 特有行为）；
+  逐手探针：对手有链 529 手 = 拆点可用 298（走 292 **漏 6**）+ 无拆点 231，我方有杀 0 / 漏杀 0。**6 处漏防全部
+  同一结构缺陷**：判据弱的 vcfDefense（只验纯四）排在判据强的 vctDefense（拆完对手 VCF+VCT 全无）之前且后者
+  被门在「前者没找到点」之后——29ced20c ply65 走 I10 弃 K10、3ba614a0 ply24 走 G8 弃 E6、152a1f3a ply23 走 C9 弃 C7、
+  974a44c3 ply19 走 C9 弃 C7、98fbea60 ply29 走 E12 弃 B11、0237bbf2 ply48 走 H10 弃 J8（**五版本同位对照
+  v11/v12/v13/v14 全部同错**，v12 起共有）；必败点之前「链下无拆点」多处**五版本全部同招**（共同天花板实锤）；
+  pressureGate 取舍仅 1 处观察（73851a11 ply75），维持不动的决定。v14-plus 增加 `vctFirst` 附加机制键
+  （vctDefense 提前主防、vcfDefense 兜底；实现只动 tactics.ts 事实序，接管链分支零改动；v0–v14 缺省关 ⇒
+  指纹 210 行仍逐字节一致）；真局夹具两枚 + 三条历史排序守卫钉旧档 + 4 局败局重放分岔 53 手（基线 26）+
+  **56 局探针复跑漏防纠正 6/6**。引擎套件 155/155。详见 [ADR-0023](adr/0023-v14-plus-integration.md) 增补节。
+
+- **前端 + 后端优化轮（2026-10-06，计划模式三路只读探查立项 → 六项落地 → 部署 `e998ad32`）**：
+  **后端**：① 导出 N+1 销账（技术债 #3，见技术债节）——`listGameDetails` 每页 2 次往返，行形状与 getGame 逐字段一致（export.spec 等价性钉子 + 跨页不重不漏）；② **读接口限流放行**：`rateLimit('read')` 直接过（不写 rate_limits、无 X-RateLimit 头、不 429）——ADR-0013「后果」节原文预留「读接口不计数或采样」，旧实现反而全量计数，单 IP 满速读可烧 17.3 万行写/日（免费档 10 万）；当天 D1 仪表盘 `rows_written_24h = 81,415`（80% 警戒）正好演示了写配额敏感性（其中 ~8.1 万是导入一次性成本，但读限流的写是常态燃烧）；aggregates.spec 的读限流用例改写为「桶满也不 429、不写库」；③ `getStats` 四条 SQL 合 `db.batch`（4 RT→1）+ 四个读路由加 `Cache-Control`（global `public, max-age=30`，device 维度 `no-store`）+ `public/_headers` 三档缓存（`/assets/*` immutable、`/rapfi/*` 86400、`/` no-cache——部署后 curl -I 逐档验证生效）。
+  **前端**：④ **Rapfi 加载硬化**（根因与五项保护见「仍存在」第 5 条）+ `DecideOpts.rapfiOnProgress`/signal 透传链（tactics.ts → client.ts → rapfi.ts → loader）；⑤ **回放器增量化**：局面快照按 uid 缓存增量推进、canvas/renderer 复用、ply 变化 rAF 合帧——225 手局拖滑杆从「每格全量重放 + 重建 canvas」降到每帧一次重画（data-panels.spec 补两处刷帧断言）；⑥ 小件：棋谱面板每手增量追加（`appendLedgerPanel` 从死代码转正，第一手仍全量重建以清空态占位）、`#speed` 滑杆 input 只更新标签/落盘挪到 change、resize 全量重绘 rAF 合帧、Google Fonts 改非阻塞加载并砍 500 字重。
+  **验收**：`npm run typecheck` 干净；`npm test` **52 文件 / 746 例全绿**（含引擎套件与金样差分）；`smoke:browser` mock 与 `--channel rapfi` 各 **14/14**；部署后 `smoke:live` **30/30**（写入行已清）、线上浏览器冒烟 **14/14**（实验面板 52 轮 / 865 局）。**遗留候选**（探查实证、本轮未做）：Rapfi 思考 Web Worker 化（10s 档主线程冻结的主体）、四面板动态 import（首包 ~-10%）、leaderboard 物化、`/api/jev` 请求体大小上限。
+
+- **生产部署到 main + 阶梯 624 局导入 D1 + 快照重导（2026-10-06，业主批准的一次性收口）**：
+  ① `npm run deploy` ⇒ 版本 `b2deae8b-3881-4af0-b7b7-4dab4e76c711`；复验手法（抓线上包 grep 字面量）`X-Jev-Provider`×3 / `commandcode`×4 / `上游兜底`×4 全部出现（C0 时代全 0）⇒ 生产含 C2 兜底代码与 C3 逐手归因写入；`JEV_FAILOVER` 仍 `"off"`（默认行为不变，BYOK 语义不变）；`smoke:live` **30/30**（写入行已手动清理，终态 936/56723/60）。② 阶梯五批 **624 局 / 37425 手 / 32 轮 experimentEntry** 导入线上 D1（驱动 `.work/ladder-import.mjs`，一次性不入库；内存 SQLite 自检 9 分片 ×2 遍计数不变；远程核对 games 936 / moves 56723 / experiments 60、uid 无重复、孤儿 0、逐手与 move_count 偏差 0、`provider`/`cands_sent` 各 21378 手）。③ `db:export` 重导 **32.4 MB** ⇒ `verify:backup --structural` 绿（936 局 payload 逐字节一致、派生列漂移 0）。
+  **三则教训**：`gameUidSource()` 是「老客户端没带 gameUid」的合成口径，payload 自带 UUID 必须优先取（否则同一局走导入与走 `/api/games` 会算出两对键，违反 AGENTS「同一对键」）；`import-archive.mjs` 的 moveCols 停在 0002 之前（无 tac_ms/cands/provider 等列），照抄会静默丢归因——新导入要以 record-map 的 MoveRow 为准逐列核对；本机 socks5 代理（127.0.0.1:10808）死时**直连 Cloudflare 可用**（wrangler 清掉 `HTTP(S)_PROXY` 即通；大分片偶发 fetch failed ⇒ 3 次重试 + DO NOTHING 幂等续传收尾），「本机 Node 无外网」是当时网络状态、不是永久事实。
 - **L4 / `rapfihi1` 收尾：Rapfi 高档曲线 + 版本排序第二把尺子（2026-10-05）**：`10/10 轮｜200/200 局｜W86-D20-L94｜624 分钟`（≈10.4 h，box 串行、零 CF 调用）。
   逐档合并（**版本侧**，每档 5 版 × 20 = 100 局、组成已一致）：`@500` 89.5% → `@1000` 79.5% → `@2000` 73.5% → `@7000` **55.0%** → `@10000` **41.0%**，
   相邻档 −10.0 / −6.0 / −18.5 / −14.0 pt，**四对 Wilson 全部重叠** ⇒ 判读规则 ② 下一句「更强」都不能说；Rapfi 侧 BT 1240.1 → 1618.5（Δ +378.4，ΔElo 只作定位）。
@@ -301,7 +337,9 @@
   `402 {"error_type":"billing_error","message":"Your organization has no available TypeSafe API credits …"}`，而同一 key 用空体打只得 **422**
   （认证通过、body 不合法）⇒ **是账号余额，不是 key 失效**；box 的 `/root/.jev-key` 与本地 key 不是同一串（去空白 sha256 前 12 位 `499b5d636bc6` vs `bbe6db022be4`）
   但两边都 402 ⇒ 余额是**账号级**。影响：① 新实验每轮首调会先吃一次 402 + 探活再整轮走兜底 ⇒ 功能可用，但报表会多一行「上游兜底 N 手」，
-  跨批次比较必须带上它；② **生产 Worker 兜底未部署（停在 C0）⇒ 线上 Jev 现在没有可用上游**（见待批项 ④/⑤）。
+  跨批次比较必须带上它；② ~~生产兜底未部署 ⇒ 线上 Jev 没有可用上游~~ **此句作废（2026-10-06 业主口径）**：线上 `/api/jev` 是 **BYOK**
+  （业主原话：线上 Jev 仅支持用户自己提供 base url 和 api key，业主的 key 只用于实验面）⇒ 主 key 402 只影响实验面、不影响线上对弈；
+  生产停在 C0 的实际问题只剩「功能落后于 main」（无兜底代码、无逐手归因落库、报表无兜底分桶），见待批项 ④。
   产物：`.work/l4-final-report.md`（三批合并 560 局 / 28 轮 / 10 身份）、`.work/rapfihi1-report.md`（纯本批 200 局）、`.work/l4-fill-final.txt`（独立复算，逐位一致）、
   `.work/rapfihi1-loss-final.txt`、`.work/rapfihi1-regress/summary-final.txt`；文档 [`docs/plans/2026-10-05-rapfihi1-rapfi-high-think.md`](plans/2026-10-05-rapfihi1-rapfi-high-think.md) §3/§4/§6 已填满（380 行、零 `待填`）。
 - **报表 §2 的逐档块再印一行「要分开相邻档要多少局」（2026-10-05）**：`scripts/lib/report.mjs` 新增
@@ -820,7 +858,7 @@
 2. **规则类未实现**：象棋长将/长捉判负、国象三次重复判和、中国跳棋「永堵营地门」都未实现；围棋只有 9 路。
 3. **官方 API 浏览器直连不可行**（CORS 白名单），必须走同源 `/api/jev` 代理；未带 key 时返回 401。
 4. **Jev 的概率判断仍可能出错**：「零幻觉」只保证输出结构体，不保证棋力判断正确。
-5. **Rapfi 渠道**：单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完）；只支持五子棋；**首次要下 10.7 MB 资产**，而这在慢链路上是个真陷阱：实测生产域 `rapfi-single-simd128.wasm` 1,161,393 B / 14.7 s、`rapfi-single-simd128.data` 10,037,111 B / **447.7 s**（≈22 KB/s）；Rapfi 是**局中首次用到才实例化**，抓取失败时 Emscripten 抛的 rejection 没人接住 ⇒ `inflight` 永久占位、AI 循环停摆（上游零调用、页面只有一句 `TypeError: network error`、主线程仍有响应，2026-10-02 实测两次）。**应用侧未加保护**——本轮只把 `smoke:browser` / `experiment-run` 改成由本地 `public/rapfi/` 供给资产（`3bf480b`），真实用户在不稳定链路上仍可能撞上这种「看着在等 AI」的假死。`npm run smoke:browser -- --channel rapfi` 能自动验完这条路（实测 14/14，等待窗口 90 s）。
+5. **Rapfi 渠道**：单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完；10s 档每手冻结约 10 秒——**Web Worker 化仍未做**，是这条限制剩下的主体）；只支持五子棋；**首次要下 10.7 MB 资产**。**应用侧保护已于 2026-10-05 优化轮补上（2026-10-06 部署）**：① 「假死」根因（`.data` 抓取失败时胶水 run dependency 永不解除 ⇒ 工厂 Promise 永不 settle ⇒ inflight 永占）被加载器看门狗切断——进度停滞 30s 即失败（`RAPFI_STALL_TIMEOUT_MS`），胶水的 `setStatus` 进度既当展示也当心跳，慢链路有进度不误杀；② 失败错误带 `retryable` 接入装配层自动退避，`_loadPromise` 失败即清零可重入；③ loop 传入的 abort signal 现在真的能穿到 rapfi（此前在 client 分支被丢弃）；④ 用户显式切到 rapfi 渠道时后台预取（只在五子棋页触发，不在 boot 时偷下 10 MB）；⑤ 下载进度显示到状态行。`npm run smoke:browser -- --channel rapfi` 14/14（2026-10-06 复验）。
 6. **战术档闸门**只影响 Jev 三渠道与 `random` 基线，`mock` / `rapfi` 早退不受影响。
 7. **`sideConfig` 是一份全局设置**（localStorage 键与旧实现逐字兼容），不按局快照；实验会借走并在结束后归还。
 8. **沿革竖列与设置抽屉改的是全局默认档**，不影响已经开打的那一局。
@@ -829,7 +867,7 @@
 11. **旧深链对历史棋谱大多无效**：54 份里有 48 份没有 `slug`，`/api/games/:day/:name` 解析不到，只能用列表返回的 `path` 或永久链接 `/api/games/u/<gameUid>`。
 12. **`*.workers.dev` 不是入口**（wrangler 默认关闭；本机网络也无法直连），唯一入口是自定义域 `jevqipan.logicc.top`。
 13. **本地无法用 `--test-scheduled` 预演 Cron**：静态资产会先接管非 `/api/*` 路径，`/__scheduled` 拿回的是 SPA 兜底 HTML（200），`stats_cache` 不会有行——这不是 cron 失败。
-14. **备份靠 CI 每日导出**（UTC 04:23，artifact 保留 30 天）；Worker 侧做不到 D1 导出。本地 `npm run db:export` 需要本机网络能连上 Cloudflare。⚠️ **2026-10-04 实测：这条自动备份目前是坏的** —— `backup` 工作流 10-02 / 10-03 / 10-04 三次调度**全部失败**，日志停在 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable`，根因是**仓库里一个 secret 都没有**（`gh secret list` 为空）；`deploy.yml` 的 `workflow_dispatch` 部署同样依赖这两个 secret。补齐 `CLOUDFLARE_API_TOKEN`（需 D1:Read）+ `CLOUDFLARE_ACCOUNT_ID` 后重跑 `workflow_dispatch` 即可恢复；在那之前**没有新鲜备份**（本机 wrangler 的 OAuth token 也已过期且无法刷新，`backups/export.sql` 仍是迁移当天的旧快照：54 局 / 4379 手）。
+14. **备份靠 CI 每日导出**（UTC 04:23，artifact 保留 30 天）；Worker 侧做不到 D1 导出。本地 `npm run db:export` 需要本机网络能连上 Cloudflare。⚠️ **2026-10-04 实测：这条自动备份目前是坏的** —— `backup` 工作流 10-02 / 10-03 / 10-04 三次调度**全部失败**，日志停在 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable`，根因是**仓库里一个 secret 都没有**（`gh secret list` 为空）；`deploy.yml` 的 `workflow_dispatch` 部署同样依赖这两个 secret。补齐 `CLOUDFLARE_API_TOKEN`（需 D1:Read）+ `CLOUDFLARE_ACCOUNT_ID` 后重跑 `workflow_dispatch` 即可恢复；在那之前**没有新鲜备份**（本机 wrangler 的 OAuth token 也已过期且无法刷新，`backups/export.sql` 仍是迁移当天的旧快照：54 局 / 4379 手）。**2026-10-06 更新**：本机 OAuth 已重新登录，手动路径恢复——新鲜快照已出并过结构校验（见上「数据现状」）；**CI 自动备份仍坏**（同日复查 `gh secret list` 仍为空）。
 15. **离线降级是有意设计**（D8）：没有后端时是离线演示（mock 渠道）+ 本机战绩簿，不是白屏也不是报错。
 16. **限流的两个已知取舍**：每次判定写一行（读接口的限流也消耗当天写配额）；固定窗口边界允许 2× 突发。
 17. **`node:sqlite` 缺失时**，重放迁移的归因用例会被跳过；CI 用 `REQUIRE_SQLITE=1` 强制硬失败。
@@ -850,9 +888,9 @@
 
 28. **`v13-pressure-gate` 的代价（已量化、A/B 已判定）**：闸门真接管时会**用攻势换安全** —— 三个 v12 回合 800 个 Jev 回合的回归扫描里真接管 26 手，对手做四手数更优 14/26、平均 −1.08 个，**但我们自己的做四手数平均 −1.92 个、13/26 让掉了进攻**（典型案例：夹具 `e3e417e6` ply8 实走 `E9/live3Attack` 后我方做四 4 / 对手 2，削点 `D12` 后对手 0 / 我方 0）。**同口径 A/B 的答案（2026-10-03）**：`rapfi@1000ms` 12 局 9 胜 0 和 3 负（75.0%），v12 同档 10 胜 0 和 2 负（83.3%）—— 一局之差在 12 局样本里落在噪声内，**比分口径回答不了「划不划算」**；能回答的是接管标签 × 局结果交叉表：四个进攻类层在 9 个胜局命中 79 手、3 个负局 0 手，三局「我方有杀」全为 0 ⇒ 输在赢不了，本层是纯防守机制、结构上治不了 ⇒ **保留、不再加码**（代价结论：实测 3.2 ms/次，没有把胜局变成负局，但也没有把负局救回来）。**20 局档位复核（2026-10-03）**：`rapfi@1000ms` 20 局 11 胜 1 和 8 负（57.5%）、`rapfi@2000ms` 20 局 13 胜 2 和 5 负（70.0%），两轮合计 40 个「拆不掉」回合**全部是全盘无拆点**（`.work/round1-report.log` / `.work/round2-report.log`）⇒ 闸门的代价没有升级成新的败因，但也没有把败局救回来；`vctDefense` 两轮合计开火 3 次、**真救 0**，至今未被实战检验（见 [v14 证据评审](plans/2026-10-03-tactics-v14-evidence.md)）。另：`pressureCut` 是 1-ply 手数量，**不搜杀**，所以它必须由 `danger_points_opponent` 这条安全线兜住「对手下一步就有杀」的局面（p18 夹具抓到过反例），这条守卫是启发式，不是证明；`live3After` / `live3Deny` 的旧口径缺陷当时**有意未动**（保持 A/B 单变量），**随后由 v14 修正**（见上方 v14 条）。
 
-29. **本机 wrangler 的 D1 读路径也失效了**（2026-10-04 实测，比第 26 条更近一步）：`node .work/wrangler-run.mjs d1 execute jev-qiguan --remote --json --command "SELECT name FROM pragma_table_info('games')"` ⇒ `A request to the Cloudflare API (/accounts/6f8cd3a216c8de232d829099778d7c53/d1/database/f72390fe-a506-4a88-8db7-af7213657947/query) failed.`，notes `The given account is not valid or is not authorized to access this service [code: 7403]`（`kind: APIError`、`accountTag 6f8cd3a216c8de232d829099778d7c53`），exit 1。也就是说本机既有 OAuth 已过期（第 14 条），又**没有可用的 API Token** ⇒ 从这台机器上既不能查也不能导出 D1；阶梯计划的 §9 第 3 条因此改成**按仓库迁移 + `docs/status.md` 记录结案**（结论：`games.device_id` 存在，回填 26 局已完成）。恢复要业主补凭据（`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`）或重新登录，属业主决定项。
+29. **本机 wrangler 的 D1 读路径也失效了**（2026-10-04 实测，比第 26 条更近一步）：`node .work/wrangler-run.mjs d1 execute jev-qiguan --remote --json --command "SELECT name FROM pragma_table_info('games')"` ⇒ `A request to the Cloudflare API (/accounts/6f8cd3a216c8de232d829099778d7c53/d1/database/f72390fe-a506-4a88-8db7-af7213657947/query) failed.`，notes `The given account is not valid or is not authorized to access this service [code: 7403]`（`kind: APIError`、`accountTag 6f8cd3a216c8de232d829099778d7c53`），exit 1。也就是说本机既有 OAuth 已过期（第 14 条），又**没有可用的 API Token** ⇒ 从这台机器上既不能查也不能导出 D1；阶梯计划的 §9 第 3 条因此改成**按仓库迁移 + `docs/status.md` 记录结案**（结论：`games.device_id` 存在，回填 26 局已完成）。恢复要业主补凭据（`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`）或重新登录，属业主决定项。**2026-10-06 已解除**：本机重新 OAuth 登录后远程读与 `db:export` 均正常（见上「数据现状」）；CI 路径仍待 API token。
 
-30. **线上跑的不是当前 main，而是 C0 那一版（2026-10-05 实测，靠「抓线上静态包 + grep 功能字面量」判定）**：`deploy.yml` 是 `workflow_dispatch`（按设计不随 push 跑），`gh run list --workflow=deploy.yml` **一条记录都没有** ⇒ 线上历次都是本地 `npm run deploy` 推的，最后一条记录是 C0 的部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`。实测线上首页引用的 `https://jevqipan.logicc.top/assets/index-D9YZ3QAl.js`（206,688 B）：`v14-live3-fresh` 4 次、`candsSent` 18、`candsLabeled` 13、`候选发评标` 2，而 `X-Jev-` / `commandcode` / `primary` / `backup`（C2）与 `上游兜底` / `未计入主口径`（C3）**全部 0 次** ⇒ 线上 = **C0（`ffbcbf7`）之后、C2（`e70fcd1`）之前**。后果：**生产没有上游兜底**（主家 key 401/额度耗尽时直接给用户报错，不切备用网关）、没有逐手上游归因、报表也没有「兜底手」分桶；`/api/health` 里的 `schema: 0004` 只代表 **D1 迁移已应用**（它读 `d1_migrations` 最后一行），**不代表** Worker 代码是新的 —— 这条口径容易读反，别再拿它当「线上是新的」的证据。恢复路径：业主补第 26 条的两个 secret（或本机重新 `wrangler login`）⇒ `npm run deploy`；复验手法 = 重新抓线上包并 grep `X-Jev-`（出现即含 C2）。
+30. **线上跑的不是当前 main，而是 C0 那一版（2026-10-05 实测，靠「抓线上静态包 + grep 功能字面量」判定）**：`deploy.yml` 是 `workflow_dispatch`（按设计不随 push 跑），`gh run list --workflow=deploy.yml` **一条记录都没有** ⇒ 线上历次都是本地 `npm run deploy` 推的，最后一条记录是 C0 的部署版本 `88d7f1fb-1e9a-47fa-909d-14afc43f0594`。实测线上首页引用的 `https://jevqipan.logicc.top/assets/index-D9YZ3QAl.js`（206,688 B）：`v14-live3-fresh` 4 次、`candsSent` 18、`candsLabeled` 13、`候选发评标` 2，而 `X-Jev-` / `commandcode` / `primary` / `backup`（C2）与 `上游兜底` / `未计入主口径`（C3）**全部 0 次** ⇒ 线上 = **C0（`ffbcbf7`）之后、C2（`e70fcd1`）之前**。后果：**生产没有上游兜底**（主家 key 401/额度耗尽时直接给用户报错，不切备用网关）、没有逐手上游归因、报表也没有「兜底手」分桶；`/api/health` 里的 `schema: 0004` 只代表 **D1 迁移已应用**（它读 `d1_migrations` 最后一行），**不代表** Worker 代码是新的 —— 这条口径容易读反，别再拿它当「线上是新的」的证据。恢复路径：业主补第 26 条的两个 secret（或本机重新 `wrangler login`）⇒ `npm run deploy`；复验手法 = 重新抓线上包并 grep `X-Jev-`（出现即含 C2）。**2026-10-06 已解除**：`npm run deploy` 已把生产推到 main（版本 `b2deae8b`），复验与冒烟通过（见「已验证」同日条目）。
 
 ## 验收命令表
 
@@ -925,6 +963,7 @@
    ⇒ 见上「已验证」条目与 [vorder1 报告](plans/2026-10-05-vorder1-version-screening.md)。
    **待业主拍板二选一**：A（推荐）接受「不可分」，把 box 时间投给 Rapfi 曲线（L4 正在跑）；
    B 只挑 `v11 vs v14` 堆 100 局配对（≈7.7 h）；**不建议**跑完整 L1（200 局 ≈15.5 h，每对仍 20 局 ⇒ 同样排不出名次）。
+   **⇒ 已拍板（2026-10-06）：选 A** —— 接受三版不可分，不再堆任何配对局（v14 为最后一版的机制线收口不变）。
    **L4 高思考档已收尾（2026-10-05 02:30 起跑、12:54 结束）**：`rapfihi1` = 10 对 × 20 局 = **200 局 / 624 分钟**
    （5 个版本 × `rapfi@7000`/`@10000`），逐轮自动 `scp` 回本机、零 CF 调用；读数、成本对照、败局解释、回放回归与硬边界见
    [L4 报告](plans/2026-10-05-rapfihi1-rapfi-high-think.md)（§3–§6 已填满）与上「已验证」条目。
@@ -952,16 +991,18 @@
    （曲线表自动多出 `7000 ms` 一行、`ΔElo` 为空、`⚠ <50` 提示；败局解释 10 局 20% 可用 ≤9 手 VCF 解释）。
    结果文档：[rapfihi1 高思考档](plans/2026-10-05-rapfihi1-rapfi-high-think.md)（§3–§6 待 10 轮收尾后填）；
    `--with-5000` 仍留在 CLI 里，需要补那一点时随时能跑（L3 的 `@5000 vs @1000` 已有 20 局样本）；
-   ③ **P7（可选逃生门：`--rev <sha>`）仍待业主定**；
+   ③ **P7（可选逃生门：`--rev <sha>`）已关闭（2026-10-06 业主拍板：不做）**；
    P5 已量出分辨率底线：一次 200 局的 BT 只能分辨 ~30 Elo（平均绝对误差 27.9/35.6），
    所以「A 比 B 强」仍只允许写在配对样本上；
    P4b 已把「零 CF 依赖」做成默认：不写 `--origin` 时既不连业主 Worker 也不写 D1，direct 面禁止 `proxy` 臂
    （[ADR-0021](adr/0021-standalone-experiment-plane.md)）。
-   **仍待业主拍板（2026-10-05 复核过的短名单）**：① 版本排序 **A/B**（见上）；② **P7 `--rev`** 做不做；
-   ③ **对象桶用哪个**（endpoint/region/寻址样式；box 无 rclone/aws ⇒ 纯 Node SigV4，CLI 已就绪等地址）；
-   ④ **生产 Worker 是否重新部署 + 兜底是否进生产路径**（`vars.JEV_FAILOVER` 仍为 `"off"`，列已就位）；
-   ⑤ **主上游 key 的额度**（2026-10-05 已确认：账号级 `billing_error`，无 credits ⇒ 新实验整批走兜底、线上 Jev（生产未部署兜底）无可用上游；
-   处置二选一：充值/换账号 key，或接受「实验走兜底 + 尽快把兜底部署进生产」）。
+   **短名单处置（2026-10-06 业主拍板）**：① 版本排序 **选 A** —— 接受「三版不可分」，不再堆配对局（证据与推荐见上）；
+   ② **P7 `--rev` 关闭**（L2/L4 共 560 局无逐字复现需求，考古 `restored` 标注够用；阶梯计划 §9 第 5 条同日结案）；
+   ③ **对象桶：用与现有实验数据同一只桶**（同 endpoint、同凭据）—— `BUCKET_*` 四元组按铁律 7 不入仓库，注入运行环境（box/本机 env）后
+   `batch-bucket.mjs push` 即用（SigV4 已用 AWS 官方向量钉死，寻址缺省 path）；**待办**：凭据注入后把 box 上五批产物
+   （l2n1 / vorder1 / rapfihi1 / l3n1 / c2fb2）补推一次（阶梯计划 §9 第 6 条同日定向）。
+   仍开放的只剩：⑤ **主上游额度是否充值/换号**（实验面已由兜底自证可用，每轮多一次 402 + 探活；充值只影响回到 primary 直连，由业主视实验需要定）；
+   ④ **生产 Worker 重新部署已于同日执行**（`npm run deploy` ⇒ 版本 `b2deae8b`，`smoke:live` 30/30，见「已验证」；secrets 仍空 ⇒ CI 自动备份仍待补，但部署与手动导出已不依赖它）。
    已闭环、不再作为待批项的：计划范围（P0–P7 全做）、「第一晚 L3 是否含 `rapfi@5000`」（业主 2026-10-04 改为
    直接补到上限 ⇒ 跨过 `@5000` 跑 L4）。
 
@@ -985,14 +1026,14 @@
 
 1. ~~**版本口径不统一**~~ → **已修复（2026-10-01）**：`package.json` 与 `wrangler.jsonc` 的 `APP_VERSION` 都改成 `1.0.0`，`test/core/version.spec.ts` 逐字比对两处，并断言 `vite.config.ts` 仍从 `pkg.version` 注入 `__APP_VERSION__`。改版本号＝改一处（`package.json`）再改 `wrangler.jsonc`，忘了跑测试就会红。
 2. ~~**旧文案残留**~~ → **已修复**：`src/core/jev/client.ts:117` 与 `:187` 的用户可见提示已改成「本地 `npm run dev` 起 Worker，线上由 `jevqipan.logicc.top` 提供」，不再提 `dev-proxy.py` / Cloudflare Pages。
-3. **导出接口是 N+1**：每局要 2 次查询 / 2 行读取。想更省需要 `src/worker/db/games.ts` 提供一个「只取 payload」的查询。
+3. ~~**导出接口是 N+1**：每局要 2 次查询 / 2 行读取。想更省需要 `src/worker/db/games.ts` 提供一个「只取 payload」的查询。~~ **已修复（2026-10-06 优化轮）**：实测旧实现比这条描述更糟——每局 2 次 D1 往返且 getGame 还拉导出用不到的 moves，936 局 ≈ **1882 次串行往返 / ~5.9 万行读取**。现在 `db/games.ts` 新增 `listGameDetails`（每页 2 次往返：主行+payload 一条、整页逐手 `IN` 一条，页大小 25 按 payload 体积定），export 循环改吃它 ⇒ 936 局 ≈ 38 页 ≈ 76 次往返；返回行与 getGame 逐字段同构（export.spec 有等价性钉子）。顺带 `insertGame` 的 `RETURNING` 直接回全列，成功路径省一次全列重查。
 4. **`compatibility_date` 停在 2026-08-22**：这是测试运行器内嵌 workerd 的上限，上调会让 vitest 起不来；升级 `@cloudflare/vitest-pool-workers` 时才能跟着提。
 5. **`wrangler.jsonc` 改 `triggers.crons` 后必须重新部署**，否则线上还是旧的调度。
 6. **本地 D1 库文件名由 `database_id` 派生**：换过 id（或改了名字）就等于换了一个空库，需要重跑迁移 + 导入，否则会看到 `no such table: games`。
 7. **测试库共享**：worker 项目用 `singleWorker: true`，同一实例里的 D1 是共享状态，新用例必须自己清理数据。
 8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
 9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0015，`npm run check:docs` 绿（45 个 md / 277 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。
-10. **Rapfi 的 10 MB 资产仍由页面在局中现抓**（慢链路上会假死，见「仍存在」第 5 条）：本轮只修了工具链（本地供给），应用侧的重试/报错面与预取都未做——这是一条**已知未闭环**的风险，不是已修项。
+10. ~~**Rapfi 的 10 MB 资产仍由页面在局中现抓**（慢链路上会假死，见「仍存在」第 5 条）：应用侧的重试/报错面与预取都未做~~ **已闭环（2026-10-06 优化轮）**：停滞看门狗 + 下载进度 + retryable 自动重试 + 显式切换时预取（见「仍存在」第 5 条的完整清单）。仍未做的只剩「局中同步思考阻塞 UI」与「资产预下载到 Service Worker」一类增强。
 11. **在 DSH 里直接跑 wrangler 会被参数解析坑掉（2026-10-03 实测）**：DSH 的 `node` 跑在 Electron 里，yargs 的 `hideBin()` 判定成「打包版 Electron 应用」而多切片一位，报 `X [ERROR] Unknown arguments: remote, …\wrangler-dist\cli.js, d1, …`；直接 `node node_modules/wrangler/wrangler-dist/cli.js …` 又会因为 `require.main === module` 守卫静默什么都不做（exit 0、无输出）。绕行包装（`.work/wrangler-run.cjs`，不入库）：
 
     ```js
