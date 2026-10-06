@@ -69,6 +69,8 @@ statsRoute.get('/', rateLimit('read'), deviceMiddleware, async (c) => {
 
   const stats = await getStats(c.env.DB, options);
 
+  /* global 口径 30s 浏览器缓存；scope=device 的过滤值在 X-Device-Id 头里，必须 no-store。 */
+  c.header('Cache-Control', scope.value === 'device' ? 'no-store' : 'public, max-age=30');
   return c.json({ ok: true, ...stats });
 });
 

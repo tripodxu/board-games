@@ -22,16 +22,18 @@
  * `X-Device-Id` 格式（非法直接 400），但**导出不按设备过滤**——备份要的是全集；
  * 想只看自己的设备，用 `GET /api/games?device=`（另有路由）。
  *
- * ── N+1 代价（任务书要求写明） ────────────────────────────────────────────
- * `listGames` 刻意不取 `payload`（§4.4：一次拉 100 行 payload 会白烧行读取配额），
- * 所以每局要再 `getGame` 一次拿详情，而 `getGame` 除主行外还会多查一次 `game_moves`。
- * 即 **每局约 2 次查询 / 2 行读取**，本文件用不到 moves（忠实导出只需要 `payload`）。
- * 单次导出的上界由 `MAX_EXPORT_GAMES` 兜住：5000 局 ≈ 1 万行读取，对比免费版每日
- * 500 万行读取配额（§4.4）占 0.2%，可接受；真要更省，得让 `db/games.ts` 提供一个
- * 「只取 payload」的查询（属别人拥有的文件，见报告 §5）。
+ * ── 查询成本（2026-10-06 优化后） ─────────────────────────────────────────
+ * 旧实现是 N+1：`listGames` 刻意不取 payload，每局再串行 `getGame`（2 条 SQL，
+ * 其中 moves 导出用不到却照样读）——936 局 ≈ 1882 次串行往返 / ~5.9 万行读取。
+ * 现在 `db/games.ts` 提供 `listGameDetails`（技术债 #3 销账）：**每页固定 2 次往返**
+ * （主行+payload 一条、整页逐手明细 `IN` 一条），返回行与 getGame 逐字段同构。
+ * 页大小 `PAYLOAD_PAGE_LIMIT = 25`：payload 均值 ~13 KB（阶梯导入后），25 行把单页
+ * 响应压在 D1 单查询限额内（最坏 25 × 45 KB ≈ 1.1 MB）；936 局 ≈ 38 页 ≈ 76 次往返。
+ * 单次导出的上界仍由 `MAX_EXPORT_GAMES` 兜住；行读取 ≈ 局数 + 逐手数（真实成本），
+ * 对比免费版每日 500 万行读取配额可忽略。
  */
 import { Hono } from 'hono';
-import { MAX_LIST_LIMIT, getGame, listGames } from '../db/index.ts';
+import { listGameDetails } from '../db/index.ts';
 import { deviceMiddleware } from '../middleware/device.ts';
 import { rateLimit } from '../middleware/ratelimit.ts';
 import { GAME_IDS } from '../../shared/record-map.ts';
@@ -56,8 +58,13 @@ export const exportRoute = new Hono<AppEnv>();
  */
 export const MAX_EXPORT_GAMES = 5000;
 
-/** 每页拉取行数 = 列表查询上限（`db/games.ts` 的 `MAX_LIST_LIMIT`），不另设常量避免两个上限漂移。 */
-const PAGE_LIMIT = MAX_LIST_LIMIT;
+/**
+ * 每页拉取的局数：按 **payload 体积**而不是行数定的——payload 均值 ~13 KB、最坏 ~45 KB
+ * （阶梯导入后），25 行把单页响应压在 D1 单查询限额内，同时 936 局只要 ~38 页。
+ * 刻意不复用 `MAX_LIST_LIMIT`（100）：那是给「不含 payload 的列表行」定的上限，
+ * 两个口径不该共用一个常量。
+ */
+const PAYLOAD_PAGE_LIMIT = 25;
 
 export interface ExportGamesParams {
   /** 精确到某一天（UTC）。 */
@@ -97,12 +104,12 @@ export function exportFilename(params: ExportGamesParams): string {
 }
 
 /**
- * 分页循环 + 逐行产出。
+ * 分页循环 + 逐行产出（每页 2 次 D1 往返：主行+payload、整页逐手明细）。
  *
  * 三个终止条件：
- *  1. `nextCursor === null`（`listGames` 用它表示没有下一页）；
+ *  1. `nextCursor === null`（`listGameDetails` 用它表示没有下一页）；
  *  2. 达到 `max` 局硬上限（置 `truncated`，见 `MAX_EXPORT_GAMES` 的注释）；
- *  3. `signal.aborted`（客户端断开——多数情况下 `getGame` 已经抛错，这里是兜底，
+ *  3. `signal.aborted`（客户端断开——多数情况下查询已经抛错，这里是兜底，
  *     保证循环能退出、流能被正常收掉）。
  *
  * **提前 return 的依据**：`since` 过滤下，行按 `id DESC` 输出，而 `games.id` 是自增的
@@ -118,11 +125,11 @@ async function writeJsonl(
   let exported = 0;
 
   for (;;) {
-    const page = await listGames(opts.db, {
+    const page = await listGameDetails(opts.db, {
       day: opts.params.day ?? undefined,
       gameId: opts.params.gameId ?? undefined,
       cursor,
-      limit: PAGE_LIMIT,
+      limit: PAYLOAD_PAGE_LIMIT,
     });
 
     for (const game of page.games) {
@@ -131,12 +138,7 @@ async function writeJsonl(
       if (opts.params.since && game.day < opts.params.since) return { exported, truncated: false };
       if (exported >= opts.max) return { exported, truncated: true };
 
-      const detail = await getGame(opts.db, { gameUid: game.gameUid });
-      /* 列表与详情之间行被删掉（理论竞态）：跳过而不是让整次导出失败——
-       * 备份的意义是「能拿多少拿多少」。 */
-      if (!detail) continue;
-
-      controller.enqueue(encoder.encode(`${JSON.stringify(detail)}\n`));
+      controller.enqueue(encoder.encode(`${JSON.stringify(game)}\n`));
       exported += 1;
     }
 

@@ -928,9 +928,10 @@ describe('参数校验（§5.5 手写校验）', () => {
     expect(bad.body.code).toBe('bad_request');
   });
 
-  it('读接口限流：桶满后 429 且带 Retry-After', async () => {
-    /* 直接把桶灌满，而不是真发 121 个请求：限流键是 IP（本地无 cf-connecting-ip 时统一回落
-     * `local`），灌满后本文件里后续任何读请求都会 429，所以这条用例必须放在最后。 */
+  it('读接口不限流（ADR-0013 口径）：桶满也不 429、不写 rate_limits、无 X-RateLimit 头', async () => {
+    /* 2026-10-06 起 read 桶整体放行（原实现每次读请求写一行 rate_limits，单 IP 满速
+     * 就能烧穿免费档 10 万行写/日；ADR-0013「后果」节原文预留读接口不计数）。
+     * 预插一行满桶计数，验证：请求照常 200、无 X-RateLimit-* 头、计数行原样未动。 */
     const now = Math.floor(Date.now() / 1000);
     const windowStart = now - (now % 60);
     await env.DB.prepare(
@@ -940,9 +941,14 @@ describe('参数校验（§5.5 手写校验）', () => {
       .run();
 
     const res = await call('/api/stats');
-    expect(res.status).toBe(429);
-    expect(res.headers.get('retry-after')).toBeTruthy();
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('rate_limited');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-ratelimit-limit')).toBeNull();
+    expect(res.headers.get('retry-after')).toBeNull();
+    const row = await env.DB.prepare(
+      'SELECT count AS n FROM rate_limits WHERE bucket = ?',
+    )
+      .bind('read:local')
+      .first<{ n: number }>();
+    expect(row?.n).toBe(120);
   });
 });

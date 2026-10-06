@@ -135,6 +135,9 @@ gamesRoute.get('/', rateLimit('read'), deviceMiddleware, async (c) => {
     experimentTag: c.req.query('tag') || undefined,
   });
 
+  /* 列表数据 30s 浏览器缓存：过滤参数全在 URL 上（天然 cache key）。
+   * 唯 `device=me` 例外——过滤值在 X-Device-ID 请求头里，按 URL 缓存会跨设备串数据。 */
+  c.header('Cache-Control', deviceParam === 'me' ? 'no-store' : 'public, max-age=30');
   return c.json({ ok: true, games: page.games.map(listItem), nextCursor: page.nextCursor });
 });
 

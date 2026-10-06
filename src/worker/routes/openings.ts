@@ -197,6 +197,8 @@ openingsRoute.get('/', rateLimit('read'), deviceMiddleware, async (c) => {
     summary = { opening: wanted, plies, ...row, enough: row.games >= minGames.value };
   }
 
+  /* 开局聚合不按设备过滤，过滤参数全在 URL 上 ⇒ 30s 浏览器缓存。 */
+  c.header('Cache-Control', 'public, max-age=30');
   return c.json({
     ok: true,
     game,

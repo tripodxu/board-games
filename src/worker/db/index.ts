@@ -12,12 +12,14 @@ export {
   getGame,
   getGameByUidPrefix,
   insertGame,
+  listGameDetails,
   listGames,
   parseGamePayload,
 } from './games.ts';
 export type {
   Game,
   GameDetail,
+  GameDetailPage,
   GameInput,
   GameMove,
   GameMoveInput,

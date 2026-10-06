@@ -4,8 +4,11 @@
  * 计数键 = `kind:IP`。IP 取 `cf-connecting-ip`；本地 `wrangler dev` / 单测里没有这个头，
  * 回落成 `local`（此时所有本机请求共用一个桶——这正是本地想看到的行为：能触发 429）。
  *
- * 已知取舍：D1 的 `RETURNING count` 每次请求一次**写**，所以读接口的限流也会消耗写配额。
- * 这是「跨实例一致」必须付的代价；窗口是秒对齐的固定窗口（非滑动），允许边界处 2× 突发。
+ * 已知取舍（2026-10-06 起）：D1 的 `RETURNING count` 每次请求一次**写**。`read` 桶因此
+ * **整体放行、不写库**——ADR-0013「后果」节原文预留「仅写接口与 /api/jev 计数，读接口
+ * 不计数或采样」，旧实现对读接口也全量计数比 ADR 更严，且单 IP 满速读就能烧掉 17.3 万
+ * 行写/日（免费档 10 万）。`jev` / `write` 两桶语义一字不动（含 429 与 Retry-After）。
+ * 窗口是秒对齐的固定窗口（非滑动），允许边界处 2× 突发。
  */
 import { createMiddleware } from 'hono/factory';
 import { hitRateLimit, pruneRateLimits, windowStartOf } from '../db/index.ts';
@@ -19,7 +22,10 @@ interface Rule {
   windowSeconds: number;
 }
 
-/** §5.3 的三个桶：外部转发最贵（30/分），写入次之（20/分），读最宽（120/分）。 */
+/**
+ * §5.3 的三个桶：外部转发最贵（30/分），写入次之（20/分），读最宽（120/分）。
+ * `read` 只作为「名义规则」保留（文档与测试引用它），中间件对它直接放行、不计数。
+ */
 export const RATE_LIMITS: Record<RateLimitKind, Rule> = {
   jev: { limit: 30, windowSeconds: 60 },
   write: { limit: 20, windowSeconds: 60 },
@@ -50,6 +56,13 @@ export function clientIp(c: { req: { header: (name: string) => string | undefine
 
 export function rateLimit(kind: RateLimitKind) {
   return createMiddleware<AppEnv>(async (c, next) => {
+    /* 读桶放行（ADR-0013 原文口径）：不写 rate_limits、不给 X-RateLimit-* 头、不 429。
+     * 读请求的 D1 成本只剩查询本身；防滥用交给 Cloudflare 边缘与 D1 的读取配额。 */
+    if (kind === 'read') {
+      await next();
+      return;
+    }
+
     const rule = limitsFor(c.env)[kind];
     const key = `${kind}:${clientIp(c)}`;
     const now = Date.now();

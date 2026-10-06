@@ -1,0 +1,21 @@
+# 静态资产缓存策略（Workers Static Assets 的 _headers，构建时由 Vite 原样拷贝到 dist/client）。
+# 2026-10-06 优化轮：此前所有资产都吃 Cloudflare 默认的 ETag 再验证（等效 max-age=0），
+# 回访每页要付 4-5 个再验证 RTT。分三档：
+#
+#  /assets/*  —— Vite 产物，文件名带内容 hash（如 index-CNawIUqD.js），内容变 = 名字变，
+#               可以放心给一年 immutable；index.html 引用它们的入口靠下面两条 no-cache 保持新鲜。
+#  /rapfi/*   —— Rapfi 引擎三件（.js/.wasm/.data，合计 ~11 MB），文件名**没有** hash，
+#               不能给 immutable；24h TTL 让回访零再验证，引擎更新最多滞后一天。
+#  / 与 /index.html —— SPA 入口必须每次再验证，否则部署后用户拿旧壳引旧 hash（404）。
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/rapfi/*
+  Cache-Control: public, max-age=86400
+
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache

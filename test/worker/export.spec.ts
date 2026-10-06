@@ -21,7 +21,7 @@ import { Hono } from 'hono';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app as indexApp } from '../../src/worker/index.ts';
 import { exportRoute, exportFilename, parseExportParams } from '../../src/worker/routes/export.ts';
-import { insertGame } from '../../src/worker/db/index.ts';
+import { getGame, insertGame } from '../../src/worker/db/index.ts';
 import type { GameInput, GameMoveInput } from '../../src/worker/db/index.ts';
 import type { AppEnv } from '../../src/worker/types.ts';
 
@@ -125,6 +125,21 @@ describe('GET /api/export/games', () => {
     const first = JSON.parse(rows[1].payload as string) as { exported: string; notation: string };
     expect(first.exported).toBe('2026-10-02T03:04:05.000Z');
     expect(first.notation).toBe('h8,i9,h9,');
+  });
+
+  it('行内容与 getGame 逐字段一致（2026-10-06 改查询不改契约：listGameDetails == getGame）', async () => {
+    /* 技术债 #3 销账后的回归钉子：导出从「列表 + 逐局 getGame（N+1）」换成
+     * listGameDetails 批量页（每页 2 次往返），本用例保证两种取法的返回对象
+     * 逐字段相同（含 payload 原文与逐手明细），消费方无感。 */
+    await seedGame({ uid: 'uid-eq', exported: '2026-10-05T03:04:05.000Z', notation: 'h8,i9,h9,i8,j8,' });
+
+    const res = await getExport();
+    const rows = await readJsonl(res);
+    expect(rows).toHaveLength(1);
+
+    const detail = await getGame(env.DB, { gameUid: 'uid-eq' });
+    expect(detail).not.toBeNull();
+    expect(rows[0]).toEqual(detail as unknown as Record<string, unknown>);
   });
 
   it('空结果 → 200 + 空体（不是 404、不是 []）', async () => {

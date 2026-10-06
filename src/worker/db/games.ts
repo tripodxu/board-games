@@ -258,7 +258,9 @@ const GAME_INSERT = `INSERT INTO games
    ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38,
    ?39, ?40, ?41, ?42, ?43, ?44)
   ON CONFLICT DO NOTHING
-  RETURNING id`;
+  /* RETURNING 直接回全列：成功路径不再需要「拿 id 后全列重查」的第二次往返。
+   * GAME_COLUMNS 里没有 cal_json（调用方不消费），RETURNING 只取 GAME_COLUMNS 同款列。 */
+  RETURNING ${GAME_COLUMNS}`;
 
 /** 行 → 领域对象：只有 SQLite 的 0/1/NULL 需要在这里翻译。 */
 function toGame(row: GameRow): Game {
@@ -429,12 +431,12 @@ export async function insertGame(db: D1Database, input: GameInput): Promise<Inse
       input.tacAvgMs ?? null,
       input.tacMaxMs ?? null,
     )
-    .first<{ id: number }>();
+    .first<GameRow>();
 
   if (inserted) {
+    /* GAME_INSERT 的 RETURNING 已带全列（GAME_COLUMNS），不再需要按 id 重查一次。 */
     const movesWritten = await writeMoves(db, inserted.id, input.moves);
-    const row = await requireGameById(db, inserted.id);
-    return { game: toGame(row), dedup: false, movesWritten };
+    return { game: toGame(inserted), dedup: false, movesWritten };
   }
 
   // 命中既有行：先按 dedup_key 找，再退到 game_uid（第二次提交可能换了导出时间戳，
@@ -477,12 +479,6 @@ async function selectGameBy(
     .prepare(`SELECT ${GAME_COLUMNS} FROM games WHERE ${where} LIMIT 1`)
     .bind(...binds)
     .first<GameRow>();
-}
-
-async function requireGameById(db: D1Database, id: number): Promise<GameRow> {
-  const row = await selectGameBy(db, 'id = ?', [id]);
-  if (!row) throw new Error(`插入后读不到游戏行：id=${id}`);
-  return row;
 }
 
 /**
@@ -538,6 +534,90 @@ export async function listGames(db: D1Database, filter: ListGamesFilter = {}): P
 
 /** 详情定位：按 uid，或按旧 URL 的 day + slug。 */
 export type GameRef = { gameUid: string } | { day: string; slug: string };
+
+/** 详情页：形状与 `listGames` 的 GamePage 对应，元素是带 payload 与逐手明细的完整行。 */
+export interface GameDetailPage {
+  games: GameWithMoves[];
+  nextCursor: number | null;
+}
+
+/**
+ * 批量取详情页（keyset 翻页，`id DESC`）：为 `/api/export/games` 的 N+1 而生
+ * （技术债 #3：旧实现「列表页 + 逐局 getGame」每局 2 次往返，936 局 ≈ 1882 次）。
+ *
+ * 每页固定 **2 次** 往返：
+ *  ① 主行 + payload（一条 SQL，`ORDER BY id DESC` 走 rowid 主键 / `day = ?` 走 idx_games_day）；
+ *  ② 该页全部局的逐手明细（`game_id IN (…)` 一条 SQL，主键 (game_id, ply) 天然有序）。
+ *
+ * 返回行与 `getGame` 逐字段同构（含 moves 的 ply 升序），导出行的 JSON 序列化
+ * 与旧实现逐字节同形——这是「改查询不改契约」的硬要求，export.spec 的形状断言盯着。
+ */
+export async function listGameDetails(
+  db: D1Database,
+  filter: Pick<ListGamesFilter, 'day' | 'sinceDay' | 'gameId' | 'cursor' | 'limit'>,
+): Promise<GameDetailPage> {
+  const clauses: string[] = [];
+  const binds: unknown[] = [];
+  if (filter.day !== undefined) {
+    clauses.push('day = ?');
+    binds.push(filter.day);
+  }
+  if (filter.sinceDay !== undefined) {
+    clauses.push('day >= ?');
+    binds.push(filter.sinceDay);
+  }
+  if (filter.gameId !== undefined) {
+    clauses.push('game_id = ?');
+    binds.push(filter.gameId);
+  }
+  if (filter.cursor !== undefined) {
+    clauses.push('id < ?');
+    binds.push(filter.cursor);
+  }
+  const limit = resolveLimit(filter.limit);
+  binds.push(limit + 1);
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = (
+    await db
+      .prepare(`SELECT ${GAME_COLUMNS}, payload FROM games ${where} ORDER BY id DESC LIMIT ?`)
+      .bind(...binds)
+      .all<GameRow & { payload: string }>()
+  ).results ?? [];
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  if (!page.length) return { games: [], nextCursor: null };
+
+  /* 逐手明细一次取整页：占位符逐个绑定（25 个远低于 D1 的 bind 上限），
+   * 按 game_id 聚成映射，主行循环里按序取出。 */
+  const ids = page.map((r) => r.id);
+  const moveBinds = ids.map((_, i) => `?${i + 1}`).join(', ');
+  const moveRows = (
+    await db
+      .prepare(
+        `SELECT ${GAME_MOVE_COLUMNS}, game_id AS gameId FROM game_moves
+         WHERE game_id IN (${moveBinds}) ORDER BY game_id ASC, ply ASC`,
+      )
+      .bind(...ids)
+      .all<GameMove & { gameId: number }>()
+  ).results ?? [];
+  const movesByGame = new Map<number, GameMove[]>();
+  for (const { gameId, ...move } of moveRows) {
+    /* 剥掉归组用的 gameId：getGame 的 moves 不带这个键，导出行才与旧实现逐字节同形。 */
+    const list = movesByGame.get(gameId);
+    if (list) list.push(move);
+    else movesByGame.set(gameId, [move]);
+  }
+
+  const games = page.map((row) => ({
+    ...toGame(row),
+    payload: row.payload,
+    moves: movesByGame.get(row.id) ?? [],
+  }));
+  return {
+    games,
+    nextCursor: hasMore ? page[page.length - 1]!.id : null,
+  };
+}
 
 /**
  * 详情（含 payload 与逐手明细）。旧静态站的详情 URL 是

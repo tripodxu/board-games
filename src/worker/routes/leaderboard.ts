@@ -221,6 +221,8 @@ leaderboardRoute.get('/', rateLimit('read'), deviceMiddleware, async (c) => {
     win_rate: row.winRate ?? null,
   }));
 
+  /* global（无 device 过滤）30s 浏览器缓存；device=me 的过滤值在 X-Device-Id 头里，必须 no-store。 */
+  c.header('Cache-Control', deviceParam === 'me' ? 'no-store' : 'public, max-age=30');
   return c.json({
     ok: true,
     group: group.value,

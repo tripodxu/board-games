@@ -102,8 +102,10 @@ interface CalRow {
 }
 
 /**
- * 跨对局聚合。四段统计各一条 SQL，互不依赖，调用方若要并行只能靠 `db.batch`，
- * 这里保持顺序 await——D1 同一 binding 上的并发收益很小，可读性更值钱。
+ * 跨对局聚合。四段统计互不依赖，合并进**一次 `db.batch`**（2026-10-06：原来是四次
+ * 顺序 await = 4 次 D1 往返；batch 语义保序、同一次往返，结果顺序 = 语句顺序）。
+ * 其中 results 的三个 `LIKE '%黑方%'` 是非 sargable 全表扫描，合批后至少不再
+ * 把往返次数乘上去；新鲜度与口径逐字不变。
  */
 export async function getStats(
   db: D1Database,
@@ -111,33 +113,6 @@ export async function getStats(
 ): Promise<StatsResult> {
   const filter = buildFilter(options);
   const where = whereOf(filter.conditions);
-
-  const totalRow = await db
-    .prepare(`SELECT COUNT(*) AS total FROM games ${where}`)
-    .bind(...filter.binds)
-    .first<TotalRow>();
-
-  const byGameRows = await db
-    .prepare(
-      `SELECT COALESCE(NULLIF(game, ''), 'unknown') AS name, COUNT(*) AS n
-         FROM games ${where} GROUP BY name ORDER BY n DESC, name ASC`,
-    )
-    .bind(...filter.binds)
-    .all<ByGameRow>();
-
-  // 三个 SUM 里的 NOT LIKE 条件是为了复刻旧实现的 if / else-if 优先级：
-  // 只要串里出现「黑方」就记黑方，同一行不会再被白方/和棋重复计数。
-  const resultsRow = await db
-    .prepare(
-      `SELECT
-         COALESCE(SUM(CASE WHEN result LIKE '%黑方%' THEN 1 ELSE 0 END), 0) AS black,
-         COALESCE(SUM(CASE WHEN result NOT LIKE '%黑方%' AND result LIKE '%白方%' THEN 1 ELSE 0 END), 0) AS white,
-         COALESCE(SUM(CASE WHEN result NOT LIKE '%黑方%' AND result NOT LIKE '%白方%'
-                            AND result LIKE '%和棋%' THEN 1 ELSE 0 END), 0) AS draw
-       FROM games ${where}`,
-    )
-    .bind(...filter.binds)
-    .first<ResultsRow>();
 
   // json_type 对坏 JSON 会直接报 "malformed JSON" 而整条语句失败，所以必须先过
   // json_valid；用 CASE 而不是 AND，是因为 SQLite 不保证 AND 的短路求值。
@@ -147,19 +122,39 @@ export async function getStats(
     'first_win IS NOT NULL',
     "CASE WHEN json_valid(cal_json) THEN json_type(cal_json) = 'array' ELSE 0 END",
   ];
-  const calRows = await db
-    .prepare(
+
+  const [totalRes, byGameRes, resultsRes, calRes] = await db.batch([
+    db.prepare(`SELECT COUNT(*) AS total FROM games ${where}`).bind(...filter.binds),
+    db.prepare(
+      `SELECT COALESCE(NULLIF(game, ''), 'unknown') AS name, COUNT(*) AS n
+         FROM games ${where} GROUP BY name ORDER BY n DESC, name ASC`,
+    ).bind(...filter.binds),
+    // 三个 SUM 里的 NOT LIKE 条件是为了复刻旧实现的 if / else-if 优先级：
+    // 只要串里出现「黑方」就记黑方，同一行不会再被白方/和棋重复计数。
+    db.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN result LIKE '%黑方%' THEN 1 ELSE 0 END), 0) AS black,
+         COALESCE(SUM(CASE WHEN result NOT LIKE '%黑方%' AND result LIKE '%白方%' THEN 1 ELSE 0 END), 0) AS white,
+         COALESCE(SUM(CASE WHEN result NOT LIKE '%黑方%' AND result NOT LIKE '%白方%'
+                            AND result LIKE '%和棋%' THEN 1 ELSE 0 END), 0) AS draw
+       FROM games ${where}`,
+    ).bind(...filter.binds),
+    db.prepare(
       `SELECT game_id AS gameId, notation, first_win AS firstWin, cal_json AS calJson
          FROM games ${whereOf(calConditions)} ORDER BY id DESC LIMIT ${CAL_SAMPLE_LIMIT}`,
-    )
-    .bind(...filter.binds)
-    .all<CalRow>();
+    ).bind(...filter.binds),
+  ]);
+
+  const totalRow = (totalRes.results?.[0] ?? null) as TotalRow | null;
+  const byGameRows = (byGameRes.results ?? []) as ByGameRow[];
+  const resultsRow = (resultsRes.results?.[0] ?? null) as ResultsRow | null;
+  const calRows = (calRes.results ?? []) as CalRow[];
 
   const byGame: Record<string, number> = {};
-  for (const row of byGameRows.results ?? []) byGame[row.name] = row.n;
+  for (const row of byGameRows) byGame[row.name] = row.n;
 
   const records: CalRecord[] = [];
-  for (const row of calRows.results ?? []) {
+  for (const row of calRows) {
     const parsed: unknown = JSON.parse(row.calJson);
     // SQL 侧已保证是数组，这里只是把类型收窄；万一 schema 被人改过也不会污染样本。
     if (!Array.isArray(parsed)) continue;
