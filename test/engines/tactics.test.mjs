@@ -62,9 +62,9 @@ const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
   eq(R.CURRENT, 'v14-live3-fresh', '当前档应为 v14-live3-fresh（v14-plus 配对轮 35% 未过负局线，显式回退；档位保留）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus', 'v15-vctfirst'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 16, '应为 15 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 17, '应为 16 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   ok(R.VERSIONS.some((v) => v.id === R.CURRENT), 'CURRENT 应是已登记档位（回退后末档可与 CURRENT 不同）');
@@ -88,6 +88,8 @@ S.t('版本登记表：十五级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/
     'v14-live3-fresh': 14,
     /* v14-plus 不加层：机制同 v14，只收紧防守侧预算（vctDefMax/vctDefKeep/pressureCutMax） */
     'v14-plus': 14,
+    /* v15 不加层：机制同 v14-plus（含 vctFirst），预算回到 v14 原值（单变量验证设计） */
+    'v15-vctfirst': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
@@ -197,6 +199,11 @@ S.t('P1 冻结层：sound 记历史事实（v9 起才有闸门）/ fidelity / op
     if (k === 'vctDefMax' || k === 'vctDefKeep' || k === 'pressureCutMax') continue;
     eq(bPlus[k], b14[k], 'v14-plus 除三键收紧外其余预算应与 v14 逐键一致：' + k);
   }
+  /* v15（单变量验证设计）：vctFirst 保留，预算逐键回到 v14 原值——与 v14-plus 的唯一差异就是这三键 */
+  const b15 = R.resolve('v15-vctfirst').budget;
+  for (const k of Object.keys(b14)) eq(b15[k], b14[k], 'v15 预算应与 v14 逐键一致：' + k);
+  ok(R.allows(R.resolve('v15-vctfirst'), 'vctFirst'), 'v15 应启用 vctFirst（单变量）');
+  ok(!R.allows(R.resolve('v14-live3-fresh'), 'vctFirst'), 'v14 不应有 vctFirst（旧序保持逐字不变）');
   /* P3 考古（docs/plans/2026-10-04-tactics-archaeology.md）：v1–v13 的四项参数全部有 git 证据 ⇒ restored；
      v0-off 的档位表没有 sha、参数无证据 ⇒ 只能 approximate（不猜）。口径 = 参数层，不等于 exact。 */
   eq(R.resolve('v13-pressure-gate').fidelity, 'restored', 'P3 考古确证过参数的历史档应是 restored');

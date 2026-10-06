@@ -126,6 +126,10 @@ export const VERSIONS: TacticsVersion[] = [  { id: 'v0-off', name: '无战术基
     ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 0,
     budget: { ...DEFAULT_BUDGET, vctDefMax: 8, vctDefKeep: 2, pressureCutMax: 80 },
     note: '整合收紧档（用户要求「整合一版 v14-plus，取其精华去其糟粕」；commit 1db3ff5）。**先核实的事实：整合在 v14 已结构性完成** —— 机制矩阵上 v14 已包含 v10 的 live3 两层、v11 的 vctAttack、v12 的 vctDefense、v13 的 pressureGate（14 层超集，tactics.test.mjs 层数表钉死），「把各版本精华合起来」没有可加的层；且 20 局/对的分辨率是 ±20pt（L2 12 对区间全重叠、vorder1 闭环、第二把尺子 9/10 翻转），任何新层都无法用比分验证 ⇒ 本档**零新层**（规则 10 的纠偏/减法），做两处，依据全是机制层实测：**① 三键防守侧预算减法**：`vctDefMax` 12→8（vctDefense 每候选最坏 2 次搜索，全回合最坏 ≈ 26 次，而六轮对照真救 0、开火率每数百回合 1-3 次，是全层最坏 13.8s 的主要来源，收紧后 ≈ 18 次）、`vctDefKeep` 3→2、`pressureCutMax` 120→80；**攻击侧预算一个不动**（vctPlies 9 / vcfNodeLimit 4000 / live3 两层）。**② `vctFirst` 防线优先级纠偏（本档独有的行为变化）**：用户要求「仔细分析 v14 战败的棋局」⇒ 对 vorder1 的 v13-vs-v14 四局败局逐手探针（`.work/v14loss-probe.mjs`，判据与 loss-report 同源）抓到 **2 局同一死法**——29ced20c ply65：对手纯 VCF 链 J9→J12→I10→K12→K10→L10→L9，vctDefense 给出全拆点 **K10**（占住后对手 VCF+VCT 全无），但 vcfDefense 先开火走了链上更靠前的 **I10**（只拆掉纯四链，判据弱），对手的活三逼迫混合链残留，ply67 起全盘无拆点、ply69 成必败；3ba614a0 ply24 同型（vcfDefense 走 G8 弃全拆点 E6，ply26 起无拆点、ply32 必败）。根因是防线排序：**判据弱的 vcfDefense（只验纯四）排在判据强的 vctDefense 之前，且后者被门在「前者没找到点」之后**——「纯四可拆、混合链也能一并拆」的局面永远走弱防线。vctFirst 把 vctDefense 提前为主防线、vcfDefense 降级为「vctDefense 没找到点」的兜底（实现只动 tactics.ts 的事实计算顺序，接管链分支零改动）；v0–v14 不带此键 ⇒ 原序逐字不变。**模型可见事实**：非防手位与 v14 逐字一致；对手有链的防手位 `vct_win_opponent` 代替 `vcf_win_opponent`（说更全的真话）。**验证口径（机制层，非比分）**：指纹 14 局面 × 16 档 = 224 行，v0–v14 的 210 行逐字节不变（vctFirst 缺省关）；真局夹具 29ced20c ply64 断言 v14 走 I10/vcfDefense、v14-plus 走 K10/vctDefense；3ba614a0 ply24 夹具同向。比分验证不作为验收（分辨率不够）；可选验证轮命令见 ADR-0023。**配对验证轮（vplus1，2026-10-06，box 20 局黑白交替，双臂走兜底网关）**：v14-plus **4 胜 6 和 10 负（35.0%）** vs v14 **10 胜 6 和 4 负（65.0%）**——Wilson 区间重叠（技术上不可判）但**负局 10 vs 4 触发规则 11「负局不增加」红线 ⇒ CURRENT 回退到 v14-live3-fresh，本档保留登记**（20 局归因/回放可解析）。机制层读数（全部达标）：vctDefense 主防 105 手 vs v14 的 28 手（vctFirst 按设计工作）、vcfDefense 降为兜底 10 手、最坏 `tac_ms` **18398 → 11590ms（-37%，预算减法兑现）**、10 局败局防御层零真漏防、漏杀 0。同门比分与机制达标的并存读法：判据更强的防点改变了行棋轨迹，同门 razor-edge 的对局里轨迹翻转方向不可控；n=20 无法把 30pt 差距从噪声里摘出来。**回滚**：本条即为回滚后状态（见 CURRENT）。' },
+  { id: 'v15-vctfirst', name: '防线优先级', rank: 16, commit: 'pending', commitAt: '2026-10-06 15:40',
+    date: '2026-10-06', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, vctFirst: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 0,
+    note: '防线优先级档（业主指令「结合实验数据，生成 v15」）。**单变量设计（v14-plus 的教训）**：vplus1 配对轮一次改了两个变量（预算减法 + vctFirst），35% vs 65% 的比分无法归因。本档 = **v14 全机制 + 仅 vctFirst**，预算逐键回到 v14 原值（`vctDefMax` 12 / `vctDefKeep` 3 / `pressureCutMax` 120）——v14-plus 已证明的机制层事实保留（56 局败局 6 处确定性漏防由 vctFirst 纠正、判据更强），比分可疑的减法全部退出。**行为面**：与 v14 只差「对手有链的防手位」（`vct_win_opponent` 代替 `vcf_win_opponent`，判据更强），其余逐字一致；与 v14-plus 只差预算。**预注册判定规则（跑前写死，ADR-0023 增补三）**：v15 vs v14 配对 20 局（box，双臂兜底网关）——① v15 负局 ≤ 4（不劣于 v14 同轮）⇒ 通过，CURRENT 升 v15；② 负局 5–6 ⇒ 不可判，CURRENT 留 v14、本线挂起；③ 负局 ≥ 7 ⇒ vctFirst 单变量即比分有害 ⇒ 永久关闭（登记保留，CURRENT 永留 v14）。**验证期间 CURRENT 保持 v14-live3-fresh**（生产不暴露未验证版本，避免再次回滚）。' },
 ];
 
 /** 当前档位。2026-10-06 配对验证轮（vplus1）v14-plus 35% vs v14 65%（n=20，负局 10 vs 4）
@@ -235,7 +239,7 @@ export function ids(): string[] {
 function U(cond: unknown, msg: string): void { assert(cond, msg); }
 
 export function selfTest(): void {
-  assert(VERSIONS.length === 16, '应登记 15 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
+  assert(VERSIONS.length === 17, '应登记 16 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
   /* 2026-10-06 v14-plus 配对轮未过负局线，CURRENT 显式回退 ⇒ 末档可与 CURRENT 不同（登记保留） */
   U(!!BY_ID[CURRENT], '当前档必须是已登记档位');
   VERSIONS.forEach((v, i) => {
