@@ -26,6 +26,7 @@ import type { RapfiModule } from '../../src/core/jev/rapfi.ts';
 import {
   RAPFI_ASSET_BASE,
   RAPFI_GLUE_URL,
+  RAPFI_STALL_TIMEOUT_MS,
   installRapfiLoader,
   loadRapfiModule,
 } from '../../src/app/rapfi-loader.ts';
@@ -156,6 +157,63 @@ describe('真实注入路径（createElement → onload → 工厂）', () => {
     script!.onerror!.call(script!, new Event('error'));
     await expect(pending).rejects.toThrow(/Rapfi 脚本加载失败/);
   });
+
+  it('F1：下载停滞 30s 触发看门狗——「工厂永不 settle」的假死被切断', async () => {
+    vi.useFakeTimers();
+    try {
+      installRapfiLoader();
+      const pending = loadRapfiModule(RAPFI_GLUE_URL);
+      const script = injectedScript()!;
+      /* 永不 resolve、永不 setStatus 的工厂：正是 .data 抓取失败时胶水的真实行为 */
+      vi.stubGlobal('Rapfi', (() => new Promise<RapfiModule>(() => {})) as unknown as RapfiFactory);
+      script.onload!.call(script!, new Event('load'));
+      const expectation = expect(pending).rejects.toThrow(/停滞超过 30 秒/);
+      await vi.advanceTimersByTimeAsync(RAPFI_STALL_TIMEOUT_MS + 1);
+      await expectation;
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('F1：setStatus 是看门狗心跳——有进度不超时，进度停止后才失败；进度原文透传', async () => {
+    vi.useFakeTimers();
+    const onProgress = vi.fn();
+    try {
+      installRapfiLoader();
+      const pending = loadRapfiModule(RAPFI_GLUE_URL, onProgress);
+      const script = injectedScript()!;
+      let statusCb: ((t: unknown) => void) | null = null;
+      vi.stubGlobal('Rapfi', ((opts: Parameters<RapfiFactory>[0]) => {
+        statusCb = opts.setStatus ?? null;
+        return new Promise<RapfiModule>(() => {});
+      }) as unknown as RapfiFactory);
+      script.onload!.call(script!, new Event('load'));
+
+      await vi.advanceTimersByTimeAsync(RAPFI_STALL_TIMEOUT_MS - 5_000);
+      statusCb!('Downloading data... (1/10)');
+      await vi.advanceTimersByTimeAsync(RAPFI_STALL_TIMEOUT_MS - 5_000); /* 若心跳没重置计时器，这里已经超时 */
+      expect(onProgress).toHaveBeenCalledWith('download', 'Downloading data... (1/10)');
+      const expectation = expect(pending).rejects.toThrow(/停滞超过 30 秒/); /* 先挂再走时钟，避免 unhandled rejection */
+      await vi.advanceTimersByTimeAsync(RAPFI_STALL_TIMEOUT_MS + 1); /* 心跳停止 → 才失败 */
+      await expectation;
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('F1：加载失败带 retryable 标记，失败后 ensureLoaded 可再次尝试', async () => {
+    installRapfiLoader();
+    const first = ensureLoaded();
+    const s1 = injectedScript()!;
+    s1.onerror!.call(s1!, new Event('error'));
+    const err: unknown = await first.catch((e: unknown) => e);
+    expect((err as { retryable?: boolean }).retryable).toBe(true);
+
+    /* 失败后 _loadPromise 已清零：再次调用会重新注入脚本、重新走完整加载 */
+    const second = ensureLoaded();
+    expect(appended.length).toBe(2);
+    const s2 = injectedScript()!;
+    const { factory } = fakeFactory();
+    vi.stubGlobal('Rapfi', factory);
+    s2.onload!.call(s2!, new Event('load'));
+    await expect(second).resolves.toBeTruthy();
+  });
 });
 
 describe('decide() 渠道装配', () => {
@@ -167,5 +225,34 @@ describe('decide() 渠道装配', () => {
     expect(d.notation).toBe('H8');
     expect((d.meta as { channel?: string }).channel).toBe('rapfi');
     expect((d.meta as { thinkMs?: number }).thinkMs).toBe(1000);
+  });
+
+  it('F1：decide 的 rapfiOnProgress 穿过 client 到 loader（下载进度不再被截掉）', async () => {
+    const st = gomoku.newGame();
+    reset();
+    installRapfiLoader();
+    const progress = vi.fn();
+    const pendingDecide = decide(gomoku, st, 'black', {
+      channel: 'rapfi',
+      rapfiThinkMs: 1000,
+      rapfiOnProgress: progress,
+    });
+    const script = injectedScript()!;
+    expect(progress).toHaveBeenCalledWith('script');
+
+    const seen: Parameters<RapfiFactory>[0][] = [];
+    vi.stubGlobal('Rapfi', ((opts: Parameters<RapfiFactory>[0]) => {
+      seen.push(opts);
+      return Promise.resolve(fakeModule((cmd) => {
+        if (cmd === 'START 15') { opts.onReceiveStdout('OK'); return []; }
+        return /^BOARD/.test(cmd) ? ['7,7'] : [];
+      }) as RapfiModule);
+    }) as unknown as RapfiFactory);
+    script.onload!.call(script!, new Event('load'));
+    seen[0]!.setStatus!('Downloading data... (2/10)');
+    expect(progress).toHaveBeenCalledWith('download', 'Downloading data... (2/10)');
+
+    const d = await pendingDecide;
+    expect(d.notation).toBe('H8');
   });
 });

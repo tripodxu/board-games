@@ -26,7 +26,7 @@
  *  3. `#expGames` 只在 props.games 显式给出时才写回 DOM（旧实现从不重画该输入框，避免吃掉草稿）。
  *  4. `renderExpResults()` 里胜方归属多了一层 `winnerChan` 空值防御（旧实现直接拼 `who(r.winnerChan)`）。
  *  5. `EXP.results` 的 `winner` 字段保留旧语义（胜方 side id 字符串 / null），不是布尔。
- *  6. 默认战术档用 `CURRENT`（随 core 常量走，v14 起为 'v14-live3-fresh'）而不是硬编码字符串。
+ *  6. 默认战术档用 `CURRENT`（随 core 登记表常量走，现为 'v14-plus'）而不是硬编码字符串。
  */
 import type { CandsStat } from '../../core/meta.ts';
 import type { SideConfig } from '../../core/persist.ts';
@@ -355,8 +355,12 @@ export function bindMatchSettings(handlers: MatchSettingsHandlers, root?: UiRoot
   const r = root ?? document;
   onOnce(qs(r, '#mode'), 'change', () => handlers.onModeChange?.(qs<SelectEl>(r, '#mode')?.value ?? ''));
   onOnce(qs(r, '#side'), 'change', () => handlers.onSideChange?.(qs<SelectEl>(r, '#side')?.value ?? ''));
-  onOnce(qs(r, '#speed'), 'input', () => {
-    const v = parseInt(qs<HTMLInputElement>(r, '#speed')?.value ?? '', 10) || 0;
+  /* F3（2026-10-06）：`#speed` 的 `input` 只更新数字标签（拖动的即时反馈），写设置与
+   * 落盘挪到 `change`（松手一次）——此前拖一次滑杆会同步 `localStorage` 几十次。 */
+  const speedOf = (): number => parseInt(qs<HTMLInputElement>(r, '#speed')?.value ?? '', 10) || 0;
+  onOnce(qs(r, '#speed'), 'input', () => setText(qs(r, '#speedVal'), speedLabel(speedOf())));
+  onOnce(qs(r, '#speed'), 'change', () => {
+    const v = speedOf();
     setText(qs(r, '#speedVal'), speedLabel(v));
     handlers.onSpeedChange?.(v);
   });

@@ -31,8 +31,12 @@ export interface RapfiModule {
   sendCommand(cmd: string): void;
 }
 
-/** 加载进度回调（'script' 注入胶水脚本 / 'wasm' 实例化）。 */
-export type ProgressFn = (stage: 'script' | 'wasm') => void;
+/**
+ * 加载进度回调。'script' = 注入胶水脚本，'wasm' = 工厂实例化开始，'download' =
+ * 胶水自报的资产下载进度文本（Emscripten `setStatus`，形如「Downloading data... (a/b)」）。
+ * detail 是给人看的文本，监听方原样展示即可。
+ */
+export type ProgressFn = (stage: 'script' | 'wasm' | 'download', detail?: string) => void;
 
 /** 胶水脚本加载器：由 UI 层注入（core 里没有 document）。 */
 export type RapfiLoader = (url: string, onProgress?: ProgressFn) => Promise<RapfiModule>;
@@ -175,8 +179,9 @@ function _send(cmd: string): string[] {
   return _stdoutLines.slice(mark);
 }
 
-/** 加载并实例化引擎。onProgress 可选回调('script'|'wasm')。
- * 并发调用复用同一 Promise；加载失败后自动清零以允许重试。 */
+/** 加载并实例化引擎。onProgress 可选回调('script'|'wasm'|'download', detail?)。
+ * 并发调用复用同一 Promise；加载失败后自动清零以允许重试（失败错误带 `retryable`，
+ * 装配层的自动退避会接住——2026-10-06 前 load 路径的错误从不打这个标）。 */
 export function ensureLoaded(onProgress?: ProgressFn): Promise<RapfiModule> {
   if (_module) return Promise.resolve(_module);
   if (_loadPromise) return _loadPromise;
@@ -185,6 +190,12 @@ export function ensureLoaded(onProgress?: ProgressFn): Promise<RapfiModule> {
       reject(new Error('当前环境不支持动态加载 Rapfi 脚本（无 document）'));
       return;
     }
+    /* 环境性问题（无 document）不该自动重试；网络/资产类失败才打 `retryable`。 */
+    const rejectRetryable = (e: unknown): void => {
+      const err = e instanceof Error ? e : new Error(String(e));
+      (err as Error & { retryable?: boolean }).retryable = true;
+      reject(err);
+    };
     const url = glueUrl();
     if (typeof onProgress === 'function') { try { onProgress('script'); } catch (_) { /* ignore */ } }
     _loader(url, onProgress).then((mod) => {
@@ -199,7 +210,7 @@ export function ensureLoaded(onProgress?: ProgressFn): Promise<RapfiModule> {
         resolve(mod);
       } catch (e) { _module = null; reject(e); }
     }, (e: unknown) => {
-      reject(new Error('Rapfi 脚本加载失败：' + url + '（需经 HTTP 提供，且 .data/.wasm 与脚本同源可访问）'
+      rejectRetryable(new Error('Rapfi 脚本加载失败：' + url + '（需经 HTTP 提供，且 .data/.wasm 与脚本同源可访问）'
         + (e && (e as Error).message ? '：' + (e as Error).message : '')));
     });
   });

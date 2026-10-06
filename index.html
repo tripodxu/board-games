@@ -7,7 +7,10 @@
 <meta name="description" content="TypeSafe Jev「系统一模型」驱动的七种棋类对弈：人机、机机，实时胜率与决策可视化。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- F3（2026-10-06）：字体 CSS 改非阻塞（media=print 加载完切回 all），关键渲染链不再等
+     Google Fonts 的四段跨源握手；IBM Plex Mono 砍掉 500 字重（样式只用 400/600）。 -->
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="/styles/style.css">
 </head>
 <body>

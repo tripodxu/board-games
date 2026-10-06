@@ -397,39 +397,76 @@ export function replayerMovesOf(payload: unknown): ReplayerMove[] {
 }
 
 /**
- * 回放棋盘：从初始局面重放到第 `ply` 手，画进 host 里新建的 canvas。
- * 复用 `ui/board-render.ts` 的 `createBoardRenderer`（它按 canvas 建，不装配 `#board`）；
+ * 回放棋盘（F2，2026-10-06 增量化）：此前每次改手数都「从第 0 手重放 + 新建 canvas/renderer」，
+ * 225 手的局拖一次滑杆 ≈ 225 次全量重放（O(N²)）。现在按 `replayerUid` 缓存一份视图：
+ *  - `states[p]`：第 p 手之后的局面快照，**增量推进**（只算一次，向前走一手只 applyMove 一次）；
+ *  - canvas + renderer 复用（重画而非重建 2D 上下文；重设 canvas 尺寸自带清屏）；
+ *  - 滑杆/键盘的 ply 变化在装配层用 rAF 合帧（见 renderReplayerPanel），一次拖动只渲染最后一格。
  * 没有 2D 上下文（happy-dom / 老浏览器）时静默留空，不抛异常、不阻塞面板其余部分。
  */
+interface ReplayView {
+  uid: string | null;
+  states: unknown[];
+  canvas: HTMLCanvasElement | null;
+  renderer: ReturnType<typeof createBoardRenderer> | null;
+}
+
+let REPLAY: ReplayView | null = null;
+
+/** 按 uid 取（或重置）回放视图缓存：换棋谱即重建快照数组。 */
+function replayViewOf(ctx: AppCtx): ReplayView {
+  const uid = ctx.replayerUid;
+  if (!REPLAY || REPLAY.uid !== uid) {
+    REPLAY = { uid, states: [], canvas: null, renderer: null };
+  }
+  return REPLAY;
+}
+
+/** 局面快照增量推进：保证 `states[p]` = 应用前 p 手之后的局面（非法着法处冻结，与旧重放语义一致）。 */
+function replayStatesOf(ctx: AppCtx, moves: ReplayerMove[], view: ReplayView): unknown[] {
+  const engine = ctx.engine;
+  const states = view.states;
+  if (states.length === 0) states.push(engine.newGame() as unknown);
+  for (let i = states.length; i <= moves.length; i += 1) {
+    const prev = states[i - 1] as unknown;
+    const notation = moves[i - 1]?.notation;
+    const mv = notation ? engine.moveFromNotation(prev, notation) : null;
+    states.push(mv ? (engine.applyMove(prev, mv) as unknown) : prev);
+  }
+  return states;
+}
+
 function drawReplayPosition(ctx: AppCtx, host: HTMLElement, moves: ReplayerMove[], ply: number): void {
   const engine = ctx.engine;
   if (typeof engine.draw !== 'function') return;
   try {
-    const ui: UiState = {};
-    let st = engine.newGame() as unknown;
-    for (let i = 0; i < ply && i < moves.length; i += 1) {
-      const notation = moves[i].notation;
-      if (!notation) break;
-      const mv = engine.moveFromNotation(st, notation);
-      if (!mv) break;
-      st = engine.applyMove(st, mv) as unknown;
-    }
-    const canvas = document.createElement('canvas');
+    const view = replayViewOf(ctx);
+    const states = replayStatesOf(ctx, moves, view);
+    const st = states[Math.min(ply, states.length - 1)] as unknown;
     const meta = engine.meta;
-    if (meta && Number.isFinite(meta.w) && Number.isFinite(meta.h)) {
-      canvas.width = meta.w;
-      canvas.height = meta.h;
+    const w = meta && Number.isFinite(meta.w) ? meta.w : 0;
+    const h = meta && Number.isFinite(meta.h) ? meta.h : 0;
+    if (!view.canvas) {
+      const canvas = document.createElement('canvas');
+      /* 没有 2D 上下文（happy-dom / 老浏览器）就安静跳过：面板其余部分照常可用。
+       * 刻意不缓存 canvas——缓存了也画不了，还会让后续尝试变成死循环空转。 */
+      if (typeof canvas.getContext !== 'function' || !canvas.getContext('2d')) return;
+      view.canvas = canvas;
+      view.renderer = createBoardRenderer(canvas);
     }
-    /* 没有 2D 上下文（happy-dom / 老浏览器）就安静跳过：面板其余部分照常可用。 */
-    if (typeof canvas.getContext !== 'function' || !canvas.getContext('2d')) return;
+    const canvas = view.canvas;
+    canvas.width = w;
+    canvas.height = h;
+    view.renderer?.resize(w, h);
     host.replaceChildren(canvas);
-    const renderer = createBoardRenderer(canvas);
-    if (meta) renderer.resize(meta.w, meta.h);
-    renderer.draw({ engine, state: st, ui });
+    view.renderer?.draw({ engine, state: st, ui: {} });
   } catch (e: unknown) {
     console.warn('[jev-qiguan] 回放画面渲染跳过', e);
   }
 }
+
+/** 滑杆/键盘合帧用的 rAF 句柄：一次拖动只渲染最后一格（F2）。 */
+let REPLAY_RAF = 0;
 
 /** 重画回放器（payload 为空时面板显示「未知」+ 0/0，不抛异常）。 */
 export function renderReplayerPanel(ctx: AppCtx): void {
@@ -448,7 +485,15 @@ export function renderReplayerPanel(ctx: AppCtx): void {
     handlers: {
       onPlyChange: (ply) => {
         ctx.replayerPly = ply;
-        renderReplayerPanel(ctx);
+        /* rAF 合帧：滑杆每格都触发 oninput，逐帧只渲染最终值（老浏览器退回 16ms 定时器）。 */
+        if (REPLAY_RAF) return;
+        const schedule = typeof requestAnimationFrame === 'function'
+          ? requestAnimationFrame
+          : (cb: () => void) => setTimeout(cb, 16) as unknown as number;
+        REPLAY_RAF = schedule(() => {
+          REPLAY_RAF = 0;
+          renderReplayerPanel(ctx);
+        });
       },
       onShare: (uid) => {
         void shareGameUid(uid);

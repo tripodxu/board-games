@@ -218,7 +218,7 @@ describe('实验事件绑定与纯函数口径', () => {
     expect(clampGames('7')).toBe(7);
   });
 
-  it('bindMatchSettings 绑 #mode change 与 #speed input（就地更新 #speedVal）', () => {
+  it('bindMatchSettings：#mode change 发事件；#speed input 只更新标签、change 才发事件（F3）', () => {
     const body = mount(HTML);
     const modes: string[] = [];
     const speeds: number[] = [];
@@ -227,10 +227,14 @@ describe('实验事件绑定与纯函数口径', () => {
     bindMatchSettings({ onModeChange: (m) => modes.push(m), onSpeedChange: (v) => speeds.push(v) }, body);
 
     select(need(body.querySelector<SelectEl>('#mode')), 'ai-ai');
+    /* 拖动中（input）：只就地更新 #speedVal，不写设置/不落盘 */
     input(need(body.querySelector<HTMLInputElement>('#speed')), '10');
     expect(modes).toEqual(['ai-ai']);
-    expect(speeds).toEqual([10]);
+    expect(speeds).toEqual([]);
     expect(need(body.querySelector('#speedVal')).textContent).toBe(speedLabel(10));
+    /* 松手（change）：才把值交给 onSpeedChange */
+    input(need(body.querySelector<HTMLInputElement>('#speed')), '10', 'change');
+    expect(speeds).toEqual([10]);
     /* 显隐归 syncMatchSettings；bindMatchSettings 只发事件 */
     expect(need(body.querySelector('#speedRow')).hasAttribute('hidden')).toBe(true);
   });

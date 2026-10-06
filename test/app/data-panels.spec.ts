@@ -175,6 +175,8 @@ describe('P7c 数据面板接线', () => {
     next?.dispatchEvent(new Event('click'));
 
     expect(ctx.replayerPly).toBe(1);
+    /* F2：ply 变化经 rAF 合帧，DOM 更新在下一帧（刷两拍等 happy-dom 的 rAF 触发） */
+    for (let i = 0; i < 3; i += 1) await new Promise((r) => setTimeout(r, 0));
     const after = document.getElementById('replayerPanel');
     expect(after?.querySelector('.rp-pos')?.textContent).toBe('1/3');
     expect(after?.querySelector('.rp-move.is-cur')?.getAttribute('data-ply')).toBe('1');
@@ -182,6 +184,7 @@ describe('P7c 数据面板接线', () => {
     /* 键盘 ←/→ 也走同一条 onPlyChange（监听挂在面板 root 上） */
     after?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(ctx.replayerPly).toBe(2);
+    for (let i = 0; i < 3; i += 1) await new Promise((r) => setTimeout(r, 0));
     expect(document.getElementById('replayerPanel')?.querySelector('.rp-pos')?.textContent).toBe('2/3');
   });
 

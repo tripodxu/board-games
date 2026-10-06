@@ -28,6 +28,8 @@ export type RapfiFactory = (opts: {
   locateFile: (path: string) => string;
   onReceiveStdout: (line: string) => void;
   onReceiveStderr: (line: string) => void;
+  /** Emscripten 的状态/下载进度回调（「Downloading data... (a/b)」）；可选，胶水缺省也有实现。 */
+  setStatus?: (text: unknown) => void;
 }) => Promise<RapfiModule>;
 
 function factoryOf(): RapfiFactory | null {
@@ -35,20 +37,51 @@ function factoryOf(): RapfiFactory | null {
   return typeof f === 'function' ? (f as RapfiFactory) : null;
 }
 
-/** 注入胶水脚本并实例化引擎（旧实现 `ensureLoaded` 闭包里的注入段）。 */
+/** 注入胶水脚本并实例化引擎（旧实现 `ensureLoaded` 闭包里的注入段）。
+ *
+ * 2026-10-06 加载硬化（已知限制 #5 的应用侧缺口）：胶水的 `.data` 预载失败时
+ * run dependency 永不解除 → 工厂 Promise **永不 settle** → 上层 `_loadPromise`
+ * 永挂 → inflight 永占 → 整局假死。两层防护：
+ *  ① **停滞看门狗**：任何进度事件（脚本 onload / setStatus / 实例化完成）都会重置
+ *     计时器；连续 `STALL_TIMEOUT_MS` 无任何进度即 reject——慢链路（有进度）不会被
+ *     误杀，断链/死链（无进度）30 秒内必然失败，失败错误可重试。
+ *  ② **进度透传**：胶水的 `setStatus`（「Downloading data... (a/b)」）经
+ *     `onProgress('download', text)` 交上层展示，替换掉「看着在等 AI」。
+ */
+export const RAPFI_STALL_TIMEOUT_MS = 30_000;
+
 export function loadRapfiModule(url: string, onProgress?: ProgressFn): Promise<RapfiModule> {
   return new Promise<RapfiModule>((resolve, reject) => {
     if (typeof document === 'undefined') {
       reject(new Error('当前环境不支持动态加载 Rapfi 脚本（无 document）'));
       return;
     }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+    const settle = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      fn();
+    };
+    const kick = (): void => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        settle(() => reject(new Error(
+          `Rapfi 资产下载停滞超过 ${Math.round(RAPFI_STALL_TIMEOUT_MS / 1000)} 秒（网络中断或目标不可达）`,
+        )));
+      }, RAPFI_STALL_TIMEOUT_MS);
+    };
+    kick();
+
     const script = document.createElement('script');
     script.src = url;
     script.async = true;
     script.onload = () => {
+      kick();
       const factory = factoryOf();
       if (!factory) {
-        reject(new Error('Rapfi 胶水脚本未导出工厂函数 Rapfi：' + url));
+        settle(() => reject(new Error('Rapfi 胶水脚本未导出工厂函数 Rapfi：' + url)));
         return;
       }
       if (typeof onProgress === 'function') {
@@ -58,11 +91,18 @@ export function loadRapfiModule(url: string, onProgress?: ProgressFn): Promise<R
         locateFile: (p: string) => RAPFI_ASSET_BASE + p,
         onReceiveStdout: (line: string) => onStdout(line),
         onReceiveStderr: (line: string) => stderrHandler(line),
-      }).then(resolve, (e: unknown) => {
-        reject(new Error('Rapfi 引擎实例化失败：' + (e instanceof Error ? e.message : String(e))));
+        /* Emscripten 的下载进度（含 .data 的「(a/b)」文本）：既当进度展示，也当看门狗心跳。 */
+        setStatus: (text: unknown) => {
+          kick();
+          if (typeof onProgress === 'function' && text) {
+            try { onProgress('download', String(text)); } catch (_) { /* ignore */ }
+          }
+        },
+      }).then((mod) => settle(() => resolve(mod)), (e: unknown) => {
+        settle(() => reject(new Error('Rapfi 引擎实例化失败：' + (e instanceof Error ? e.message : String(e)))));
       });
     };
-    script.onerror = () => { reject(new Error('Rapfi 脚本加载失败：' + url)); };
+    script.onerror = () => { settle(() => reject(new Error('Rapfi 脚本加载失败：' + url))); };
     document.head.appendChild(script);
   });
 }

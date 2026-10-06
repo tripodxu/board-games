@@ -26,6 +26,7 @@ import type { Engine, GameStatus, UiState } from '../core/types.ts';
 import type { GameSession } from '../core/session.ts';
 import type { EffSide, Settings, StorageLike, SideConfig } from '../core/persist.ts';
 import { effSide, saveSettings } from '../core/persist.ts';
+import { ensureLoaded } from '../core/jev/rapfi.ts';
 import type { BoardRenderer } from '../ui/board-render.ts';
 import type { ProbeState } from '../ui/panels/settings.ts';
 import type { SyncQueue } from '../core/record/sync.ts';
@@ -204,6 +205,13 @@ export function setSideCfg(ctx: AppCtx, slot: SideSlot, patch: Partial<SideConfi
   };
   if (!ctx.settings.sideConfig) ctx.settings.sideConfig = {};
   ctx.settings.sideConfig[slot] = next;
+  /* F1（2026-10-06）：用户**显式**切到 rapfi 渠道时后台预取引擎资产（约 11 MB），
+   * 把「局中第一次轮到 rapfi 才现抓」的等待提前到设置时。只在真切换且当前是五子棋时
+   * 触发（rapfi 只支持五子棋；不在 boot 时预取——不能替移动用户偷偷下 10 MB）。
+   * 失败静默：正式走子时 ensureLoaded 会再试并把错误交给用户（现在失败可重试）。 */
+  if (next.channel === 'rapfi' && cur.channel !== 'rapfi' && ctx.engine.id === 'gomoku') {
+    void ensureLoaded().catch(() => {});
+  }
 }
 
 /** 落盘设置（旧 `saveSettings()` 的最后一步；`stashEndpoint` 由调用方在此之前完成）。 */

@@ -47,6 +47,7 @@ import {
   renderEngineStatus,
   renderFeedPanel,
   renderLedgerPanel,
+  appendLedgerPanel,
   renderRecordsPanel,
   renderSideNames,
   renderTurn,
@@ -231,7 +232,10 @@ export function playMove(ctx: AppCtx, move: Move | null | undefined, meta: Sessi
   session.history.push(h);
   session.st = ctx.engine.applyMove(st, move);
 
-  renderLedgerPanel(ctx);
+  /* F3：棋谱面板增量追加（此前每手全量重建 + 每行一次滚动写，225 手的局是 O(n²)）。
+   * 第一手仍走全量重建——要把「对局开始后…」的空态占位清掉。 */
+  if (session.history.length === 1) renderLedgerPanel(ctx);
+  else appendLedgerPanel(ctx, h);
   redraw(ctx);
   renderAnalytics(ctx);
   renderCockpitPanel(ctx);
@@ -290,6 +294,12 @@ export async function scheduleDecision(ctx: AppCtx): Promise<void> {
       rapfiThinkMs: eff.rapfiThinkMs,
       tacticsVersion: eff.tactics,
       signal: aborter.signal,
+      rapfiOnProgress: (stage, detail) => {
+        /* F1：Rapfi 资产下载进度（此前 11 MB 下载期间界面只有一个「推理中」+秒数）。 */
+        if (stage === 'download' && detail) setStatus(`⏬ ${detail}`, false);
+        else if (stage === 'script') setStatus('⏬ 正在加载 Rapfi 引擎脚本…', false);
+        else if (stage === 'wasm') setStatus('⏬ 正在下载 Rapfi 引擎资产（约 11 MB，仅首次）…', false);
+      },
       experience: (buildExperience(ctx.session.gameId, ctx.session.history, ctx.records) ?? undefined) as Experience | undefined,
       onRetry: (code: number | string) => toast('限流(' + code + ')，退避重试中…', false),
     });

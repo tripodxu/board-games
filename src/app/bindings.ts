@@ -299,5 +299,16 @@ export function bindAll(ctx: AppCtx): void {
     if (!document.hidden) redraw(ctx);
   });
   on(globalThis as unknown as EventTarget, 'focus', () => redraw(ctx));
-  on(globalThis as unknown as EventTarget, 'resize', () => redraw(ctx));
+  /* F3：resize 用 rAF 合帧——拖窗口时每像素级事件全量重绘，合到每帧一次。 */
+  let resizeRaf = 0;
+  on(globalThis as unknown as EventTarget, 'resize', () => {
+    if (resizeRaf) return;
+    const schedule = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => setTimeout(cb, 16) as unknown as number;
+    resizeRaf = schedule(() => {
+      resizeRaf = 0;
+      redraw(ctx);
+    });
+  });
 }

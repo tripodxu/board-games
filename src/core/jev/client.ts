@@ -34,6 +34,7 @@ import {
   type ProviderSwitchInfo,
 } from './providers.ts';
 import type { DecideOpts, DecideResult, TacticsReport } from '../tactics.ts';
+import type { RapfiOpts } from './rapfi.ts';
 import type { Engine, JevQuestion, JevSerialized, Move } from '../types.ts';
 
 /* ------------------------------------------------------------------ *
@@ -67,7 +68,9 @@ export function presetEndpoint(channel: string): string {
  * ------------------------------------------------------------------ */
 
 type MockDecide = (engine: Engine, st: unknown, side: string, legal: Move[], ser: JevSerialized) => Promise<DecideResult>;
-type RapfiDecide = (engine: Engine, st: unknown, side: string, legal: Move[], ser: JevSerialized, opts: { thinkMs?: number }) => Promise<DecideResult>;
+/* opts 用 core 的 RapfiOpts（含 signal / onProgress）：2026-10-06 起 loop 传来的 abort 与
+ * 资产下载进度必须能穿过这一层到达 rapfi.ts，不能在类型上就被截掉。 */
+type RapfiDecide = (engine: Engine, st: unknown, side: string, legal: Move[], ser: JevSerialized, opts: RapfiOpts) => Promise<DecideResult>;
 
 let mockDecide: MockDecide | null = null;
 
@@ -544,10 +547,16 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
 
   if (channel === 'rapfi') {
     /* Rapfi 是完整搜索引擎（非 prompt 型），不走 Jev 战术层；
-     * 与 mock 一样直接返回，保持「Rapfi vs Jev」实验变量纯净。 */
+     * 与 mock 一样直接返回，保持「Rapfi vs Jev」实验变量纯净。
+     * signal/onProgress 必须透传：abort 让悔棋/重开能中断等待，进度让 11MB 资产
+     * 下载不再是「看着在等 AI」（2026-10-06 前 loop 传的 signal 在这里被丢弃）。 */
     const rapfi = opts.rapfi as RapfiDecide | undefined;
     if (!rapfi) throw new Error('rapfi 渠道未注入（opts.rapfi）');
-    return await rapfi(engine, st, side, legal, ser, { thinkMs: opts.rapfiThinkMs });
+    return await rapfi(engine, st, side, legal, ser, {
+      thinkMs: opts.rapfiThinkMs,
+      signal: opts.signal,
+      onProgress: opts.rapfiOnProgress,
+    });
   }
 
   /* 战术事实 + 对局经验注入 state，并同步指令语义 */
