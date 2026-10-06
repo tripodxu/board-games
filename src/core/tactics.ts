@@ -26,6 +26,7 @@ import type { TacticsVersion } from './tactics-versions.ts';
 import { DEFAULT_BUDGET, budgetOf } from './tactics-budget.ts';
 import type { EngineBudget } from './tactics-budget.ts';
 import type { ProviderSwitchInfo } from './jev/providers.ts';
+import type { ProgressFn } from './jev/rapfi.ts';
 import type { Engine, JevSerialized, Move } from './types.ts';
 
 /* ------------------------------------------------------------------ *
@@ -89,6 +90,12 @@ export interface DecideOpts {
   experience?: Experience;
   onRetry?: (status: number, attempt: number) => void;
   rapfiThinkMs?: number;
+  /**
+   * F1（2026-10-06）：Rapfi 渠道的加载进度回调——'script' 注入胶水 / 'wasm' 实例化 /
+   * 'download' 带胶水自报的资产下载文本（约 11 MB，慢链路上此前是「看着在等 AI」）。
+   * 只在 rapfi 渠道被消费，其余渠道忽略。
+   */
+  rapfiOnProgress?: ProgressFn;
   /**
    * C2：备用提供方（commandcode 网关）的 key。**不填 = 不启用兜底**，失败照旧抛——
    * 老行为逐字不变，兜底只能在明确配了第二把 key 的运行面上生效。
@@ -346,31 +353,12 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
 
   /* VCF（连续冲四将死链）：v7 起；v8 起对防守链逐点试干预；v9 起引擎侧有 soundness 闸门。
      P1 起深度/节点/展开数与 sound 都取自本档预算（v0–v8 的 sound=false = 历史语义）。 */
-  if (engine.deepTactics && typeof engine.vcfWin === 'function' && win.length === 0 && block.length === 0 && oppSide && (M.vcfAttack || M.vcfDefense)) {
+  if (engine.deepTactics && typeof engine.vcfWin === 'function' && win.length === 0 && block.length === 0 && oppSide && M.vcfAttack) {
     const vcfOpts = { sound: ver.sound, nodeLimit: B.vcfNodeLimit, movesMax: B.vcfMovesMax };
     try {
       if (M.vcfAttack) {
         const atk = engine.vcfWin(st, side, B.vcfPlies, vcfOpts);
         if (atk && atk.win && atk.first) res.vcf_win_you = [atk.first];
-      }
-      if (res.vcf_win_you.length === 0 && M.vcfDefense) {
-        const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, B.vcfPlies, vcfOpts);
-        if (def && def.win && def.first) {
-          const cands2: string[] = [def.first];
-          const seen = new Set(cands2);
-          const pushCand = (n: string): void => { if (n && !seen.has(n)) { seen.add(n); cands2.push(n); } };
-          /* v8 补丁：链首占不住时，把整条链上的点逐个试（占住哪一点真的能破链） */
-          if (M.vcfTry) def.line.forEach((n) => pushCand(n));
-          for (const n of cands2) {
-            let mv;
-            try { mv = engine.moveFromNotation(st, n); } catch (_) { continue; }
-            if (!mv) continue;
-            let stAfter;
-            try { stAfter = engine.applyMove(st, mv); } catch (_) { continue; }
-            const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, B.vcfPlies, vcfOpts);
-            if (!recheck || !recheck.win) { res.vcf_win_opponent = [n]; break; }
-          }
-        }
       }
     } catch (_) { /* 引擎差异一律 fail-soft：战术层不能把对局打断 */ }
   }
@@ -390,10 +378,11 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
      「活三逼迫 + 冲四收尾」就放行了。实测两轮 v11 vs rapfi@500ms 共 48 个「我方无杀而对手有链」
      的回合：实走拆掉 33 个、漏 15 个，其中 2 个存在能拆的点却没走（计时轮 #8 ply24 → K9、
      首轮 #6 ply52 → K8）。这里在 VCF 守没找到点时再算一遍含活三的链，并对「链上各点 → 链点邻域
-     → 全部邻近空点」逐一验「落子后对手既无 VCF 也无 VCT」（见引擎 vctDefense）。 */
-  if (engine.deepTactics && typeof engine.vctDefense === 'function' && win.length === 0 && block.length === 0
-      && oppSide && M.vctDefense && res.vcf_win_you.length === 0 && res.vct_win_you.length === 0
-      && res.vcf_win_opponent.length === 0) {
+     → 全部邻近空点」逐一验「落子后对手既无 VCF 也无 VCT」（见引擎 vctDefense）。
+     v14-plus（vctFirst）的防线优先级纠偏见下：本闭括号内的事实计算抽成闭包，两个调用点共用。 */
+  const computeVctDefense = (): void => {
+    if (!(engine.deepTactics && typeof engine.vctDefense === 'function') || win.length > 0 || block.length > 0
+        || !oppSide || !M.vctDefense || res.vcf_win_you.length > 0 || res.vct_win_you.length > 0) return;
     try {
       const candNotations = (cands && cands.length) ? cands : legal.map((m) => m.notation);
       const def = engine.vctDefense(st, side, B.vctPlies, {
@@ -408,7 +397,44 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
         if (def.points.length) res.vct_win_opponent = def.points;
       }
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
+  };
+  /* vctFirst（v14-plus）：vctDefense 是**判据更强**的防线（落子后对手 VCF+VCT 全无），
+     vcfDefense 只验纯冲四链——旧序里前者被门在「后者没找到点」之后，于是「纯四可拆、
+     混合链也能一并拆掉」的局面永远走弱防线：vorder1 两局实锤（29ced20c ply65 走 I10 弃 K10、
+     3ba614a0 ply24 走 G8 弃 E6），纯四拆掉后对手的活三逼迫链残留，两手内成必败。
+     vctFirst 把 vctDefense 提前为主防线，vcfDefense 降级为「vctDefense 没找到点」的兜底。
+     v0–v14 不带此键 ⇒ 走原序，历史归因与回放逐字不变。 */
+  if (M.vctFirst) computeVctDefense();
+
+  /* vcfDefense（v7/v8）：对手**纯冲四**链的干预点（链条入口）。v8 补丁：链首占不住时，
+     把整条链上的点逐个试（占住哪一点真的能破链）。
+     vctFirst 时它是**兜底**：判据更强的 vctDefense（拆完对手 VCF+VCT 全无）没找到点才轮到它
+     ——判据弱的不许抢在判据强的前面开火（vorder1 29ced20c ply65 / 3ba614a0 ply24 的教训）。 */
+  if (engine.deepTactics && typeof engine.vcfWin === 'function' && win.length === 0 && block.length === 0
+      && oppSide && M.vcfDefense && res.vcf_win_you.length === 0
+      && !(M.vctFirst && res.vct_win_opponent.length)) {
+    const vcfOpts = { sound: ver.sound, nodeLimit: B.vcfNodeLimit, movesMax: B.vcfMovesMax };
+    try {
+      const def = engine.vcfWin(flipTurn(st, oppSide.id), oppSide.id, B.vcfPlies, vcfOpts);
+      if (def && def.win && def.first) {
+        const cands2: string[] = [def.first];
+        const seen = new Set(cands2);
+        const pushCand = (n: string): void => { if (n && !seen.has(n)) { seen.add(n); cands2.push(n); } };
+        if (M.vcfTry) def.line.forEach((n) => pushCand(n));
+        for (const n of cands2) {
+          let mv;
+          try { mv = engine.moveFromNotation(st, n); } catch (_) { continue; }
+          if (!mv) continue;
+          let stAfter;
+          try { stAfter = engine.applyMove(st, mv); } catch (_) { continue; }
+          const recheck = engine.vcfWin(flipTurn(stAfter, oppSide.id), oppSide.id, B.vcfPlies, vcfOpts);
+          if (!recheck || !recheck.win) { res.vcf_win_opponent = [n]; break; }
+        }
+      }
+    } catch (_) { /* 引擎差异一律 fail-soft：战术层不能把对局打断 */ }
   }
+  /* 旧序（v0–v14）：vcfDefense 没找到点时才算 vctDefense。vctFirst 走上面的提前口径，这里跳过。 */
+  if (!M.vctFirst && res.vcf_win_opponent.length === 0) computeVctDefense();
 
   /* 压力（v13）：两侧的「做四手数」。不是必胜事实，而是取势对照——对手做四点比我们多时，
      我们先抢活三大概率只是送一个逼手，下一步就被他的网罩住（六轮 39 个这样的回合里，

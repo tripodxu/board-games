@@ -60,11 +60,11 @@ const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
  * ① 版本登记表（git 历史 × 棋谱数据双锚定：13 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v14-live3-fresh', '当前档应为 v14-live3-fresh（活三判据纠偏 / 制造点必须新造）');
+  eq(R.CURRENT, 'v14-plus', '当前档应为 v14-plus（整合收紧：v14 全机制 + 防守侧预算三键收紧）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 15, '应为 14 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 16, '应为 15 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   eq(R.VERSIONS[R.VERSIONS.length - 1].id, R.CURRENT, 'CURRENT 应是末档（最新档）');
@@ -79,13 +79,15 @@ S.t('版本登记表：机制集合沿梯级单调不减', () => {
   }
 });
 
-S.t('版本登记表：十四级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14）', () => {
+S.t('版本登记表：十五级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/14）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
     'v10-live3': 11, 'v11-vct': 12, 'v12-vct-def': 13, 'v13-pressure-gate': 14,
     /* v14 不加层：层数不变，只纠偏 live3 两层的判据 */
     'v14-live3-fresh': 14,
+    /* v14-plus 不加层：机制同 v14，只收紧防守侧预算（vctDefMax/vctDefKeep/pressureCutMax） */
+    'v14-plus': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
@@ -185,6 +187,16 @@ S.t('P1 冻结层：sound 记历史事实（v9 起才有闸门）/ fidelity / op
     eq(v.promptFacts, 'mech', v.id + ' 的注入口径应为 mech（只注入本档真有的机制句）');
   }
   eq(R.resolve('v14-live3-fresh').fidelity, 'exact', 'v14 就是冻结当天那一版 ⇒ exact');
+  eq(R.resolve('v14-plus').fidelity, 'exact', 'v14-plus 与 v14 同 mech ⇒ attachFacts 句集逐字一致，新登记即 exact');
+  /* v14-plus 的三键收紧：预算冻结原则下「调参只能新开一档」的唯一合法路径 */
+  const bPlus = R.resolve('v14-plus').budget, b14 = R.resolve('v14-live3-fresh').budget;
+  eq(bPlus.vctDefMax, 8, 'v14-plus 的 vctDefMax 应收紧到 8（12→8，最坏搜索 26→18 次）');
+  eq(bPlus.vctDefKeep, 2, 'v14-plus 的 vctDefKeep 应收紧到 2（3→2）');
+  eq(bPlus.pressureCutMax, 80, 'v14-plus 的 pressureCutMax 应收紧到 80（120→80）');
+  for (const k of Object.keys(b14)) {
+    if (k === 'vctDefMax' || k === 'vctDefKeep' || k === 'pressureCutMax') continue;
+    eq(bPlus[k], b14[k], 'v14-plus 除三键收紧外其余预算应与 v14 逐键一致：' + k);
+  }
   /* P3 考古（docs/plans/2026-10-04-tactics-archaeology.md）：v1–v13 的四项参数全部有 git 证据 ⇒ restored；
      v0-off 的档位表没有 sha、参数无证据 ⇒ 只能 approximate（不猜）。口径 = 参数层，不等于 exact。 */
   eq(R.resolve('v13-pressure-gate').fidelity, 'restored', 'P3 考古确证过参数的历史档应是 restored');
@@ -396,7 +408,7 @@ S.t('接管链：致胜点接管 + state.tactics/指令注入（⑦⑧）', asyn
   ok(/first_player_win_rate/.test(sent8.questions.move.instructions), '指令应说明经验字段含义');
 });
 
-S.t('接管链：开放三连拆杀（parry 或 vcfDefense）', async () => {
+S.t('接管链：开放三连拆杀（parry / vcfDefense；v14-plus 的 vctFirst 下 vctDefense 也是保险拆杀）', async () => {
   const st9 = play(gomoku, ['F7', 'A1', 'F8', 'A2', 'F9']);
   let sent = null;
   const d = await withFetch(async (url, init) => {
@@ -404,7 +416,11 @@ S.t('接管链：开放三连拆杀（parry 或 vcfDefense）', async () => {
     return mk(200, { model: 'jev-latest', usage: { input_tokens: 10, output_tokens: 0 },
       answers: { move: { probabilities: { H8: 0.85, F6: 0.05 } } } });
   }, () => decide(gomoku, st9, st9.turn, { channel: 'proxy', topK: 1 }));
-  ok((d.notation === 'F6' || d.notation === 'F10') && (d.meta.tactics === 'parry' || d.meta.tactics === 'vcfDefense'),
+  /* vctFirst（v14-plus）：vctDefense 的判据（拆完对手 VCF+VCT 全无）严格强于 vcfDefense，
+   * 它在开放三连上开火仍是「保险拆杀」，且拆杀点集合不变（F6/F10 同为合法拆点）。 */
+  const layers = ['parry', 'vcfDefense'];
+  if (R.resolve().mech.vctFirst) layers.push('vctDefense');
+  ok((d.notation === 'F6' || d.notation === 'F10') && layers.includes(d.meta.tactics),
     '开放三连必须被保险拆杀，实际：' + d.notation + '/' + d.meta.tactics);
   ok(sent.state.tactics.danger_points_opponent.length >= 2, 'state.tactics 应含拆杀点');
   ok(/danger_points_opponent/.test(sent.questions.move.instructions), '指令应声明拆杀语义');
@@ -421,11 +437,20 @@ S.t('接管链：VCF 进攻接管（⑫b）与防守接管（⑫c）', async () 
 
   const stC = play(gomoku, VCF_SEQ.concat(['O1']));
   eq(stC.turn, 'white', '⑫c 应轮白走');
-  const tacC = tacOf(gomoku, stC);
+  /* 旧序守卫钉在 v14（vctFirst 缺省关）：vcfDefense 先开火的历史语义必须继续成立 */
+  const tacC = tacOf(gomoku, stC, 'v14-live3-fresh');
   ok(tacC.vcf_win_opponent.indexOf('H7') >= 0, 'vcf_win_opponent 应含 H7 干预点，实际：' + JSON.stringify(tacC.vcf_win_opponent));
-  const dC = await withFetch(repliesWith({ A4: 0.9 }), () => decide(gomoku, stC, stC.turn, { channel: 'proxy', topK: 1 }));
+  const dC = await withFetch(repliesWith({ A4: 0.9 }), () => decide(gomoku, stC, stC.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-live3-fresh' }));
   ok(dC.notation === 'H7' && dC.meta.tactics === 'vcfDefense',
     '白方面对黑 VCF 应提前抢占 H7，实际：' + dC.notation + '/' + dC.meta.tactics);
+  /* v14-plus（vctFirst）：vctDefense 找到全拆点时优先、vcfDefense 兜底不开火 */
+  const tacC2 = tacOf(gomoku, stC, 'v14-plus');
+  ok(tacC2.vct_win_opponent.length >= 1 && tacC2.vcf_win_opponent.length === 0,
+    'v14-plus 应由 vctDefense 主防（vct_win_opponent 非空、vcf 兜底不开火），实际：'
+      + JSON.stringify(tacC2.vct_win_opponent) + '/' + JSON.stringify(tacC2.vcf_win_opponent));
+  const dC2 = await withFetch(repliesWith({ A4: 0.9 }), () => decide(gomoku, stC, stC.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-plus' }));
+  ok(dC2.notation === tacC2.vct_win_opponent[0] && dC2.meta.tactics === 'vctDefense',
+    'v14-plus 应走 vctDefense 的全拆点，实际：' + dC2.notation + '/' + dC2.meta.tactics);
 });
 
 /* ------------------------------------------------------------------ *
@@ -446,15 +471,21 @@ S.t('实战败局：p20 自由手应被 vcfDefense 预占 E6（破黑将死链�
     'H9', 'I10', 'I9', 'F9', 'F8']);
   eq(st9d.turn, 'white', 'p20 应轮白走；若这里就红了，说明夹具记法在迁移后失效了');
 
-  const tac9d = tacOf(e, st9d);
+  /* 旧序守卫钉在 v14（vctFirst 缺省关）——本条守的是「vcfDefense 压过 parry3」的历史排序 */
+  const tac9d = tacOf(e, st9d, 'v14-live3-fresh');
   eq(tac9d.danger_points_opponent.length, 0,
     'p20 的 2-ply danger 应为空（败因是 3-ply 深度），实际：' + JSON.stringify(tac9d.danger_points_opponent));
   ok(tac9d.vcf_win_opponent.indexOf('E6') >= 0,
     'p20 黑方 VCF 入口应为 E6，实际：' + JSON.stringify(tac9d.vcf_win_opponent));
 
-  const d9d = await withFetch(repliesWith({ E6: 0.9 }), () => decide(e, st9d, st9d.turn, { channel: 'proxy', topK: 1 }));
+  const d9d = await withFetch(repliesWith({ E6: 0.9 }), () => decide(e, st9d, st9d.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-live3-fresh' }));
   ok(d9d.notation === 'E6' && d9d.meta.tactics === 'vcfDefense',
     'p20 自由手应被 vcfDefense 预占 E6（破黑将死链入口），实际：' + d9d.notation + '/' + d9d.meta.tactics);
+  /* v14-plus（vctFirst）：同位置主防线换成 vctDefense 的全拆点（若存在），兜底语义不变 */
+  const tac9dP = tacOf(e, st9d, 'v14-plus');
+  ok(tac9dP.vct_win_opponent.length >= 1 ? tac9dP.vcf_win_opponent.length === 0 : tac9dP.vcf_win_opponent.indexOf('E6') >= 0,
+    'v14-plus 要么 vctDefense 主防（vcf 兜底不开火）、要么无全拆点时回退 vcfDefense 的 E6，实际：'
+      + JSON.stringify(tac9dP.vct_win_opponent) + '/' + JSON.stringify(tac9dP.vcf_win_opponent));
 });
 
 S.t('实战败局：p18 双 danger 并存应安全排序选 E9（Jev 偏向 I9 也应纠正）', async () => {
@@ -477,11 +508,19 @@ S.t('接管链：⑫e 实战局面 p34 纠正到 I14', async () => {
     'E8', 'H11', 'H10', 'I12', 'J13', 'F11', 'F10', 'G12', 'G11', 'H13', 'E10', 'G14', 'J11', 'E9', 'I10',
     'I9', 'H12', 'J14']);
   eq(st.turn, 'white', '⑫e 应轮白走');
-  const tac = tacOf(gomoku, st);
+  const tac = tacOf(gomoku, st, 'v14-live3-fresh');
   ok(tac.vcf_win_opponent.indexOf('I14') >= 0, 'vcf_win_opponent 应含 I14，实际：' + JSON.stringify(tac.vcf_win_opponent));
-  const d = await withFetch(repliesWith({ E12: 0.9, I14: 0.05 }), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1 }));
+  const d = await withFetch(repliesWith({ E12: 0.9, I14: 0.05 }), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-live3-fresh' }));
   ok(d.notation === 'I14' && d.meta.tactics === 'vcfDefense',
     'p34 实战 E12 没破杀，应被 vcfDefense 纠正到 I14，实际：' + d.notation + '/' + d.meta.tactics);
+  /* v14-plus（vctFirst）：同位置主防线为 vctDefense（全拆点），兜底语义不变 */
+  const tacP = tacOf(gomoku, st, 'v14-plus');
+  ok(tacP.vct_win_opponent.length >= 1 ? tacP.vcf_win_opponent.length === 0 : tacP.vcf_win_opponent.indexOf('I14') >= 0,
+    'v14-plus 要么 vctDefense 主防（vcf 兜底不开火）、要么无全拆点时回退 vcfDefense 的 I14，实际：'
+      + JSON.stringify(tacP.vct_win_opponent) + '/' + JSON.stringify(tacP.vcf_win_opponent));
+  const dP34 = await withFetch(repliesWith({ E12: 0.9, I14: 0.05 }), () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-plus' }));
+  ok(dP34.notation === (tacP.vct_win_opponent[0] ?? 'I14') && (tacP.vct_win_opponent.length ? dP34.meta.tactics === 'vctDefense' : dP34.meta.tactics === 'vcfDefense'),
+    'v14-plus 应走主防线的点，实际：' + dP34.notation + '/' + dP34.meta.tactics);
 });
 
 /* ------------------------------------------------------------------ *
@@ -796,6 +835,50 @@ S.t('v12 拆链：决策级接管（v11 走链首 I11/parry，v12 走真拆点 K
     () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v11-vct' }));
   ok(d11.notation === 'I11' && d11.meta.tactics === 'parry',
     'v11 档应照旧走链首 I11/parry（这就是放行对手的那一手），实际：' + d11.notation + '/' + d11.meta.tactics);
+  /* v14-plus（vctDefMax 12→8）：K9 必须仍在收紧后的候选预算内被找到 —— 预算减法不该伤到已知可救点 */
+  const dP = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-plus' }));
+  ok(dP.notation === 'K9' && dP.meta.tactics === 'vctDefense',
+    'v14-plus 在该夹具仍应被 vctDefense 接管走 K9，实际：' + dP.notation + '/' + dP.meta.tactics);
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑤e v14-plus 防线优先级纠偏（vctFirst）：真局夹具
+ *    取自 vorder1 v13-vs-v14 的两局败局（.work/v14loss-probe.mjs 逐手探针实锤）：
+ *    vcfDefense（只验纯冲四，判据弱）排在 vctDefense（拆完对手 VCF+VCT 全无，判据强）之前，
+ *    「纯四可拆、混合链也能一并拆」的局面永远走弱防线 → 对手活三逼迫链残留 → 两手内必败。
+ * ------------------------------------------------------------------ */
+S.t('v14-plus 防线纠偏：真局 29ced20c ply65 —— v14 走 I10/vcfDefense（纯四拆、VCT 残留），v14-plus 走 K10/vctDefense（全拆）', async () => {
+  /* vorder1 exp-20261004133730 局 29ced20c 的前 64 手（ply65 轮 v14 执黑；实走 I10 后 ply67 起全盘无拆点、ply69 成必败） */
+  const SEQ64 = ['H8', 'H7', 'H6', 'G7', 'F7', 'G6', 'G5', 'F5', 'E4', 'F4', 'I8', 'G8', 'G9', 'I6', 'J5', 'I7', 'J7', 'K6', 'F9', 'H9', 'J6', 'J4', 'F3', 'J8', 'D5', 'G2', 'F8', 'F10', 'E7', 'D6', 'F6', 'H4', 'C9', 'D8', 'B7', 'C6', 'C7', 'D7', 'G4', 'E9', 'D9', 'C8', 'E6', 'E5', 'G3', 'H10', 'G11', 'B3', 'H3', 'E3', 'G10', 'I3', 'K5', 'H5', 'I4', 'G12', 'H11', 'I12', 'I11', 'F11', 'H12', 'J11', 'K9', 'J10'];
+  const st = play(gomoku, SEQ64);
+  const t14 = tacOf(gomoku, st, 'v14-live3-fresh');
+  deepEq(t14.vcf_win_opponent, ['I10'], 'v14 应由 vcfDefense 给出只拆纯四的 I10（旧序：判据弱的先开火）');
+  deepEq(t14.vct_win_opponent, [], 'v14 的 vctDefense 被「vcfDefense 没找到点」门住——全拆点 K10 对它不可见');
+  const tP = tacOf(gomoku, st, 'v14-plus');
+  deepEq(tP.vct_win_opponent, ['K10'], 'v14-plus（vctFirst）应由 vctDefense 给出全拆点 K10');
+  deepEq(tP.vcf_win_opponent, [], 'v14-plus 的 vcfDefense 是兜底：vctDefense 有点时不应开火');
+  /* 决策级：模型偏好恰是旧的弱防点，vctFirst 也要纠过来 */
+  const probs = { I10: 0.6, K10: 0.05 };
+  const d14 = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-live3-fresh' }));
+  ok(d14.notation === 'I10' && d14.meta.tactics === 'vcfDefense',
+    'v14 应照旧走 I10/vcfDefense，实际：' + d14.notation + '/' + d14.meta.tactics);
+  const dPP = await withFetch(repliesWith(probs),
+    () => decide(gomoku, st, st.turn, { channel: 'proxy', topK: 1, tacticsVersion: 'v14-plus' }));
+  ok(dPP.notation === 'K10' && dPP.meta.tactics === 'vctDefense',
+    'v14-plus 应走 K10/vctDefense，实际：' + dPP.notation + '/' + dPP.meta.tactics);
+});
+
+S.t('v14-plus 防线纠偏：真局 3ba614a0 ply24 —— 单点纯四链 G8（v14）vs 全拆点 E6（v14-plus）', () => {
+  /* vorder1 局 3ba614a0 的前 23 手（ply24 轮 v14 执白；实走 G8 后 ply26 起全盘无拆点、ply32 成必败） */
+  const SEQ23 = ['H8', 'H7', 'H6', 'G6', 'F5', 'G7', 'F7', 'G5', 'G4', 'H3', 'G9', 'I7', 'J7', 'F6', 'H4', 'F4', 'H9', 'I8', 'J9', 'I9', 'I6', 'H5', 'I10'];
+  const st = play(gomoku, SEQ23);
+  const t14 = tacOf(gomoku, st, 'v14-live3-fresh');
+  deepEq(t14.vcf_win_opponent, ['G8'], 'v14 走 G8（拆纯四，对手 VCT 残留）');
+  const tP = tacOf(gomoku, st, 'v14-plus');
+  deepEq(tP.vct_win_opponent, ['E6'], 'v14-plus 走 E6（连混合链一起拆）');
+  deepEq(tP.vcf_win_opponent, [], '兜底不开火');
 });
 
 S.t('v12 拆链：我方有必胜链时不进防守层（闸门：先赢再说）', () => {

@@ -1,10 +1,10 @@
 {
  "schema": 1,
- "generatedAt": "2026-10-03T18:27:58.664Z",
+ "generatedAt": "2026-10-06T06:15:00.052Z",
  "generator": "test/engines/fingerprint.mjs",
- "current": "v14-live3-fresh",
- "versions": 15,
- "costMs": 24004,
+ "current": "v14-plus",
+ "versions": 16,
+ "costMs": 45556,
  "buckets": [
   {
    "name": "early",
@@ -27,26 +27,26 @@
  ],
  "coverage": {
   "positions": 14,
-  "rows": 210,
+  "rows": 224,
   "layers": {
    "parry3": 18,
    "live3Defense": 5,
-   "vctDefense": 3,
+   "vctDefense": 6,
    "parry": 8,
    "vcfDefense": 16,
    "parry4": 12,
-   "pressureGate": 4,
+   "pressureGate": 6,
    "live3Attack": 3,
-   "vctAttack": 12,
-   "block": 28,
-   "win": 14,
-   "open4": 13,
-   "vcfAttack": 8
+   "vctAttack": 15,
+   "block": 30,
+   "win": 15,
+   "open4": 14,
+   "vcfAttack": 9
   },
   "missing": [
    "threat"
   ],
-  "noTakeover": 66
+  "noTakeover": 67
  },
  "positions": [
   {
@@ -805,6 +805,31 @@
    }
   },
   {
+   "file": "games/2026-09-29/gomoku-20260929095533.json",
+   "ply": 12,
+   "v": "v14-plus",
+   "layer": "vctDefense",
+   "notation": "F5",
+   "digest": "e19181abe6d6",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 2,
+    "vctCh": 5,
+    "l3A": 0,
+    "l3D": 6,
+    "l3deny": 1,
+    "pcut": 0,
+    "pY": 0,
+    "pO": 0
+   }
+  },
+  {
    "file": "games/2026-09-29/gomoku-20260929112806.json",
    "ply": 7,
    "v": "v0-off",
@@ -1158,6 +1183,31 @@
    "file": "games/2026-09-29/gomoku-20260929112806.json",
    "ply": 7,
    "v": "v14-live3-fresh",
+   "layer": null,
+   "notation": null,
+   "digest": "062df6689697",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 0,
+    "pO": 0
+   }
+  },
+  {
+   "file": "games/2026-09-29/gomoku-20260929112806.json",
+   "ply": 7,
+   "v": "v14-plus",
    "layer": null,
    "notation": null,
    "digest": "062df6689697",
@@ -1555,6 +1605,31 @@
    }
   },
   {
+   "file": "games/2026-09-30/gomoku-20260930091633.json",
+   "ply": 12,
+   "v": "v14-plus",
+   "layer": "vctDefense",
+   "notation": "E6",
+   "digest": "350f50ba5a54",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 2,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 1,
+    "vctCh": 1,
+    "l3A": 0,
+    "l3D": 1,
+    "l3deny": 1,
+    "pcut": 2,
+    "pY": 0,
+    "pO": 4
+   }
+  },
+  {
    "file": "games/2026-09-30/gomoku-20260930101916.json",
    "ply": 7,
    "v": "v0-off",
@@ -1908,6 +1983,31 @@
    "file": "games/2026-09-30/gomoku-20260930101916.json",
    "ply": 7,
    "v": "v14-live3-fresh",
+   "layer": "pressureGate",
+   "notation": "D12",
+   "digest": "c7b2785be69b",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 3,
+    "l3deny": 1,
+    "pcut": 2,
+    "pY": 0,
+    "pO": 2
+   }
+  },
+  {
+   "file": "games/2026-09-30/gomoku-20260930101916.json",
+   "ply": 7,
+   "v": "v14-plus",
    "layer": "pressureGate",
    "notation": "D12",
    "digest": "c7b2785be69b",
@@ -2305,6 +2405,31 @@
    }
   },
   {
+   "file": "games/2026-09-29/gomoku-20260929095533.json",
+   "ply": 27,
+   "v": "v14-plus",
+   "layer": "vctDefense",
+   "notation": "D10",
+   "digest": "e2fb2e3efd8b",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 2,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 1,
+    "vctCh": 1,
+    "l3A": 8,
+    "l3D": 1,
+    "l3deny": 1,
+    "pcut": 0,
+    "pY": 4,
+    "pO": 4
+   }
+  },
+  {
    "file": "games/2026-09-29/gomoku-20260929111833.json",
    "ply": 16,
    "v": "v0-off",
@@ -2658,6 +2783,31 @@
    "file": "games/2026-09-29/gomoku-20260929111833.json",
    "ply": 16,
    "v": "v14-live3-fresh",
+   "layer": "vctAttack",
+   "notation": "K4",
+   "digest": "c683e2bc8bfe",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 1,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 4,
+    "l3D": 1,
+    "l3deny": 1,
+    "pcut": 0,
+    "pY": 2,
+    "pO": 0
+   }
+  },
+  {
+   "file": "games/2026-09-29/gomoku-20260929111833.json",
+   "ply": 16,
+   "v": "v14-plus",
    "layer": "vctAttack",
    "notation": "K4",
    "digest": "c683e2bc8bfe",
@@ -3055,6 +3205,31 @@
    }
   },
   {
+   "file": "games/2026-09-30/gomoku-20260930091409.json",
+   "ply": 18,
+   "v": "v14-plus",
+   "layer": "vctAttack",
+   "notation": "I6",
+   "digest": "b96b6f2d0469",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 1,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 2,
+    "l3D": 2,
+    "l3deny": 1,
+    "pcut": 0,
+    "pY": 0,
+    "pO": 0
+   }
+  },
+  {
    "file": "games/2026-09-30/gomoku-20260930100848.json",
    "ply": 18,
    "v": "v0-off",
@@ -3408,6 +3583,31 @@
    "file": "games/2026-09-30/gomoku-20260930100848.json",
    "ply": 18,
    "v": "v14-live3-fresh",
+   "layer": "block",
+   "notation": "G11",
+   "digest": "51c18d3e17b9",
+   "n": {
+    "win": 0,
+    "blk": 1,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 0,
+    "pO": 0
+   }
+  },
+  {
+   "file": "games/2026-09-30/gomoku-20260930100848.json",
+   "ply": 18,
+   "v": "v14-plus",
    "layer": "block",
    "notation": "G11",
    "digest": "51c18d3e17b9",
@@ -3805,6 +4005,31 @@
    }
   },
   {
+   "file": "games/2026-09-29/gomoku-20260929101223.json",
+   "ply": 47,
+   "v": "v14-plus",
+   "layer": "pressureGate",
+   "notation": "M12",
+   "digest": "f0b3bdd4b64e",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 1,
+    "pY": 0,
+    "pO": 2
+   }
+  },
+  {
    "file": "games/2026-09-30/gomoku-20260930094443.json",
    "ply": 40,
    "v": "v0-off",
@@ -4180,6 +4405,31 @@
    }
   },
   {
+   "file": "games/2026-09-30/gomoku-20260930094443.json",
+   "ply": 40,
+   "v": "v14-plus",
+   "layer": "block",
+   "notation": "E10",
+   "digest": "7ecb71454eda",
+   "n": {
+    "win": 0,
+    "blk": 1,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 0,
+    "pO": 0
+   }
+  },
+  {
    "file": "synthetic/win",
    "ply": 8,
    "v": "v0-off",
@@ -4533,6 +4783,31 @@
    "file": "synthetic/win",
    "ply": 8,
    "v": "v14-live3-fresh",
+   "layer": "win",
+   "notation": "G8",
+   "digest": "c29de2d8234c",
+   "n": {
+    "win": 2,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 0,
+    "pO": 0
+   }
+  },
+  {
+   "file": "synthetic/win",
+   "ply": 8,
+   "v": "v14-plus",
    "layer": "win",
    "notation": "G8",
    "digest": "c29de2d8234c",
@@ -4930,6 +5205,31 @@
    }
   },
   {
+   "file": "synthetic/open4",
+   "ply": 6,
+   "v": "v14-plus",
+   "layer": "open4",
+   "notation": "E8",
+   "digest": "0a6d2dc74217",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 2,
+    "dgr": 2,
+    "vcfA": 1,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 0,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 4,
+    "pO": 4
+   }
+  },
+  {
    "file": "synthetic/vcf",
    "ply": 10,
    "v": "v0-off",
@@ -5305,6 +5605,31 @@
    }
   },
   {
+   "file": "synthetic/vcf",
+   "ply": 10,
+   "v": "v14-plus",
+   "layer": "vcfAttack",
+   "notation": "H7",
+   "digest": "7e822e02df2b",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 1,
+    "vcfD": 0,
+    "vctA": 0,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 6,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 2,
+    "pO": 2
+   }
+  },
+  {
    "file": "synthetic/vct",
    "ply": 20,
    "v": "v0-off",
@@ -5658,6 +5983,31 @@
    "file": "synthetic/vct",
    "ply": 20,
    "v": "v14-live3-fresh",
+   "layer": "vctAttack",
+   "notation": "L4",
+   "digest": "05c13d256847",
+   "n": {
+    "win": 0,
+    "blk": 0,
+    "ch": 0,
+    "dgr": 0,
+    "vcfA": 0,
+    "vcfD": 0,
+    "vctA": 1,
+    "vctD": 0,
+    "vctCh": 0,
+    "l3A": 2,
+    "l3D": 0,
+    "l3deny": 0,
+    "pcut": 0,
+    "pY": 8,
+    "pO": 0
+   }
+  },
+  {
+   "file": "synthetic/vct",
+   "ply": 20,
+   "v": "v14-plus",
    "layer": "vctAttack",
    "notation": "L4",
    "digest": "05c13d256847",

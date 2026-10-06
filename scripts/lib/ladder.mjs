@@ -29,7 +29,9 @@ import { ETA_SAMPLES } from './progress.mjs';
 
 export const LADDER_VERSION = 1;
 
-/** 阶梯里会用到的身份（§7）：5 个版本臂 + 3 个 Rapfi 时间档。 */
+/** 阶梯里会用到的身份（§7）：5 个版本臂 + 3 个 Rapfi 时间档。
+ * 刻意**不含** v14-plus：L1/L2/L4 预设的形状已被历史批次与单测钉死（加臂 = 篡改预设）；
+ * v14-plus 的配对验证轮用显式 `--identities 'official:v14-plus:0,official:v14-live3-fresh:0'`（ADR-0023）。 */
 export const VERSION_SPECS = [
   'official:v10-live3:0',
   'official:v11-vct:0',

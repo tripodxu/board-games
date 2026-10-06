@@ -36,7 +36,9 @@ docs/
 │   ├── 0018-live3-fresh-correction.md
 │   ├── 0019-remote-batch-experiments.md
 │   ├── 0020-tactics-fidelity-freeze.md
-│   └── 0021-standalone-experiment-plane.md
+│   ├── 0021-standalone-experiment-plane.md
+│   ├── 0022-upstream-provider-failover.md
+│   └── 0023-v14-plus-integration.md
 ├── plans/                  ← 实施计划（完成后保留为历史记录，标注状态）
 │   ├── 2026-09-28-board-games-mvp.md            ✅ 已完成
 │   ├── 2026-09-29-iteration-02-play-loop.md     ✅ 已完成（优化轮）
