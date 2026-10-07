@@ -43,11 +43,17 @@ import type { Engine, JevQuestion, JevSerialized, Move } from '../types.ts';
 
 export interface ChannelConfig { endpoint: string; model: string; keyName: string | null }
 
+/** OpenCode Zen 免费托管档（与 Worker 侧 OPENCODE_MODEL/OPENCODE_UPSTREAM_URL 同值，勿单改一边）。 */
+export const OPENCODE_MODEL = 'jev-1.13-free';
+export const OPENCODE_UPSTREAM_URL = 'https://opencode.ai/zen/v1/systemone';
+/** 浏览器同源中转路径（OpenCode 无 CORS 头，浏览器直连会被拦；Node/实验面直连真实端点）。 */
+export const OPENCODE_RELAY_PATH = 'api/jev';
+
 export const CHANNELS: Record<string, ChannelConfig> = {
   official: { endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', keyName: 'official' },
   openrouter: { endpoint: 'https://openrouter.ai/api/v1/systemone', model: 'typesafe/jev-1.13', keyName: 'openrouter' },
   /* OpenCode Zen：Jev 的免费托管点（2026-10-07 实测 /v1/systemone 免费返回系统一协议应答，cost=0）。 */
-  opencode: { endpoint: 'https://opencode.ai/zen/v1/systemone', model: 'jev-1.13-free', keyName: 'opencode' },
+  opencode: { endpoint: OPENCODE_RELAY_PATH, model: OPENCODE_MODEL, keyName: 'opencode' },
   proxy: { endpoint: 'api/jev', model: 'jev-latest', keyName: null },
 };
 
@@ -170,6 +176,16 @@ function attemptsFor(channel: string, opts: DecideOpts): ProviderAttempt[] {
   if (channel === 'proxy') {
     return [{
       provider: syntheticProvider(channel, PROVIDER_PRIMARY, '同源代理', customEndpoint || cfg.endpoint, cfg.model),
+      apiKey, channel, custom: !!customEndpoint,
+    }];
+  }
+  if (channel === 'opencode') {
+    /* 浏览器走同源中转（OpenCode 无 CORS 头，直连会被拦）；Node（实验面）直连真实端点。
+     * key 可选：匿名 = 免费档（按 IP 限流）；填了使用者自己的 key = 走自己的限额。 */
+    const inBrowser = typeof location !== 'undefined';
+    const url = customEndpoint || (inBrowser ? OPENCODE_RELAY_PATH : OPENCODE_UPSTREAM_URL);
+    return [{
+      provider: syntheticProvider(channel, PROVIDER_PRIMARY, 'OpenCode', url, cfg.model),
       apiKey, channel, custom: !!customEndpoint,
     }];
   }

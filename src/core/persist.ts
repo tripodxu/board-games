@@ -70,7 +70,9 @@ export interface EffSide {
 
 /** 旧 `S.settings` 的初始值（js/app.js:17）——sideConfig 用归一后的空值形态。 */
 export const DEFAULT_SETTINGS: Settings = {
-  channel: 'proxy',
+  /* 默认渠道 = OpenCode 免费档（2026-10-07 业主定）：零配置可玩；匿名档按 IP 限流，
+     撞 429 时客户端文案指向「填自己的 OpenCode Key」。老用户存档里的 channel 不受影响。 */
+  channel: 'opencode',
   apiKey: '',
   orKey: '',
   topK: 3,
