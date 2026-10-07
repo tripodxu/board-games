@@ -303,6 +303,18 @@
   `upstreamUrl`/`allowAnonymous` 出参）、`callUpstream` 支持 `allowAnonymous`（apiKey 空时不带
   Authorization 头——实测带假 key 反而 401）+ `OPENCODE_UPSTREAM_URL` 常量；响应加 `X-Jev-Upstream: opencode`。
   worker +3 例（匿名放行/匿名转发无 Auth 头/key 透传），全量 **54 文件 / 761 例全绿**。
+  **默认渠道已切 opencode + 免费档限流实测（业主 key 实测，2026-10-07）**：`DEFAULT_SETTINGS.channel = 'opencode'`
+  （零配置可玩）；客户端三常量 `OPENCODE_MODEL` / `OPENCODE_UPSTREAM_URL` / `OPENCODE_RELAY_PATH`（浏览器走同源
+  `api/jev` 中转、Node/实验面直连真实端点，与 Worker 侧同值勿单改）。**限流结构（鉴别测试定案）**：
+  ① 业主 key 直连 OpenCode：间隔 3 发 + 无间隔 5 发全 200、零限流，数分钟后复测仍 200；
+  ② 同一 key 经生产 Worker 转发：**6/6 全 429** `FreeUsageLimitError`；
+  ③ 假 key 经 Worker：回 `Invalid credential`（鉴权错误穿透 = 转发头无误）；
+  ④ 匿名 429 在 ~1 小时后自愈（时间窗）。⇒ **免费档限流绑定请求方 IP，key 不换池**——
+  Cloudflare Worker 的出口 IP 池被全球免费档流量耗尽，经中转的 opencode（带不带 key）都撞同一堵墙；
+  唯一「从用户 IP 发出」的路径是本地 `npm run dev`（workerd 从本机发）。浏览器直连被 CORS 永久挡死。
+  ⇒ **生产访客的 opencode 默认档是尽力而为（闲时可用、忙时 429）**；业主自己的稳定通道 =
+  本地 dev + key，或 TypeSafe 系渠道（proxy/official）。是否回退默认渠道待业主复决（数据已齐）。
+  ⚠ 业主的 OpenCode key 在对话中明文出现过，建议轮换。
 - **战术模式提示可视化（2026-10-07，业主需求「模式识别给出的待选位置每一级用不同颜色标出」）**：
   新增 `src/core/tactics-hints.ts`（纯计算）：把接管链 14 层的**待选点集**（win/block←`winning_points_*`、
   open4/threat/chance、vcf/vctAttack←`vcf/vct_win_you`、vcf/vctDefense←`vcf/vct_win_opponent`、
