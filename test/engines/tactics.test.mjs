@@ -62,9 +62,9 @@ const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
   eq(R.CURRENT, 'v14-live3-fresh', '当前档应为 v14-live3-fresh（v14-plus 配对轮 35% 未过负局线，显式回退；档位保留）');
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus', 'v15-vctfirst', 'v16-softgate'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus', 'v15-vctfirst', 'v16-softgate', 'v17-fusion'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 18, '应为 17 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 19, '应为 18 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   ok(R.VERSIONS.some((v) => v.id === R.CURRENT), 'CURRENT 应是已登记档位（回退后末档可与 CURRENT 不同）');
@@ -99,6 +99,7 @@ S.t('版本登记表：十五级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/
     'v15-vctfirst': 14,
     /* v16 不加层：v14 机制 + softGate 开关（pressureGate 降咨询，不开火 → 层数不变） */
     'v16-softgate': 14,
+    'v17-fusion': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];

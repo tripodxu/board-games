@@ -134,6 +134,10 @@ export const VERSIONS: TacticsVersion[] = [  { id: 'v0-off', name: '无战术基
     date: '2026-10-06', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, softGate: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
     ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 0,
     note: '让权档（业主理论「先模式识别缩小范围，再让 Jev 选择」的直接实现，业主指令「优化」）。**单变量**：v14 全机制 + 仅 `softGate` 开关——pressureGate **降级为纯咨询**：fourPressure/pressureCut 照算、压力事实与削点照进 prompt（mech 仍含 pressureGate ⇒ attachFacts 句集不变），但接管链不再开火（takeover 分支加 `!M.softGate`）——「知识作为信息」替代「知识作为强制」。**为什么只动这一层**：vcfDefense/vctDefense 的触发是 sound 必败链（数学强制，必须硬接管）；live3Attack/vcfAttack/vctAttack/open4 是我方强制胜；只有 pressureGate 在**非强制**局面（danger 为空、对手仅压力领先）替模型做主，且代价有登记在案的实测：ADR-0017 真接管 26 手里 13 手让掉攻势、自己平均 −1.92 个做四点、六轮真救 0；v15val 里它开火 232 手挂 0/211/21。**不带 vctFirst**（v15 已单独测过 = 挂起/中性），保持单变量。**预注册判定规则（跑前写死，ADR-0023 增补四）**：v16 vs v14 配对 20 局（box，双臂兜底网关，与 vplus1/v15val 同条件）——① v16 负局 ≤ 4 ⇒ 通过，CURRENT 升 v16（业主理论得到配对验证）；② 负局 5–6 ⇒ 不可判，挂起；③ 负局 ≥ 7 ⇒ 咨询化有害（pressureGate 硬接管被证实承重）⇒ 永久关闭。**机制层预期**：v16 臂 pressureGate 层开火 = 0（削点只在 prompt 里）、让出的手位落到 live3Attack（我方 L3 强制胜）或模型自选。**验证期间 CURRENT 保持 v14-live3-fresh**。**验证轮结果（v16val，2026-10-07，box 20 局）**：v16 **5 胜 9 和 6 负（47.5%）** vs v14 6 胜 9 和 5 负（52.5%）——负局 6 ∈ [5–6] ⇒ **按预注册规则挂起**，CURRENT 留 v14。机制层完全符合设计：v16 臂 pressureGate **0 次开火**，让出的手位落到 parry4（171 vs 38）/live3Defense（157 vs 97）/模型自选。**三轮配对元观察**：三个挑战者（v14-plus/v15/v16）负局 10/6/6 vs v14 的 4/4/5——没有任何轨迹改写型改动赢过 v14（各自都在噪声内）；假说：各层阈值在「同族轨迹分布」上标定，改写早期层 = 让后续层看离群局面。' },
+  { id: 'v17-fusion', name: '合流', rank: 18, commit: 'pending', commitAt: '2026-10-07 22:00',
+    date: '2026-10-07', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, vctFirst: true, softGate: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 0,
+    note: '合流档（业主指令「分析所有 v1-v16 的棋局数目，重构 v14plus」，2026-10-07 全量盘点后设计）。**这是 2×2 矩阵从未测过的第四格**：vctFirst（防线优先级纠偏，修复 56 局败局分析实锤的 6 处确定性漏防）+ softGate（压力咨询化，业主理论「缩小范围让模型选择」）+ 原预算——v14-plus 的失败在预算混淆（两个变量捆死），本次把两个各自通过机制层验证的纠偏合流，预算逐键回到 v14 原值。**棋局数目盘点（2026-10-07 全量）**：v14 以 298 局（D1 218 + 本地三轮对手臂 80）成为史上验证最充分的基线；v13 223 / v11 176 / v12 136 / v10 124；挑战者证据量 v14-plus 20 / v15 20 / v16 40——全部处于噪声带（±20pt）。**分岔点战术质量分析**（`.work/divergence-quality.mjs`，21 局败局 60 分岔 × 5 版本候选 × 三指标 opp5/oppPress/ownPress）：34 处实走候选严格最优（57%）/ 14 处不劣（23%）/ **12 处存在严格更优备选（20%）且全部 opp5=0**——失误层零退化（业主理论「能力不退化」在失误层成立），差异全部是压力节奏（a638b06e 一局占 6/12：softGate 让权后对手做四压力残留 2-4 个更高；模型在 ply19/35 走了更好的削点 = 走子层补偿证据）。**预注册判定规则（跑前写死，ADR-0023 增补五）**：v17 vs v14 配对 20 局（box，双臂兜底网关，与 vplus1/v15val/v16val 同条件）——① v17 负局 ≤ 4 ⇒ 通过，CURRENT 升 v17；② 负局 5–6 ⇒ 不可判，挂起（矩阵第四格仍无定论，等分辨率）；③ 负局 ≥ 7 ⇒ 组合有害 ⇒ vctFirst 与 softGate 双双永久关闭。**验证期间 CURRENT 保持 v14-live3-fresh**（小步协议：一轮 20 局，不大批量）。' },
 ];
 
 /** 当前档位。2026-10-06 配对验证轮（vplus1）v14-plus 35% vs v14 65%（n=20，负局 10 vs 4）
@@ -248,7 +252,7 @@ export function ids(): string[] {
 function U(cond: unknown, msg: string): void { assert(cond, msg); }
 
 export function selfTest(): void {
-  assert(VERSIONS.length === 18, '应登记 17 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
+  assert(VERSIONS.length === 19, '应登记 18 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
   /* 2026-10-06 v14-plus 配对轮未过负局线，CURRENT 显式回退 ⇒ 末档可与 CURRENT 不同（登记保留） */
   U(!!BY_ID[CURRENT], '当前档必须是已登记档位');
   VERSIONS.forEach((v, i) => {
