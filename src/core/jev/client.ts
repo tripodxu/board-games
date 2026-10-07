@@ -291,7 +291,12 @@ async function callWithRetry(
       }
       if (err.status === 429 || err.status === 529) {
         if (++rateLimitTries >= RATE_LIMIT_ATTEMPTS) {
+          /* opencode 免费档：匿名配额按出口 IP 计，全站经 Worker 中转会共享——文案指向可行动解（填自己的 key）。 */
+          const ocHint = channel === 'opencode'
+            ? '——OpenCode 免费档限流：在「Jev 设置」填入你自己的 OpenCode Key 可获得独立配额'
+            : '';
           throw httpError(`上游限流（HTTP ${err.status}）：已退避重试 ${rateLimitTries} 次仍未放行`
+            + ocHint
             + (err.detail ? '（' + err.detail.slice(0, 120) + '）' : ''), err.status, true);
         }
         if (opts.onRetry) opts.onRetry(err.status, rateLimitTries - 1);
