@@ -35,7 +35,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { DEFAULT_ANCHOR, gameRecord, rankTable } from './lib/batch-elo.mjs';
-import { REPORT_VERSION, collectCost, costByLevel, costRow, curveComposition, levelPower, levelTable, openingRows, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
+import { REPORT_VERSION, collectCost, costByLevel, costRow, curveComposition, levelPower, levelTable, openingRows, pairBlocks, pairTable, reportMarkdown, versionMatrix } from './lib/report.mjs';
 
 /** 用法错/读不到数据：抛 `{exitCode}`，由入口转成 exit code（可被单测直接断言，不杀测试进程）。 */
 function die(msg, code = 2) {
@@ -267,6 +267,7 @@ export async function reportMain(argv = process.argv.slice(2)) {
       levelTable: levels,
       levelPower: levelPower(levels.levels),
       costByLevel: costByLevel(payloads),
+      pairAnalysis: pairBlocks(records),
     }, null, 2) + '\n');
   }
 

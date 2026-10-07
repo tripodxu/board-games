@@ -59,6 +59,24 @@ export function wilson(hits, n, z = Z95) {
   };
 }
 
+/** 开局前 4 手（与 D1 `games.opening_prefix` 同口径：逗号连接；不足 4 手 = null）。
+ *  配对分析（report 的 pairBlocks）靠它识别「同开局 + 换色」的成对局。 */
+function openingPrefixOf(g) {
+  const parts = [];
+  const ms = Array.isArray(g.moves) ? g.moves : [];
+  for (const m of ms) {
+    if (parts.length >= 4) break;
+    if (m && typeof m.notation === 'string' && m.notation) parts.push(m.notation);
+  }
+  if (parts.length < 4 && typeof g.notation === 'string' && g.notation) {
+    for (const n of g.notation.split(',')) {
+      if (parts.length >= 4) break;
+      if (n) parts.push(n);
+    }
+  }
+  return parts.length === 4 ? parts.join(',') : null;
+}
+
 /** 从一个棋谱 export JSON 提取一局记录（黑/白身份 + 黑方得分）。 */
 export function gameRecord(exportJson) {
   const g = typeof exportJson === 'string' ? JSON.parse(exportJson) : exportJson;
@@ -87,6 +105,7 @@ export function gameRecord(exportJson) {
     /* 和棋的 endReason 从 result 串的括号里取（parseResult() 的口径），导出缺 endReason 时兜底 */
     reason: g.endReason || g.end_reason || (draw && draw[1]) || '',
     plies: Array.isArray(g.moves) ? g.moves.length : 0,
+    opening: openingPrefixOf(g),
   };
 }
 

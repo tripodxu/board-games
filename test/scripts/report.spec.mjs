@@ -13,7 +13,9 @@ import {
   collectCost, colorCells, colorSplit, costByLevel, costByLevelBlock, costRow, endReasons, isUpstreamMove, layersByResult, moveIdentity,
   openingRows, pairTable, quantiles, screenVersions, versionMatrix, versionMatrixBlock,
   rafiCurve, reportMarkdown, significance, curveComposition, curveDeltas, levelPower, levelTable, levelTableBlock,
+  pairBlocks, pairBlockBlock,
 } from '../../scripts/lib/report.mjs';
+import { gameRecord } from '../../scripts/lib/batch-elo.mjs';
 import { reportMain } from '../../scripts/experiment-report.mjs';
 
 /** 合成一局：只按渠道给该有的档位 —— Rapfi 侧战术档留空、Jev 侧思考档留空（与归档导出口径一致）。 */
@@ -857,5 +859,80 @@ describe('未收尾的轮（缺 round-summary.json）', () => {
     expect(model.skippedIncomplete).toEqual([{ round: 2, games: 2 }]);
     expect(errLines.join('\n')).toContain('已跳过未收尾的轮：round-2（2 局）');
     fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe('pairBlocks / pairBlockBlock（配对分析：同开局 + 换色的成对局）', () => {
+  /* pairBlocks 吃 gameRecord 形状的记录（tag/opening/black/white/blackScore）。
+     A = 字典序在前的身份；配对判据 = 同 tag + 同 opening 前 4 手 + 颜色互换。 */
+  const rec = ({ tag = 't1', opening = 'H8,H7,H6,G7,F7', a = 'official|vA|0', b = 'official|vB|0', aBlack = true, s1 = 1, s2 = 1, uid1 = 'u1', uid2 = 'u2' } = {}) => {
+    /* aBlack：第一局 A 是否执黑；s1/s2：两局里 A 的得分（1/0.5/0） */
+    const g1 = {
+      tag, opening, gameUid: uid1,
+      black: aBlack ? a : b, white: aBlack ? b : a,
+      blackScore: aBlack ? s1 : 1 - s1,
+    };
+    const g2 = {
+      tag, opening, gameUid: uid2,
+      black: aBlack ? b : a, white: aBlack ? a : b,
+      blackScore: aBlack ? 1 - s2 : s2,
+    };
+    return [g1, g2];
+  };
+
+  it('同开局 + 换色 → 1 对；A 2-0 扫记 aSweep，决定性对符号检验 p=0.5（n=1）', () => {
+    const { pairs, summary } = pairBlocks(rec({ aBlack: true, s1: 1, s2: 1 }));
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]).toMatchObject({ cls: 'aSweep', a: 'official|vA|0', aScore: 2 });
+    expect(summary).toMatchObject({ pairs: 1, openings: 1, aSweep: 1, decisive: 1, aDecisive: 1 });
+    expect(summary.pValue).toBeCloseTo(1, 5); // n=1 两侧都极端
+  });
+
+  it('各胜一局 = even（互换各半）；B 2-0 扫记 bSweep；决定性对 3-0 时双侧 p=0.25', () => {
+    const even = pairBlocks(rec({ aBlack: true, s1: 1, s2: 0 }));
+    expect(even.summary).toMatchObject({ pairs: 1, even: 1, decisive: 0, pValue: null });
+    const bSweep = pairBlocks(rec({ aBlack: true, s1: 0, s2: 0 }));
+    expect(bSweep.summary).toMatchObject({ bSweep: 1, decisive: 1, aDecisive: 0 });
+    /* 3 个决定性对全 A 扫：双侧 P(X≥3 或 X≤0 | n=3, p=.5) = 2/8 = 0.25 */
+    const three = [rec({ uid1: 'a1', uid2: 'a2' }), rec({ uid1: 'b1', uid2: 'b2' }), rec({ uid1: 'c1', uid2: 'c2' })].flat();
+    const merged = pairBlocks(three);
+    expect(merged.summary).toMatchObject({ pairs: 3, aSweep: 3, decisive: 3 });
+    expect(merged.summary.pValue).toBeCloseTo(0.25, 5);
+  });
+
+  it('不同开局 / 未换色 / 不同 tag 都不成对；opening 缺失跳过', () => {
+    const base = { aBlack: true, s1: 1, s2: 1 };
+    expect(pairBlocks(rec({ ...base, opening: 'H8,H7,H6,G7,F7' })).summary.pairs).toBe(1);
+    const diffOpen = rec(base).map((g, i) => ({ ...g, opening: i === 0 ? 'H8,H7,H6,G7,F7' : 'A1,A2,A3,A4,A5' }));
+    expect(pairBlocks(diffOpen).summary.pairs).toBe(0);
+    const sameColor = rec(base).map((g) => ({ ...g, white: g.black === 'official|vA|0' ? 'official|vB|0' : 'official|vA|0', black: 'official|vA|0' }));
+    /* 同色两局：g1.black===g2.white 不成立（都是 vA）→ 不成对 */
+    expect(pairBlocks(sameColor.filter((g) => g.black !== g.white)).summary.pairs).toBe(0);
+    const otherTag = rec(base).map((g, i) => ({ ...g, tag: i === 0 ? 't1' : 't2' }));
+    expect(pairBlocks(otherTag).summary.pairs).toBe(0);
+    const noOpen = rec(base).map((g) => ({ ...g, opening: null }));
+    expect(pairBlocks(noOpen).summary.pairs).toBe(0);
+  });
+
+  it('pairBlockBlock：有成对局才渲染；块内含符号检验行与分辨率提示', () => {
+    const records = rec({ aBlack: true, s1: 1, s2: 1 });
+    const md = pairBlockBlock({ records });
+    expect(md).toContain('配对分析');
+    expect(md).toContain('A 2-0 扫 1');
+    expect(md).toContain('精确符号检验（双侧）p = 1.000');
+    expect(md).toContain('决定性对 < 15 时只作方向参考');
+    expect(pairBlockBlock({ records: rec(base0()).map((g) => ({ ...g, opening: null })) })).toBeNull();
+    function base0() { return { aBlack: true, s1: 1, s2: 1 }; }
+  });
+
+  it('gameRecord 产出 opening（前 4 手，与 D1 opening_prefix 同口径）', () => {
+    const g = game({ moves: [jevMove(1, '黑方'), rafiMove(2, '白方')], winner: 'black' });
+    /* moves 只有 2 手 → opening 为 null（不足 4 手） */
+    expect(gameRecord(g).opening).toBeNull();
+    const g4 = game({
+      moves: ['H8', 'H7', 'H6', 'G7'].map((n, i) => (i % 2 === 0 ? jevMove(i + 1, '黑方') : rafiMove(i + 1, '白方'))).map((m, i) => ({ ...m, notation: ['H8', 'H7', 'H6', 'G7'][i] })),
+      winner: 'black',
+    });
+    expect(gameRecord(g4).opening).toBe('H8,H7,H6,G7');
   });
 });

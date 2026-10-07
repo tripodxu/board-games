@@ -943,6 +943,106 @@ export function significance(rows, pairs) {
 const fmtPt = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const fmtMs = (q) => (q == null ? '—' : `${q.mean}／${q.median}／${q.p90}／${q.max}`);
 
+/* ---------- 配对分析（同开局 + 换色的成对局） ---------- */
+
+/** p=0.5 的双侧精确二项检验：n 次里出现 ≥k 或 ≤k 各侧的极端概率之和。 */
+export function binomTwoSided(k, n) {
+  if (!Number.isInteger(n) || n <= 0) return 1;
+  const kk = Math.max(0, Math.min(n, k));
+  const at = (i) => { let c = 1; for (let j = 1; j <= i; j += 1) c = (c * (n - j + 1)) / j; return c * Math.pow(0.5, n); };
+  const pk = at(kk);
+  let p = 0;
+  for (let i = 0; i <= n; i += 1) {
+    if (at(i) <= pk * (1 + 1e-9)) p += at(i);
+  }
+  return Math.min(1, p);
+}
+
+/**
+ * 配对分析（D9 的分析侧补全；开局库负责生成「同开局换色双跑」，这里负责把它读成结论）。
+ *
+ * 配对判据：同一 tag（= 同一轮）内，两局的 `opening`（前 4 手，与 D1 opening_prefix 同口径）
+ * 相同且颜色互换（g1.black === g2.white && g1.white === g2.black）。A = 字典序在前的身份
+ * （与 pairTable 同口径）。每对 A 的总分 ∈ {0, 0.5, 1, 1.5, 2}：
+ *   2.0 = A 2-0 扫｜1.5 = A 胜+和｜1.0 = 互换各半｜0.5 = B 胜+和｜0 = B 2-0 扫。
+ * 决定性对 = 有一方 2-0 的对；对决定性对做 p=0.5 的双侧精确符号检验。
+ */
+export function pairBlocks(records) {
+  const byTag = new Map();
+  for (const r of records) {
+    if (!r || !r.opening || r.black === r.white) continue;
+    if (!byTag.has(r.tag)) byTag.set(r.tag, []);
+    byTag.get(r.tag).push(r);
+  }
+  const pairs = [];
+  for (const [tag, games] of byTag) {
+    const used = new Set();
+    for (let i = 0; i < games.length; i += 1) {
+      if (used.has(i)) continue;
+      for (let j = i + 1; j < games.length; j += 1) {
+        if (used.has(j)) continue;
+        const g1 = games[i];
+        const g2 = games[j];
+        if (g1.opening !== g2.opening) continue;
+        if (g1.black !== g2.white || g1.white !== g2.black) continue;
+        used.add(i);
+        used.add(j);
+        const a = g1.black < g1.white ? g1.black : g1.white;
+        const aScore = (g1.black === a ? g1.blackScore : 1 - g1.blackScore)
+          + (g2.black === a ? g2.blackScore : 1 - g2.blackScore);
+        pairs.push({
+          tag,
+          opening: g1.opening,
+          a,
+          b: a === g1.black ? g1.white : g1.black,
+          aScore,
+          cls: aScore === 2 ? 'aSweep' : aScore === 1.5 ? 'aAdv' : aScore === 1 ? 'even' : aScore === 0.5 ? 'bAdv' : 'bSweep',
+        });
+        break;
+      }
+    }
+  }
+  const count = (cls) => pairs.filter((p) => p.cls === cls).length;
+  const aSweep = count('aSweep');
+  const bSweep = count('bSweep');
+  const decisive = aSweep + bSweep;
+  const summary = {
+    pairs: pairs.length,
+    openings: new Set(pairs.map((p) => p.opening)).size,
+    aSweep,
+    aAdv: count('aAdv'),
+    even: count('even'),
+    bAdv: count('bAdv'),
+    bSweep,
+    decisive,
+    aDecisive: aSweep,
+    pValue: decisive ? binomTwoSided(aSweep, decisive) : null,
+  };
+  return { pairs, summary };
+}
+
+/** 配对分析块：只在真有成对局时出现（没开开局库的批次自然没有）。 */
+export function pairBlockBlock(model) {
+  const { pairs, summary } = pairBlocks(model.records || []);
+  if (!pairs.length) return null;
+  const out = [];
+  out.push(`配对分析（**同开局 + 换色**的成对局；A = 字典序在前的身份——这是开局库「同一开局换色双跑」的分析侧）：`);
+  out.push('');
+  out.push(`- 成对 **${summary.pairs} 对**（覆盖 ${summary.openings} 个开局）｜` +
+    `A 2-0 扫 ${summary.aSweep} ｜ A 优(胜+和) ${summary.aAdv} ｜ 互换各半 ${summary.even} ｜ ` +
+    `B 优(胜+和) ${summary.bAdv} ｜ B 2-0 扫 ${summary.bSweep}`);
+  if (summary.decisive) {
+    out.push(`- 决定性对（一方 2-0）：${summary.decisive} 对，A 拿 ${summary.aDecisive} ⇒ ` +
+      `精确符号检验（双侧）p = ${summary.pValue.toFixed(3)}` +
+      (summary.pValue < 0.05 ? ' ⇒ **配对层面显著**' : ' ⇒ 配对层面不显著'));
+  } else {
+    out.push('- 无决定性对（没有一方 2-0 扫）⇒ 配对层面完全打平');
+  }
+  out.push('- 读数：决定性对 < 15 时只作方向参考；配对差分把「开局方差」从对比里剔掉，' +
+    '是三条挂起线（v14-plus/v15/v16）复赛所需的分辨率口径。');
+  return out.join('\n');
+}
+
 /**
  * 组装人读 markdown。`model` 由 CLI 组装：
  * `{batchId, generatedAt, dirs, rounds, games, rows, records, pairs, cost, prov, artifacts, anchor, seed, bootstrap}`。
@@ -1135,6 +1235,11 @@ export function reportMarkdown(model) {
     }
   }
   out.push('');
+  const pairAnalysis = pairBlockBlock(model);
+  if (pairAnalysis) {
+    out.push(pairAnalysis);
+    out.push('');
+  }
   if (model.games && model.games.length) {
     const ends = endReasons(model.games);
     out.push('收尾机制与接管层（**解释性口径**，不参与判强 —— 判强只看上面的配对表；规则 11 要求解释和棋与败局）：');
