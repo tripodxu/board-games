@@ -1,0 +1,29 @@
+{
+  "capturedAt": "2026-10-07",
+  "source": "https://opencode.ai/zen/v1/systemone（实测：无 key 也接受请求体，带 key 正常鉴权；免费档 cost=0）",
+  "request": {
+    "model": "jev-1.13-free",
+    "state": "测试",
+    "questions": {
+      "q1": {
+        "type": "noul",
+        "instructions": "测试"
+      }
+    }
+  },
+  "note": "形状与 TypeSafe 官方 systemone 逐字段同构：answers.q1.{type,noul} + usage + cost。",
+  "response": {
+    "model": "jev-1.13-free",
+    "answers": {
+      "q1": {
+        "type": "noul",
+        "noul": 0.49
+      }
+    },
+    "usage": {
+      "input_tokens": 268,
+      "output_tokens": 21
+    },
+    "cost": "0"
+  }
+}

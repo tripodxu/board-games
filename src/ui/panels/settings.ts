@@ -67,11 +67,18 @@ export function apiKeyLabelText(channel: string): string {
     : '官方 API Key（仅存本机）';
 }
 
+function orKeyLabelText(channel: string): string {
+  return channel === 'opencode'
+    ? 'OpenCode Key（仅存本机 · opencode.ai/auth 免费）'
+    : 'OpenRouter Key（仅存本机）';
+}
+
 /** 抽屉内各行的显示规则（js/app.js:107-121 的 hidden 判定，逐条照搬）。true = 显示。 */
 export interface ChannelVisibility {
   apiKeyLabel: boolean;
   apiKeyLabelText: string;
   orKeyLabel: boolean;
+orKeyLabelText: string;
   endpointLabel: boolean;
   tacticsVersionLabel: boolean;
   /** `#probeRow`（mock 渠道没有可探测的远端） */
@@ -83,9 +90,10 @@ export function channelVisibility(channel: string): ChannelVisibility {
   return {
     apiKeyLabel: channel === 'official' || channel === 'proxy',
     apiKeyLabelText: apiKeyLabelText(channel),
-    orKeyLabel: channel === 'openrouter',
+    orKeyLabel: channel === 'openrouter' || channel === 'opencode',
+    orKeyLabelText: orKeyLabelText(channel),
     endpointLabel: channel !== 'mock' && channel !== 'rapfi',
-    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'official' || channel === 'random',
+    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'official' || channel === 'random',
     probeRow: channel !== 'mock',
   };
 }
@@ -216,7 +224,7 @@ export function renderSettings(
       endpointInput,
     ]),
     el('label', { id: 'apiKeyLabel', class: classOf(vis.apiKeyLabel) }, [vis.apiKeyLabelText, apiKeyInput]),
-    el('label', { id: 'orKeyLabel', class: classOf(vis.orKeyLabel) }, ['OpenRouter Key（仅存本机）', orKeyInput]),
+    el('label', { id: 'orKeyLabel', class: classOf(vis.orKeyLabel) }, [vis.orKeyLabelText, orKeyInput]),
     el('div', { id: 'probeRow', class: classOf(vis.probeRow) }, [
       probeBtn,
       el('div', {

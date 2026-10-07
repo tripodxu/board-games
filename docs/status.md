@@ -287,6 +287,17 @@
 
 ## 已验证（验收证据）
 
+- **OpenCode Zen 免费渠道（2026-10-07，业主指令「Jev 使用 opencode 的免费模型跑」）**：
+  业主确认 OpenCode Zen 上有免费 Jev；实测证实——`https://opencode.ai/zen/v1/systemone` 对
+  `{model:"jev-1.13-free", state, questions}` **免费返回与 TypeSafe 官方逐字段同构的系统一应答**
+  （`answers.{type,noul}` + `usage` + `cost:"0"`；无 key 也受理、坏 key 报 `AuthError`）。
+  接入 = **换三元组不写适配器**（ADR-0022 同款）：`CHANNELS` 加 `opencode`
+  （endpoint `https://opencode.ai/zen/v1/systemone` / model `jev-1.13-free` / keyName `opencode`）；
+  key 走设置抽屉的 `orKey` 输入框（BYOK，label 随渠道变「OpenCode Key」）；UI 四处渠道清单
+  （FOE_CHANS / EXP_CHANS / DRAWER_CHANNEL_OPTS / CHANNEL_NAMES）各加一项。免费模型轮换风险
+  （官方文档：免费档按月轮换）与真实棋力未知 ⇒ 建议先用实验面板做一轮 v16-softgate 对比。
+  协议夹具 `test/fixtures/jev/opencode-systemone-2026-10-07.json` + 渠道/形状钉子 2 例
+  （`test/core/opencode-systemone.spec.ts`）；全量 **54 文件 / 758 例全绿**。
 - **战术模式提示可视化（2026-10-07，业主需求「模式识别给出的待选位置每一级用不同颜色标出」）**：
   新增 `src/core/tactics-hints.ts`（纯计算）：把接管链 14 层的**待选点集**（win/block←`winning_points_*`、
   open4/threat/chance、vcf/vctAttack←`vcf/vct_win_you`、vcf/vctDefense←`vcf/vct_win_opponent`、

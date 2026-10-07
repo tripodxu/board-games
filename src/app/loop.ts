@@ -285,7 +285,7 @@ export async function scheduleDecision(ctx: AppCtx): Promise<void> {
 
   const eff = effFor(ctx, side);
   const cfg = ctx.settings;
-  const apiKey = eff.channel === 'openrouter' ? cfg.orKey : cfg.apiKey;
+  const apiKey = eff.channel === 'openrouter' || eff.channel === 'opencode' ? cfg.orKey : cfg.apiKey;
   const endpoint = (cfg.endpoints && cfg.endpoints[eff.channel]) || '';
 
   try {

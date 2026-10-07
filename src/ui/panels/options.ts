@@ -58,6 +58,7 @@ export const FOE_CHANS: readonly Opt[] = [
   ['', '跟随全局'],
   ['proxy', 'Jev 模型（代理）'],
   ['openrouter', 'Jev · OpenRouter'],
+  ['opencode', 'Jev · OpenCode（免费）'],
   ['official', 'Jev · 官方 API'],
   ['rapfi', 'Rapfi 引擎'],
   ['random', '随机 + 战术'],
@@ -68,6 +69,7 @@ export const FOE_CHANS: readonly Opt[] = [
 export const EXP_CHANS: readonly Opt[] = [
   ['proxy', 'Jev(代理)+战术'],
   ['openrouter', 'Jev(OpenRouter)+战术'],
+  ['opencode', 'Jev(OpenCode·免费)+战术'],
   ['official', 'Jev(官方)+战术'],
   ['random', '纯随机+战术'],
   ['mock', '离线演示'],
@@ -78,6 +80,7 @@ export const EXP_CHANS: readonly Opt[] = [
 export const DRAWER_CHANNEL_OPTS: readonly Opt[] = [
   ['proxy', '同源代理 /api/jev（推荐 · 转发你自己的 key）'],
   ['openrouter', 'OpenRouter（浏览器直连）'],
+  ['opencode', 'OpenCode Zen（免费 · 浏览器直连）'],
   ['official', '官方 API 直连（可能被 CORS 拦截）'],
   ['mock', '离线演示（无需 key）'],
   ['rapfi', 'Rapfi 本地引擎（首次下载模型）'],
@@ -104,6 +107,7 @@ export const TOPK_OPTS: readonly Opt[] = [
 export const CHANNEL_NAMES: Record<string, string> = {
   official: '官方 API',
   openrouter: 'OpenRouter',
+  opencode: 'OpenCode（免费）',
   proxy: '同源代理',
   mock: '离线演示',
   rapfi: 'Rapfi 本地',

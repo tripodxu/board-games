@@ -46,6 +46,8 @@ export interface ChannelConfig { endpoint: string; model: string; keyName: strin
 export const CHANNELS: Record<string, ChannelConfig> = {
   official: { endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', keyName: 'official' },
   openrouter: { endpoint: 'https://openrouter.ai/api/v1/systemone', model: 'typesafe/jev-1.13', keyName: 'openrouter' },
+  /* OpenCode Zen：Jev 的免费托管点（2026-10-07 实测 /v1/systemone 免费返回系统一协议应答，cost=0）。 */
+  opencode: { endpoint: 'https://opencode.ai/zen/v1/systemone', model: 'jev-1.13-free', keyName: 'opencode' },
   proxy: { endpoint: 'api/jev', model: 'jev-latest', keyName: null },
 };
 
