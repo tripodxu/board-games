@@ -52,6 +52,8 @@ export interface Settings {
   /** 自定义端点（各渠道一条；mock/rapfi 不入账） */
   endpoints: Record<string, string>;
   gameSync: boolean;
+  /** 战术模式提示（五子棋：棋盘上按层颜色标出各接管层的待选点；默认关——对人类对局是剧透） */
+  hints: boolean;
   rapfiThinkMs: number;
   tacticsVersion: string;
   /** 旧实现在这里可能是任意串（只守 DOM 不守值），见 isValidMode */
@@ -75,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   speed: 6,
   endpoints: {},
   gameSync: true,
+  hints: false,
   rapfiThinkMs: 3000,
   tacticsVersion: DEFAULT_TACTICS_VERSION,
   mode: 'human-ai',

@@ -50,6 +50,7 @@ import {
   renderTacticsStrip,
   setVisibleById,
   toast,
+  refreshTacticHints,
 } from './panels.ts';
 
 /** 棋种顺序（旧 `GAME_ORDER`，js/app.js:11）：`#tabs` 与自检都按它遍历。 */
@@ -96,6 +97,8 @@ export function syncSettingsFromDrawer(ctx: AppCtx): void {
   if (rapfiEl) s.rapfiThinkMs = parseInt(rapfiEl.value, 10) || 3000;
   const syncBox = byId<HTMLInputElement>('gameSync');
   if (syncBox) s.gameSync = syncBox.checked;
+  const hintBox = byId<HTMLInputElement>('tacticHints');
+  if (hintBox) s.hints = hintBox.checked;
   const modeEl = byId<SelectEl>('mode');
   if (modeEl && isValidMode(modeEl.value)) s.mode = modeEl.value;
   const tacEl = byId<SelectEl>('tacticsVersion');
@@ -118,6 +121,7 @@ export function renderSettingsPanel(ctx: AppCtx): void {
       Object.assign(ctx.settings, patch);
       persistSettings(ctx);
       syncChannelUI(ctx);
+      refreshTacticHints(ctx);
     },
     onEndpointChange: (channel, value) => {
       stashEndpoint(ctx.settings, channel, value);
@@ -450,6 +454,7 @@ export function switchGame(ctx: AppCtx, gid: string, reset: (ctx: AppCtx) => voi
   renderFoe(ctx);
   renderTacticsStripPanel(ctx);
   reset(ctx);
+  refreshTacticHints(ctx);
   /* 开局库按棋种筛选（服务端一律要求 `?game=`）：换棋种后跟着换筛选并重取。 */
   if (ctx.openingsGame !== gid) {
     ctx.openingsGame = gid;

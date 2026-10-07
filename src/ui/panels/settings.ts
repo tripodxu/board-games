@@ -200,6 +200,9 @@ export function renderSettings(
   const syncBox = el('input', { id: 'gameSync', type: 'checkbox', checked: !!s.gameSync });
   on(syncBox, 'change', () => handlers.onPatch({ gameSync: syncBox.checked }));
 
+  const hintBox = el('input', { id: 'tacticHints', type: 'checkbox', checked: !!s.hints });
+  on(hintBox, 'change', () => handlers.onPatch({ hints: hintBox.checked }));
+
   replaceChildren(body, [
     el('div', { class: 'drawer-sub', text: '引擎与连接' }),
     el('label', null, ['接入渠道', channelSel]),
@@ -225,6 +228,7 @@ export function renderSettings(
     ]),
     el('label', null, ['走棋随机度', topKSel]),
     el('label', { class: 'check-row' }, [syncBox, ' 终局自动同步棋谱（供复盘分析）']),
+    el('label', { class: 'check-row' }, [hintBox, ' 战术模式提示（五子棋 · 按层颜色标出待选点）']),
     el('div', { class: 'hint', text: '设置保存在本机 localStorage；渠道/key 只进本机，不随棋谱上传。' }),
     el('div', { class: 'drawer-sub', text: '双方覆盖（留空 = 跟随上方全局设置）' }),
     el('div', { id: 'sideCfgBlack', class: 'side-cfg' }),

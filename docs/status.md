@@ -15,7 +15,7 @@
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
 | 渠道 | ✅ 六个选项 | `official`、`openrouter`、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
-| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加） |
+| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切 v1–v16 任一档即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
 | 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
@@ -286,6 +286,21 @@
 - 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物；`backups/` 不入库，需要时重新导出）。**2026-10-06 重导**：10.4 MB / 312 局 / 19298 手 / 28 轮，`verify:backup --structural` 绿（payload 逐字节一致、派生列零漂移）；迁移当天的旧快照保留为 `backups/export-2026-10-01-stale.sql`（1.9 MB / 54 局）。
 
 ## 已验证（验收证据）
+
+- **战术模式提示可视化（2026-10-07，业主需求「模式识别给出的待选位置每一级用不同颜色标出」）**：
+  新增 `src/core/tactics-hints.ts`（纯计算）：把接管链 14 层的**待选点集**（win/block←`winning_points_*`、
+  open4/threat/chance、vcf/vctAttack←`vcf/vct_win_you`、vcf/vctDefense←`vcf/vct_win_opponent`、
+  pressureGate←`pressure_cut_points`（带原 4 条开火条件）、live3 两层、parry←`danger_points_opponent`（对手杀点画环）、
+  parry3/parry4←criteria 标签）按 TAKEOVER_ORDER 优先级整理为 `{marks, legend}`——同一点在我方落点间只归最高层、
+  第一个有点的层标「接管」、机制门控（mechOf）天然实现「v1–v16 都这样」（切版本下拉即所见即该档能力）；
+  每层固定色（`LAYER_COLORS` 14 色）、每层 ≤12 点封顶。gomoku draw 消费 `ui.tacticMarks`（空数组零成本）；
+  设置抽屉新增 `hints` 开关（默认关、localStorage 持久化）；图例条浮在棋盘顶部（`#tacticLegend`，pointer-events:none）。
+  **性能护栏**：hints 缓存键 = gameUid|手数|行棋方|档位（变更才重算）+ setTimeout(0) 让绘制先行 + AI 思考中跳过。
+  **测试**：引擎套件 163 例（+8：颜色表全覆盖 / v16 win·block 夹具 / v0-off·v3 门控 / win-block 抢点去重 /
+  parry 环 opp 语义 / 前 4 手短路 / 未知档位回落）；ui +5 例（图例 chips / 隐藏三态 / refresh 落 marks / 非 gomoku / 持久化）；
+  全量 **53 文件 / 756 例全绿** + typecheck + smoke:browser 14/14。**边界**：提示是接管链事实的只读展示，
+  不改任何档位的落子行为；threat 层结构性不可达（同指纹分析）；points 展示与真实接管可能不同
+  （真实接管还有层内挑选与 topK 采样）——图例的「接管」徽标按「第一个有点的层」近似标注。
 
 - **v14-plus 整合收紧档（2026-10-06，[ADR-0023](adr/0023-v14-plus-integration.md)，业主指令「整合一版 v14-plus」）**：
   先核实**整合在 v14 已结构性完成**（机制矩阵：v14 = v10 live3 两层 + v11 vctAttack + v12 vctDefense + v13 pressureGate

@@ -14,6 +14,8 @@ import { clone } from '../clone.ts';
 import { rnd } from '../rng.ts';
 import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
+import { LAYER_COLORS } from '../tactics-hints.ts';
+import type { TacticMark } from '../tactics-hints.ts';
 import type { Engine, GameStatus, JevSerialized, Live3Deny, Live3Options, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfOptions, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
 
 const N = 15;
@@ -1166,7 +1168,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   /* ---------- 渲染与交互 ---------- */
   const CELL = 36, MARGIN = 28, W = MARGIN * 2 + (N - 1) * CELL, H = W;
 
-  function draw(ctx: Canvas2D, st: GomokuState, _ui: UiState): void {
+  function draw(ctx: Canvas2D, st: GomokuState, ui: UiState): void {
     gfx.clear(ctx, W, H);
     gfx.intersections(ctx, MARGIN, MARGIN, CELL, N, N);
     /* 星位 */
@@ -1181,6 +1183,18 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
             p === 1 ? 'black' : 'white', !!st.last && st.last.r === r && st.last.c === c);
         }
       }
+    }
+    /* 战术模式提示（tactics-hints）：每层待选点一色；我方点实心、对手威胁点画环、接管层白描边。
+     * 标记全在空点上，画在棋子之后不重叠；无提示时数组为空零成本。 */
+    const hints = Array.isArray(ui?.tacticMarks) ? (ui.tacticMarks as TacticMark[]) : [];
+    for (const m of hints) {
+      const pn = parseN(m.notation);
+      if (!pn) continue;
+      const x = MARGIN + pn.c * CELL, y = MARGIN + pn.r * CELL;
+      const color = LAYER_COLORS[m.layer] ?? '#8a939e';
+      if (m.opp) gfx.highlight(ctx, x, y, CELL * 0.32, color);
+      else if (m.fire) gfx.disc(ctx, x, y, CELL * 0.22, color, '#FFFFFF');
+      else gfx.disc(ctx, x, y, CELL * 0.17, color, 'rgba(255,255,255,.8)');
     }
     for (let c = 0; c < N; c++) gfx.text(ctx, colName(c), MARGIN + c * CELL, 12, { size: 10 });
     for (let r = 0; r < N; r++) gfx.text(ctx, String(r + 1), 12, MARGIN + r * CELL, { size: 10 });

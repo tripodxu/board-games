@@ -48,6 +48,7 @@ import {
   renderFeedPanel,
   renderLedgerPanel,
   appendLedgerPanel,
+  refreshTacticHints,
   renderRecordsPanel,
   renderSideNames,
   renderTurn,
@@ -170,6 +171,7 @@ export function resetSession(ctx: AppCtx): void {
   renderFeedPanel(ctx);
   redraw(ctx);
   syncSwapBtn(ctx);
+  refreshTacticHints(ctx);
 }
 
 /* ---------- 开始一局 ---------- */
@@ -241,6 +243,7 @@ export function playMove(ctx: AppCtx, move: Move | null | undefined, meta: Sessi
   renderCockpitPanel(ctx);
   if (meta && meta.byAI) prependFeedPanel(ctx, h);
   syncSwapBtn(ctx);
+  refreshTacticHints(ctx);
 
   const g = ctx.engine.getStatus(session.st);
   if (g.over) {
@@ -512,6 +515,7 @@ export function undo(ctx: AppCtx): void {
   renderFeedPanel(ctx);
   redraw(ctx);
   syncSwapBtn(ctx);
+  refreshTacticHints(ctx);
 
   if (session.history.length && isTurnAI(ctx)) scheduleAIStep(ctx, () => aiStep(ctx), aiDelayMs(ctx));
 }

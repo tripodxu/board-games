@@ -50,8 +50,10 @@ import { loadRecords } from '../core/record/book.ts';
 import { VERSIONS, CURRENT, resolve } from '../core/tactics-versions.ts';
 import { calibration } from '../core/view/calibration.ts';
 import type { Metrics } from '../core/view/calibration.ts';
-import { clear, byId, setHidden, setText } from '../ui/dom.ts';
+import { clear, byId, el, setHidden, setText } from '../ui/dom.ts';
 import { effFor, effBySideId } from './ctx.ts';
+import { computeTacticHints } from '../core/tactics-hints.ts';
+import type { TacticHint } from '../core/tactics-hints.ts';
 import type { AppCtx } from './ctx.ts';
 import type { SessionMove } from '../core/session.ts';
 
@@ -617,4 +619,64 @@ export function refreshDataPanels(ctx: AppCtx): void {
   renderReplayerPanel(ctx);
   void loadLeaderboardPanel(ctx);
   void loadOpeningsPanel(ctx);
+}
+
+/* ---------- 战术模式提示（tactics-hints 的装配侧） ---------- */
+
+/** 图例渲染：棋盘顶部的分层 chips（色点 + 层名 ×计数 + 接管徽标）；无提示/关闭/非五子棋时隐藏。 */
+export function renderTacticLegend(ctx: AppCtx): void {
+  const root = byId<HTMLElement>('tacticLegend');
+  if (!root) return;
+  const hint = ctx.tacticHint;
+  if (!ctx.settings.hints || !hint || !hint.legend.length) {
+    setHidden(root, true);
+    root.replaceChildren();
+    return;
+  }
+  const chips = hint.legend.map((l) => el('span', { class: 'tl-chip' + (l.fire ? ' is-fire' : '') }, [
+    el('i', { style: { background: l.color } }),
+    `${l.label} ×${l.count}`,
+    l.fire ? el('b', { class: 'tl-fire', text: '接管' }) : null,
+  ]));
+  chips.unshift(el('span', { class: 'tl-chip tl-title', text: `战术提示 · ${hint.version}` }));
+  root.replaceChildren(...chips);
+  setHidden(root, false);
+}
+
+/**
+ * 重算当前局面的分层提示（缓存键 = gameUid|手数|行棋方|档位|开关）。
+ * 计算走 setTimeout(0)（computeTactics 中位几百 ms，让触发它的那次绘制先行）；
+ * AI 思考中（inflight）跳过，机机观战零卡顿。只改 `ctx.ui.tacticMarks` 与图例，
+ * 是否真的画出来由 gomoku 的 draw 消费（其他引擎不读该字段）。
+ */
+export function refreshTacticHints(ctx: AppCtx): void {
+  const st = ctx.session.st as { turn?: string; moveNum?: number } | null;
+  const eligible = !!ctx.settings.hints && !!ctx.engine.deepTactics && !!st && !ctx.engine.getStatus(ctx.session.st).over;
+  let key = 'off';
+  let versionId: string | null = null;
+  if (eligible) {
+    const status = ctx.engine.getStatus(ctx.session.st);
+    const side = status.turn || '';
+    versionId = effFor(ctx, side).tactics;
+    key = `${ctx.session.gameUid}|${st?.moveNum ?? 0}|${side}|${versionId}`;
+  }
+  if (ctx.tacticHintKey === key) {
+    renderTacticLegend(ctx);
+    return;
+  }
+  ctx.tacticHintKey = key;
+  setTimeout(() => {
+    /* 期间又有更新的刷新请求 ⇒ 这次结果作废（键比对） */
+    if (ctx.tacticHintKey !== key) return;
+    let hint: TacticHint | null = null;
+    if (eligible && versionId) {
+      try { hint = computeTacticHints(ctx.engine, ctx.session.st, versionId); } catch { hint = null; }
+    }
+    ctx.tacticHint = hint;
+    ctx.ui.tacticMarks = hint ? hint.marks : null;
+    renderTacticLegend(ctx);
+    /* 重画棋盘（不引 loop.redraw —— panels 不 import loop 的既定方向）；
+       失败静默：与 loop.drawFailed 同级的容错，提示本身可下次重算。 */
+    if (ctx.renderer) { try { ctx.renderer.draw({ engine: ctx.engine, state: ctx.session.st, ui: ctx.ui }); } catch { /* ignore */ } }
+  }, 0);
 }

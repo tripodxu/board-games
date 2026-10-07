@@ -26,6 +26,7 @@ import type { Engine, GameStatus, UiState } from '../core/types.ts';
 import type { GameSession } from '../core/session.ts';
 import type { EffSide, Settings, StorageLike, SideConfig } from '../core/persist.ts';
 import { effSide, saveSettings } from '../core/persist.ts';
+import type { TacticHint } from '../core/tactics-hints.ts';
 import { ensureLoaded } from '../core/jev/rapfi.ts';
 import type { BoardRenderer } from '../ui/board-render.ts';
 import type { ProbeState } from '../ui/panels/settings.ts';
@@ -67,6 +68,10 @@ export interface AppCtx {
   session: GameSession;
   /** 棋盘交互态（旧 `S.ui`；引擎私有，换局即清空） */
   ui: UiState;
+  /** 战术模式提示（panels.refreshTacticHints 的缓存；null = 当前无提示） */
+  tacticHint?: TacticHint | null;
+  /** 提示缓存键（gameUid|手数|行棋方|档位；变更才重算） */
+  tacticHintKey?: string;
   /** 活动设置对象：`session.settings` 与它**同引用**，保证导出/记账读到的永远是最新值 */
   settings: Settings;
   /** 设置持久化后端（localStorage 或测试用的内存桩） */

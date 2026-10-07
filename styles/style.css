@@ -1449,3 +1449,49 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 @media (max-width: 560px) {
   .exp-latest-side { max-width: 100%; }
 }
+
+/* 战术模式提示（tactics-hints）：棋盘顶部的分层图例条（色点 + 层名 + 计数 + 接管徽标）。
+   浮在 #boardWrap（相对定位）之上、不挡落子（pointer-events:none）；无提示时整体 hidden。 */
+.tactic-legend {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  z-index: 15;
+  pointer-events: none;
+}
+.tl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.93);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  color: var(--ink);
+}
+.tl-chip i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.tl-chip.is-fire {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+.tl-fire {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 15px;
+}
