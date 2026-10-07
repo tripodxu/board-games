@@ -1495,3 +1495,19 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   padding: 0 6px;
   line-height: 15px;
 }
+
+/* 战术提示的一键开关（棋盘头部）；aria-pressed + is-on 双状态，与设置抽屉的 hints 互为同一设置 */
+.hint-btn {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-ctl);
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.hint-btn.is-on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}

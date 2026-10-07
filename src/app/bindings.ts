@@ -55,6 +55,7 @@ import {
   refreshDataPanels,
   renderAnalytics,
   renderCalibrationPanel,
+  refreshTacticHints,
   renderCockpitPanel,
   renderFeedPanel,
   renderReplayerPanel,
@@ -70,6 +71,7 @@ import {
   stopExperiment,
 } from './experiment.ts';
 import type { AppCtx } from './ctx.ts';
+import { persistSettings } from './ctx.ts';
 
 /* ---------- 棋盘坐标与交互（旧 js/board.js:211-217 + js/app.js:1981-2014） ---------- */
 
@@ -213,6 +215,12 @@ export function bindAll(ctx: AppCtx): void {
   onOnce(byId('resignBtn'), 'click', () => resign(ctx));
   onOnce(byId('swapBtn'), 'click', () => swapSidesAndRestart(ctx));
   onOnce(byId('exportGame'), 'click', () => exportGame(ctx));
+  /* 战术提示一键开关（棋盘头部）：与设置抽屉的 hints 是同一设置；点击即生效（刷新缓存 + 重画） */
+  onOnce(byId('hintBtn'), 'click', () => {
+    ctx.settings.hints = !ctx.settings.hints;
+    persistSettings(ctx);
+    refreshTacticHints(ctx);
+  });
 
   /* 对局设置：`#mode` / `#side` / `#speed`（ui 侧 onOnce 绑定，这里只给处理器）。
      旧实现 `#mode.onchange = applyModeUI`、`#speed.oninput = 写 #speedVal + saveSettings`；

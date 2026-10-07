@@ -123,3 +123,41 @@ describe('refreshTacticHints（调度 + 落 marks）', () => {
     expect(document.getElementById('tacticLegend')?.classList.contains('hidden')).toBe(true);
   });
 });
+
+describe('hintBtn（棋盘头部一键开关）', () => {
+  it('点击翻转 settings.hints、落盘持久化、按钮状态同步、图例联动', async () => {
+    mountAppHtml();
+    const store = new Map<string, string>([[STORE_KEY, settingsJson()]]);
+    const ctx = bootCtx(store);
+    const btn = document.getElementById('hintBtn') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    expect(btn.disabled).toBe(false); /* gomoku：deepTactics */
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+
+    btn.click();
+    expect(ctx.settings.hints).toBe(true);
+    await vi.waitFor(() => { expect(btn.getAttribute('aria-pressed')).toBe('true'); });
+    expect(btn.classList.contains('is-on')).toBe(true);
+    /* 持久化：真实路径（bindings 直调 persistSettings） */
+    const saved = JSON.parse(store.get(STORE_KEY) ?? '{}');
+    expect(saved.hints).toBe(true);
+
+    btn.click();
+    expect(ctx.settings.hints).toBe(false);
+    await vi.waitFor(() => { expect(btn.getAttribute('aria-pressed')).toBe('false'); });
+    const saved2 = JSON.parse(store.get(STORE_KEY) ?? '{}');
+    expect(saved2.hints).toBe(false);
+  });
+
+  it('非五子棋：按钮禁用（战术提示仅五子棋可用）', async () => {
+    mountAppHtml();
+    const ctx = bootCtx(new Map([[STORE_KEY, settingsJson()]]));
+    const go = getGame('go');
+    if (!go) throw new Error('注册表里没有 go');
+    ctx.engine = go;
+    /* 触发一次图例渲染同步按钮状态 */
+    renderTacticLegend(ctx);
+    const btn = document.getElementById('hintBtn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+});

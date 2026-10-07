@@ -11,6 +11,8 @@
 import { suite, ok, eq } from './harness.mjs';
 import { getGame } from '../../src/core/registry.ts';
 import { computeTacticHints, LAYER_COLORS } from '../../src/core/tactics-hints.ts';
+import * as R from '../../src/core/tactics-versions.ts';
+import { computeTactics } from '../../src/core/tactics.ts';
 import { TAKEOVER_ORDER } from '../../src/core/takeover.ts';
 
 const S = suite();
@@ -123,3 +125,37 @@ S.t('hints：未知档位回落空机制集（与 computeTactics 同口径，绝
 });
 
 export default S;
+
+S.t('hints：接管层 = 真实接管链（pickTakeover 同源）——与直接调用逐字一致', async () => {
+  const { pickTakeover } = await import('../../src/core/takeover.ts');
+  const check = (seq, versionId) => {
+    const st = play(gomoku, seq);
+    const hint = computeTacticHints(gomoku, st, versionId);
+    const legal = gomoku.getLegalMoves(st);
+    const crit = gomoku.serializeForJev(st, st.turn).questions.move.criteria || {};
+    const takeover = pickTakeover({
+      engine: gomoku, st, tactics: computeTactics(gomoku, st, legal, Object.keys(crit), versionId),
+      mech: R.resolve(versionId).mech, criteria: crit, legal, pairs: [], cands: Object.keys(crit), topK: 1,
+    });
+    const fireLayers = [...new Set(hint.legend.filter((l) => l.fire).map((l) => l.layer))];
+    if (takeover.layer) {
+      eq(fireLayers.join(','), takeover.layer, '图例接管层应与真实接管链一致');
+      ok(hint.marks.some((m) => m.layer === takeover.layer && m.notation === takeover.notation),
+        `真实接管点 ${takeover.notation} 应在标记中（层 ${takeover.layer}）`);
+    } else {
+      eq(fireLayers.length, 0, '无接管时不应有 fire 层');
+    }
+  };
+  /* 三类局面：我方四连（win）/ 白四连（block）/ 双活三（open4+parry 共存） */
+  check(['H8', 'I9', 'H9', 'J10', 'H10', 'K11', 'H11', 'M13'], 'v16-softgate');
+  check(['I9', 'H8', 'K11', 'H9', 'M13', 'H10', 'O15', 'H11'], 'v16-softgate');
+  check(['F8', 'G7', 'G8', 'H7', 'H8', 'I7', 'A1'], 'v16-softgate');
+  check(['F8', 'G7', 'G8', 'H7', 'H8', 'I7', 'A1'], 'v3-make2');
+});
+
+S.t('hints：每层封顶 12 点（MARKS_PER_LAYER 上限生效）', () => {
+  /* 白四连的局面里 parry4 曾给出 12 个点：验证任何层的标记数都不超过 12 */
+  const st = play(gomoku, ['I9', 'H8', 'K11', 'H9', 'M13', 'H10', 'O15', 'H11']);
+  const hint = computeTacticHints(gomoku, st, 'v16-softgate');
+  for (const l of hint.legend) ok(l.count <= 12, '层 ' + l.layer + ' 标记数超封顶：' + l.count);
+});

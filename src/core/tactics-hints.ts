@@ -9,7 +9,7 @@
  *
  * 纯逻辑、零 DOM：颜色表与标记结构都可被引擎 draw 与 DOM 图例两端消费。
  */
-import { TAKEOVER_LABEL, TAKEOVER_ORDER } from './takeover.ts';
+import { pickTakeover, TAKEOVER_LABEL, TAKEOVER_ORDER } from './takeover.ts';
 import { computeTactics, mechOf, resolveVersion } from './tactics.ts';
 import type { Engine } from './types.ts';
 
@@ -115,13 +115,11 @@ export function computeTacticHints(engine: Engine, st: unknown, versionId?: stri
     push('parry4', byLabel('deny:four'));
   }
 
-  /* 按优先级去重 + 封顶；第一个有点的层 = 接管层。
-   * 去重只在**我方落点（实心）**之间进行——parry 的对手杀点（圆环）语义不同
+  /* 按优先级去重 + 封顶。去重只在**我方落点（实心）**之间进行——parry 的对手杀点（圆环）语义不同
    * （「这里是对手杀点」与「block 层会占这里」可以同时成立），绕过点去重。 */
   const claimed = new Set<string>();
   const marks: TacticMark[] = [];
   const legend: TacticLegendItem[] = [];
-  let fireLayer: string | null = null;
   /* sets 已按 TAKEOVER_ORDER 推入；再显式排序一次防未来插入顺序漂移 */
   sets.sort((x, y) => TAKEOVER_ORDER.indexOf(x.layer) - TAKEOVER_ORDER.indexOf(y.layer));
   for (const s of sets) {
@@ -136,13 +134,25 @@ export function computeTacticHints(engine: Engine, st: unknown, versionId?: stri
       marks.push({ notation: n, layer: s.layer, opp: s.opp, fire: false });
     }
     if (count > 0) {
-      if (!fireLayer) fireLayer = s.layer;
       legend.push({ layer: s.layer, label: TAKEOVER_LABEL[s.layer] ?? s.layer, color: LAYER_COLORS[s.layer] ?? '#8a939e', count, fire: false });
     }
   }
+
+  /* 接管层 = **真实接管链**的判定（pickTakeover 与 decide 共用同一实现），
+   * 不再是「第一个有点的层」的近似——压力闸门条件、live3 的 danger 门槛等都按真实语义走。
+   * pairs 传空数组 = 无模型概率口径（与指纹/回放的等权口径一致）。 */
+  const takeover = pickTakeover({ engine, st, tactics: report, mech, criteria, legal, pairs: [], cands, topK: 1 });
+  const fireLayer = takeover.layer;
   if (fireLayer) {
-    for (const m of marks) if (m.layer === fireLayer) m.fire = true;
+    for (const m of marks) m.fire = m.layer === fireLayer;
     for (const l of legend) l.fire = l.layer === fireLayer;
+    /* 真实接管点若被每层封顶挤掉，强制补进来——棋盘必须能看到接管层的真实落点 */
+    if (takeover.notation && !marks.some((m) => m.layer === fireLayer && m.notation === takeover.notation)) {
+      marks.unshift({ notation: takeover.notation, layer: fireLayer, opp: false, fire: true });
+      const row = legend.find((x) => x.layer === fireLayer);
+      if (row) row.count += 1;
+      else legend.unshift({ layer: fireLayer, label: TAKEOVER_LABEL[fireLayer] ?? fireLayer, color: LAYER_COLORS[fireLayer] ?? '#8a939e', count: 1, fire: true });
+    }
   }
   return { version: ver.id, marks, legend };
 }

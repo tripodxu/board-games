@@ -623,12 +623,21 @@ export function refreshDataPanels(ctx: AppCtx): void {
 
 /* ---------- 战术模式提示（tactics-hints 的装配侧） ---------- */
 
-/** 图例渲染：棋盘顶部的分层 chips（色点 + 层名 ×计数 + 接管徽标）；无提示/关闭/非五子棋时隐藏。 */
+/** 图例渲染：棋盘顶部的分层 chips（色点 + 层名 ×计数 + 接管徽标）；无提示/关闭/非五子棋时隐藏。
+ *  同时同步棋盘头部的「提示」一键开关状态（与设置抽屉的 hints 是同一设置的两个入口）。 */
 export function renderTacticLegend(ctx: AppCtx): void {
   const root = byId<HTMLElement>('tacticLegend');
   if (!root) return;
   const hint = ctx.tacticHint;
-  if (!ctx.settings.hints || !hint || !hint.legend.length) {
+  const btn = byId<HTMLButtonElement>('hintBtn');
+  const usable = !!ctx.engine.deepTactics;
+  if (btn) {
+    btn.disabled = !usable;
+    btn.classList.toggle('is-on', usable && !!ctx.settings.hints);
+    btn.setAttribute('aria-pressed', String(usable && !!ctx.settings.hints));
+    btn.title = usable ? '战术模式提示（按层颜色标出各接管层的待选点）' : '战术提示仅五子棋可用';
+  }
+  if (!ctx.settings.hints || !usable || !hint || !hint.legend.length) {
     setHidden(root, true);
     root.replaceChildren();
     return;
