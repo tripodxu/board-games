@@ -130,6 +130,10 @@ export const VERSIONS: TacticsVersion[] = [  { id: 'v0-off', name: '无战术基
     date: '2026-10-06', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, vctFirst: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
     ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 0,
     note: '防线优先级档（业主指令「结合实验数据，生成 v15」）。**单变量设计（v14-plus 的教训）**：vplus1 配对轮一次改了两个变量（预算减法 + vctFirst），35% vs 65% 的比分无法归因。本档 = **v14 全机制 + 仅 vctFirst**，预算逐键回到 v14 原值（`vctDefMax` 12 / `vctDefKeep` 3 / `pressureCutMax` 120）——v14-plus 已证明的机制层事实保留（56 局败局 6 处确定性漏防由 vctFirst 纠正、判据更强），比分可疑的减法全部退出。**行为面**：与 v14 只差「对手有链的防手位」（`vct_win_opponent` 代替 `vcf_win_opponent`，判据更强），其余逐字一致；与 v14-plus 只差预算。**预注册判定规则（跑前写死，ADR-0023 增补三）**：v15 vs v14 配对 20 局（box，双臂兜底网关）——① v15 负局 ≤ 4（不劣于 v14 同轮）⇒ 通过，CURRENT 升 v15；② 负局 5–6 ⇒ 不可判，CURRENT 留 v14、本线挂起；③ 负局 ≥ 7 ⇒ vctFirst 单变量即比分有害 ⇒ 永久关闭（登记保留，CURRENT 永留 v14）。**验证期间 CURRENT 保持 v14-live3-fresh**（生产不暴露未验证版本，避免再次回滚）。' },
+  { id: 'v16-softgate', name: '让权', rank: 17, commit: 'pending', commitAt: '2026-10-06 16:40',
+    date: '2026-10-06', mech: { win: true, block: true, open4: true, threat: true, vcfAttack: true, vctAttack: true, vcfDefense: true, vctDefense: true, pressureGate: true, live3Attack: true, live3Defense: true, live3Fresh: true, softGate: true, parry: true, parry3: true, parry4: true, safeSort: true, vcfTry: true, sound: true },
+    ...FROZEN, sound: true, fidelity: 'exact', games: 0, gamesVerified: 0,
+    note: '让权档（业主理论「先模式识别缩小范围，再让 Jev 选择」的直接实现，业主指令「优化」）。**单变量**：v14 全机制 + 仅 `softGate` 开关——pressureGate **降级为纯咨询**：fourPressure/pressureCut 照算、压力事实与削点照进 prompt（mech 仍含 pressureGate ⇒ attachFacts 句集不变），但接管链不再开火（takeover 分支加 `!M.softGate`）——「知识作为信息」替代「知识作为强制」。**为什么只动这一层**：vcfDefense/vctDefense 的触发是 sound 必败链（数学强制，必须硬接管）；live3Attack/vcfAttack/vctAttack/open4 是我方强制胜；只有 pressureGate 在**非强制**局面（danger 为空、对手仅压力领先）替模型做主，且代价有登记在案的实测：ADR-0017 真接管 26 手里 13 手让掉攻势、自己平均 −1.92 个做四点、六轮真救 0；v15val 里它开火 232 手挂 0/211/21。**不带 vctFirst**（v15 已单独测过 = 挂起/中性），保持单变量。**预注册判定规则（跑前写死，ADR-0023 增补四）**：v16 vs v14 配对 20 局（box，双臂兜底网关，与 vplus1/v15val 同条件）——① v16 负局 ≤ 4 ⇒ 通过，CURRENT 升 v16（业主理论得到配对验证）；② 负局 5–6 ⇒ 不可判，挂起；③ 负局 ≥ 7 ⇒ 咨询化有害（pressureGate 硬接管被证实承重）⇒ 永久关闭。**机制层预期**：v16 臂 pressureGate 层开火 = 0（削点只在 prompt 里）、让出的手位落到 live3Attack（我方 L3 强制胜）或模型自选。**验证期间 CURRENT 保持 v14-live3-fresh**。' },
 ];
 
 /** 当前档位。2026-10-06 配对验证轮（vplus1）v14-plus 35% vs v14 65%（n=20，负局 10 vs 4）
@@ -228,8 +232,13 @@ export function allows(version: TacticsVersion | null | undefined, mech: string)
  * 基准与声明合一，不再有「窗口 vs 实测」这对矛盾，也就不需要台账与审计函数。
  * 那 20 局的历史事实改由 test/core/attribution.spec.ts 钉在数据上断言。 */
 
-/** 机制键（顺序即接管链顺序 + 五个附加键）。 */
-export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense', 'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound', 'live3Fresh', 'vctFirst']);
+/** 机制键（顺序即接管链顺序 + 六个附加键）。 */
+export const MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense', 'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4', 'safeSort', 'vcfTry', 'sound', 'live3Fresh', 'vctFirst', 'softGate']);
+
+/** 接管层键（= TAKEOVER_ORDER 的 14 层）。**单调不减约束只覆盖这 14 个**——
+ * 附加键（safeSort/vcfTry/sound/live3Fresh/vctFirst/softGate）是**开关不是层**：
+ * 新档可以不携带旧的实验性开关（v16 不带 v15 的 vctFirst），逐档仍可解析。 */
+export const TIER_MECHS: readonly string[] = Object.freeze(['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense', 'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4']);
 
 /** 全部档位 id（注册顺序）。 */
 export function ids(): string[] {
@@ -239,7 +248,7 @@ export function ids(): string[] {
 function U(cond: unknown, msg: string): void { assert(cond, msg); }
 
 export function selfTest(): void {
-  assert(VERSIONS.length === 17, '应登记 16 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
+  assert(VERSIONS.length === 18, '应登记 17 个战术版本 + 1 基线，实际 ' + VERSIONS.length);
   /* 2026-10-06 v14-plus 配对轮未过负局线，CURRENT 显式回退 ⇒ 末档可与 CURRENT 不同（登记保留） */
   U(!!BY_ID[CURRENT], '当前档必须是已登记档位');
   VERSIONS.forEach((v, i) => {
@@ -262,8 +271,8 @@ export function selfTest(): void {
   /* 历史事实断言：v9 之前没有 soundness 闸门（v7/v8 报过不健全的链），v9 起才有 */
   VERSIONS.forEach((v) => U(v.sound === (v.rank >= 9), v.id + ' 的 sound 与「v9 才有 soundness 闸门」的历史不符'));
   for (let i = 1; i < VERSIONS.length; i++)
-    for (const k of MECHS)
-      if (VERSIONS[i - 1]!.mech[k]) U(!!VERSIONS[i]!.mech[k], VERSIONS[i]!.id + ' 丢了上级机制 ' + k);
+    for (const k of TIER_MECHS)
+      if (VERSIONS[i - 1]!.mech[k]) U(!!VERSIONS[i]!.mech[k], VERSIONS[i]!.id + ' 丢了上级接管层 ' + k);
   /* commitAt 是人读的版本边界（P7 起不再由它算时间窗）：必须可解析、不许空 */
   for (const v of VERSIONS)
     U(/\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v.commitAt || ''), v.id + ' 的 commitAt 应可解析');

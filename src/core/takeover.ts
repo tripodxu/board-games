@@ -177,7 +177,7 @@ export function pickTakeover(ctx: TakeoverCtx): TakeoverResult {
      * （对手的强制胜比我们先手造活三快）。 */
     notation = pickAmong(tactics.vct_win_opponent);
     if (notation) layer = 'vctDefense';
-  } else if (M.pressureGate && tactics.pressure_cut_points.length
+  } else if (M.pressureGate && !M.softGate && tactics.pressure_cut_points.length
       && tactics.pressure_opponent > tactics.pressure_you
       && !tactics.danger_points_opponent.length) {
     /* v13 压力闸门：对手的「做四手数」压过我们时，先削点再谈进攻。ADR-0015 已证明活三不是杀
