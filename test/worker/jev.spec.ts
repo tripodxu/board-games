@@ -28,7 +28,7 @@
  */
 import { SELF, env } from 'cloudflare:test';
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app as indexApp } from '../../src/worker/index.ts';
 import { jevRoute, parseJevRequest, providerAttempts } from '../../src/worker/routes/jev.ts';
 import { statusFor } from '../../src/worker/lib/http.ts';
@@ -600,5 +600,81 @@ describe('POST /api/jev（真中间件链 + 真 D1）', () => {
     expect(statusFor('bad_request')).toBe(400);
     expect(statusFor('unauthorized')).toBe(401);
     expect(statusFor('internal')).toBe(500);
+  });
+});
+
+describe('opencode 免费托管档（model = jev-1.13-free）', () => {
+  const okBody = { state: { turn: 1 }, questions: { move: {} } };
+  it('parseJevRequest：opencode 匿名放行（无 key 不 401）+ upstreamUrl/allowAnonymous 就位', () => {
+    const parsed = parseJevRequest(
+      { state: { turn: 1 }, questions: { move: {} }, model: 'jev-1.13-free' },
+      { headerKey: null },
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.apiKey).toBe('');
+      expect(parsed.value.keySource).toBe('anonymous');
+      expect(parsed.value.allowAnonymous).toBe(true);
+      expect(parsed.value.upstreamUrl).toContain('opencode.ai');
+    }
+    /* 官方 model 缺 key 仍 401（原语义不变） */
+    const noKey = parseJevRequest(okBody, { headerKey: null });
+    expect(!noKey.ok && noKey.code === 'unauthorized').toBe(true);
+  });
+
+  it('POST /api/jev（opencode 匿名）：上游 200 → 透传 answers（假 fetcher 钉住转发端点）', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', (async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      calls.push({ url: u, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+      if (u.includes('opencode.ai')) {
+        return new Response(JSON.stringify({
+          model: 'jev-1.13-free',
+          answers: { move: { probabilities: { H8: 1 } }, confidence: 0.9 },
+          usage: { input_tokens: 10 }, cost: '0',
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('not found', { status: 404 });
+    }) as typeof fetch);
+    try {
+      const res = await postJev({ state: { turn: 1 }, questions: { move: {} }, model: 'jev-1.13-free' });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { answers?: unknown; model?: string };
+      expect(body.model).toBe('jev-1.13-free');
+      expect(body.answers).toBeDefined();
+      const op = calls.find((c) => c.url.includes('opencode.ai'));
+      expect(op).toBeDefined();
+      expect(op?.headers.authorization).toBeUndefined(); /* 匿名：无 Authorization 头 */
+      expect(op?.headers['x-jev-upstream']).toBeUndefined(); /* 上游头不带内部标记 */
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('POST /api/jev（opencode 带使用者 key）：Authorization 透传到 OpenCode', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    vi.stubGlobal('fetch', (async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      calls.push({ url: u, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+      if (u.includes('opencode.ai')) {
+        return new Response(JSON.stringify({
+          model: 'jev-1.13-free',
+          answers: { move: { probabilities: { H8: 1 } }, confidence: 0.9 },
+          usage: { input_tokens: 10 }, cost: '0',
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('not found', { status: 404 });
+    }) as typeof fetch);
+    try {
+      const res = await postJev(
+        { state: { turn: 1 }, questions: { move: {} }, model: 'jev-1.13-free', apiKey: 'oc-user-key' },
+      );
+      expect(res.status).toBe(200);
+      const op = calls.find((c) => c.url.includes('opencode.ai'));
+      expect(op?.headers.authorization).toBe('Bearer oc-user-key');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

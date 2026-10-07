@@ -297,7 +297,12 @@
   （FOE_CHANS / EXP_CHANS / DRAWER_CHANNEL_OPTS / CHANNEL_NAMES）各加一项。免费模型轮换风险
   （官方文档：免费档按月轮换）与真实棋力未知 ⇒ 建议先用实验面板做一轮 v16-softgate 对比。
   协议夹具 `test/fixtures/jev/opencode-systemone-2026-10-07.json` + 渠道/形状钉子 2 例
-  （`test/core/opencode-systemone.spec.ts`）；全量 **54 文件 / 758 例全绿**。
+  （`test/core/opencode-systemone.spec.ts`）；**免费模式与转发架构（业主需求：匿名纯免费 + 使用者自填 key 双轨、浏览器经同源转发——OpenCode 无 CORS 头，浏览器直连不可行）**：
+  客户端 opencode 渠道 endpoint = 同源 `api/jev`、body.model = `jev-1.13-free`；Worker 按 model 识别该档
+  ⇒ 短路进独立转发路径（不进兜底状态机）：`parseJevRequest` 匿名放行（`keySource:'anonymous'`、
+  `upstreamUrl`/`allowAnonymous` 出参）、`callUpstream` 支持 `allowAnonymous`（apiKey 空时不带
+  Authorization 头——实测带假 key 反而 401）+ `OPENCODE_UPSTREAM_URL` 常量；响应加 `X-Jev-Upstream: opencode`。
+  worker +3 例（匿名放行/匿名转发无 Auth 头/key 透传），全量 **54 文件 / 761 例全绿**。
 - **战术模式提示可视化（2026-10-07，业主需求「模式识别给出的待选位置每一级用不同颜色标出」）**：
   新增 `src/core/tactics-hints.ts`（纯计算）：把接管链 14 层的**待选点集**（win/block←`winning_points_*`、
   open4/threat/chance、vcf/vctAttack←`vcf/vct_win_you`、vcf/vctDefense←`vcf/vct_win_opponent`、

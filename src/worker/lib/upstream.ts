@@ -36,6 +36,9 @@
 /** 与旧实现同值：`functions/api/jev.js` / `server.cjs` / `js/jev-client.js` 都是这个端点。 */
 export const DEFAULT_UPSTREAM_URL = 'https://api.typesafe.ai/v1/systemone';
 
+/** OpenCode Zen：Jev 的免费托管点（2026-10-07 实测匿名可用，cost=0）。 */
+export const OPENCODE_UPSTREAM_URL = 'https://opencode.ai/zen/v1/systemone';
+
 /**
  * 超时：30s，与旧实现三处（浏览器 30s、Node 30s）完全一致。
  *
@@ -62,6 +65,8 @@ export interface UpstreamCall {
   body: Record<string, unknown>;
   /** 覆盖端点（默认 `DEFAULT_UPSTREAM_URL`）。 */
   url?: string;
+  /** 允许匿名（无 Authorization 头）——opencode 免费档匿名可用；官方端点必须带 key。 */
+  allowAnonymous?: boolean;
   timeoutMs?: number;
   /**
    * 调用方的中止信号：生产传 `c.req.raw.signal`（客户端断开/Gateway 超时后不必继续烧上游额度）。
@@ -107,8 +112,9 @@ export async function callUpstream(call: UpstreamCall): Promise<UpstreamResult> 
       : DEFAULT_TIMEOUT_MS;
 
   const apiKey = typeof call.apiKey === 'string' ? call.apiKey.trim() : '';
-  if (!apiKey) {
+  if (!apiKey && !call.allowAnonymous) {
     // 正常路径不会到：路由已把「没 key」映射成 401。这里只是不让空 key 发出去。
+    // 例外：opencode 免费档匿名可用（路由侧 allowAnonymous 放行）。
     return { ok: false, kind: 'network', errorName: 'MissingApiKey' };
   }
 
@@ -134,7 +140,8 @@ export async function callUpstream(call: UpstreamCall): Promise<UpstreamResult> 
     const response = await call.fetcher(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        /* opencode 免费档匿名可用：apiKey 为空时不带 Authorization 头（带假 key 反而 401）。 */
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(call.body),

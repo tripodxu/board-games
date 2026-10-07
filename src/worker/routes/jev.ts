@@ -47,9 +47,14 @@ import { rateLimit } from '../middleware/ratelimit.ts';
 import {
   DEFAULT_MODEL,
   DEFAULT_TIMEOUT_MS,
+  OPENCODE_UPSTREAM_URL,
+  callUpstream,
   toPassthroughResponse,
   upstreamFailureMessage,
 } from '../lib/upstream.ts';
+
+/** OpenCode Zen 免费托管档的 model 名（客户端 CHANNELS.opencode 与它必须一致）。 */
+export const OPENCODE_MODEL = 'jev-1.13-free';
 import { fail, invalid, type Parsed } from '../lib/validate.ts';
 import type { AppEnv } from '../types.ts';
 
@@ -60,10 +65,14 @@ export const jevRoute = new Hono<AppEnv>();
 export interface JevRequest {
   /** 上游请求体：只有这三个字段（白名单，见 upstream.ts）。 */
   body: { state: unknown; model: string; questions: unknown };
-  /** 已按优先级取好的 key。 */
+  /** 已按优先级取好的 key。opencode 渠道（匿名免费档）允许为空串。 */
   apiKey: string;
   /** key 来自哪儿——只用于日志（**不记值**），排障时能分辨「用户没填」还是「env 没配」。 */
-  keySource: 'header' | 'env' | 'body';
+  keySource: 'header' | 'env' | 'body' | 'anonymous';
+  /** 上游端点覆盖（opencode 渠道指向 OpenCode Zen；缺省 = TypeSafe 官方）。 */
+  upstreamUrl?: string;
+  /** opencode 免费档允许匿名（无 key 也放行）。 */
+  allowAnonymous: boolean;
 }
 
 /** 旧实现里 `questions` 是对象（`{move, edge, position}`）；数组也放行（上游报 422 比我们猜更准）。 */
@@ -95,8 +104,11 @@ export function parseJevRequest(
   const envKey = opts.envKey?.trim() ?? '';
   const bodyKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
   const apiKey = headerKey || envKey || bodyKey;
-  const keySource: JevRequest['keySource'] = headerKey ? 'header' : envKey ? 'env' : 'body';
-  if (!apiKey) {
+  const keySource: JevRequest['keySource'] = headerKey ? 'header' : envKey ? 'env' : bodyKey ? 'body' : 'anonymous';
+  /* opencode 免费托管档（model = jev-1.13-free）：匿名可用（实测无 key 也 200），
+     有 key（使用者自己的）走自己的限额。其余 model 维持「缺 key → 401」的原语义。 */
+  const isOpencode = body.model === OPENCODE_MODEL;
+  if (!apiKey && !isOpencode) {
     return invalid('unauthorized', '未提供 API Key：请在页面「Jev 设置」中填写你自己的 TypeSafe key');
   }
 
@@ -119,6 +131,8 @@ export function parseJevRequest(
       },
       apiKey,
       keySource,
+      upstreamUrl: isOpencode ? OPENCODE_UPSTREAM_URL : undefined,
+      allowAnonymous: isOpencode,
     },
   };
 }
@@ -240,6 +254,30 @@ jevRoute.post('/', rateLimit('jev'), async (c) => {
   });
   if (!parsed.ok) return fail(c, parsed);
   const { body, apiKey, keySource } = parsed.value;
+
+  /* 2.5) opencode 免费托管档短路：model = jev-1.13-free ⇒ 直连 OpenCode Zen（不进兜底状态机）。
+   *    匿名免费档（无 key）可用；带了使用者自己的 key 就带上（走自己的限额）。
+   *    失败直接映射 upstream_error（免费档无兜底语义——备胎还是免费的它自己）。 */
+  if (parsed.value.upstreamUrl) {
+    const startedOpenCode = Date.now();
+    const result = await callUpstream({
+      apiKey,
+      allowAnonymous: parsed.value.allowAnonymous,
+      url: parsed.value.upstreamUrl,
+      body,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+      signal: c.req.raw.signal,
+      fetcher: (...args) => fetch(...args),
+    });
+    const elapsedMs = Date.now() - startedOpenCode;
+    if (result.ok) {
+      const response = toPassthroughResponse(result);
+      response.headers.set('X-Jev-Upstream', 'opencode');
+      console.log(`[jev] opencode requestId=${c.get('requestId')} ms=${elapsedMs} anonymous=${!apiKey}`);
+      return response;
+    }
+    return fail(c, invalid('upstream_error', upstreamFailureMessage(result.kind)));
+  }
 
   /* 3) 转发。`fetcher` 传全局 fetch（生产路径）；`signal` 传客户端信号（客户端断开即中止）。
    *    `providerAttempts` 决定要不要带兜底（C2）：没配 `COMMANDCODE_API_KEY` 时只有一个尝试，
