@@ -54,6 +54,8 @@ export const CHANNELS: Record<string, ChannelConfig> = {
   openrouter: { endpoint: 'https://openrouter.ai/api/v1/systemone', model: 'typesafe/jev-1.13', keyName: 'openrouter' },
   /* OpenCode Zen：Jev 的免费托管点（2026-10-07 实测 /v1/systemone 免费返回系统一协议应答，cost=0）。 */
   opencode: { endpoint: OPENCODE_RELAY_PATH, model: OPENCODE_MODEL, keyName: 'opencode' },
+  /** 本地中转（scripts/local-relay.mjs 跑在用户机器上）：请求从用户 IP 发出，免费档限流池独占。 */
+  opencode_local: { endpoint: 'http://127.0.0.1:8420/api/jev', model: OPENCODE_MODEL, keyName: null },
   proxy: { endpoint: 'api/jev', model: 'jev-latest', keyName: null },
 };
 
@@ -219,7 +221,9 @@ async function callRaw(
   if (!cfg) throw new Error('未知渠道: ' + channel);
   const endpoint = attempt.provider.url;
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders };
-  if (channel === 'proxy') {
+  if (channel === 'proxy' || channel === 'opencode_local') {
+    /* 两者都经「本地/同源中转」到 OpenCode：key 走 X-Api-Key 头（中转脚本再转成 Authorization）；
+     * key 可选——本地中转在用户自己的 IP 上，匿名即稳定。 */
     if (apiKey) headers['X-Api-Key'] = apiKey;
   } else if (cfg.keyName) {
     if (!apiKey && !custom) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');

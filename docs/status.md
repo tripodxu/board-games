@@ -315,6 +315,16 @@
   ⇒ **生产访客的 opencode 默认档是尽力而为（闲时可用、忙时 429）**；业主自己的稳定通道 =
   本地 dev + key，或 TypeSafe 系渠道（proxy/official）。是否回退默认渠道待业主复决（数据已齐）。
   ⚠ 业主的 OpenCode key 在对话中明文出现过，建议轮换。
+- **本地中转脚本（2026-10-07，业主需求「无感让用户在自己电脑上用、走用户自己的 IP」）**：
+  新增 `scripts/local-relay.mjs`（零依赖 Node ≥18，只绑 127.0.0.1）+ 渠道 `opencode_local`
+  （`http://127.0.0.1:8420/api/jev`，key 可选走 `X-Api-Key`，keyName null 不强制）+ 文档
+  [docs/local-relay.md](local-relay.md)（三步指引/浏览器兼容/安全说明）+ settings 抽屉引导行。
+  **意外发现并解决：TLS 指纹限流**——中转 v1（node fetch）在本机直连也 429，鉴别实验定位到
+  **OpenCode 网关按 TLS 客户端指纹分桶限流**：同机同 key 同一秒 curl 200 / node fetch 429（UA 变体无效）；
+  ⇒ 中转的上游请求改走 **curl 子进程**（`execFile` 数组传参无注入面，Windows 10+/macOS/Linux 自带），
+  实测本机中转匿名与带 key 全部 200。安全边界：固定上游 + model 白名单（防开放代理）、只绑回环、不落日志；
+  `UPSTREAM_URL` 环境变量可覆盖上游（spec 用本地假上游全隔离测试）。测试 +8 例
+  （预检 PNA/匿名与 key 转发/429 透传/防开放代理/health/404/渠道清单），全量 **55 文件 / 770 例全绿**。
 - **战术模式提示可视化（2026-10-07，业主需求「模式识别给出的待选位置每一级用不同颜色标出」）**：
   新增 `src/core/tactics-hints.ts`（纯计算）：把接管链 14 层的**待选点集**（win/block←`winning_points_*`、
   open4/threat/chance、vcf/vctAttack←`vcf/vct_win_you`、vcf/vctDefense←`vcf/vct_win_opponent`、

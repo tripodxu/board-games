@@ -93,7 +93,7 @@ export function channelVisibility(channel: string): ChannelVisibility {
     orKeyLabel: channel === 'openrouter' || channel === 'opencode',
     orKeyLabelText: orKeyLabelText(channel),
     endpointLabel: channel !== 'mock' && channel !== 'rapfi',
-    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'official' || channel === 'random',
+    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'opencode_local' || channel === 'official' || channel === 'random',
     probeRow: channel !== 'mock',
   };
 }
@@ -238,6 +238,10 @@ export function renderSettings(
     el('label', { class: 'check-row' }, [syncBox, ' 终局自动同步棋谱（供复盘分析）']),
     el('label', { class: 'check-row' }, [hintBox, ' 战术模式提示（五子棋 · 按层颜色标出待选点）']),
     el('div', { class: 'hint', text: '设置保存在本机 localStorage；渠道/key 只进本机，不随棋谱上传。' }),
+    el('div', {
+      class: 'hint',
+      text: '选「OpenCode 本地中转」需先在本机跑中转脚本（三步见 docs/local-relay.md：装 Node → node local-relay.mjs → 切渠道）；脚本：github.com/tripodxu/board-games/raw/main/scripts/local-relay.mjs',
+    }),
     el('div', { class: 'drawer-sub', text: '双方覆盖（留空 = 跟随上方全局设置）' }),
     el('div', { id: 'sideCfgBlack', class: 'side-cfg' }),
     el('div', { id: 'sideCfgWhite', class: 'side-cfg' }),

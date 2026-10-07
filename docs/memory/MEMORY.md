@@ -51,6 +51,19 @@
 
 ---
 
+## 2026-10-07 · TLS 客户端指纹限流：同一台机器同一把 key，curl 200 / node fetch 429
+
+- OpenCode 免费档网关按 **TLS 客户端指纹**（JA3 类）分桶限流，不只是 IP：同机同 key 同一秒，
+  curl 直连 200、node fetch（undici）直连 429，UA 变体（curl/浏览器串）都救不了 ⇒ 指纹在 TLS 层。
+  本地中转脚本的解法：上游请求改走 **curl 子进程**（execFile 数组传参）——借用 curl 的指纹桶，
+  Windows 10+/macOS/Linux 自带 curl，仍零依赖。
+- 鉴别套路（10 分钟定位）：同机同 key 分别用 curl 与 node fetch 打同一端点——两个结果不同 ⇒
+  客户端指纹限流；若两边同结果但不同 IP 不同结果 ⇒ IP 限流。先分清再选解法（换指纹 vs 换 IP）。
+- 教训：**接第三方网关前，先用两种 HTTP 客户端各打一发**——fetch 一切正常的端点可能在 curl 下
+  表现完全不同，反之亦然；这类限流不会在文档里写，只会以「偶发 429」的形式在用户侧现形。
+
+---
+
 ## 2026-10-07 · OpenCode 免费档限流绑定 IP 不绑 key——「第三方免费网关 + Worker 中转」的结构性死结
 
 - 鉴别测试定案：同一把 key，直连 OpenCode（业主本机 IP）8 发全 200；经 Cloudflare Worker 中转 6/6 全 429
