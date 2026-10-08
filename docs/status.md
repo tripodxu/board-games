@@ -14,8 +14,8 @@
 | 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
-| 渠道 | ✅ 六个选项 | `official`、`openrouter`、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
-| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切 v1–v16 任一档即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
+| 渠道 | ✅ 八个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
+| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切 v1–v17 任一档即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
 | 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
@@ -295,7 +295,8 @@
   （endpoint `https://opencode.ai/zen/v1/systemone` / model `jev-1.13-free` / keyName `opencode`）；
   key 走设置抽屉的 `orKey` 输入框（BYOK，label 随渠道变「OpenCode Key」）；UI 四处渠道清单
   （FOE_CHANS / EXP_CHANS / DRAWER_CHANNEL_OPTS / CHANNEL_NAMES）各加一项。免费模型轮换风险
-  （官方文档：免费档按月轮换）与真实棋力未知 ⇒ 建议先用实验面板做一轮 v16-softgate 对比。
+  （官方文档：免费档按月轮换）与真实棋力未知 ⇒ 建议先用实验面板跑一轮对比（对手臂任选现行档，
+  如 `v14-live3-fresh`；`v17-fusion` 登记待验亦可作对照）。
   协议夹具 `test/fixtures/jev/opencode-systemone-2026-10-07.json` + 渠道/形状钉子 2 例
   （`test/core/opencode-systemone.spec.ts`）；**免费模式与转发架构（业主需求：匿名纯免费 + 使用者自填 key 双轨、浏览器经同源转发——OpenCode 无 CORS 头，浏览器直连不可行）**：
   客户端 opencode 渠道 endpoint = 同源 `api/jev`、body.model = `jev-1.13-free`；Worker 按 model 识别该档
@@ -330,15 +331,17 @@
   open4/threat/chance、vcf/vctAttack←`vcf/vct_win_you`、vcf/vctDefense←`vcf/vct_win_opponent`、
   pressureGate←`pressure_cut_points`（带原 4 条开火条件）、live3 两层、parry←`danger_points_opponent`（对手杀点画环）、
   parry3/parry4←criteria 标签）按 TAKEOVER_ORDER 优先级整理为 `{marks, legend}`——同一点在我方落点间只归最高层、
-  第一个有点的层标「接管」、机制门控（mechOf）天然实现「v1–v16 都这样」（切版本下拉即所见即该档能力）；
+  第一个有点的层标「接管」、机制门控（mechOf）天然实现「v1–v17 都这样」（切版本下拉即所见即该档能力）；
   每层固定色（`LAYER_COLORS` 14 色）、每层 ≤12 点封顶。gomoku draw 消费 `ui.tacticMarks`（空数组零成本）；
   设置抽屉新增 `hints` 开关（默认关、localStorage 持久化）；图例条浮在棋盘顶部（`#tacticLegend`，pointer-events:none）。
   **性能护栏**：hints 缓存键 = gameUid|手数|行棋方|档位（变更才重算）+ setTimeout(0) 让绘制先行 + AI 思考中跳过。
-  **测试**：引擎套件 163 例（+8：颜色表全覆盖 / v16 win·block 夹具 / v0-off·v3 门控 / win-block 抢点去重 /
-  parry 环 opp 语义 / 前 4 手短路 / 未知档位回落）；ui +5 例（图例 chips / 隐藏三态 / refresh 落 marks / 非 gomoku / 持久化）；
-  全量 **53 文件 / 756 例全绿** + typecheck + smoke:browser 14/14。**边界**：提示是接管链事实的只读展示，
-  不改任何档位的落子行为；threat 层结构性不可达（同指纹分析）；points 展示与真实接管可能不同
-  （真实接管还有层内挑选与 topK 采样）——图例的「接管」徽标按「第一个有点的层」近似标注。
+  **测试**：引擎套件 165 例（+10：原 8 例 + 接管层与 `pickTakeover` 同源逐字一致 / 层内 12 点封顶 2 例）；
+  ui 图例 7 例（chips / 隐藏三态 / refresh 落 marks / 非 gomoku / 持久化 + 一键开关 2 例）；
+  全量 **55 文件 / 772 例全绿** + typecheck（2026-10-08 收口数）。**边界**：提示是接管链事实的只读展示，
+  不改任何档位的落子行为；threat 层结构性不可达（同指纹分析）。**「接管」徽标已于 2026-10-07 晚改为
+  真实接管链判定**：直接调 `pickTakeover`（与 `decide()` 同一实现、`pairs` 传空走无模型等权口径），
+  压力闸门四条件与 live3 danger 门槛按真实语义走；真实接管点若被层内封顶挤掉会强制补进标记，
+  棋盘永远能看到接管层的真实落点（不再按「第一个有点的层」近似）。
 
 - **v14-plus 整合收紧档（2026-10-06，[ADR-0023](adr/0023-v14-plus-integration.md)，业主指令「整合一版 v14-plus」）**：
   先核实**整合在 v14 已结构性完成**（机制矩阵：v14 = v10 live3 两层 + v11 vctAttack + v12 vctDefense + v13 pressureGate
@@ -367,6 +370,13 @@
   （vctDefense 提前主防、vcfDefense 兜底；实现只动 tactics.ts 事实序，接管链分支零改动；v0–v14 缺省关 ⇒
   指纹 210 行仍逐字节一致）；真局夹具两枚 + 三条历史排序守卫钉旧档 + 4 局败局重放分岔 53 手（基线 26）+
   **56 局探针复跑漏防纠正 6/6**。引擎套件 155/155。详见 [ADR-0023](adr/0023-v14-plus-integration.md) 增补节。
+  **2026-10-08 逐手省察收口（业主质疑「问题没这么少」）**：全量 79 局败局 / **1852 个我方落子**做 7 类
+  问题分类学，修正后 **P0送杀 / P1漏挡 / P2漏胜 / P3漏链 / P4压力恶化 全部为 0**（跨 v14 的 56 败 + 三个
+  挑战者 23 败）——逐手层面全版本零可指认的战术失误；唯一非 clean 的两类：P6 已败（对手活四已成、
+  垂死阻挡，恰 1 局 1 手、56/56 是终局最后一手）与 P5 压力赤字；**P5 率经同轮对照证实是对手/轮次性质
+  而非版本性质**（v15val 轮 v14 侧 47.6% vs v15 18.1%）。过程抓出两个探针系统性 bug（`getLegalMoves`
+  只返回 st.turn 一方着法 ⇒ 曾误报「56 局 100% 送杀」；分析调用会污染引擎后续计算 ⇒ 省察必须「每手
+  fresh 重放 + 就地分析」），详见 [MEMORY 2026-10-08 条目](memory/MEMORY.md)。
   **当日第五轮 `v16-softgate` 让权档（业主架构理论的直接实现）**：业主理论「先模式识别缩小范围，再让 Jev 选择」
   ⇒ 唯一在非强制局面替模型做主的 pressureGate 降级为纯咨询（`softGate` 开关：事实照算照进 prompt、接管链
   不开火；单变量，不带 vctFirst）。验证轮 `v16val`（box 20 局，双臂兜底网关）：**v16 5 胜 9 和 6 负（47.5%）
@@ -385,6 +395,14 @@
   教训：预注册阈值绑定协议，协议变了阈值必须重推导（入 MEMORY）。**仪器评估**：配对 10/10 成对、
   开局库让决出率 55%→70%、等强版本下正确统计量是逐对分差（本轮均值=0）而非决定性对符号检验；
   **5pt 分辨率约需 60–100 对（120–200 局/对 ≈ box 4–7h）——比无配对协议省 4–6 倍，三条挂起线复赛变为可行**。
+  **2026-10-07/08 第七轮：`v17-fusion` 合流档（业主指令「分析全部 v1–v16 棋局数目 + 重构 v14-plus」）**：
+  = v14 全机制 + `vctFirst` + `softGate`、预算逐键回 v14 原值（2×2 机制矩阵从未测过的第四格，v14-plus 的
+  失败根因是预算混淆 ⇒ 去掉该变量的纯合流）；登记 + 部署 `9d31fc1` / `70737724`（CURRENT 保持 v14），
+  指纹 **266 行**（旧 252 行逐字节零漂移 + v17 14 行，19 档），全量 55 文件 772 例。**预注册判定未跑成**：
+  v17val 20 局全灭于 key（主 402 账号级 billing_error / 兜底 401 无效，零有效对局），失败轮已移走、
+  待有效 key 后 `--batch v17val` 原样重跑。棋局数目全量盘点（注册表快照 + D1 + 本地三轮合并）：
+  v14 以 **298 局**为史上验证最充分基线（D1 218 + 本地对手臂 80），v13 223 / v11 176 / v12 136 / v10 124，
+  三个挑战者证据量 20/20/40 全在 ±20pt 噪声带。
 
 - **前端 + 后端优化轮（2026-10-06，计划模式三路只读探查立项 → 六项落地 → 部署 `e998ad32`）**：
   **后端**：① 导出 N+1 销账（技术债 #3，见技术债节）——`listGameDetails` 每页 2 次往返，行形状与 getGame 逐字段一致（export.spec 等价性钉子 + 跨页不重不漏）；② **读接口限流放行**：`rateLimit('read')` 直接过（不写 rate_limits、无 X-RateLimit 头、不 429）——ADR-0013「后果」节原文预留「读接口不计数或采样」，旧实现反而全量计数，单 IP 满速读可烧 17.3 万行写/日（免费档 10 万）；当天 D1 仪表盘 `rows_written_24h = 81,415`（80% 警戒）正好演示了写配额敏感性（其中 ~8.1 万是导入一次性成本，但读限流的写是常态燃烧）；aggregates.spec 的读限流用例改写为「桶满也不 429、不写库」；③ `getStats` 四条 SQL 合 `db.batch`（4 RT→1）+ 四个读路由加 `Cache-Control`（global `public, max-age=30`，device 维度 `no-store`）+ `public/_headers` 三档缓存（`/assets/*` immutable、`/rapfi/*` 86400、`/` no-cache——部署后 curl -I 逐档验证生效）。
