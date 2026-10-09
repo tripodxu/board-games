@@ -249,6 +249,7 @@ export function formatLadderTable(rounds, { avgGameS = null, estimateOf = null }
 export function buildLadder({
   ladderId, specs, extras = [], pairs = null, games, openings = null, now, seed,
   store = 'local', upstream = 'direct', rateLimit = 30, keyFile = '/root/.jev-key',
+  routerKeyFile = '/root/.jev-router-key',
   backupKeyFile = '/root/.cc-key', expectBackup = false,
   origin = null, remoteRoot = '/root/board-games', pauseMs = 2500, timeoutMin = 180,
   stallMin = 15, maxPlies = 225, topK = 3, dryRun = false, allowOdd = false,
@@ -291,6 +292,7 @@ export function buildLadder({
         upstream,
         rateLimit,
         keyFile,
+        routerKeyFile,
         /* C2：兜底 key 文件（可选）+ 「本轮要求兜底可用」。默认 false ⇒ 没有兜底 key 也不算错。 */
         backupKeyFile,
         expectBackup,
@@ -524,9 +526,15 @@ export function sleepSync(ms) {
  * 本地查完再起，中间隔着一次 12–20 s 的 ssh 握手，窗口关不掉。
  *
  * 两个分支都打印 `started pid=<数字>`：本地只当信息转述，不解析，也不靠它判断成功。
+ *
+ * `routerKeyFile` 是 jev-router 臂的第二个 key 文件（可选）：批量机与网关同机，`/root/.jev-key`
+ * 装的是 `jv-` 网关 key、TypeSafe 臂得用另一个路径。两份都 source 一次，谁缺席都只是 `set -a` 空转。
  */
-export function launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }) {
-  const keyInject = `set -a; [ -f ${keyFile} ] && . ${keyFile}; set +a;`;
+export function launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }) {
+  const inject = [`set -a; [ -f ${keyFile} ] && . ${keyFile};`];
+  if (routerKeyFile && routerKeyFile !== keyFile) inject.push(`[ -f ${routerKeyFile} ] && . ${routerKeyFile};`);
+  inject.push('set +a;');
+  const keyInject = inject.join(' ');
   return `cd ${repo} && ${keyInject}`
     + ` if [ -f ${pidPath} ] && kill -0 "$(cat ${pidPath})" 2>/dev/null; then echo "started pid=$(cat ${pidPath})（已在跑，不重复起）";`
     + ` else nohup node scripts/experiment-worker.mjs --plan ${planPath} >> ${logPath} 2>&1 < /dev/null &`

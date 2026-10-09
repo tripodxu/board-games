@@ -254,8 +254,12 @@ node scripts/experiment-ladder.mjs --ladder L2 --batch <id> --games 20 --poll 60
    （日志会打「store=local：未触碰业主 Worker」）；只有 `--store d1` 才需要 `--origin` + `--allow-production`。
    要给「没碰生产」留证据就比对跑前跑后的 D1 行数（本机 D1 读路径 2026-10-04 起失效，
    见 [../status.md](../status.md) 已知限制第 29 条）。
-5. **key 走文件**：box 上 `/root/.jev-key`（official）+ `/root/.cc-key`（commandcode 兜底）；
+5. **key 走文件**：box 上 `/root/.jev-key`（official）+ `/root/.jev-router-key`（自建 jev-router 网关臂，
+   [ADR-0024](../adr/0024-jevrouter-gateway-channel.md)）+ `/root/.cc-key`（commandcode 兜底）；
    只有 `--expect-backup` 才要求兜底 key 存在；日志只报来源（`official←file:/root/.jev-key`），不打印 key。
+   ⚠ **box 就是网关所在的 VPS，那台机器的 `/root/.jev-key` 历史上装的是 `jv-` 网关 key**——两把 key 分开放，
+   并有 `keyShapeProblem()` 形状闸门兜底（`jevrouter` 臂必须 `jv-` 开头、`official` 臂必须不是），
+   放错文件在开局前 exit 2，而不是变成整轮 401。
 6. **规模与时长**看阶梯计划 §7 的四条阶梯表；`--games` 必须偶数（`--allow-odd` 才放行）；
    `--max-rounds N` 是**截断本次编排**，不是「先跑 N 轮、之后再续」。
    **加量**（把某批的样本翻倍以提高分辨率）**不需要重跑已完成的局**：同一个 `--batch` 把 `--games` 翻倍即可 ——

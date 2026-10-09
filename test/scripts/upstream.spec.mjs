@@ -3,13 +3,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_KEY_FILE,
+  DEFAULT_ROUTER_KEY_FILE,
+  KEY_CHANNELS,
   KEY_HELP,
+  ROUTER_KEY_HELP,
+  keyShapeProblem,
   parseKeyFile,
   resolveRunKey,
   upstreamGate,
 } from '../../scripts/lib/upstream.mjs';
 
 const LONG = 'k'.repeat(40);
+const JV = `jv-${'r'.repeat(32)}`;
 
 describe('parseKeyFile', () => {
   it('认裸 key / KEY=value / export / Bearer / 引号，并跳过注释与空行', () => {
@@ -64,6 +69,39 @@ describe('resolveRunKey', () => {
   it('KEY_HELP 要指出环境变量与文件两条路（别只说「缺 key」）', () => {
     expect(KEY_HELP).toContain('JEV_API_KEY');
     expect(KEY_HELP).toContain(DEFAULT_KEY_FILE);
+  });
+
+  /* jev-router 臂的 key 是**另一把**：批量机与网关同机，`/root/.jev-key` 装的是 `jv-` 网关 key。
+     环境变量与默认文件路径都必须与 TypeSafe 臂区分开，否则整轮 401 且看不出原因。 */
+  it('jevrouter 只认 JEV_ROUTER_KEY，默认 key 文件是 /root/.jev-router-key', () => {
+    const env = { JEV_API_KEY: LONG };
+    expect(resolveRunKey({ env, channel: 'jevrouter', keyFile: '' })).toEqual({ key: '', source: '' });
+    expect(resolveRunKey({ env: { ...env, JEV_ROUTER_KEY: JV }, channel: 'jevrouter' })).toEqual({
+      key: JV, source: 'env:JEV_ROUTER_KEY',
+    });
+    expect(resolveRunKey({ env: {}, channel: 'jevrouter', keyFile: null, readFile: () => `${JV}\n` })).toEqual({
+      key: JV, source: `file:${DEFAULT_ROUTER_KEY_FILE}`,
+    });
+    expect(DEFAULT_ROUTER_KEY_FILE).toBe('/root/.jev-router-key');
+    expect(DEFAULT_ROUTER_KEY_FILE).not.toBe(DEFAULT_KEY_FILE);
+    expect(KEY_CHANNELS).toContain('jevrouter');
+  });
+
+  it('ROUTER_KEY_HELP 点名 JEV_ROUTER_KEY 与那个独立路径，并提醒别和 TypeSafe 臂混', () => {
+    expect(ROUTER_KEY_HELP).toContain('JEV_ROUTER_KEY');
+    expect(ROUTER_KEY_HELP).toContain(DEFAULT_ROUTER_KEY_FILE);
+    expect(ROUTER_KEY_HELP).toContain(DEFAULT_KEY_FILE);
+  });
+
+  it('keyShapeProblem：两把自家 key 放错文件要在开局前被拦下', () => {
+    expect(keyShapeProblem('jevrouter', JV)).toBe('');
+    expect(keyShapeProblem('jevrouter', LONG)).toMatch(/jv-/);
+    expect(keyShapeProblem('official', LONG)).toBe('');
+    expect(keyShapeProblem('official', JV)).toMatch(/jv-/);
+    /* 空 key 不是「形状错」（那是缺 key 的另一条分支）；第三方渠道不归我们管，不拦。 */
+    expect(keyShapeProblem('jevrouter', '')).toBe('');
+    expect(keyShapeProblem('openrouter', 'sk-or-v1-whatever-long-enough')).toBe('');
+    expect(keyShapeProblem('rapfi', JV)).toBe('');
   });
 });
 

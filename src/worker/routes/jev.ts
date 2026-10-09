@@ -47,7 +47,10 @@ import { rateLimit } from '../middleware/ratelimit.ts';
 import {
   DEFAULT_MODEL,
   DEFAULT_TIMEOUT_MS,
+  JEV_ROUTER_MODEL,
+  JEV_ROUTER_UPSTREAM_URL,
   OPENCODE_UPSTREAM_URL,
+  ROUTER_USER_AGENT,
   callUpstream,
   toPassthroughResponse,
   upstreamFailureMessage,
@@ -55,6 +58,21 @@ import {
 
 /** OpenCode Zen 免费托管档的 model 名（客户端 CHANNELS.opencode 与它必须一致）。 */
 export const OPENCODE_MODEL = 'jev-1.13-free';
+
+/**
+ * 「非 TypeSafe 官方」的上游表：**按请求体的 model 名分流**。
+ *
+ * 两条腿的鉴权语义相反，所以 `allowAnonymous` 必须逐条写死而不是推导：
+ *  - `opencode`（`jev-1.13-free`）：匿名可用（实测无 key 也 200，cost=0）；
+ *  - `jevrouter`（`jev-1.13`）：自家网关，**强制要 key**（实测空 key ⇒ 401 `invalid key`）——
+ *    访客各自持钥（BYOK），Worker 不代持、不代发。
+ *
+ * 表值与 `core/jev/client.ts` 的 `CHANNELS` 成对维护（改一边必须改另一边）。
+ */
+const DIRECT_UPSTREAMS: Record<string, { id: string; url: string; allowAnonymous: boolean }> = {
+  [OPENCODE_MODEL]: { id: 'opencode', url: OPENCODE_UPSTREAM_URL, allowAnonymous: true },
+  [JEV_ROUTER_MODEL]: { id: 'jevrouter', url: JEV_ROUTER_UPSTREAM_URL, allowAnonymous: false },
+};
 import { fail, invalid, type Parsed } from '../lib/validate.ts';
 import type { AppEnv } from '../types.ts';
 
@@ -69,9 +87,11 @@ export interface JevRequest {
   apiKey: string;
   /** key 来自哪儿——只用于日志（**不记值**），排障时能分辨「用户没填」还是「env 没配」。 */
   keySource: 'header' | 'env' | 'body' | 'anonymous';
-  /** 上游端点覆盖（opencode 渠道指向 OpenCode Zen；缺省 = TypeSafe 官方）。 */
+  /** 上游端点覆盖（opencode / jevrouter 渠道指向各自网关；缺省 = TypeSafe 官方）。 */
   upstreamUrl?: string;
-  /** opencode 免费档允许匿名（无 key 也放行）。 */
+  /** 上游标识（写进 `X-Jev-Upstream` 响应头与日志，便于战报归因哪条腿答的）。 */
+  upstreamId?: string;
+  /** opencode 免费档允许匿名（无 key 也放行）；jevrouter 网关强制要 key。 */
   allowAnonymous: boolean;
 }
 
@@ -105,11 +125,12 @@ export function parseJevRequest(
   const bodyKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
   const apiKey = headerKey || envKey || bodyKey;
   const keySource: JevRequest['keySource'] = headerKey ? 'header' : envKey ? 'env' : bodyKey ? 'body' : 'anonymous';
-  /* opencode 免费托管档（model = jev-1.13-free）：匿名可用（实测无 key 也 200），
-     有 key（使用者自己的）走自己的限额。其余 model 维持「缺 key → 401」的原语义。 */
-  const isOpencode = body.model === OPENCODE_MODEL;
-  if (!apiKey && !isOpencode) {
-    return invalid('unauthorized', '未提供 API Key：请在页面「Jev 设置」中填写你自己的 TypeSafe key');
+  /* 非官方上游按 model 名分流：opencode 免费档匿名可用（实测无 key 也 200）；
+     自建 jev-router 网关强制要 key（空 key ⇒ 401）。其余 model 维持「缺 key → 401」的原语义。 */
+  const direct = DIRECT_UPSTREAMS[typeof body.model === 'string' ? body.model : ''];
+  if (!apiKey && !direct?.allowAnonymous) {
+    const where = direct?.id === 'jevrouter' ? '自建 jev-router 网关' : 'TypeSafe';
+    return invalid('unauthorized', `未提供 API Key：请在页面「Jev 设置」中填写你自己的 ${where} key`);
   }
 
   if (body.state === undefined || body.state === null) {
@@ -131,8 +152,9 @@ export function parseJevRequest(
       },
       apiKey,
       keySource,
-      upstreamUrl: isOpencode ? OPENCODE_UPSTREAM_URL : undefined,
-      allowAnonymous: isOpencode,
+      upstreamUrl: direct?.url,
+      upstreamId: direct?.id,
+      allowAnonymous: direct?.allowAnonymous ?? false,
     },
   };
 }
@@ -255,11 +277,12 @@ jevRoute.post('/', rateLimit('jev'), async (c) => {
   if (!parsed.ok) return fail(c, parsed);
   const { body, apiKey, keySource } = parsed.value;
 
-  /* 2.5) opencode 免费托管档短路：model = jev-1.13-free ⇒ 直连 OpenCode Zen（不进兜底状态机）。
-   *    匿名免费档（无 key）可用；带了使用者自己的 key 就带上（走自己的限额）。
-   *    失败直接映射 upstream_error（免费档无兜底语义——备胎还是免费的它自己）。 */
+  /* 2.5) 非官方上游短路：model ∈ {jev-1.13-free, jev-1.13} ⇒ 直连对应网关（不进兜底状态机）。
+   *    opencode 匿名可用；jevrouter 网关强制要 key。两条腿都没有「换备胎」的语义
+   *    ——备胎还是同一家网关/同一个免费档，所以失败直接映射 upstream_error。 */
   if (parsed.value.upstreamUrl) {
-    const startedOpenCode = Date.now();
+    const upstreamId = parsed.value.upstreamId || 'direct';
+    const startedDirect = Date.now();
     const result = await callUpstream({
       apiKey,
       allowAnonymous: parsed.value.allowAnonymous,
@@ -267,13 +290,15 @@ jevRoute.post('/', rateLimit('jev'), async (c) => {
       body,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       signal: c.req.raw.signal,
+      /* 自有域名在 CF Browser Integrity Check 后面，显式给常规 UA */
+      userAgent: upstreamId === 'jevrouter' ? ROUTER_USER_AGENT : undefined,
       fetcher: (...args) => fetch(...args),
     });
-    const elapsedMs = Date.now() - startedOpenCode;
+    const elapsedMs = Date.now() - startedDirect;
     if (result.ok) {
       const response = toPassthroughResponse(result);
-      response.headers.set('X-Jev-Upstream', 'opencode');
-      console.log(`[jev] opencode requestId=${c.get('requestId')} ms=${elapsedMs} anonymous=${!apiKey}`);
+      response.headers.set('X-Jev-Upstream', upstreamId);
+      console.log(`[jev] ${upstreamId} requestId=${c.get('requestId')} ms=${elapsedMs} anonymous=${!apiKey}`);
       return response;
     }
     return fail(c, invalid('upstream_error', upstreamFailureMessage(result.kind)));

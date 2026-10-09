@@ -311,6 +311,23 @@ describe('launchRoundCommand（同一轮不许被两个 worker 双写）', () =>
     expect(c).toContain('set -a; [ -f /root/.jev-key ] && . /root/.jev-key; set +a;');
     expect(c).not.toMatch(/JEV_API_KEY=/);
   });
+
+  /* jev-router 臂要的是**另一把** key（批量机即网关所在 VPS，`/root/.jev-key` 装的是 `jv-` 网关 key）。
+     两份都 source 一次，缺哪份都只是空转、不阻断启动（缺 key 由 worker 开局前 exit 2 兜）。 */
+  it('给了 routerKeyFile 就两份一起 source；与 keyFile 同路径时不重复 source', () => {
+    const base = {
+      repo: '/root/board-games',
+      planPath: '/root/board-games/.work/remote/x1/plans/round-2.json',
+      logPath: '/root/board-games/.work/remote/x1/logs/round-2.log',
+      pidPath: '/root/board-games/.work/remote/x1/logs/round-2.pid',
+    };
+    const two = launchRoundCommand({ ...base, keyFile: '/root/.ts-key', routerKeyFile: '/root/.jev-router-key' });
+    expect(two).toContain('[ -f /root/.ts-key ] && . /root/.ts-key;');
+    expect(two).toContain('[ -f /root/.jev-router-key ] && . /root/.jev-router-key;');
+    expect(two.match(/\. \/root\//g)?.length).toBe(2);
+    const same = launchRoundCommand({ ...base, keyFile: '/root/.jev-key', routerKeyFile: '/root/.jev-key' });
+    expect(same.match(/\. \/root\//g)?.length).toBe(1);
+  });
 });
 
 describe('pollRoundCommand（本地每分钟一次短 ssh，不是远端守 12 h）', () => {

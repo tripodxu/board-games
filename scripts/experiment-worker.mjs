@@ -76,8 +76,11 @@ import {
   CC_KEY_HELP,
   DEFAULT_CC_KEY_FILE,
   DEFAULT_KEY_FILE,
+  DEFAULT_ROUTER_KEY_FILE,
   KEY_CHANNELS,
   KEY_HELP,
+  ROUTER_KEY_HELP,
+  keyShapeProblem,
   resolveBackupKey,
   resolveRunKey,
   upstreamGate,
@@ -99,6 +102,9 @@ const DEFAULTS = {
   upstream: 'direct',
   rateLimit: DEFAULT_PER_MINUTE,
   keyFile: DEFAULT_KEY_FILE,
+  /* jev-router 臂（自建网关）的 key 文件。刻意与 keyFile 分开：这台 box 就是网关所在的 VPS，
+     `/root/.jev-key` 里装的是 `jv-` 网关 key，而 `keyFile` 那条路留给 TypeSafe 臂。 */
+  routerKeyFile: DEFAULT_ROUTER_KEY_FILE,
   /* C2/D-B4：兜底 key 文件（可选）。`expectBackup` = 本轮要求兜底真的可用（拿不到就退码 2），
      用于切换验收；默认 false ⇒ 没有它只是「不启用切换」。 */
   backupKeyFile: DEFAULT_CC_KEY_FILE,
@@ -290,9 +296,13 @@ async function apiPostExperiment(origin, entry) {
     **key 本身绝不进日志/产物**，只记录来源（`keySource`）。 */
 function decideEnvFor(cfg, plan) {
   const injected = (plan.keys && plan.keys[cfg.channel]) || '';
+  /* 每条上游臂只认自己的环境变量：openrouter→JEV_OR_KEY，jev-router 网关→JEV_ROUTER_KEY，
+     其余（TypeSafe）→JEV_API_KEY。串了就是「把一把 key 发给不认它的上游」，只会整轮 401。 */
   const apiKey = cfg.channel === 'openrouter'
     ? (process.env.JEV_OR_KEY || injected || '')
-    : (injected || process.env.JEV_API_KEY || '');
+    : cfg.channel === 'jevrouter'
+      ? (process.env.JEV_ROUTER_KEY || injected || '')
+      : (injected || process.env.JEV_API_KEY || '');
   const endpoint = cfg.channel === 'proxy' ? `${plan.origin}/api/jev` : '';
   /* C2/D-B1：兜底 key 只对 official 面有意义（proxy 面的切换在 Worker 里做；openrouter 是另一条渠道）。 */
   const backupApiKey = cfg.channel === 'official' ? ((plan.keys && plan.keys.backup) || process.env.COMMANDCODE_API_KEY || '') : '';
@@ -353,6 +363,7 @@ async function main() {
   const cliDevice = argOf(argv, '--device-id');
   const cliUpstream = argOf(argv, '--upstream');
   const cliKeyFile = argOf(argv, '--key-file');
+  const cliRouterKeyFile = argOf(argv, '--router-key-file');
   const cliBackupKeyFile = argOf(argv, '--backup-key-file');
   const cliRateLimit = argOf(argv, '--rate-limit');
   const cliOrigin = argOf(argv, '--origin');
@@ -375,6 +386,7 @@ async function main() {
   if (cliDevice) plan.deviceId = cliDevice;
   if (cliUpstream) plan.upstream = cliUpstream;
   if (cliKeyFile) plan.keyFile = cliKeyFile;
+  if (cliRouterKeyFile) plan.routerKeyFile = cliRouterKeyFile;
   if (cliBackupKeyFile) plan.backupKeyFile = cliBackupKeyFile;
   if (argv.includes('--expect-backup')) plan.expectBackup = true;
   if (cliOrigin) plan.origin = cliOrigin;
@@ -403,12 +415,23 @@ async function main() {
   const keySources = {};
   if (plan.upstream === 'direct') {
     for (const cfg of [a, b]) {
-      const { key, source } = resolveRunKey({ channel: cfg.channel, keyFile: plan.keyFile });
+      /* 显式给了 `--router-key-file` 就用它，否则走该渠道的默认文件。 */
+      const keyFile = cfg.channel === 'jevrouter'
+        ? (plan.routerKeyFile || plan.keyFile)
+        : plan.keyFile;
+      const { key, source } = resolveRunKey({ channel: cfg.channel, keyFile });
       if (key) {
+        /* 形状闸门：box 与网关同机，放错 key 文件不会立刻报错而是变成整轮 401。开局前拦一道。 */
+        const shape = keyShapeProblem(cfg.channel, key);
+        if (shape && !dryRun) {
+          process.stderr.write(`渠道 ${cfg.channel} 的 key 形状不对（来源 ${source}）：${shape}\n`);
+          process.exitCode = 2;
+          return;
+        }
         plan.keys[cfg.channel] = key;
         keySources[cfg.channel] = source;
       } else if (KEY_CHANNELS.includes(cfg.channel) && !dryRun) {
-        process.stderr.write(`渠道 ${cfg.channel} 拿不到 key：${KEY_HELP}\n`);
+        process.stderr.write(`渠道 ${cfg.channel} 拿不到 key：${cfg.channel === 'jevrouter' ? ROUTER_KEY_HELP : KEY_HELP}\n`);
         process.exitCode = 2;
         return;
       }

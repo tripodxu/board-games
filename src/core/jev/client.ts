@@ -49,6 +49,23 @@ export const OPENCODE_UPSTREAM_URL = 'https://opencode.ai/zen/v1/systemone';
 /** 浏览器同源中转路径（OpenCode 无 CORS 头，浏览器直连会被拦；Node/实验面直连真实端点）。 */
 export const OPENCODE_RELAY_PATH = 'api/jev';
 
+/**
+ * 自建 **jev-router** 网关（业主 VPS 上跑的多源 systemone 路由：zen-o2a → lfree-1 → lfree-2，
+ * 出口走 8 个 WARP 实例轮换）。接它的动机是绕开 opencode 免费档那堵墙：2026-10-07 实测
+ * 免费档限流**绑定请求方 IP**、key 不换池 ⇒ 经生产 Worker 转发 6/6 全 429，而自家网关
+ * 换一个出口就换一个配额桶。**要 key**（网关的 `jv-…` 客户端密钥），不接受匿名。
+ */
+export const JEV_ROUTER_UPSTREAM_URL = 'https://jev.logicc.top/v1/systemone';
+/** 浏览器同源中转路径（该网关不返 CORS 头，浏览器直连会被预检拦掉；Node/实验面直连真实端点）。 */
+export const JEV_ROUTER_RELAY_PATH = 'api/jev';
+/**
+ * 分流哨兵：**按 model 名**在 Worker 侧认这条腿（与 `worker/lib/upstream.ts` 的
+ * `JEV_ROUTER_MODEL` 同值，勿单改一边）。取 `jev-1.13` 而不是自造名，是因为它就是网关对外
+ * 受理的模型名（手 curl 这个 Worker 也会被送到该去的地方）；网关自己会按腿归一
+ * （zen 腿强制 `jev-1.13-free`、lfree 腿强制 `jev-1.13`），客户端发哪个都行。
+ */
+export const JEV_ROUTER_MODEL = 'jev-1.13';
+
 export const CHANNELS: Record<string, ChannelConfig> = {
   official: { endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', keyName: 'official' },
   openrouter: { endpoint: 'https://openrouter.ai/api/v1/systemone', model: 'typesafe/jev-1.13', keyName: 'openrouter' },
@@ -56,6 +73,12 @@ export const CHANNELS: Record<string, ChannelConfig> = {
   opencode: { endpoint: OPENCODE_RELAY_PATH, model: OPENCODE_MODEL, keyName: 'opencode' },
   /** 本地中转（scripts/local-relay.mjs 跑在用户机器上）：请求从用户 IP 发出，免费档限流池独占。 */
   opencode_local: { endpoint: 'http://127.0.0.1:8420/api/jev', model: OPENCODE_MODEL, keyName: null },
+  /**
+   * 自建 jev-router 网关（BYOK：用户自己填网关发的 `jv-…` 密钥）。
+   * 与 `opencode` 的区别是**鉴权**：那一档 key 可选（匿名 = 免费档），这一档网关强制要 key
+   * （实测空 key 401 `{"error":"invalid key"}`），所以 `keyName` 非空 ⇒ 缺 key 直接在客户端报错。
+   */
+  jevrouter: { endpoint: JEV_ROUTER_RELAY_PATH, model: JEV_ROUTER_MODEL, keyName: 'jevrouter' },
   proxy: { endpoint: 'api/jev', model: 'jev-latest', keyName: null },
 };
 
@@ -162,6 +185,45 @@ function syntheticProvider(channel: string, id: string, label: string, url: stri
 }
 
 /**
+ * 这一把 key 该用哪个头：**中转面收 `X-Api-Key`，直连上游收 `Authorization: Bearer`**。
+ *
+ * 判据刻意取**解析后的端点**而不是渠道名：`opencode` / `jevrouter` 在浏览器里走同源中转、
+ * 在 Node（实验面、box 远端批量）里直连真实上游，同一个渠道两头用不同的头。
+ *
+ * 为什么必须统一（2026-10-08 实测订正）：Worker 的 `parseJevRequest` 只从 `X-Api-Key` 头 /
+ * env / 请求体 `apiKey` 三处取 key，**从不读 `Authorization`**。老实现按渠道名发头，
+ * 于是 `opencode` 在浏览器里发的 Bearer 被 Worker 丢弃 ⇒ 用户在设置里填的 OpenCode Key
+ * 静默失效、永远走匿名池。改成按端点判之后两个渠道都对，且不再依赖「渠道名恰好对应一种形态」。
+ */
+export function authHeaderFor(endpoint: string): 'relay' | 'bearer' {
+  const url = String(endpoint ?? '').trim();
+  if (!url) return 'bearer';
+  /* 相对路径 = 同源中转（`api/jev`）；显式本机中转脚本同形（127.0.0.1:8420 / localhost）。 */
+  if (url.startsWith('/') || url.startsWith('api/')) return 'relay';
+  if (/^https?:\/\/(127\.0\.0\.1|\[::1\]|localhost)(:\d+)?(\/|$)/i.test(url)) return 'relay';
+  return 'bearer';
+}
+
+/**
+ * 「缺 key 就在客户端报错」的渠道白名单。
+ *
+ * **刻意不从 `keyName` 推导**：`opencode` 的 `keyName` 非空（要显示输入框、供 UI 占位符用），
+ * 但它的 key 其实是**可选**的——匿名即免费档，填了才走自己的限额。把「要不要输入框」与
+ * 「要不要必填」混成一个字段，正是上面那个静默失效的同类风险。
+ */
+const KEY_REQUIRED_CHANNELS: ReadonlySet<string> = new Set(['official', 'openrouter', 'jevrouter']);
+
+/**
+ * 直连自有网关时显式带的 UA。
+ *
+ * `logicc.top` 全域开了 Cloudflare Browser Integrity Check，**库默认 UA 会被 403 code 1010
+ * 拦掉**（Node/undici 尤其明显）。浏览器把 `User-Agent` 列为 forbidden header、fetch 会静默
+ * 丢弃，所以这里无条件给：浏览器侧无害，直连侧是刚需。取值只是个常规 UA 串（文档实测带常规
+ * UA 即可通过），不参与任何鉴权。
+ */
+const JEV_ROUTER_USER_AGENT = 'curl/8.5.0';
+
+/**
  * 本次调用可用的提供方（按优先级）。**只有直连面（`official`）才在这里切换**：
  *  - `proxy`：切换是 Worker 的事，客户端只带「本局粘滞」提示头并读回执（见 `PROVIDER_HINT_HEADER`）；
  *  - `openrouter`：另一条渠道（模型 `typesafe/jev-1.13`），不在本计划的兜底链里，保持单提供方；
@@ -188,6 +250,16 @@ function attemptsFor(channel: string, opts: DecideOpts): ProviderAttempt[] {
     const url = customEndpoint || (inBrowser ? OPENCODE_RELAY_PATH : OPENCODE_UPSTREAM_URL);
     return [{
       provider: syntheticProvider(channel, PROVIDER_PRIMARY, 'OpenCode', url, cfg.model),
+      apiKey, channel, custom: !!customEndpoint,
+    }];
+  }
+  if (channel === 'jevrouter') {
+    /* 自建网关同样不返 CORS 头 ⇒ 浏览器走同源中转（Worker 按 model 认这条腿），
+     * Node（实验面 / box 远端批量）直连真实端点。key 必填：网关不受理匿名。 */
+    const inBrowser = typeof location !== 'undefined';
+    const url = customEndpoint || (inBrowser ? JEV_ROUTER_RELAY_PATH : JEV_ROUTER_UPSTREAM_URL);
+    return [{
+      provider: syntheticProvider(channel, PROVIDER_PRIMARY, '自建 jev-router', url, cfg.model),
       apiKey, channel, custom: !!customEndpoint,
     }];
   }
@@ -221,15 +293,22 @@ async function callRaw(
   if (!cfg) throw new Error('未知渠道: ' + channel);
   const endpoint = attempt.provider.url;
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders };
-  if (channel === 'proxy' || channel === 'opencode_local') {
-    /* 两者都经「本地/同源中转」到 OpenCode：key 走 X-Api-Key 头（中转脚本再转成 Authorization）；
-     * key 可选——本地中转在用户自己的 IP 上，匿名即稳定。 */
+  if (authHeaderFor(endpoint) === 'relay') {
+    /* 中转面（同源 Worker / 本机 local-relay）只认 `X-Api-Key`：Worker 的 `parseJevRequest`
+     * 取值序是 请求头 X-Api-Key > env > 请求体 apiKey，**从不读 `Authorization`**。
+     * key 可不可填看渠道（proxy/opencode/opencode_local 匿名即可，jevrouter 必填）。 */
+    if (!apiKey && !custom && KEY_REQUIRED_CHANNELS.has(channel)) {
+      throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
+    }
     if (apiKey) headers['X-Api-Key'] = apiKey;
   } else if (cfg.keyName) {
     if (!apiKey && !custom) throw new Error('尚未填写该渠道的 API Key（右上「Jev 设置」）');
     if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
     if (channel === 'openrouter') headers['HTTP-Referer'] = locationOrigin() || 'http://localhost';
   }
+  /* 自有网关在 Cloudflare 后面且开了 Browser Integrity Check，库默认 UA 会被 403 1010 拦掉。
+     浏览器会静默丢弃这个 forbidden header（无害），Node/实验面则会真的带上（刚需）。 */
+  if (channel === 'jevrouter') headers['User-Agent'] = JEV_ROUTER_USER_AGENT;
   const payload = { state: body.state, model: attempt.provider.model, questions: body.questions };
 
   const timeoutCtrl = new AbortController();
@@ -502,12 +581,15 @@ export async function probe(opts: DecideOpts): Promise<ProbeResult> {
   } catch (_) { /* 网络层就不通 */ }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (channel === 'proxy') {
+  /* 与 `callRaw` 同一套判据（按端点分中转/直连），否则探针会在浏览器里用错头、
+     把「key 没送到」误报成「key 无效」。 */
+  if (authHeaderFor(endpoint) === 'relay') {
     if (opts.apiKey) headers['X-Api-Key'] = opts.apiKey;
   } else if (cfg.keyName) {
     if (opts.apiKey) headers['Authorization'] = 'Bearer ' + opts.apiKey;
     if (channel === 'openrouter') headers['HTTP-Referer'] = locationOrigin() || 'http://localhost';
   }
+  if (channel === 'jevrouter') headers['User-Agent'] = JEV_ROUTER_USER_AGENT;
   const body = JSON.stringify({
     state: { probe: true },
     model: cfg.model,

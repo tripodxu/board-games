@@ -51,6 +51,7 @@ export const CHANNEL_HINTS: Record<string, string> = {
   proxy: '推荐。代理只做同源转发（绕开浏览器跨域）：本地用 npm run dev 起 Worker（Vite + Worker + 本地 D1 一体），线上由 jevqipan.logicc.top 提供同源 /api/jev。你的 key 经请求头透传，服务端不存。',
   official: '实测官方 API 有来源白名单（仅 typesafe.ai 自有域可用），浏览器直连必被拦。官方 key 请改走「同源代理」：本地 npm run dev 或线上站点里填 key，效果等同直连。',
   openrouter: '唯一可浏览器直连的渠道（OpenRouter 允许跨域），但需要的是 OpenRouter key（openrouter.ai 申请），不是 TypeSafe key。',
+  jevrouter: '自建 jev-router 网关：把请求按腿分流到多个免费/付费上游，并在失败时自动换腿重试，出口 IP 会轮换。浏览器仍走同源 /api/jev 转发（key 只在请求头里过一手）；**必须填你自己的 jv- 网关 key**，服务端不代持、不共享。',
   mock: '离线演示：内置简单启发式 AI 与合成概率，无需 key。后端不可用时也自动落到这里。',
   rapfi: '本地引擎：浏览器内运行的 Rapfi（Gomocup 协议），首次使用下载模型（约 10–40MB），之后纯本地走子，无需 key。',
 };
@@ -68,9 +69,9 @@ export function apiKeyLabelText(channel: string): string {
 }
 
 function orKeyLabelText(channel: string): string {
-  return channel === 'opencode'
-    ? 'OpenCode Key（仅存本机 · opencode.ai/auth 免费）'
-    : 'OpenRouter Key（仅存本机）';
+  if (channel === 'opencode') return 'OpenCode Key（仅存本机 · opencode.ai/auth 免费）';
+  if (channel === 'jevrouter') return 'jev-router Key（仅存本机 · jv- 开头 · 必填，网关不接匿名）';
+  return 'OpenRouter Key（仅存本机）';
 }
 
 /** 抽屉内各行的显示规则（js/app.js:107-121 的 hidden 判定，逐条照搬）。true = 显示。 */
@@ -90,10 +91,10 @@ export function channelVisibility(channel: string): ChannelVisibility {
   return {
     apiKeyLabel: channel === 'official' || channel === 'proxy',
     apiKeyLabelText: apiKeyLabelText(channel),
-    orKeyLabel: channel === 'openrouter' || channel === 'opencode',
+    orKeyLabel: channel === 'openrouter' || channel === 'opencode' || channel === 'jevrouter',
     orKeyLabelText: orKeyLabelText(channel),
     endpointLabel: channel !== 'mock' && channel !== 'rapfi',
-    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'opencode_local' || channel === 'official' || channel === 'random',
+    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'opencode_local' || channel === 'jevrouter' || channel === 'official' || channel === 'random',
     probeRow: channel !== 'mock',
   };
 }

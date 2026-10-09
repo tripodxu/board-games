@@ -678,3 +678,68 @@ describe('opencode 免费托管档（model = jev-1.13-free）', () => {
     }
   });
 });
+
+/* 自建 jev-router 网关（model = jev-1.13）：与 opencode 档的**唯一实质差别是强制要 key**
+ *（网关实测空 key ⇒ 401 `invalid key`），外加一条常规 UA 头绕开 logicc.top 的浏览器完整性检查。 */
+describe('自建 jev-router 网关（model = jev-1.13）', () => {
+  const okBody = { state: { turn: 1 }, questions: { move: {} } };
+
+  it('parseJevRequest：匿名被拒（401）+ 带 key 时路由到 jev.logicc.top', () => {
+    const anon = parseJevRequest({ ...okBody, model: 'jev-1.13' }, { headerKey: null });
+    expect(!anon.ok && anon.code === 'unauthorized').toBe(true);
+    if (!anon.ok) expect(anon.message).toContain('jev-router');
+
+    const withKey = parseJevRequest({ ...okBody, model: 'jev-1.13' }, { headerKey: 'jv-abc' });
+    expect(withKey.ok).toBe(true);
+    if (withKey.ok) {
+      expect(withKey.value.apiKey).toBe('jv-abc');
+      expect(withKey.value.upstreamId).toBe('jevrouter');
+      expect(withKey.value.upstreamUrl).toContain('jev.logicc.top');
+      expect(withKey.value.allowAnonymous).toBe(false);
+    }
+  });
+
+  it('POST /api/jev：转发到网关 + Authorization 透传 + 带常规 UA', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    vi.stubGlobal('fetch', (async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      calls.push({ url: u, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+      if (u.includes('jev.logicc.top')) {
+        return new Response(JSON.stringify({
+          model: 'jev-1.13',
+          answers: { move: { probabilities: { H8: 1 } }, confidence: 0.9 },
+          usage: { input_tokens: 10 }, cost: '0',
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('not found', { status: 404 });
+    }) as typeof fetch);
+    try {
+      const res = await postJev({ ...okBody, model: 'jev-1.13', apiKey: 'jv-user-key' });
+      expect(res.status).toBe(200);
+      const call = calls.find((c) => c.url.includes('jev.logicc.top'));
+      expect(call).toBeDefined();
+      expect(call?.headers.authorization).toBe('Bearer jv-user-key');
+      /* logicc.top 的浏览器完整性检查会 403 掉库默认 UA，直连面必须显式带一个常规 UA。 */
+      expect(call?.headers['user-agent']).toBeTruthy();
+      /* 上游头不带内部标记（X-Jev-Upstream 只给客户端看回执，不外泄）。 */
+      expect(call?.headers['x-jev-upstream']).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('匿名请求到网关模型 ⇒ 401，且不会真的发出去', async () => {
+    let fetched = false;
+    vi.stubGlobal('fetch', (async () => {
+      fetched = true;
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch);
+    try {
+      const res = await postJev({ ...okBody, model: 'jev-1.13' });
+      expect(res.status).toBe(401);
+      expect(fetched).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

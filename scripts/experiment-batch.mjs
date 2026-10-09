@@ -158,6 +158,9 @@ async function cmdSubmit(args) {
   const user = String(args.user || DEFAULT_USER);
   const repo = String(args.repo || DEFAULT_REPO);
   const keyFile = String(args['key-file'] || '/root/.jev-key');
+  /* jev-router 臂的第二个 key 文件：批量机就是网关所在的 VPS，`keyFile`（/root/.jev-key）里装的是
+     `jv-` 网关 key，TypeSafe 臂要另给一个路径。两份都 source，谁缺席都不报错。 */
+  const routerKeyFile = String(args['router-key-file'] || '/root/.jev-router-key');
   /* P4b/D12：运行面与自限速。缺省 direct = box 直连上游、零 CF 触碰（G3）；限速在 worker 侧
      裹全局 fetch，每个真实上游请求都领令牌。`worker` 是本仓老路径（经业主 Worker 转发）。 */
   const upstream = String(args.upstream || 'direct');
@@ -198,10 +201,16 @@ async function cmdSubmit(args) {
   // 本机不必有 key；真正校验在远端 worker 开局前（缺 key exit 2）。
   if (!dryRun && budget.upstreamSides > 0) {
     const missing = [];
-    if (a.channel === 'openrouter' || b.channel === 'openrouter') missing.push('JEV_OR_KEY');
-    if ([a, b].some((s) => s.channel !== 'openrouter' && UPSTREAM_CHANNELS.includes(s.channel))) missing.push('JEV_API_KEY');
+    /* 每条上游臂只认自己的环境变量：串了就是「把一把 key 发给不认它的上游」，整轮 401。 */
+    const sides = [a, b];
+    if (sides.some((s) => s.channel === 'openrouter')) missing.push('JEV_OR_KEY');
+    if (sides.some((s) => s.channel === 'jevrouter')) missing.push('JEV_ROUTER_KEY');
+    if (sides.some((s) => s.channel !== 'openrouter' && s.channel !== 'jevrouter' && UPSTREAM_CHANNELS.includes(s.channel))) missing.push('JEV_API_KEY');
     if (missing.length) {
-      console.log(`注意：臂走上游，worker 需要 ${missing.join(' / ')}；key 从远端 ${keyFile} 注入（本机无需持有）。`);
+      const files = sides.some((s) => s.channel === 'jevrouter')
+        ? `${keyFile}（TypeSafe 臂） + ${routerKeyFile}（jev-router 臂）`
+        : keyFile;
+      console.log(`注意：臂走上游，worker 需要 ${missing.join(' / ')}；key 从远端 ${files} 注入（本机无需持有）。`);
       console.log('  若远端缺 key，worker 会在开局前 exit 2，日志可见。');
     }
   }
@@ -215,7 +224,7 @@ async function cmdSubmit(args) {
       timeoutMin, stallMin, maxPlies, topK, seed,
       dryRun, origin, store,
       /* P4b：运行面与限速写进 plan（worker 也认 CLI 覆盖，但显式落盘才好复盘）。 */
-      upstream, rateLimit, keyFile,
+      upstream, rateLimit, keyFile, routerKeyFile,
       outDir: `${repo}/.work/remote/${batchId}/round-${i}`,
     };
     plans.push(plan);
@@ -268,7 +277,7 @@ async function cmdSubmit(args) {
     /* key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
        key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。 */
     const ok = ssh(host, user,
-      launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }),
+      launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }),
       20000, SSH_LAUNCH_OPTS, true);
     if (!ok) die(`round-${p.round} worker 启动失败`);
     console.log(`  round-${p.round} 已启动（pid 见 ${pidPath}）`);
@@ -299,10 +308,11 @@ function cmdResume(args) {
   const logPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.log`;
   const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.pid`;
   const keyFile = String(args['key-file'] || '/root/.jev-key');
+  const routerKeyFile = String(args['router-key-file'] || '/root/.jev-router-key');
   /* M3：resume 必须与 submit 一样注入 key —— 早先漏了这段，走上游的臂续跑必定 exit 2，
      而断点续跑正是这套设施唯一的容错手段（ADR-0019 D3）。 */
   const ok = ssh(host, user,
-    launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }),
+    launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }),
     20000, SSH_LAUNCH_OPTS, true);
   if (!ok) die(`round-${round} 续跑失败（plan 不存在？ssh 不通？）`);
   console.log(`已续跑 batch=${batchId} round=${round}（已完成的对局会按 checkpoint 跳过并原样计入实验档案）`);

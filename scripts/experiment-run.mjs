@@ -41,7 +41,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CURRENT, ids, nearestId } from '../src/core/tactics-versions.ts';
+import { CURRENT, allIds, nearestId } from '../src/core/tactics-versions.ts';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const argv = process.argv.slice(2);
@@ -75,21 +75,25 @@ const API_KEY = process.env.JEV_API_KEY ?? '';
    `--no-rapfi-local` 关掉，让页面老老实实走网络。 */
 const RAPFI_LOCAL = !has('no-rapfi-local');
 
-const NEEDS_KEY = [CHAN_A, CHAN_B].some((c) => c === 'proxy' || c === 'official' || c === 'openrouter');
+/* 抽屉里的 key 存在**两个**输入框：`#apiKey`（TypeSafe/proxy 臂）与 `#orKey`（OpenRouter /
+ * OpenCode / 自建 jev-router 网关臂）。浏览器实验面把 key 落到哪个框由渠道决定
+ * （`src/app/loop.ts` 的 `eff.channel` 分派），所以两臂渠道不同时得分别填对。 */
+const KEY_FIELDS = { proxy: 'apiKey', official: 'apiKey', opencode: 'orKey', openrouter: 'orKey', jevrouter: 'orKey' };
+const NEEDS_KEY = [CHAN_A, CHAN_B].some((c) => c in KEY_FIELDS);
 if (!Number.isFinite(GAMES) || GAMES < 1 || GAMES > 50) {
   console.error(`--games 必须在 1..50（收到 ${flag('games', '4')}）`);
   process.exit(2);
 }
 if (NEEDS_KEY && !API_KEY) {
-  console.error('缺少 JEV_API_KEY：A/B 用到 proxy/official/openrouter 时必须给 key（只从环境变量读，不写盘）。');
+  console.error('缺少 JEV_API_KEY：A/B 用到 proxy/official/opencode/openrouter/jevrouter 时必须给 key（只从环境变量读，不写盘）。');
   process.exit(2);
 }
 /* P0/D2：档位必须在登记表白名单里。过去未知档号会被 `resolve()` 静默换成 CURRENT
    （页面下拉里根本选不中那个值），于是命令行的 `--tacA v12-vct-de` 会「像成功一样」跑成 v14，
    A/B 的单变量假设直接失效。这里显式拒绝，并把最接近的合法档位一起打出来。 */
 for (const [name, value] of [['--tacA', TAC_A], ['--tacB', TAC_B]]) {
-  if (ids().includes(value)) continue;
-  console.error(`未知战术档位：${name} ${value}\n  最接近的合法档位：${nearestId(value) ?? '（无）'}\n  全部合法档位：${ids().join(', ')}`);
+  if (allIds().includes(value)) continue;
+  console.error(`未知战术档位：${name} ${value}\n  最接近的合法档位：${nearestId(value) ?? '（无）'}\n  全部合法档位：${allIds().join(', ')}`);
   process.exit(2);
 }
 
@@ -370,20 +374,27 @@ try {
   await evaluate(METER_INSTALL);
 
   // 4) 抽屉里填渠道 + key（只验证「落盘了」，不回显 key 本身）
+  //    **两个输入框都填**：A/B 臂各自选完渠道后，`src/app/loop.ts` 按 `eff.channel` 去对应的框取 key
+  //    （apiKey ← proxy/official，orKey ← opencode/openrouter/jevrouter）。只填一个的话，
+  //    两臂渠道不同时必有一臂拿到空 key ⇒ 整轮 401，而脚本看不出是哪一臂坏了。
   const settingsState = await evaluate(`(() => {
     document.querySelector('#settingsGear')?.click();
     const ch = document.querySelector('#channel');
     const key = document.querySelector('#apiKey');
-    if (!ch || !key) return { err: '抽屉里没有 #channel/#apiKey' };
+    const orKey = document.querySelector('#orKey');
+    if (!ch || !key || !orKey) return { err: '抽屉里没有 #channel/#apiKey/#orKey' };
     ch.value = ${JSON.stringify(NEEDS_KEY ? 'proxy' : CHAN_A)};
     ch.dispatchEvent(new Event('change', { bubbles: true }));
-    key.value = ${JSON.stringify(API_KEY)};
-    key.dispatchEvent(new Event('change', { bubbles: true }));
+    for (const el of [key, orKey]) {
+      el.value = ${JSON.stringify(API_KEY)};
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     let parsed = null;
     try { parsed = JSON.parse(localStorage.getItem('jev_qiguan_settings_v2') || 'null'); } catch (_e) { /* 忽略 */ }
     return {
       channel: parsed && parsed.channel,
       keyLen: parsed && typeof parsed.apiKey === 'string' ? parsed.apiKey.length : 0,
+      orKeyLen: parsed && typeof parsed.orKey === 'string' ? parsed.orKey.length : 0,
       needKey: ${NEEDS_KEY},
       wantLen: ${API_KEY.length},
     };
@@ -392,10 +403,10 @@ try {
   if (settingsState.channel !== (NEEDS_KEY ? 'proxy' : CHAN_A)) {
     throw new Error(`渠道没落盘：settings.channel=${settingsState.channel}`);
   }
-  if (NEEDS_KEY && settingsState.keyLen !== settingsState.wantLen) {
-    throw new Error(`API Key 没落盘：settings.apiKey 长度 ${settingsState.keyLen} ≠ ${settingsState.wantLen}`);
+  if (NEEDS_KEY && (settingsState.keyLen !== settingsState.wantLen || settingsState.orKeyLen !== settingsState.wantLen)) {
+    throw new Error(`API Key 没落盘：apiKey 长度 ${settingsState.keyLen} / orKey 长度 ${settingsState.orKeyLen} ≠ ${settingsState.wantLen}`);
   }
-  log(`设置已落盘：channel=${settingsState.channel}，apiKey 长度 ${settingsState.keyLen}`);
+  log(`设置已落盘：channel=${settingsState.channel}，apiKey 长度 ${settingsState.keyLen}，orKey 长度 ${settingsState.orKeyLen}`);
   await evaluate(`document.querySelector('#drawerClose')?.click(), true`);
 
   // 5) 切到「实验」页签并填 A/B

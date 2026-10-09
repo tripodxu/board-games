@@ -144,8 +144,9 @@ describe('estimateBudget', () => {
     expect(r.writesPerDay).toBe(372);
   });
 
-  it('UPSTREAM_CHANNELS 口径', () => {
-    expect(UPSTREAM_CHANNELS).toEqual(['official', 'openrouter', 'proxy']);
+  it('UPSTREAM_CHANNELS 口径（jev-router 是上游臂 ⇒ 也进配额估算与 --parallel 闸门）', () => {
+    expect(UPSTREAM_CHANNELS).toEqual(['official', 'openrouter', 'proxy', 'jevrouter']);
+    expect(KNOWN_CHANNELS).toContain('jevrouter');
   });
 });
 
@@ -190,5 +191,7 @@ describe('parallelGate（P0 卫生包②）', () => {
     expect(msg).toMatch(/撞限流/);
     expect(msg).toMatch(/污染对照/);
     expect(parallelGate({ parallel: true, a: spec('official'), b: spec('openrouter') })).toMatch(/official\/openrouter/);
+    /* jev-router 臂也是上游臂：并行会撞网关限流并让两侧共享上游延迟，污染对照。 */
+    expect(parallelGate({ parallel: true, a: spec('jevrouter'), b: spec('rapfi::1000') })).toMatch(/jevrouter/);
   });
 });

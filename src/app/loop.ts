@@ -285,7 +285,8 @@ export async function scheduleDecision(ctx: AppCtx): Promise<void> {
 
   const eff = effFor(ctx, side);
   const cfg = ctx.settings;
-  const apiKey = eff.channel === 'openrouter' || eff.channel === 'opencode' ? cfg.orKey : cfg.apiKey;
+  /* 渠道各自的 key 存不同字段：openrouter / opencode / jevrouter 用 orKey，其余走 apiKey。 */
+  const apiKey = eff.channel === 'openrouter' || eff.channel === 'opencode' || eff.channel === 'jevrouter' ? cfg.orKey : cfg.apiKey;
   const endpoint = (cfg.endpoints && cfg.endpoints[eff.channel]) || '';
 
   try {

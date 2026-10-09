@@ -115,6 +115,20 @@ describe('renderSettings —— 控件回填', () => {
     expect(need(body.querySelector('#apiKeyLabel')).classList.contains('hidden')).toBe(true);
   });
 
+  /* jev-router 臂与 openrouter 同形：key 落在 orKey 框（loop.ts 按渠道分派），提示里要点明「必填」。 */
+  it('jevrouter 渠道：显示 orKey 行（标注 jv- 必填）+ 战术档行，apiKey 行隐藏', () => {
+    const body = mount(DRAWER_HTML);
+    renderSettings(document, propsOf({ channel: 'jevrouter' }), handlersOf(seen()));
+    expect(need(body.querySelector('#orKeyLabel')).classList.contains('hidden')).toBe(false);
+    expect(need(body.querySelector('#apiKeyLabel')).classList.contains('hidden')).toBe(true);
+    expect(need(body.querySelector('#tacticsVersionLabel')).classList.contains('hidden')).toBe(false);
+    expect(need(body.querySelector('#orKeyLabel')).textContent).toContain('jv-');
+    /* #modeHint 由 renderChannelHint 单独写（renderSettings 不碰它），故显式调一次。 */
+    renderChannelHint('jevrouter');
+    expect(need(body.querySelector('#modeHint')).textContent).toContain('jev-router');
+    expect(need(body.querySelector('#modeHint')).textContent).toContain('你');
+  });
+
   it('探测输出与状态类由 props 回填', () => {
     const body = mount(DRAWER_HTML);
     renderSettings(document, propsOf({ channel: 'proxy' }, { probeText: '连接正常 · 812ms', probeState: 'ok' }), handlersOf(seen()));

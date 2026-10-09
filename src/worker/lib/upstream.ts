@@ -40,6 +40,24 @@ export const DEFAULT_UPSTREAM_URL = 'https://api.typesafe.ai/v1/systemone';
 export const OPENCODE_UPSTREAM_URL = 'https://opencode.ai/zen/v1/systemone';
 
 /**
+ * 自建 **jev-router** 网关（业主 VPS 上的多源 systemone 路由，zen-o2a → lfree-1 → lfree-2，
+ * 出口走 WARP 池轮换）。与上面那条的区别是**鉴权**：网关强制要 `jv-…` 客户端密钥（空 key 401），
+ * 不接受匿名 —— 访客各自持钥，服务端不代持。
+ *
+ * 分流靠 **model 名**（`JEV_ROUTER_MODEL`），与客户端 `core/jev/client.ts` 的同值常量成对，
+ * 勿单改一边。网关自己会按腿归一模型名，所以客户端发哪个都行。
+ */
+export const JEV_ROUTER_UPSTREAM_URL = 'https://jev.logicc.top/v1/systemone';
+export const JEV_ROUTER_MODEL = 'jev-1.13';
+
+/**
+ * 自有域名（`logicc.top`）开了 Cloudflare Browser Integrity Check，库默认 UA 会被
+ * 403 code 1010 拦掉。Workers 的子请求同样可能命中，所以显式给一个常规 UA；
+ * 它不参与鉴权，也不透传给用户。
+ */
+export const ROUTER_USER_AGENT = 'curl/8.5.0';
+
+/**
  * 超时：30s，与旧实现三处（浏览器 30s、Node 30s）完全一致。
  *
  * 为什么不是 Workers 上惯用的更短值：Jev 一次三问并行，实测单步 0.5–1.5K token 输入、
@@ -67,6 +85,8 @@ export interface UpstreamCall {
   url?: string;
   /** 允许匿名（无 Authorization 头）——opencode 免费档匿名可用；官方端点必须带 key。 */
   allowAnonymous?: boolean;
+  /** 覆盖 `User-Agent`（只对 Cloudflare Browser Integrity Check 拦默认 UA 的自有域名有意义）。 */
+  userAgent?: string;
   timeoutMs?: number;
   /**
    * 调用方的中止信号：生产传 `c.req.raw.signal`（客户端断开/Gateway 超时后不必继续烧上游额度）。
@@ -143,6 +163,7 @@ export async function callUpstream(call: UpstreamCall): Promise<UpstreamResult> 
         /* opencode 免费档匿名可用：apiKey 为空时不带 Authorization 头（带假 key 反而 401）。 */
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         'Content-Type': 'application/json',
+        ...(call.userAgent ? { 'User-Agent': call.userAgent } : {}),
       },
       body: JSON.stringify(call.body),
       signal: controller.signal,

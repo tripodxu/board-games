@@ -60,6 +60,7 @@ export const FOE_CHANS: readonly Opt[] = [
   ['openrouter', 'Jev · OpenRouter'],
   ['opencode', 'Jev · OpenCode（免费）'],
   ['opencode_local', 'Jev · OpenCode 本地中转（你的 IP · 最稳）'],
+  ['jevrouter', 'Jev · 自建网关（多源路由 · 出口轮换）'],
   ['official', 'Jev · 官方 API'],
   ['rapfi', 'Rapfi 引擎'],
   ['random', '随机 + 战术'],
@@ -72,6 +73,7 @@ export const EXP_CHANS: readonly Opt[] = [
   ['openrouter', 'Jev(OpenRouter)+战术'],
   ['opencode', 'Jev(OpenCode·免费)+战术'],
   ['opencode_local', 'Jev(OpenCode本地中转)+战术'],
+  ['jevrouter', 'Jev(自建网关)+战术'],
   ['official', 'Jev(官方)+战术'],
   ['random', '纯随机+战术'],
   ['mock', '离线演示'],
@@ -84,6 +86,7 @@ export const DRAWER_CHANNEL_OPTS: readonly Opt[] = [
   ['openrouter', 'OpenRouter（浏览器直连）'],
   ['opencode', 'OpenCode Zen（免费 · 浏览器直连）'],
   ['opencode_local', 'OpenCode 本地中转（你的 IP · 需先跑 local-relay.mjs）'],
+  ['jevrouter', '自建 jev-router 网关（同源 /api/jev 转发你的 jv- key）'],
   ['official', '官方 API 直连（可能被 CORS 拦截）'],
   ['mock', '离线演示（无需 key）'],
   ['rapfi', 'Rapfi 本地引擎（首次下载模型）'],
@@ -112,6 +115,7 @@ export const CHANNEL_NAMES: Record<string, string> = {
   openrouter: 'OpenRouter',
   opencode: 'OpenCode（免费）',
   opencode_local: 'OpenCode 本地中转',
+  jevrouter: '自建 jev-router 网关',
   proxy: '同源代理',
   mock: '离线演示',
   rapfi: 'Rapfi 本地',
@@ -122,13 +126,14 @@ export const CHAN_LABEL: Record<string, string> = {
   proxy: 'Jev(代理)',
   openrouter: 'Jev(OpenRouter)',
   official: 'Jev(官方)',
+  jevrouter: 'Jev(自建网关)',
   random: '纯随机',
   mock: '离线演示',
   rapfi: 'Rapfi',
 };
 
 /** 实验战报里算「Jev 渠道胜」的白名单（旧 `JEV_CHANS`，js/app.js:1245）。 */
-export const JEV_CHANNELS: readonly string[] = ['proxy', 'openrouter', 'official'];
+export const JEV_CHANNELS: readonly string[] = ['proxy', 'openrouter', 'official', 'jevrouter'];
 
 /** 战术档位选项：`<option value=v.id>v.id + ' ' + v.name</option>`（旧 `fillTacticsSelect`）。 */
 export function tacticsOptions(versions: readonly TacticsVersion[]): Opt[] {

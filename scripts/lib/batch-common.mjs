@@ -11,16 +11,18 @@
  *     若不在入口拦住，A/B 实验写错档号会静默变成 v13 且事后不可检出（耦合审计报告 §4 坑 1）。
  */
 
-import { ids, CURRENT, nearestId } from '../../src/core/tactics-versions.ts';
+import { allIds, CURRENT, nearestId } from '../../src/core/tactics-versions.ts';
 
-/** decide() 认得的全部渠道：3 个上游 + mock/random/rapfi 三特判。 */
-export const KNOWN_CHANNELS = ['mock', 'random', 'rapfi', 'official', 'openrouter', 'proxy'];
+/** decide() 认得的全部渠道：4 个上游 + mock/random/rapfi 三特判。 */
+export const KNOWN_CHANNELS = ['mock', 'random', 'rapfi', 'official', 'openrouter', 'proxy', 'jevrouter'];
 
 /** 需要真实上游 key 的渠道（submit 时据此估算配额与限流）。 */
-export const UPSTREAM_CHANNELS = ['official', 'openrouter', 'proxy'];
+export const UPSTREAM_CHANNELS = ['official', 'openrouter', 'proxy', 'jevrouter'];
 
-/** 战术档 id 白名单（tactics-versions.ts 的 ids()：14 个战术版本 + v0-off 基线 = 15 档）。 */
-export const TACTICS_IDS = ids();
+/** 战术档 id 白名单（`allIds()` = 现档号 + 旧档号别名 v15/v16/v17）。
+ *  含别名是刻意的：历史计划与历史棋谱的 `ai.tv` 里存的就是 v15/v16/v17 旧字符串
+ *  （2026-10-08 改名成 v14.1/v14.2/v14.3），校验必须放行，`resolve()` 再归一。 */
+export const TACTICS_IDS = allIds();
 
 /** 当前档（spec 省略战术档时的缺省，与面板 `CURRENT` 默认一致）。 */
 export const DEFAULT_TACTICS = CURRENT;

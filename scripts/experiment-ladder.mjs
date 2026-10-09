@@ -391,6 +391,8 @@ async function main(argv = process.argv.slice(2)) {
   const rateLimit = args['rate-limit'] !== undefined ? Number(args['rate-limit']) : 30;
   if (!Number.isFinite(rateLimit) || rateLimit <= 0) die('--rate-limit 必须是正数（每分钟请求数）');
   const keyFile = args['key-file'] !== undefined ? String(args['key-file']) : '/root/.jev-key';
+  /* jev-router 臂的第二个 key 文件（批量机即网关所在 VPS，`keyFile` 装的是 `jv-` 网关 key）。 */
+  const routerKeyFile = args['router-key-file'] !== undefined ? String(args['router-key-file']) : '/root/.jev-router-key';
   /* C2：兜底 key 文件（可选）与「本轮要求兜底可用」。默认不要求 ⇒ 没配就是老行为。 */
   const backupKeyFile = args['backup-key-file'] !== undefined ? String(args['backup-key-file']) : '/root/.cc-key';
   const expectBackup = Boolean(args['expect-backup']);
@@ -441,7 +443,7 @@ async function main(argv = process.argv.slice(2)) {
     ladder = buildLadder({
       ladderId, pairs, games, now, seed,
       openings: args.openings ? String(args.openings) : null,
-      store, upstream, rateLimit, keyFile, backupKeyFile, expectBackup, origin, remoteRoot: repo,
+      store, upstream, rateLimit, keyFile, routerKeyFile, backupKeyFile, expectBackup, origin, remoteRoot: repo,
       pauseMs: args.pause !== undefined ? Number(args.pause) : 2500,
       timeoutMin: args['timeout-min'] !== undefined ? Number(args['timeout-min']) : 180,
       stallMin: args['stall-min'] !== undefined ? Number(args['stall-min']) : 15,
@@ -516,6 +518,7 @@ async function main(argv = process.argv.slice(2)) {
       console.log(`  ssh ${user}@${host} '${launchRoundCommand({
         repo,
         keyFile,
+        routerKeyFile,
         planPath: `${remote}/plans/round-${r.round}.json`,
         logPath: `${remote}/logs/round-${r.round}.log`,
         pidPath: `${remote}/logs/round-${r.round}.pid`,
@@ -610,7 +613,7 @@ async function main(argv = process.argv.slice(2)) {
     const pidPath = `${remoteBatch}/logs/round-${r.round}.pid`;
     console.log(`\n▶ round-${r.round} ${r.label} ${r.games} 局（tag=${r.tag}）`);
     const ok = ssh(host, user,
-      launchRoundCommand({ repo, keyFile, planPath, logPath, pidPath }),
+      launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }),
       20000, SSH_LAUNCH_OPTS, true);
     if (!ok) {
       failed += 1;

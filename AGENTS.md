@@ -149,8 +149,12 @@ mtime 最新的库时可能落到旧的那份）。`vite dev` 与 `wrangler d1 e
   后者是战术档版本号（`src/core/tactics-versions.ts` 的闸门 + 每手 `ai.tv`），
   **改动战术层就要同步版本表**，否则历史棋谱的战术归因会对不上。
 - **渠道与降级**：`src/core/jev/client.ts` 的 `CHANNELS` = `official`（TypeSafe 官方）/ `openrouter`
-  / `proxy`（同源 `api/jev` BYOK 转发，key 只在请求头里过一手）；另有 `rapfi`（WASM 本地引擎）、
-  `mock`（离线演示）、`random`（基线，刻意走战术层）。无 key / 无后端时**降级而不是报错**：
+  / `proxy`（同源 `api/jev` BYOK 转发，key 只在请求头里过一手）/ `opencode`（OpenCode Zen 免费档，默认渠道）
+  / `opencode_local` / `jevrouter`（自建网关，多源路由 + 出口轮换，**强制自带 jv- key**，
+  见 [ADR-0024](docs/adr/0024-jevrouter-gateway-channel.md)）；另有 `rapfi`（WASM 本地引擎）、
+  `mock`（离线演示）、`random`（基线，刻意走战术层）。**鉴权头按解析后的端点选、不按渠道名选**
+  （`authHeaderFor()`：相对路径/回环 = `X-Api-Key`，真实域名 = `Authorization: Bearer`）——Worker 只读前者。
+  无 key / 无后端时**降级而不是报错**：
   走 mock 或 Rapfi + 战绩簿，`src/core/api/client.ts` 里所有后端调用失败一律返回 `null` 由装配层接手。
 - **`X-Device-Id`**：没有账号体系。浏览器生成匿名设备 id 并带在请求头里（格式非法 → 400），
   只用于「我的局」与榜单分组，**不是安全边界**。写路由先 `touchDevice` 再写棋谱（外键要求）；
