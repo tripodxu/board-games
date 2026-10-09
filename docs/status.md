@@ -1,6 +1,6 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-08。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-09。
 
 ## 当前状态
 
@@ -14,8 +14,8 @@
 | 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
-| 渠道 | ✅ 八个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
-| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切 v1–v17 任一档即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
+| 渠道 | ✅ 九个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`jevrouter`（自建网关，多源路由 + 出口轮换，**强制 BYOK**，[ADR-0024](adr/0024-jevrouter-gateway-channel.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
+| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
 | 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
@@ -287,6 +287,32 @@
 
 ## 已验证（验收证据）
 
+- **自建 jev-router 网关渠道 `jevrouter`（2026-10-08，业主指令「用 opencodeproxy 的渠道做实验，
+  用户端仍需自己准备 api key」）**：[ADR-0024](adr/0024-jevrouter-gateway-channel.md)。
+  网关 = `https://jev.logicc.top/v1/systemone`，`jv-` 开头的客户端 key，**按腿分流**（zen-o2a /
+  lfree-1 / lfree-2，失败自动换腿重试、回执头 `x-jev-leg`），**出口 IP 会轮换**——接它的动机就是
+  绕开 2026-10-07 钉死的「OpenCode 免费档限流按出口 IP 计、经 Worker 中转全站共享同一池」那堵墙。
+  **用户端仍然自己带 key**：Worker 没有任何共享 key，匿名请求直接 401（有测试钉住「401 且 fetch 一次都不发生」）；
+  设置抽屉 hint 明写「必须填你自己的 jv- key，服务端不代持、不共享」。
+  探针（跑在网关所在的 VPS 上，key 不出机器）：`jv-` key ⇒ **200 / 1.19 s**、`x-jev-leg: zen-o2a`、
+  `cost:"0"`、move 选中夹具里那条 `you:four+deny:live3`（说明引擎算出的 criteria 被照单执行）；
+  错 key ⇒ 401 `invalid key`；顶层 `instructions` ⇒ 400（我们只挂在各 question 里，天然安全）。
+  协议与 TypeSafe 官方逐字段同构 ⇒ 接入仍是**换三元组不写适配器**：浏览器走同源 `api/jev`
+  （网关无 CORS 头），Node/实验面直连真实端点，model `jev-1.13`，key 存 `orKey` 框。
+  额外带一条常规 `User-Agent`（`logicc.top` 全域浏览器完整性检查会 403 掉库默认 UA，code 1010）。
+  **box 真跑一轮**（`jevrouter:v14-live3-fresh:0` vs `rapfi::500` × 2 局，`--upstream direct --store local`）：
+  **2/2 局终局** `W2-D0-L0`（23 手 / 104 手），逐手归属可辨（`ai.ch=jevrouter` 共 64 手、
+  `ai.mdl=jev-1.13-free`、`ai.prov=primary`、`ai.tv=v14-live3-fresh`），模型往返 median 522–874 ms，
+  零 CF 触碰。**顺带修掉一个既存 bug**：鉴权头判据从「渠道名」改成 `authHeaderFor(解析后的端点)`——
+  Worker 的 `parseJevRequest` **从不读 `Authorization`**，所以老实现里浏览器发的 OpenCode Bearer 被丢弃，
+  用户填的 OpenCode Key 静默失效、永远走匿名池；现在 `opencode` 与 `jevrouter` 两边都对。
+  **另一处运维坑**：批量机（`185.242.234.48`）就是网关所在的 VPS，那台机器 `/root/.jev-key` 里装的是
+  `jv-` 网关 key ⇒ 实验面给它**独立**的 `/root/.jev-router-key` + `JEV_ROUTER_KEY`，并加
+  `keyShapeProblem()` 形状闸门（`jevrouter` 臂必须 `jv-` 开头、`official` 臂必须不是），放错文件在开局前
+  exit 2 而不是整轮 401。反向用例实测：`official` 臂指向 `jv-` 文件 ⇒ exit 2 并点名成因。
+  新增测试 4 文件 20 例（worker 路由 3 例 / core 渠道 2 例 / scripts 5 例 / UI 抽屉 1 例），
+  全量 **56 文件 / 782 例全绿** + `tsc --noEmit` 干净 + `check:docs` 绿。
+
 - **OpenCode Zen 免费渠道（2026-10-07，业主指令「Jev 使用 opencode 的免费模型跑」）**：
   业主确认 OpenCode Zen 上有免费 Jev；实测证实——`https://opencode.ai/zen/v1/systemone` 对
   `{model:"jev-1.13-free", state, questions}` **免费返回与 TypeSafe 官方逐字段同构的系统一应答**
@@ -398,11 +424,40 @@
   **2026-10-07/08 第七轮：`v17-fusion` 合流档（业主指令「分析全部 v1–v16 棋局数目 + 重构 v14-plus」）**：
   = v14 全机制 + `vctFirst` + `softGate`、预算逐键回 v14 原值（2×2 机制矩阵从未测过的第四格，v14-plus 的
   失败根因是预算混淆 ⇒ 去掉该变量的纯合流）；登记 + 部署 `9d31fc1` / `70737724`（CURRENT 保持 v14），
-  指纹 **266 行**（旧 252 行逐字节零漂移 + v17 14 行，19 档），全量 55 文件 772 例。**预注册判定未跑成**：
-  v17val 20 局全灭于 key（主 402 账号级 billing_error / 兜底 401 无效，零有效对局），失败轮已移走、
-  待有效 key 后 `--batch v17val` 原样重跑。棋局数目全量盘点（注册表快照 + D1 + 本地三轮合并）：
+  指纹 **266 行**（旧 252 行逐字节零漂移 + v17 14 行，19 档），全量 55 文件 772 例。
+  **预注册判定已跑完（2026-10-08 `v17val2`，改用新 `jevrouter` 渠道解锁）**：`v17val` 原轮 20 局全灭于
+  key（主 402 账号级 billing_error / 兜底 401 无效）已归档至 `round-1-failed-keys-20261007/`，新轮
+  `exp-20261008-v17val2-r1` 双臂走自建 jev-router 网关（同 seed 20261004 / pauseMs 2500 / maxPlies 225）：
+  首轮 20 局里 2 局被上游 502（Cloudflare HTML 错误页，非 JSON）打死，补跑 2 局凑满 **20 局有效样本**。
+  **结果 v17-fusion W7-D7-L6，不败率 70%**（v14 侧同轮 6-7-7）⇒ 负局 6 落在预注册规则**② 不可判带（5–6）**
+  ⇒ **v17 维持挂起：既不升 CURRENT，vctFirst/softGate 也不永久关闭**。**机制层确实被测到了**（不是空转）：
+  v17 臂 pressureGate 0 次 / parry4 134（v14 36）/ vctDefense 78（v14 24）；v14 臂 pressureGate 150、
+  vcfDefense 78（v17 仅 6）——两臂接管链画像差异巨大。两臂上游模型配比**完全一致**（各 874 手
+  `jev-1.13-free` + 181 手 `jev-1.13`），腿切换未偏向任一臂。**6 局败局逐手省察（113 手）**：
+  **P0 送杀 / P1 漏挡 / P2 漏胜 / P3 漏链 / P4 压力恶化 全部为 0**，clean 75（66.4%）、
+  P5 压力赤字 32（28.3%，按既有结论属对手/轮次性质非版本性质）、P6 已败 6（每局恰好 1 手=终局）。
+  ⇒ **v17 的败局不是它的独有层打砸的**。**本轮与 vplus1/v15val/v16val 不可直接比数**：上游从 TypeSafe
+  `jev-latest` 换成多源网关，且和棋率 35%（7/20）远高于历史轮（决定性样本只剩 13 局，v17 决定性负局率 46%）。
+  棋局数目全量盘点（注册表快照 + D1 + 本地三轮合并）：
   v14 以 **298 局**为史上验证最充分基线（D1 218 + 本地对手臂 80），v13 223 / v11 176 / v12 136 / v10 124，
   三个挑战者证据量 20/20/40 全在 ±20pt 噪声带。
+  **2026-10-08/09 第八轮：命名改制 + 全量整合档 `v14-plus`（业主指令「将 v15 v16 v17 里的所有策略都合并到 v14plus 中，并且通过大量实验数据证明有提升」「之后的编号废弃，最新的就是 v14plus」「v15 v16 v17 可以重命名为 v14.1 v14.2 v14.3」「多跑一整子，做一个压力测试，做一整晚」）**。**① 命名改制**：版本号不再递增，`v15-vctfirst` / `v16-softgate` / `v17-fusion` 改登记为 `v14.1` / `v14.2` / `v14.3`，**旧 `v14-plus`（整合收紧）让位改名 `v14-tighten`**；旧 id 走 `ALIASES` 别名表仍可解析（vplus1/v15val/v16val/v17val2 共 80 局归档回放与归因逐字不变）。让位必须**改写数据本身**（20 局把字符串 `v14-plus` 写进了每手 `ai.tv`）：线上只读盘点确认生产 D1 零命中（挑战者轮全是 box 的 `store: local`、从未导 D1），实际只改写了 box 上 `.work/remote/vplus1/` 的本地归档（已备份）。**② 全量整合档 `v14-plus`**（rank 19）＝ v14.1 的 `vctFirst` + v14.2 的 `softGate` + 三处防守侧预算减法（`vctDefMax` 12→8、`vctDefKeep` 3→2、`pressureCutMax` 120→80，攻击侧一个不动）；两个开关作用在不同层、零语义冲突，`mech` 集与 v14.3 逐键相同 ⇒ `fidelity: exact`。规则 10 合规：预算是**减法**不是加深。
+  **③ 验证结果（`vplus2`，两轮共 436 局 = 218 对，双臂走自建 jev-router 网关）＝ 过预注册判定带，`CURRENT` 升 `v14-plus`**：
+
+  | 口径 | v14-plus | v14-live3-fresh |
+  | --- | --- | --- |
+  | 胜 / 和 / 负 | **162 / 152 / 122** | 122 / 152 / 162 |
+  | 得分率 | **54.59%** | 45.41% |
+  | 不败率（规则 11 主口径） | **72.02%** | 62.84% |
+  | 上游模型配比 | free 13141 / paid 8612 | free 13121 / paid 8608 |
+  | `tac_ms` 最坏 / 均值 | 19350 / 557.4 | 35923 / 514.0 |
+
+  逐对分差 `mean(d) = +0.0459`、配对 `SE = 0.0175`、`t = 2.628`、**95% 区间 `[+0.0117, +0.0801]` 不含 0** ⇒ 判定带第一条成立；不败率 72.02% > 62.84% ⇒ 第二条成立 ⇒ **通过**。配对分类 144 一胜一负 / 29 双胜 / 35 双和 / 10 双负。**144:29 说明两臂几乎无系统性强度差**，均值 +0.0459 是配对消掉开局与先手方差后剩下的偏置，**只有样本量让它站住**：第一轮 79 对时 CI 下界仅 0.0012（擦线），加到 218 对后抬到 0.0117。
+  **④ 加子压测的运维教训**：上游 502/530 时 worker **不会崩，只会把剩下的局「很快地跑完」**——日志末行 `worker 完：63/158` 看着像正常结束，实际后 95 局全是秒判 error（`Counter({error: 95, ok: 63})`）。只看那一行会误判，必须同时核对 `games.jsonl` 行数与 checkpoint 的 status 分布；处置是挂监督脚本循环重入同一 plan（已完成局按 checkpoint 跳过、error 局复用同一 `gameUid` 重跑）。加子内容是从累积决胜局重收的**开局库 v3 = 139 本（61 本全新）**，第二轮 278 局把 v3 整轮用满；两轮合并时 round-2 的 `expGameNo` **必须整体偏移** round-1 的局数，否则配对分析会把两轮各自的开局错配成一对。
+  **⑤ 机制层非空转**（36 局 / 4441 局面逐点重放 `.work/layer-profile.mjs`）：`pressureGate` 开火 **0 vs 842**（softGate 生效）、`vctDefense` 接管 **396 vs 101**、兜底 `vcfDefense` **12 vs 309**（vctFirst 生效）、两档同点选不同落点 **19.87%**、事实指纹逐字相同率 **90.77%**。
+  **⑥ 代价**：最坏 `tac_ms` −46%（预算减法兑现），但**均值 +8.4%**——vctFirst 让 vctDefense 成为主防线后更多局面要付这笔钱，是「尾部变快、平均变慢」的交换，量级都在两位数毫秒、对整局节奏无感。
+  **⑦ 败局交代（规则 11）**：122 局败局逐手省察 2516 个我方落子，**P0 送杀 / P1 漏挡 / P2 漏胜 / P3 漏链 / P4 压力恶化 全为 0**，clean 66.7% / P5 压力赤字 28.4%（属对手与轮次性质）/ P6 已败 4.8%（每局恰好 1 手＝终局）⇒ **败局不是战术层打砸的**，提升来自防线排序与压力让权。
+  **⑧ 如实交代**：加子决定是在看到第一轮 67 局中间结果之后做的——加子只增大 N、**不改判定规则**，增大 N 只会让区间变窄，但这是「先看了再决定加大样本」，已写进 [ADR-0023 增补六](adr/0023-v14-plus-integration.md)。指纹 `test/parity/tactics-fingerprints.json` 的 `current` 字段同步改为 `v14-plus`（20 档 × 14 局面，v0–v14 零漂移）。
 
 - **前端 + 后端优化轮（2026-10-06，计划模式三路只读探查立项 → 六项落地 → 部署 `e998ad32`）**：
   **后端**：① 导出 N+1 销账（技术债 #3，见技术债节）——`listGameDetails` 每页 2 次往返，行形状与 getGame 逐字段一致（export.spec 等价性钉子 + 跨页不重不漏）；② **读接口限流放行**：`rateLimit('read')` 直接过（不写 rate_limits、无 X-RateLimit 头、不 429）——ADR-0013「后果」节原文预留「读接口不计数或采样」，旧实现反而全量计数，单 IP 满速读可烧 17.3 万行写/日（免费档 10 万）；当天 D1 仪表盘 `rows_written_24h = 81,415`（80% 警戒）正好演示了写配额敏感性（其中 ~8.1 万是导入一次性成本，但读限流的写是常态燃烧）；aggregates.spec 的读限流用例改写为「桶满也不 429、不写库」；③ `getStats` 四条 SQL 合 `db.batch`（4 RT→1）+ 四个读路由加 `Cache-Control`（global `public, max-age=30`，device 维度 `no-store`）+ `public/_headers` 三档缓存（`/assets/*` immutable、`/rapfi/*` 86400、`/` no-cache——部署后 curl -I 逐档验证生效）。
@@ -1017,7 +1072,7 @@
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
 3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0018；`npm run check:docs` 绿（2026-10-05 计数：65 个 md / 454 个链接）。
 4. **下一版入口由两条方向约束决定**（2026-10-02，[AGENTS.md](../AGENTS.md) §2 规则 10–11）：v10/v11 的败局都出在「算不出强制胜」的局面，所以优先做**无强制胜时的防守与长线取势**——要求是简单规则、快而不依赖长思考；**不**把 VCT 挖得更深。同一批待决项里，`live3After` 的语义纠偏（判「本手新造」而非「盘面上存在」）属于允许的「减法/纠偏」，**已于 2026-10-03 作为 v14 上线**（`b6c6921`）。**仍未闭环**：A 型速败（≤35 ½手被速杀）的「早盘为什么织不起活三网」属进攻侧开局形状问题（`docs/plans/2026-10-03-tactics-v14-fresh-live3.md` §8），以及 B 型长局（≥50 ½手、压力领先却换不了杀）——后者的两负实测都是「全程我方有杀 0」。**2026-10-03 更新**：v14 已按 m08704 抬档复核——`rapfi@1000ms` 12 局 9-1-2、`rapfi@2000ms` 20 局 **9-3-8**（不败率 60.0%）；**A 型的机制线在规则 10 之下判定收口**（静默普查 §4.3：早盘 72–95% 回合双方都没有 `vcf7`/`vct9` 胜，制造点 1.38 vs 0.42–0.45 是唯一指征，要抬它必须做 2-ply 以上规划 ⇒ 明令不做），剩下的杠杆是**配对样本**（同开局双跑）、模型侧提示、继续抬档看鲁棒性。**2026-10-03 收口（项目所有者）**：继续抬档已跑完（3 s 15-1-4、5 s 12-1-7，四档比分非单调）⇒ **机制线暂停、不再开新机制**（v14 是最后一版），只留维护、数据卫生与配对样本设计；恢复条件是「先有能分辨 5 pt 以内差异的配对样本口径」（详见 [v14 计划](plans/2026-10-03-tactics-v14-fresh-live3.md) §8 末尾的收口引块）。
-   **2026-10-08 更新**：业主仍指令「分析全部 v1–v16 棋局数目 + 重构 v14-plus」⇒ **v17-fusion（合流档）= v14 + vctFirst + softGate、预算逐键回 v14 原值**（2×2 机制矩阵从未测过的第四格，去掉 v14-plus 的预算混淆）已登记并部署（`9d31fc1` / `70737724`，CURRENT 保持 v14）；预注册判定规则在登记表（负局 ≤4 过 / 5–6 挂起 / ≥7 双关闭）。**验证轮被 key 卡死**：2026-10-07 v17val 20 局全 error——主 key 402（账号级 billing_error）、兜底 key 401（无效），无效轮已移走；有效 key 恢复后原样重跑即可（`--batch v17val`）。另完成**逐手省察**（79 局败局 / 1852 手）：修正后全版本零战术失误（送杀/漏挡/漏胜/漏链皆 0），详见 [MEMORY 2026-10-08 条目](memory/MEMORY.md)。
+   **2026-10-08 更新**：业主仍指令「分析全部 v1–v16 棋局数目 + 重构 v14-plus」⇒ **v17-fusion（合流档）= v14 + vctFirst + softGate、预算逐键回 v14 原值**（2×2 机制矩阵从未测过的第四格，去掉 v14-plus 的预算混淆）已登记并部署（`9d31fc1` / `70737724`，CURRENT 保持 v14）；预注册判定规则在登记表（负局 ≤4 过 / 5–6 挂起 / ≥7 双关闭）。**验证轮于 2026-10-08 用新 `jevrouter` 渠道跑完**：原 `v17val` 20 局全 error（主 key 402 账号级 billing_error、兜底 key 401 无效）已归档；`v17val2` 双臂走自建网关补足 20 局有效样本（2 局被上游 502 打死，另补跑 2 局），**v17-fusion W7-D7-L6 / 不败率 70%**（v14 侧 6-7-7）⇒ 负局 6 命中**② 挂起带**⇒ **v17 不升 CURRENT、vctFirst/softGate 不永久关闭**。6 局败局逐手省察 113 手：P0–P4 全 0，v17 独有层不是败因。另完成**逐手省察**（79 局败局 / 1852 手）：修正后全版本零战术失误（送杀/漏挡/漏胜/漏链皆 0），详见 [MEMORY 2026-10-08 条目](memory/MEMORY.md)。
 
 5. **两份新计划的推进状态**（2026-10-03 起，业主 m13862「两个计划一起开工，可以先进行探测」）：
    ① [候选点三数 + 上游兜底](plans/2026-10-03-cands-metric-and-provider-failover.md)：**C0 已完成并部署**

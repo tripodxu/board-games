@@ -8,6 +8,26 @@
 
 ### 新增
 
+- **战术档 `v14-plus`（全量整合）：v15/v16/v17 三条策略合并，配对轮 436 局 = 218 对过预注册判定带，升为 `CURRENT`（2026-10-08/09）**：
+  命名改制同期落地——版本号不再递增，`v15-vctfirst`/`v16-softgate`/`v17-fusion` 改登记为 `v14.1`/`v14.2`/`v14.3`，
+  旧 `v14-plus`（整合收紧）让位改名 `v14-tighten`；旧 id 走 `ALIASES` + `canonicalId` 仍可解析，历史棋谱的回放与归因逐字不变。
+  新档内容＝ `vctFirst`（防线优先级纠偏）+ `softGate`（压力层咨询化）+ 三处**防守侧**预算减法（`vctDefMax` 12→8、
+  `vctDefKeep` 3→2、`pressureCutMax` 120→80，攻击侧一个不动）；两个开关作用在不同层、零语义冲突，`mech` 集与 `v14.3` 逐键相同
+  ⇒ `fidelity: exact`。判定（`vplus2`，双臂走自建 jev-router 网关）：**W162-D152-L122、得分率 54.59%、不败率 72.02% vs 基准 62.84%**，
+  逐对分差 `mean(d)=+0.0459`、配对 SE 0.0175、**95% 区间 [+0.0117,+0.0801] 不含 0** ⇒ 两条预注册条件同时满足。
+  机制层非空转（36 局 / 4441 局面重放）：`pressureGate` 开火 0 vs 842、`vctDefense` 396 vs 101、`vcfDefense` 12 vs 309、
+  同点选不同落点 19.87%。**代价两面报**：最坏 `tac_ms` −46%（预算减法兑现），均值 +8.4%（vctFirst 提为主防线后更多局面付这笔钱）。
+  **败局交代**（规则 11）：122 局败局逐手省察 2516 手，**P0 送杀/P1 漏挡/P2 漏胜/P3 漏链/P4 压力恶化 全 0** ⇒ 提升来自防线排序与压力让权，
+  不来自失误层。回滚：把 `CURRENT` 改回 `'v14-live3-fresh'` 一行即可。详见 [ADR-0023](docs/adr/0023-v14-plus-integration.md) 与
+  [status 第八轮](docs/status.md)。
+- **渠道 `jevrouter`：接入自建 jev-router 网关作为第四条 Jev 渠道（2026-10-08，[ADR-0024](docs/adr/0024-jevrouter-gateway-channel.md)）**：
+  端点 `https://jev.logicc.top/v1/systemone`、`jv-` key、按腿分流 + 出口轮换；协议与 TypeSafe 官方逐字段同构 ⇒ 接入仍是「换三元组不写适配器」。
+  BYOK 是硬约束：Worker 侧 `allowAnonymous: false`，匿名 401 且一次 fetch 都不发生。抽屉 hint 明写「服务端不代持、不共享」。
+  **顺带修掉一个既存 bug**：Worker 的 `parseJevRequest` 只读 `X-Api-Key`/env/body、从不读 `Authorization`，而客户端老实现按渠道名选头 ⇒
+  `opencode` 在浏览器里发的 Bearer 被丢弃，**用户填的 OpenCode Key 静默失效、永远走匿名池**（且表现为「忙时 429」，极易误读成限流）。
+  改成 `authHeaderFor(解析后的端点)`：相对路径/回环 = 中转面（`X-Api-Key`），真实域名 = 直连面（`Bearer`）。批量实验面另给
+  `/root/.jev-router-key` + `JEV_ROUTER_KEY`，并加 `keyShapeProblem()` 形状闸门（`jevrouter` 臂必须 `jv-` 开头、`official` 臂必须不是）。
+
 - **L4 / `rapfihi1` 收尾：Rapfi 高档（`@7000`/`@10000`）曲线 + 版本排序第二把尺子（2026-10-05）**：`10/10 轮｜200/200 局｜624 分钟` 跑完，
   [L4 报告](docs/plans/2026-10-05-rapfihi1-rapfi-high-think.md) §3–§6 全部填满（逐对表 + 逐色拆分 + 五档曲线 + 逐档合并 + 成本 + 接管层 + 败局解释 + 矩阵 + 决策）；
   合并报表（`l2n1`+`vorder1`+`rapfihi1` = 560 局 / 28 轮 / 10 身份）落 `.work/l4-final-report.md`，纯本批落 `.work/rapfihi1-report.md`。
