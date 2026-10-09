@@ -60,14 +60,32 @@ const SWAP_SEQ = ['F8', 'G7', 'G8', 'H7', 'H8', 'I7'];
  * ① 版本登记表（git 历史 × 棋谱数据双锚定：13 个战术版本 + 1 数据驱动基线）
  * ------------------------------------------------------------------ */
 S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
-  eq(R.CURRENT, 'v14-live3-fresh', '当前档应为 v14-live3-fresh（v14-plus 配对轮 35% 未过负局线，显式回退；档位保留）');
+  eq(R.CURRENT, 'v14-plus', '当前档应为 v14-plus（2026-10-09 vplus2 配对轮 436 局 = 218 对过预注册判定带：逐对分差均值 +0.0459、配对 95% 区间 [+0.0117,+0.0801] 不含 0、不败率 72.0% vs 基准 62.8%）');
+  /* 2026-10-08 业主指令「之后的编号废弃」：v15/v16/v17 改名 v14.1/v14.2/v14.3，
+     旧 v14-plus 让位改名 v14-tighten，id 让给新的全量整合档。旧 id 走别名表仍可解析。 */
   const ANCHORED = ['v1-facts', 'v2-open4', 'v3-make2', 'v4-parry3', 'v5-safesort',
-    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh', 'v14-plus', 'v15-vctfirst', 'v16-softgate', 'v17-fusion'];
+    'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh',
+    'v14-tighten', 'v14.1', 'v14.2', 'v14.3', 'v14-plus'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 19, '应为 18 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 20, '应为 19 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   ok(R.VERSIONS.some((v) => v.id === R.CURRENT), 'CURRENT 应是已登记档位（回退后末档可与 CURRENT 不同）');
+});
+
+S.t('版本登记表：改名兼容表（旧 id 仍解析到同一档，且不与现档号撞名）', () => {
+  eq(R.ALIASES['v15-vctfirst'], 'v14.1', '旧 v15 应归一到 v14.1');
+  eq(R.ALIASES['v16-softgate'], 'v14.2', '旧 v16 应归一到 v14.2');
+  eq(R.ALIASES['v17-fusion'], 'v14.3', '旧 v17 应归一到 v14.3');
+  ok(!('v14-plus' in R.ALIASES), 'v14-plus 不是别名：它已是现档号（新全量整合档）');
+  for (const [oldId, newId] of Object.entries(R.ALIASES)) {
+    eq(R.resolve(oldId).id, newId, 'resolve(' + oldId + ') 应解析到 ' + newId);
+    eq(R.tryResolve(oldId)?.id, newId, 'tryResolve(' + oldId + ') 应解析到 ' + newId);
+    ok(R.allIds().includes(oldId), 'allIds() 应含旧档号 ' + oldId);
+  }
+  /* 现档号不在别名表里（防「同一个字符串两义」的静默归因） */
+  for (const id of R.ids()) ok(!(id in R.ALIASES), id + ' 不该同时是别名');
+  eq(R.allIds().length, R.ids().length + Object.keys(R.ALIASES).length, 'allIds = 现档 + 别名');
 });
 
 S.t('版本登记表：接管层（TIER）沿梯级单调不减（附加键是开关，不要求携带）', () => {
@@ -77,29 +95,40 @@ S.t('版本登记表：接管层（TIER）沿梯级单调不减（附加键是�
       if (prev[k]) ok(cur[k], R.VERSIONS[i].id + ' 丢了上级接管层 ' + k);
     }
   }
-  /* 附加键逐档自洽：出现即登记、旧档不携带新开关（v15 的 vctFirst 不回流 v16） */
+  /* 附加键逐档自洽：出现即登记、旧档不携带新开关（v14.1 的 vctFirst 不回流 v14.2） */
   ok(R.MECHS.indexOf('softGate') >= 0, 'softGate 应登记在 MECHS');
-  ok(R.allows(R.resolve('v16-softgate'), 'softGate'), 'v16 应启用 softGate（pressureGate 降咨询）');
-  ok(!R.allows(R.resolve('v15-vctfirst'), 'softGate'), 'v15 不应携带 softGate');
+  ok(R.allows(R.resolve('v14.2'), 'softGate'), 'v14.2 应启用 softGate（pressureGate 降咨询）');
+  ok(!R.allows(R.resolve('v14.1'), 'softGate'), 'v14.1 不应携带 softGate');
   ok(!R.allows(R.resolve('v14-live3-fresh'), 'softGate'), 'v14 不应携带 softGate');
-  ok(R.allows(R.resolve('v16-softgate'), 'pressureGate'), 'v16 仍保留 pressureGate 事实计算（照进 prompt）');
-  ok(!R.allows(R.resolve('v16-softgate'), 'vctFirst'), 'v16 不带 vctFirst（单变量：与 v14 只差 softGate）');
+  ok(R.allows(R.resolve('v14.2'), 'pressureGate'), 'v14.2 仍保留 pressureGate 事实计算（照进 prompt）');
+  ok(!R.allows(R.resolve('v14.2'), 'vctFirst'), 'v14.2 不带 vctFirst（单变量：与 v14 只差 softGate）');
+  /* 全量整合档 = v14-tighten 的预算减法 + vctFirst + softGate 三个机制的并集 */
+  const plus = R.resolve('v14-plus');
+  ok(R.allows(plus, 'vctFirst') && R.allows(plus, 'softGate'), 'v14-plus 应同时带 vctFirst 与 softGate');
+  eq(plus.budget.vctDefMax, 8, 'v14-plus 沿用减法预算 vctDefMax=8');
+  eq(plus.budget.vctDefKeep, 2, 'v14-plus 沿用减法预算 vctDefKeep=2');
+  eq(plus.budget.pressureCutMax, 80, 'v14-plus 沿用减法预算 pressureCutMax=80');
+  eq(plus.fidelity, 'exact', 'v14-plus 的 mech 与 v14.3 逐键相同 ⇒ attachFacts 句集逐字一致');
+  const mechKeys = (v) => Object.keys(R.VERSIONS.find((x) => x.id === v).mech).sort().join(',');
+  eq(mechKeys('v14-plus'), mechKeys('v14.3'), 'v14-plus 与 v14.3 的 mech 键集应逐键相同');
 });
 
-S.t('版本登记表：十五级层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/14）', () => {
+S.t('版本登记表：层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/14）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
     'v10-live3': 11, 'v11-vct': 12, 'v12-vct-def': 13, 'v13-pressure-gate': 14,
     /* v14 不加层：层数不变，只纠偏 live3 两层的判据 */
     'v14-live3-fresh': 14,
-    /* v14-plus 不加层：机制同 v14，只收紧防守侧预算（vctDefMax/vctDefKeep/pressureCutMax） */
+    /* v14-tighten 不加层：机制同 v14 + vctFirst 开关，只收紧防守侧预算（vctDefMax/vctDefKeep/pressureCutMax） */
+    'v14-tighten': 14,
+    /* v14.1 不加层：机制同 v14-tighten（含 vctFirst），预算回到 v14 原值（单变量验证设计） */
+    'v14.1': 14,
+    /* v14.2 不加层：v14 机制 + softGate 开关（pressureGate 降咨询，不开火 → 层数不变） */
+    'v14.2': 14,
+    'v14.3': 14,
+    /* v14-plus（全量整合）不加层：vctFirst + softGate 都是开关，softGate 更是让 pressureGate 不开火 */
     'v14-plus': 14,
-    /* v15 不加层：机制同 v14-plus（含 vctFirst），预算回到 v14 原值（单变量验证设计） */
-    'v15-vctfirst': 14,
-    /* v16 不加层：v14 机制 + softGate 开关（pressureGate 降咨询，不开火 → 层数不变） */
-    'v16-softgate': 14,
-    'v17-fusion': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
@@ -115,7 +144,7 @@ S.t('版本登记表：棋谱归属（窗口严格一致，当前档只兜底）
   eq(R.resolve('v5-safesort').games, 21, 'v5 窗口应归档 21 局（9/29 17:51–19:28，parry3 标签实证）');
   eq(R.resolve('v7-vcf').games, 4, 'v7 应归档 4 局（exp-20260930025135，vcf 标签实证）');
   eq(R.resolve('v8-vcf-try').games, 3, 'v8 应归档 3 局（线上旧引擎）');
-  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 v14-live3-fresh 的实证局数看 gamesVerified）');
+  ok(R.resolve('v9-vcf-sound').games >= 26, 'v9 档应登记 26 局窗口棋谱（快照口径已退役；当前档 ' + R.CURRENT + ' 的实证局数看 gamesVerified）');
   const total = R.VERSIONS.reduce((a, v) => a + v.games, 0);
   ok(total >= 54, 'games 字段合计应不少于 games/ 当前 54 局，实际 ' + total);
   /* gamesVerified 与 games 是两个口径：前者是「有元数据实证确实跑过本档」的局数 */
@@ -199,20 +228,20 @@ S.t('P1 冻结层：sound 记历史事实（v9 起才有闸门）/ fidelity / op
     eq(v.promptFacts, 'mech', v.id + ' 的注入口径应为 mech（只注入本档真有的机制句）');
   }
   eq(R.resolve('v14-live3-fresh').fidelity, 'exact', 'v14 就是冻结当天那一版 ⇒ exact');
-  eq(R.resolve('v14-plus').fidelity, 'exact', 'v14-plus 与 v14 同 mech ⇒ attachFacts 句集逐字一致，新登记即 exact');
-  /* v14-plus 的三键收紧：预算冻结原则下「调参只能新开一档」的唯一合法路径 */
-  const bPlus = R.resolve('v14-plus').budget, b14 = R.resolve('v14-live3-fresh').budget;
-  eq(bPlus.vctDefMax, 8, 'v14-plus 的 vctDefMax 应收紧到 8（12→8，最坏搜索 26→18 次）');
-  eq(bPlus.vctDefKeep, 2, 'v14-plus 的 vctDefKeep 应收紧到 2（3→2）');
-  eq(bPlus.pressureCutMax, 80, 'v14-plus 的 pressureCutMax 应收紧到 80（120→80）');
+  eq(R.resolve('v14-tighten').fidelity, 'exact', 'v14-tighten 与 v14 同 mech ⇒ attachFacts 句集逐字一致，新登记即 exact');
+  /* v14-tighten 的三键收紧：预算冻结原则下「调参只能新开一档」的唯一合法路径 */
+  const bPlus = R.resolve('v14-tighten').budget, b14 = R.resolve('v14-live3-fresh').budget;
+  eq(bPlus.vctDefMax, 8, 'v14-tighten 的 vctDefMax 应收紧到 8（12→8，最坏搜索 26→18 次）');
+  eq(bPlus.vctDefKeep, 2, 'v14-tighten 的 vctDefKeep 应收紧到 2（3→2）');
+  eq(bPlus.pressureCutMax, 80, 'v14-tighten 的 pressureCutMax 应收紧到 80（120→80）');
   for (const k of Object.keys(b14)) {
     if (k === 'vctDefMax' || k === 'vctDefKeep' || k === 'pressureCutMax') continue;
-    eq(bPlus[k], b14[k], 'v14-plus 除三键收紧外其余预算应与 v14 逐键一致：' + k);
+    eq(bPlus[k], b14[k], 'v14-tighten 除三键收紧外其余预算应与 v14 逐键一致：' + k);
   }
-  /* v15（单变量验证设计）：vctFirst 保留，预算逐键回到 v14 原值——与 v14-plus 的唯一差异就是这三键 */
-  const b15 = R.resolve('v15-vctfirst').budget;
-  for (const k of Object.keys(b14)) eq(b15[k], b14[k], 'v15 预算应与 v14 逐键一致：' + k);
-  ok(R.allows(R.resolve('v15-vctfirst'), 'vctFirst'), 'v15 应启用 vctFirst（单变量）');
+  /* v14.1（单变量验证设计）：vctFirst 保留，预算逐键回到 v14 原值——与 v14-tighten 的唯一差异就是这三键 */
+  const b15 = R.resolve('v14.1').budget;
+  for (const k of Object.keys(b14)) eq(b15[k], b14[k], 'v14.1 预算应与 v14 逐键一致：' + k);
+  ok(R.allows(R.resolve('v14.1'), 'vctFirst'), 'v14.1 应启用 vctFirst（单变量）');
   ok(!R.allows(R.resolve('v14-live3-fresh'), 'vctFirst'), 'v14 不应有 vctFirst（旧序保持逐字不变）');
   /* P3 考古（docs/plans/2026-10-04-tactics-archaeology.md）：v1–v13 的四项参数全部有 git 证据 ⇒ restored；
      v0-off 的档位表没有 sha、参数无证据 ⇒ 只能 approximate（不猜）。口径 = 参数层，不等于 exact。 */
@@ -281,6 +310,8 @@ S.t('版本登记表：games 与 gamesVerified 是两个独立口径（快照 vs
   eq(R.resolve('v12-vct-def').gamesVerified, 36, 'v12 实证 36 局（三轮单臂对照实验各 12 局：exp-20261002115126 + exp-20261002121700 + exp-20261002123631，每手 ai.tv = v12-vct-def）');
   eq(R.resolve('v13-pressure-gate').gamesVerified, 52, 'v13 实证 52 局（exp-20261002160819 单臂 12 局 + 20 局档位复核 exp-20261003003108 / exp-20261003020720；另 3 局属被打断的首轮 exp-20261002154056，无实验行、不计入）');
   eq(R.resolve('v14-live3-fresh').gamesVerified, 72, 'v14 实证 72 局（exp-20261003035953 单臂 12 局 @1000ms + exp-20261003050139 单臂 20 局 @2000ms + 抬档阶梯 exp-20261003075310 单臂 20 局 @3000ms + exp-20261003082805 单臂 20 局 @5000ms，每手 ai.tv = v14-live3-fresh）');
+  eq(R.resolve('v14-plus').gamesVerified, 436, 'v14-plus 实证 436 局（2026-10-09 vplus2 两轮配对：round-1 158 局 + round-2 加子压测 278 局，合计 218 对，每手 ai.tv = v14-plus）');
+  eq(R.resolve('v14-plus').games, 0, 'v14-plus 无 games/ 归档快照（`games` 是冻结窗口口径，实证数只记 gamesVerified）');
   eq(R.resolve('v7-vcf').gamesVerified, 20, 'v7 实证 20 局（线上 0.7.0 的 20 局）');
   eq(R.resolve('v9-vcf-sound').gamesVerified === R.resolve('v9-vcf-sound').games, false,
     '快照与实证必须可区分：相等就说明其中一个口径被写坏了');

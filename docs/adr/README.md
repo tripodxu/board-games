@@ -30,4 +30,5 @@
 | [0020](0020-tactics-fidelity-freeze.md) | 战术档位 = 冻结记录 + 决策指纹：预算集中登记、未知档号显式失败、接管链抽成纯函数、改共享代码必须亮红灯 | accepted |
 | [0021](0021-standalone-experiment-plane.md) | 离线实验面（默认直连上游 + 本地 JSONL + 文件进度 + 对象桶留档）：实验跑动零 CF 依赖，直连面复用 `official` 渠道，限流/熔断自实现 | accepted |
 | [0022](0022-upstream-provider-failover.md) | 上游提供方兜底：换三元组（端点/模型/key）不写适配器、同局粘滞不回切、逐手 `provider`/`prob_source` 归属，Worker 侧默认关闭 | accepted |
-| [0023](0023-v14-plus-integration.md) | v14-plus 整合收紧档：v14 全部 14 层机制原样保留 + 三处防守侧预算减法（vctDefMax 8 / vctDefKeep 2 / pressureCutMax 80），零新机制，只做机制层验证 | accepted |
+| [0023](0023-v14-plus-integration.md) | v14-plus 全量整合档：v14.1（vctFirst 防线排序纠偏）+ v14.2（softGate 压力层咨询化）+ 三处防守侧预算减法（vctDefMax 8 / vctDefKeep 2 / pressureCutMax 80），零新机制；2026-10-09 配对轮 436 局 = 218 对过预注册判定带，升为 `CURRENT`。含命名改制（版本号不再递增，v15/v16/v17 → v14.1/v14.2/v14.3） | accepted |
+| [0024](0024-jevrouter-gateway-channel.md) | 接入自建 jev-router 网关作为第四条 Jev 渠道（强制 BYOK、独立 key 文件 + 形状闸门；并把鉴权头判据从「渠道名」改成「解析后的端点」） | accepted |

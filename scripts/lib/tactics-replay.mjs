@@ -26,10 +26,12 @@
 import { getGame, ids as gameIds, games } from '../../src/core/registry.ts';
 import { computeTactics, emptyTactics, mechOf } from '../../src/core/tactics.ts';
 import { pickTakeover } from '../../src/core/takeover.ts';
-import { CURRENT, ids as versionIds } from '../../src/core/tactics-versions.ts';
+import { CURRENT, allIds as allVersionIds } from '../../src/core/tactics-versions.ts';
 
-/** 全部合法档号（回放前的白名单；未知档号必须报错，绝不静默回落 CURRENT）。 */
-export const TACTICS_IDS = versionIds();
+/** 全部合法档号（回放前的白名单；未知档号必须报错，绝不静默回落 CURRENT）。
+ *  用 `allIds()` 而非 `ids()`：含 v15/v16/v17 旧档号别名，历史棋谱的 `ai.tv`
+ *  存的正是旧字符串（2026-10-08 改名成 v14.1/2/3），回放要能原样打开它们。 */
+export const TACTICS_IDS = allVersionIds();
 
 /** 会真跑战术层的渠道判据：与 `src/core/view/duel.ts:runsTactics()` 同源（mock/rapfi/人类侧不进战术层）。 */
 export function runsTacticsChannel(channel) {

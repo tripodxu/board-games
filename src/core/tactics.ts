@@ -379,7 +379,7 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
      的回合：实走拆掉 33 个、漏 15 个，其中 2 个存在能拆的点却没走（计时轮 #8 ply24 → K9、
      首轮 #6 ply52 → K8）。这里在 VCF 守没找到点时再算一遍含活三的链，并对「链上各点 → 链点邻域
      → 全部邻近空点」逐一验「落子后对手既无 VCF 也无 VCT」（见引擎 vctDefense）。
-     v14-plus（vctFirst）的防线优先级纠偏见下：本闭括号内的事实计算抽成闭包，两个调用点共用。 */
+     vctFirst（v14.1 起）的防线优先级纠偏见下：本闭括号内的事实计算抽成闭包，两个调用点共用。 */
   const computeVctDefense = (): void => {
     if (!(engine.deepTactics && typeof engine.vctDefense === 'function') || win.length > 0 || block.length > 0
         || !oppSide || !M.vctDefense || res.vcf_win_you.length > 0 || res.vct_win_you.length > 0) return;
@@ -398,7 +398,7 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
       }
     } catch (_) { /* 同上：引擎差异 fail-soft */ }
   };
-  /* vctFirst（v14-plus）：vctDefense 是**判据更强**的防线（落子后对手 VCF+VCT 全无），
+  /* vctFirst（v14.1 起）：vctDefense 是**判据更强**的防线（落子后对手 VCF+VCT 全无），
      vcfDefense 只验纯冲四链——旧序里前者被门在「后者没找到点」之后，于是「纯四可拆、
      混合链也能一并拆掉」的局面永远走弱防线：vorder1 两局实锤（29ced20c ply65 走 I10 弃 K10、
      3ba614a0 ply24 走 G8 弃 E6），纯四拆掉后对手的活三逼迫链残留，两手内成必败。
