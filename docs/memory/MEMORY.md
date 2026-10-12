@@ -19,6 +19,32 @@
 
 ---
 
+## 2026-10-12 · P0 收口：CI 每日备份恢复（缺 secret 连挂数晚 → run `38205514039` 全绿）
+
+- **现象与根因**：`backup.yml` 的定时调度（UTC 04:23）自 2026-10-02 起每晚必红，日志停在
+  `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN environment variable`。
+  根因既不是网络也不是权限范围，而是**仓库里一个 secret 都没有**（`gh secret list` 为空），
+  `deploy.yml` 的 `workflow_dispatch` 同理。2026-10-04 加的「`npm ci` 后第一步点名缺哪个 secret」护栏
+  把「像网络问题的含糊报错」变成明确指认——这次正是靠它一眼定因。
+- **修法**：项目所有者在 Cloudflare 建 custom token（Account · D1 · Read 即可导出，Edit 供部署；
+  `deploy.yml` 另需 Workers Scripts · Edit），`gh secret set CLOUDFLARE_API_TOKEN`；
+  `CLOUDFLARE_ACCOUNT_ID` = `6f8cd3a216c8de232d829099778d7c53`（**非机密账号标识**，取自本机 `wrangler whoami`；
+  `wrangler.jsonc` 里没有 `account_id`，所以 CI 必须显式给）。写入时间 2026-10-12T04:13:23Z / 04:51:52Z。
+- **先验能力、再改 CI**：拿到 token 后先本地跑一次导出（`$env:CLOUDFLARE_API_TOKEN` +
+  `node .work/wrangler-run.cjs d1 export … --remote`，**直接 `npx wrangler` 会被已知的 yargs 坑掉**）
+  ⇒ 产物 32,435,589 B、`INSERT INTO "games"` **936 行**，与文档口径的 936 局逐数吻合 ⇒ 证明这把 token
+  真有 D1 读权限，才去动 secret。**顺序值得复用：先证明凭据能干这件事，再让它进 CI。**
+- **结果**：`gh workflow run backup.yml` ⇒ run **`38205514039`**（2026-10-12T04:51:55Z）**9 步全绿、40 秒**，
+  产物 `d1-export-12`（retention 30 天）。修复前最近两次调度失败：`38133644721`（10-11T10:54:43Z）、
+  `38045819925`（10-10T10:42:11Z）。
+- **教训**：这是典型的「静默到只剩一句含糊报错」故障——**依赖外部凭据的自动化，必须把前置条件检查写成
+  工作流第一步并点名缺失项**，否则同一件事可以连挂数晚而无人知道（本项目这条限制在 `status.md` 里挂了 8 天）。
+- **遗留**：该 token 曾出现在对话记录里，建议在 Cloudflare 侧轮换后用 `gh secret set` 原地替换（不必再经对话）；
+  `actions/checkout@v4` / `setup-node@v4` / `upload-artifact@v4` 的 Node.js 20 弃用提示与
+  `ubuntu-latest` → Ubuntu 26（2026-10-19 起）是非阻断告警，可另起一轮清理。
+
+---
+
 ## 2026-10-09 · 命名改制 + 全量整合档 `v14-plus` 配对轮 436 局过判定带，`CURRENT` 已升本档
 
 - **业主动作三连**（同日）：「将 v15 v16 v17 里的所有策略都合并到 v14plus 中，并且通过大量实验数据证明有提升」／「之后的编号废弃，最新的就是 v14plus」／「v15 v16 v17 可以重命名为 v14.1 v14.2 v14.3」，再补一轮「多跑一整子，做一个压力测试，做一整晚」。

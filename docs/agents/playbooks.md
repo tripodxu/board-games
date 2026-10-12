@@ -126,6 +126,9 @@
    用 `gh secret list` 一秒核对；**空的话 `backup.yml` 每晚必红**（2026-10-02～04 连挂三晚就是这么来的，
    日志只会说 `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN…`）。
    `backup.yml` 现在第一步就会把缺哪个 secret 明确报出来。
+   **2026-10-12 已验证**：两个 secret 已就位（`CLOUDFLARE_ACCOUNT_ID` = 账号标识，
+   `CLOUDFLARE_API_TOKEN` 需 Account · D1 · Read 即可导出、Edit 供 `deploy.yml`），
+   `gh workflow run backup.yml` 9 步全绿（run `38205514039`）。核对手法不变：`gh secret list` + 看 run 结论与产物。
 
 ## 7. 跑对照实验（长跑无人值守）
 
