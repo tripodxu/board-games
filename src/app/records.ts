@@ -18,6 +18,12 @@
  *      只是面板没控件。改任一项都重置游标重读第一页（游标是上一套条件的位置，留着会串页）。
  *   **渠道筛选刻意没做**：服务端要按 `black_channel = ? OR white_channel = ?` 过滤，这种 OR 写法
  *   走不了任何索引（ADR-0011「查询必须走索引」），要做就得先设计列/索引，不在本轮范围。
+ *
+ * **2026-10-12（P1③）补「只看我的」**：归档面板加一个勾选框，命中服务端 `?device=me`。
+ *   这条过滤靠 `X-Device-Id` 请求头认身份（服务端 :121-125：缺头直接 400），而浏览器侧此前
+ *   根本不发这个头 ⇒ ADR-0013 写的「零登录成本获得『只看我的』」一直只是纸面收益。
+ *   客户端侧的生成 / 持久化在 `src/core/device.ts`，注入在 `src/core/api/client.ts`。
+ *   勾选后若仍是「后端不可用」，说明设备头没发出去（冒烟把这条写成断言，见 7.5c）。
  */
 import { listGames, gameUrl, type Query } from '../core/api/client.ts';
 import { getGame, ids as gameIds } from '../core/registry.ts';
@@ -89,11 +95,13 @@ export interface ArchiveFilters {
   tag: string;
   /** 时间窗的「天数」原始值（`7`/`30`/`90`），空串 = 全部时间。 */
   since: string;
+  /** 只看本机设备归档的棋谱（`?device=me`，身份走 `X-Device-Id` 请求头）。 */
+  mine: boolean;
   group: ArchiveGroupMode;
 }
 
 /** 默认口径：战术版本 + 无筛选（与旧行为逐字一致，冒烟里的「54 份 · 按战术版本分组」靠它）。 */
-export const archiveFilters: ArchiveFilters = { game: '', tag: '', since: '', group: 'tactics' };
+export const archiveFilters: ArchiveFilters = { game: '', tag: '', since: '', mine: false, group: 'tactics' };
 
 /** 一页一页往里加的累积列表 + 服务端给的 keyset 游标。 */
 let archiveRows: ArchiveRow[] = [];
@@ -121,6 +129,9 @@ function archiveQuery(): Query {
   if (archiveFilters.tag) q.tag = archiveFilters.tag;
   const since = archiveSinceDay(archiveFilters.since);
   if (since) q.since = since;
+  /* `device=me` 放最后：服务端认的是请求头里的身份，参数只表示「按我过滤」；
+     插入序同时是 URL 拼串序（测试逐字断言），排在结尾不影响既有断言的写法。 */
+  if (archiveFilters.mine) q.device = 'me';
   return q;
 }
 
@@ -133,6 +144,7 @@ function filterSummary(): string {
   }
   if (archiveFilters.tag) bits.push('tag=' + archiveFilters.tag);
   if (archiveFilters.since) bits.push('最近 ' + archiveFilters.since + ' 天');
+  if (archiveFilters.mine) bits.push('只看我的');
   return bits.join(' / ');
 }
 
@@ -147,6 +159,8 @@ function groupLabel(): string {
  *  这里只声明真正用到的成员，且 `extends HTMLElement` 是声明式的，不受那处结构不兼容影响。 */
 interface ControlLike extends HTMLElement { value: string }
 interface SelectLike extends ControlLike { options: { length: number } }
+/** 勾选框：只声明真正用到的 `checked`。 */
+interface CheckLike extends HTMLElement { checked: boolean }
 
 /** 读控件当前值（缺控件 / 非文本控件一律空串）。 */
 function controlValue(id: string): string {
@@ -160,20 +174,34 @@ function setControlValue(id: string, v: string): void {
   if (n) n.value = v;
 }
 
-/** 读四个控件 → 状态补丁（`#archiveTag` 是文本框，其余是下拉；读全量再整体套用，省掉逐控件分支）。 */
+/** 读勾选框（缺控件 = 未勾选）。 */
+function controlChecked(id: string): boolean {
+  const n = byId<CheckLike>(id);
+  return !!(n && n.checked);
+}
+
+/** 把勾选框同步成状态值（缺控件时静默跳过）。 */
+function setControlChecked(id: string, v: boolean): void {
+  const n = byId<CheckLike>(id);
+  if (n) n.checked = !!v;
+}
+
+/** 读五个控件 → 状态补丁（`#archiveTag` 是文本框、`#archiveMine` 是勾选框，其余是下拉；
+ *  读全量再整体套用，省掉逐控件分支）。 */
 export function readArchiveControls(): Partial<ArchiveFilters> {
   const group = controlValue('archiveGroup');
   return {
     game: controlValue('archiveGame'),
     tag: controlValue('archiveTag'),
     since: controlValue('archiveSince'),
+    mine: controlChecked('archiveMine'),
     /* 只认两个合法口径：控件被改坏时退回旧口径，不把 `undefined` 带进分组逻辑 */
     group: group === 'code' ? 'code' : 'tactics',
   };
 }
 
 /**
- * 按引擎注册表填棋种下拉，并把四个控件同步成当前状态（幂等：可重复调用，`bindAll` 会重复调）。
+ * 按引擎注册表填棋种下拉，并把五个控件同步成当前状态（幂等：可重复调用，`bindAll` 会重复调）。
  * 空选项 = 全部棋种；其余选项的值是引擎 id（服务端 `?game=` 认的是 id，不是中文名）。
  */
 export function fillArchiveControls(): void {
@@ -191,6 +219,7 @@ export function fillArchiveControls(): void {
   setControlValue('archiveTag', archiveFilters.tag);
   setControlValue('archiveSince', archiveFilters.since);
   setControlValue('archiveGroup', archiveFilters.group);
+  setControlChecked('archiveMine', archiveFilters.mine);
 }
 
 /** 改筛选 / 换分组口径：游标作废，从头取第一页（`loadGameArchive` 会清空累积行与游标）。 */

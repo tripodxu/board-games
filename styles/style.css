@@ -926,6 +926,11 @@ button.fold svg { transition: transform .18s var(--ease); }
   font-size: 11px; border-radius: 6px; background: var(--bg2);
 }
 .arc-filters input::placeholder { color: var(--ink-mute); }
+/* 「只看我的」勾选框：不吃上面那条输入框尺寸（勾选框被撑到 max-width:168px 会白占一大块） */
+.arc-filters .arc-mine { cursor: pointer; }
+.arc-filters input[type="checkbox"] {
+  width: auto; max-width: none; padding: 0; margin: 0; background: none; accent-color: var(--mo);
+}
 .arc-group + .arc-group { margin-top: 10px; }
 .arc-head {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;

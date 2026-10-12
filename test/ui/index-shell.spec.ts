@@ -41,7 +41,7 @@ const REQUIRED_IDS = [
   'chipWin', 'chipScore', 'chipConf', 'rankCount', 'feed', 'legendFirst', 'legendSecond',
   // 战绩簿与归档
   'records', 'recordStats', 'recordSummary', 'archiveBody', 'archiveNote', 'archiveReload',
-  'archiveFilters', 'archiveGame', 'archiveGroup', 'archiveSince', 'archiveTag',
+  'archiveFilters', 'archiveGame', 'archiveGroup', 'archiveSince', 'archiveTag', 'archiveMine',
   'clearRecords', 'exportGame',
   // 校准 / 实验
   'calBody', 'calCount', 'evalBar', 'evalFill',

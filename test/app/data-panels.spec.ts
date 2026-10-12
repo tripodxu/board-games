@@ -357,11 +357,20 @@ describe('归档筛选与分组口径', () => {
     n.dispatchEvent(new Event('change'));
   }
 
+  /** 勾选框版 `pick`：改 `checked` 再派发 change（`#archiveMine`）。 */
+  function pickCheck(id: string, value: boolean): void {
+    const n = document.getElementById(id);
+    if (!n) throw new Error('缺少 #' + id);
+    (n as unknown as { checked: boolean }).checked = value;
+    n.dispatchEvent(new Event('change'));
+  }
+
   /** 面板状态是模块级的：本组用例改过就还原，免得污染同文件里后面的用例。 */
   afterEach(() => {
     archiveFilters.game = '';
     archiveFilters.tag = '';
     archiveFilters.since = '';
+    archiveFilters.mine = false;
     archiveFilters.group = 'tactics';
   });
 
@@ -502,5 +511,44 @@ describe('归档筛选与分组口径', () => {
     expect(note).toContain('2 份');
     expect(note).toContain('按代码版本分组');
     expect(note).toContain('筛选：五子棋');
+  });
+
+  /* P1③（2026-10-12）：设备身份不再只是冒烟脚本的专利——勾选框 → `?device=me` → 服务端按
+   * `X-Device-Id` 过滤（头本身由 `src/core/api/client.ts` 挂，单测在 test/core/device-id.spec.ts）。 */
+  it('勾「只看我的」：带 device=me 重读并标注，取消后回到不带该参数的查询', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    const calls = stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': { ok: true, nextCursor: null, games: [arcRow('uidm1', '2026-08-22')] },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 1, 2000, '归档首屏');
+    /* 默认不勾：URL 里不该凭空多出 device 参数 */
+    expect(calls.some((c) => c.includes('device='))).toBe(false);
+
+    pickCheck('archiveMine', true);
+    await waitUntil(() => calls.includes('/api/games?limit=50&device=me'), 2000, '只看我的重读');
+    await waitUntil(
+      () => (document.getElementById('archiveNote')?.textContent || '').includes('只看我的'),
+      2000,
+      'note 标注只看我的',
+    );
+
+    /* 与别的筛选叠加：device 永远拼在最后（limit → game → tag → since → device） */
+    pick('archiveGame', 'gomoku');
+    await waitUntil(() => calls.includes('/api/games?limit=50&game=gomoku&device=me'), 2000, '叠加棋种');
+
+    /* 取消勾选：同一份棋种筛选回到不带 device 的写法，note 也不再标「只看我的」 */
+    pickCheck('archiveMine', false);
+    await waitUntil(() => calls.includes('/api/games?limit=50&game=gomoku'), 2000, '取消后重读');
+    await waitUntil(
+      () => !(document.getElementById('archiveNote')?.textContent || '').includes('只看我的'),
+      2000,
+      'note 去掉标注',
+    );
+    expect(calls.filter((c) => c === '/api/games?limit=50&game=gomoku&device=me').length).toBe(1);
   });
 });

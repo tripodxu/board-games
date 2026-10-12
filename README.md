@@ -195,7 +195,7 @@ node scripts/experiment-batch.mjs status --batch <batchId>          # 进度；r
 1. `npm run typecheck && npm test`（或让 CI 先跑 `.github/workflows/test.yml`）。
 2. 需要动 schema 时先 `npm run db:migrate:remote`（迁移是追加式的，别改已应用的 `migrations/*.sql`）。
 3. `npm run deploy`（= `npm run build` + `wrangler deploy`），需要 `CLOUDFLARE_API_TOKEN`（本地用 `wrangler login`）。
-4. 部署后自检：`npm run smoke:live`（30 项 HTTP 断言）+ `npm run smoke:browser`（16 项浏览器断言：页签/棋盘/渠道/落子/AI 走子/曲线/抽屉/归档分页/归档分组与筛选/实验报告分桶/最新棋谱一键回放/服务端战报并入/无异常；`--channel rapfi` 另加 1 项断言「思考真的跑在 Web Worker 里」，共 17 项）。
+4. 部署后自检：`npm run smoke:live`（30 项 HTTP 断言）+ `npm run smoke:browser`（18 项浏览器断言：页签/棋盘/渠道/落子/AI 走子/曲线/抽屉/归档分页/归档分组与筛选/设备身份与「只看我的」/实验报告分桶/最新棋谱一键回放/服务端战报并入/无异常；`--offline` 13 项；`--channel rapfi` 另加 1 项断言「思考真的跑在 Web Worker 里」，共 19 项）。
 5. 发布前后留底：`npm run db:export`；备份可信度用 `npm run verify:backup` 验。
 
 CI 三个工作流：`test.yml`（typecheck → build → test:engines → test:new → check:docs，`REQUIRE_SQLITE=1` 强制真 SQLite）、

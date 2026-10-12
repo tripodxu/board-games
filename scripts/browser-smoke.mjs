@@ -597,6 +597,57 @@ try {
     })()`);
   }
 
+  // 7.5c) 设备身份（2026-10-12，P1③）：浏览器必须自己生成 / 持久化匿名设备 id（localStorage
+  //       `jev_qiguan_device_id`），并把它挂进每个 `/api/*` 请求的 `X-Device-Id` 头，归档才认得出
+  //       「我的棋谱」。这里守两件事：① 存储里有一个合法 id；② 勾「只看我的」能走通服务端过滤
+  //       —— 头非法时服务端返 400，面板会显示「后端不可用」，所以 note 里出现筛选口径即证明请求被认。
+  if (!OFFLINE) {
+    const deviceId = await evaluate(`(() => {
+      try { return { id: localStorage.getItem('jev_qiguan_device_id') ?? '' }; }
+      catch (e) { return { id: '', err: String(e) }; }
+    })()`);
+    const idOk = /^[A-Za-z0-9_-]{8,64}$/.test(String(deviceId?.id ?? ''));
+    check(
+      '设备身份：localStorage 里有一个合法的匿名设备 id（X-Device-Id 的来源）',
+      idOk,
+      idOk ? `jev_qiguan_device_id = ${String(deviceId.id)}` : `读到「${String(deviceId?.id ?? '')}」不符合值域`,
+    );
+
+    const mine = await evaluate(`(() => {
+      const box = document.querySelector('#archiveMine');
+      if (!box) return { err: 'no-archiveMine' };
+      box.checked = true; box.dispatchEvent(new Event('change'));
+      return { ok: true };
+    })()`);
+    const byMine = mine?.ok
+      ? await waitFor(
+        `(() => {
+          const note = document.querySelector('#archiveNote')?.textContent ?? '';
+          if (note.includes('后端不可用')) return { bad: note.trim() };
+          if (!note.includes('只看我的')) return '';
+          return { note: note.trim(), rows: document.querySelectorAll('#archiveBody .arc-row').length };
+        })()`,
+        { label: '只看我的', timeout: 15000, every: 250 },
+      )
+      : null;
+    check(
+      '归档筛选：勾「只看我的」走服务端 ?device=me（设备头被后端认下，不是 400）',
+      Boolean(mine?.ok && byMine && !byMine.bad),
+      mine?.err
+        ? String(mine.err)
+        : (byMine?.bad
+          ? `面板报错：${byMine.bad}`
+          : (byMine ? `note「${byMine.note}」，本机归档 ${byMine.rows} 份` : '等待 15000ms 后 note 未标「只看我的」')),
+    );
+
+    /* 复位：取消勾选，免得把「只看我的」留给后续检查 */
+    await evaluate(`(() => {
+      const box = document.querySelector('#archiveMine');
+      if (box && box.checked) { box.checked = false; box.dispatchEvent(new Event('change')); }
+      return 'reset';
+    })()`);
+  }
+
   // 7.6) 实验报告：按「渠道 · 战术版本」分桶的对比表（本机归档 + 服务端合并后渲染）
   const expReport = await waitFor(
     `(() => { const rows = document.querySelectorAll('#expHistory .exp-agg-row');

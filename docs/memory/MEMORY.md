@@ -19,6 +19,23 @@
 
 ---
 
+## 2026-10-12 · 浏览器自带匿名设备身份：值域单点定义，客户端那一半终于接上
+
+- **问题**：ADR-0013 当时只落地了服务端（校验 / 写库 / `?device=me` 过滤），客户端 `call()` 只设
+  `Content-Type` ⇒ 浏览器下的棋谱 `device_id` 恒 NULL，「只看我的」只有冒烟脚本走得通（`status.md` 仍存在 #20）。
+- **做法**：值域提到 `src/shared/device-id.ts`（`DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/` + `normalizeDeviceId()`），
+  `src/worker/lib/validate.ts` 重导出同一份常量——**两处各写一份的失败模式是静默 400**，面板把它显示成
+  「后端不可用」，排障会一路往网络方向查；`src/core/device.ts` 负责生成 / 读盘（localStorage
+  `jev_qiguan_device_id`，与设置键 `jev_qiguan_settings_v2` **刻意分开**：设置是浅合并 + 损坏回退默认值，
+  混在一起会让「清理设置」顺带换身份）；`boot()` 紧随 `loadSettings` 注入（**必须早于任何 `/api/*` 请求**）；
+  `headersFor()` 给每个请求（含 `callText` 导出）挂头，非法 id 丢弃 ⇒ 退化成不发头；
+  上游直连**不加**这个头（自定义头会触发跨域预检）。
+- **口径**：历史 936 局仍为 NULL，「只看我的」只覆盖此后的新局；真浏览器冒烟在全新 profile 上是
+  `0 份 · 筛选：只看我的`，而同一刻不带该参数是 55 份 ⇒ 证明服务端**没有忽略**该参数（不是「参数被吞」的假绿）。
+- **验证**：`test/core/device-id.spec.ts` 13 例（值域 / 读盘 / 请求头注入）、`test/app/data-panels.spec.ts` +1、
+  `test/ui/index-shell.spec.ts` 补 `archiveMine`；`npm run typecheck` 干净、`npm test` **58 文件 / 810 例**
+  （引擎 170 例）全绿、`smoke:browser` **18/18**（`--channel rapfi` 19/19、`--offline` 13/13）。
+
 ## 2026-10-12 · 远端批量启动被链路抖动掐死：batch 的上传路径漏了 retrySync
 
 - **现象**：`scripts/experiment-batch.mjs submit` 连挂两次 —— dry-run 时 `✗ 上传 round-2 plan 失败`（exit 2）、

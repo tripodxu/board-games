@@ -10,6 +10,7 @@
  */
 import type { Context } from 'hono';
 import { measureBytes } from '../../shared/record-map.ts';
+import { DEVICE_ID_RE } from '../../shared/device-id.ts';
 import { MAX_PAYLOAD_BYTES } from '../db/index.ts';
 import { errorBody, statusFor, type ApiErrorCode } from './http.ts';
 
@@ -29,8 +30,10 @@ export function fail(c: Context, bad: Invalid) {
 
 /* ---------- 匿名设备标识（ADR-0013） ---------- */
 
-/** 长度 8–64 的 URL 安全串：兼容 `crypto.randomUUID()` 与旧的短随机 id。 */
-export const DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+/* 值域定义搬到 `src/shared/device-id.ts`：浏览器侧生成 / 读盘（`src/core/device.ts`）
+   与这里必须是同一套规则，否则会出现「客户端发得出、服务端判非法」的静默 400。
+   这里重新导出，保持既有引用点（文档与工具脚本按 `validate.ts` 的 `DEVICE_ID_RE` 找它）。 */
+export { DEVICE_ID_RE };
 
 export function parseDeviceId(raw: string | null | undefined): Parsed<string | null> {
   const value = raw?.trim();

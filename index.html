@@ -287,7 +287,8 @@
       </div>
       <div class="panel-body" id="body-archive">
         <!-- 筛选行：棋种下拉的空选项由装配层按引擎注册表填（`src/app/records.ts` 的 `fillArchiveControls`），
-             不在这里手抄一份棋种清单——注册表加了棋种这里自动跟上。 -->
+             不在这里手抄一份棋种清单——注册表加了棋种这里自动跟上。
+             「只看我的」走服务端 `?device=me`，身份是 `X-Device-Id` 请求头（客户端在 boot 时生成 / 读盘）。 -->
         <div class="arc-filters" id="archiveFilters">
           <label>棋种
             <select id="archiveGame" title="只看这个棋种（服务端 ?game=，值为引擎 id）">
@@ -311,6 +312,9 @@
           <label>标签
             <input id="archiveTag" type="text" placeholder="实验 tag（精确）"
               title="按实验 tag 精确匹配（服务端 ?tag=）；填完回车或点别处生效" />
+          </label>
+          <label class="arc-mine" title="只看本机设备归档的棋谱（服务端 ?device=me，身份走 X-Device-Id 请求头）">
+            <input type="checkbox" id="archiveMine" /> 只看我的
           </label>
         </div>
         <div id="archiveBody" class="archive"></div>

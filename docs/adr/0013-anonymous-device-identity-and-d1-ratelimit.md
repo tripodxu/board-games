@@ -49,3 +49,24 @@
   本轮选择可查询的 D1 计数。若日后需要严格全局配额，再评估该 binding 或 Durable Object。
 - **完全不做归属（公共池）**：统计口径最简单，但直接放弃「实验历史跨设备统一」
   与「我的对局」两个明确的用户诉求。
+
+## 2026-10-12 落地补充：客户端那一半
+
+本 ADR 定的是服务端契约（校验、写库、`?device=me` 过滤）；客户端那一半当时**没有接**——
+`src/core/api/client.ts` 的 `call()` 只设 `Content-Type`，于是浏览器归档的 `device_id` 一直是 NULL
+（`docs/status.md`「仍存在」第 20 条）。2026-10-12 补齐，做法与理由：
+
+- **值域单点定义**：`src/shared/device-id.ts` 的 `DEVICE_ID_HEADER` / `DEVICE_ID_RE`
+  （`/^[A-Za-z0-9_-]{8,64}$/`）/ `normalizeDeviceId()`；Worker 的 `parseDeviceId()`
+  （`src/worker/lib/validate.ts`）改为重导出同一份常量。两处各写一份的失败模式不是报错，
+  而是**静默 400**——面板把它显示成「后端不可用」，排障会一路查到网络上。
+  远端批量设施里原有的副本（`scripts/experiment-worker.mjs`）保留：Node 侧不能 import `.ts`。
+- **生成与持久化**（`src/core/device.ts`）：键 `jev_qiguan_device_id` 与设置键
+  `jev_qiguan_settings_v2` **刻意分开**（设置是浅合并 + 损坏回退默认值，混在一起会让「清理设置」顺带换身份）；
+  `crypto.randomUUID()` 优先、失败兜底时间戳 + 随机串；读盘 / 写盘失败（隐私模式、配额）一律吞掉，
+  返回本次可用的 id——**存储不可用也不能崩，更不能把非法串当身份用**。
+- **注入点**：`src/app/boot.ts` 的 `boot()`，紧随 `loadSettings` 之后——**必须早于任何 `/api/*` 请求**，
+  否则探活 / 同步队列 / 数据面板 / 归档会用旧身份；`headersFor()` 里非法 id 直接丢弃，宁可没身份也不发必然 400 的串。
+- **只影响自家 Worker**：上游直连（`src/core/jev/client.ts`）**不加**这个头——多一个自定义头会触发跨域预检。
+- **口径**：历史归档（936 局）仍是 NULL，「只看我的」只覆盖此后的新局；真浏览器冒烟在全新 profile 上得
+  `0 份 · 筛选：只看我的`，而同一刻不带该参数是 55 份——这恰好证明服务端**没有忽略**这个参数。

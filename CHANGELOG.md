@@ -8,6 +8,21 @@
 
 ### 新增
 
+- **浏览器自带匿名设备身份 + 归档「只看我的」（2026-10-12，P1 第三项，闭环 `status.md` 已知限制 #20）**：
+  ADR-0013 当时只落地了服务端（校验 / 写库 / `?device=me` 过滤），客户端 `call()` 只设 `Content-Type`
+  ⇒ 浏览器下的棋谱 `device_id` 恒 NULL，「只看我的」只有冒烟脚本走得通。值域单点定义在
+  `src/shared/device-id.ts`（`DEVICE_ID_HEADER` / `DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/` /
+  `normalizeDeviceId()`），Worker 校验（`src/worker/lib/validate.ts` 重导出）与浏览器生成**共用同一份**——
+  两处各写一份的失败模式不是报错而是**静默 400**（面板显示「后端不可用」，看着像网络故障）。
+  `src/core/device.ts` 负责生成 / 读盘（localStorage `jev_qiguan_device_id`，`crypto.randomUUID()` 优先、
+  读写抛错一律吞掉；键与设置键刻意分开，免得「清理设置」顺带换身份），`boot()` 早于任何 `/api/*` 注入；
+  `src/core/api/client.ts` 的 `headersFor()` 给每个请求（含 `callText` 的导出）挂 `X-Device-Id`，
+  非法 id 直接丢弃；上游直连不加这个头（自定义头会触发跨域预检）。归档面板加 `#archiveMine` → `?device=me`。
+  **口径**：历史 936 局仍为 NULL，「只看我的」只覆盖此后新下的局；真浏览器实测全新 profile 上
+  `0 份 · 筛选：只看我的`，而同刻不带参数是 55 份 ⇒ 过滤真的生效。
+  **验证**：`test/core/device-id.spec.ts` 13 例、`test/app/data-panels.spec.ts` +1 例、`index-shell` 补 id；
+  `npm run typecheck` 干净、`npm test` **58 文件 / 810 例全绿**（引擎 170 例）、`smoke:browser` **18/18**
+  （`--channel rapfi` 19/19、`--offline` 13/13，新增两项在线断言）。
 - **归档面板：可切「代码版本」分组 + 按棋种/标签/时间窗筛选（2026-10-12，P1 第二项，闭环 `status.md` 下一步 ①）**：
   `index.html` 新增 `#archiveFilters` 四控件；`src/app/records.ts` 里 `archiveQuery()` 把条件**全部翻成服务端
   查询参数**（`?game=`/`?tag=`/`?since=`，客户端不下载再过滤），改任一条件即作废 keyset 游标重读第一页。

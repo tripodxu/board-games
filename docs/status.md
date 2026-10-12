@@ -15,7 +15,7 @@
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
 | 渠道 | ✅ 九个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`jevrouter`（自建网关，多源路由 + 出口轮换，**强制 BYOK**，[ADR-0024](adr/0024-jevrouter-gateway-channel.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
-| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加，**2026-10-12 起可按 `code_version` 或战术版本分组并筛选棋种/标签/时间窗**——筛选全部走服务端查询参数，见「已验证」首条）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
+| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加，**2026-10-12 起可按 `code_version` 或战术版本分组并筛选棋种/标签/时间窗，并可勾「只看我的」（服务端 `?device=me`，身份是客户端自持的 `X-Device-Id`）**——筛选全部走服务端查询参数，见「已验证」首条）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
 | 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
@@ -35,7 +35,7 @@
 > **2026-10-03 P0b 数据卫生**：那 26 局已按 tag 回填 `device_id='ssh-batch'`（先补 `devices` 行，因为
 > `games.device_id REFERENCES devices(device_id)`；**只改设备归属，`code_version` 仍是 `dev+nogit`**，不猜 sha）
 > ⇒ 现在 `select count(*) from games where device_id='ssh-batch'` = **26**。注意 NULL `device_id` **不等于**
-> 远端局（浏览器轮也不发 `X-Device-Id`，D1 里仍有 286 局为 NULL）：判设施产物要按 tag 或按 `ssh-batch`。
+> 远端局（浏览器轮此前也不发 `X-Device-Id`，D1 里仍有 286 局为 NULL；**2026-10-12 起浏览器轮会自带设备头**，见「仍存在」第 20 条已闭环——只有**此后新下**的局才有 `device_id`）：判设施产物要按 tag 或按 `ssh-batch`。
 > 按 `experiment_tag` 过滤的分析不受影响；但「全局计数恰好 +N」这类断言会假红（`scripts/smoke-live.mjs` 已放宽为「至少 +1」）。
 
 | 项 | 值 |
@@ -303,6 +303,18 @@
   `test/ui/index-shell.spec.ts` 的 `REQUIRED_IDS` 补五个控件 id；两处负向对照（关掉 `?tag=` 拼接 ⇒ 用例红；
   去掉代次守卫 ⇒ 并发用例红）；`smoke:browser` 新增 7.5b 两项在线断言（实测切「代码版本」得 4 组、首组
   「代码版本 1.0.0+0e751961 局」，按棋种筛选后 50 行全是五子棋），**16/16 通过**。
+- **浏览器自带匿名设备身份 + 归档「只看我的」（2026-10-12，业主「继续优化」⇒ P1 第三项）**：闭环「仍存在」第 20 条
+  （此前 `src/core/api/client.ts` 的 `call()` 只设 `Content-Type` ⇒ UI 归档的 `device_id` 恒 NULL）。
+  值域定义提到 [src/shared/device-id.ts](../src/shared/device-id.ts)（Worker 校验与浏览器生成共用一份，
+  **漂了不是报错而是静默 400**，面板会显示成「后端不可用」）；[src/core/device.ts](../src/core/device.ts)
+  负责生成与读盘（localStorage `jev_qiguan_device_id`，`crypto.randomUUID()` 优先、读写抛错一律吞掉），
+  `boot()` 在任何 `/api/*` 请求之前注入；`headersFor()` 给每个请求（含 `callText` 的导出）挂 `X-Device-Id`，
+  非法 id 丢弃 ⇒ 退化成「不发这个头」。面板侧 `#archiveMine` → `?device=me`（客户端不下载再过滤）。
+  **验证**：`npm run typecheck` 干净；`npm test` **58 文件 / 810 例全绿**（新增 `test/core/device-id.spec.ts` 13 例，
+  `test/app/data-panels.spec.ts` +1 例，`test/ui/index-shell.spec.ts` 补 `archiveMine`）；
+  `smoke:browser` **18/18**、`--channel rapfi` **19/19**、`--offline` **13/13**。
+  **实测口径**：全新 profile 的浏览器勾「只看我的」得 `0 份 · 筛选：只看我的`，而同一刻不带该参数是 55 份
+  ⇒ 过滤真的生效（服务端没有忽略这个参数），也说明历史 936 局仍是 NULL（那时还没有这个头）。
 - **Rapfi 思考搬进 Web Worker（2026-10-12，业主「继续优化」⇒ P1 第一项）**：闭环「仍存在」第 5 条剩下的主体
   （10s 档每手冻结约 10 秒）。机制与理由见 [ADR-0006](adr/0006-rapfi-wasm-opponent.md) 的 2026-10-12 增补与
   `src/app/rapfi-worker.ts` 文件头：① Worker 脚本是**手写 classic worker**（`public/rapfi/rapfi-worker.js`，
@@ -1053,7 +1065,7 @@
 17. **`node:sqlite` 缺失时**，重放迁移的归因用例会被跳过；CI 用 `REQUIRE_SQLITE=1` 强制硬失败。
 18. **`npm run golden` 预期失败**：金样生成器 `test/parity/generate.mjs` 依赖旧实现（旧引擎自对弈），旧实现在 P8 删除后它只打印中文说明并 `exit 1`。这是**设计如此**——金样已冻结为只读文物（封条 `test/parity/frozen.json`），本来就不该再生成。
 19. **`src/ui/README.md` 的模块职责表未收录 P7c 三个面板**（`panels/replayer.ts` / `leaderboard.ts` / `openings.ts` 只在 §4.1 单独说明；`openings.ts` 的 `GAME_IDS` 属公共注册项）。
-20. **浏览器端不发送 `X-Device-Id`**：`src/core/api/client.ts` 的 `call()` 只设 `Content-Type`，所以 UI 归档的棋谱 `device_id` 为 NULL，「只看我的」（`?device=me`）只有冒烟脚本这条路走得通。写路由对 `deviceId` 缺失是容忍的（外键只在有值时成立），落库不会失败——这是**待决**而非缺陷：要么让客户端带设备头，要么承认归档是公共的并撤掉 `device=me`。
+20. ~~**浏览器端不发送 `X-Device-Id`**：`src/core/api/client.ts` 的 `call()` 只设 `Content-Type`，所以 UI 归档的棋谱 `device_id` 为 NULL，「只看我的」（`?device=me`）只有冒烟脚本这条路走得通。~~ **已闭环（2026-10-12，P1③）**：值域定义提到 [src/shared/device-id.ts](../src/shared/device-id.ts)（`DEVICE_ID_HEADER = 'X-Device-Id'`、`DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/`、`normalizeDeviceId()`），Worker 的 `parseDeviceId()` 与浏览器生成**共用同一份**（`src/worker/lib/validate.ts` 重导出 `DEVICE_ID_RE`，值域漂了不是报错而是静默 400）；[src/core/device.ts](../src/core/device.ts) 负责生成与读盘（localStorage `jev_qiguan_device_id`，`crypto.randomUUID()` 优先、读写抛错一律吞掉并返回本次可用 id），`boot()` 在**任何 `/api/*` 请求之前** `setDeviceId(loadDeviceId(storage))`；`src/core/api/client.ts` 的 `headersFor()` 给每个请求（含 `callText` 的导出与下载）挂 `X-Device-Id`，非法 id 直接丢弃 ⇒ 退化成「不发这个头」。归档面板加 `#archiveMine` 勾选框 → `?device=me`。**口径**：历史 936 局落库时没有这个头，`device_id` 仍是 NULL，所以「只看我的」只覆盖**本机新下**的局；全新浏览器 profile 上勾选得 0 份，而同一刻不带参数是 55 份——**这正是过滤真的生效**（服务端没忽略这个参数）。**验证**：`test/core/device-id.spec.ts` 13 例（值域 / 读盘 / 请求头注入三段）、`test/app/data-panels.spec.ts` +1 例、`test/ui/index-shell.spec.ts` 补 `archiveMine`、`smoke:browser` 新增两项在线断言（存储里有合法 id；勾选后 note 标「只看我的」且不是「后端不可用」）。
 21. **`jev` 档限流仍会挡住极端场景**：60 次/分对「机机对局 + 对比实验」够用（2026-10-02 两臂串行实测窗口峰值 **19 次/分**，零 429；此前 proxy-vs-proxy 那轮是 34 次/分），但同一出口 IP 下**同时**跑多个实验、或一轮里双方都用最慢思考档，仍可能触顶；触顶时的表现是自动退避重试（最多 3 次，约 41 秒窗口），再失败就交给用户。
 22. **`games.tokens_out` 是一列死数据**：一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，导出的 `meta` 里**没有**输出 token；而 `src/shared/record-map.ts:376` 读的是 `meta.usage?.output_tokens`（局级 meta 从来没这个字段）⇒ 该列恒为 NULL。实测真实验 4 局的 `tokens_in` 约 645K 全都落库，`tokens_out` 全为 0。影响仅限「输出 token 的分析口径」（计费按官方口径输出免费，成本列不受影响）；要修就是给 `AiGameMeta` 加 `tokensOut` 并在 `record-map` 里回落读取——属可选增强，未做。
 23. **`v10-live3` 的推演边界**：只算到 4 手（对手 >4 手的杀仍要靠 Rapfi 或对方失误）；`live3Deny` 报的是「能拆掉对手全部活三制造点」的点，**不是全局最优**（并列时取评估顺序里最先出现的，且最多只评 24 个候选点，候选顺序 = 对手 L3 点在前、其余按模型候选表）；`live3Makers` / `live3Deny` 在禁手档里会跳过黑方的禁手点（黑走不得，可能因此少报一个 L3）。推出的点若不在模型概率榜内会被直接执行并在 `meta.warning` 标注「战术保险接管」（与其余保险层同规则）。对照实验暴露的两个边界：**和棋多**（12 局里 4 局 225 手满盘和棋、全是 v10 执白 ⇒ 守得住但滚不起胜势）、**攻击层接管偏多**（`live3Attack` 12 局 120 手，闸门只检查「对手没有 2 手剑」，未比较 L3 点与模型首选的价值差）。
@@ -1094,7 +1106,7 @@
 | `npm run verify:backup` | 备份可重建（`--structural` 是定时任务用的结构模式） | 拿到 D1 导出后 / 排查数据漂移 |
 | `npm run db:export` | 从远程导出一份 SQL 快照到 `backups/` | 切流前、发布前后留底 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 30 项 | 部署后（**会写一行再删掉，注意线上数据**） |
-| `npm run smoke:browser` | 真浏览器（CDP）冒烟 16 项（含归档分页的游标追加、归档分组口径与筛选、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道并多断言一项「走子经 Web Worker 会话（未静默回退主线程）」（共 17 项） | 部署后、改前端入口后 |
+| `npm run smoke:browser` | 真浏览器（CDP）冒烟 18 项（含归档分页的游标追加、归档分组口径与筛选、**设备身份（`X-Device-Id` 有合法值）与「只看我的」**、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道并多断言一项「走子经 Web Worker 会话（未静默回退主线程）」（共 19 项） | 部署后、改前端入口后 |
 | `node scripts/experiment-run.mjs --games N` | 用干净 profile 的真浏览器跑一轮 A/B 对比实验并留 JSON 证据：填渠道与 key（**只从 `JEV_API_KEY` 环境变量读**）→ 点「开始实验」→ 轮询心跳（局数、上游调用次数与 HTTP 状态序列）→ 回查 `GET /api/games?tag=` 确认每局都进了 D1；页面停在「等人工重试」时代点 `#retryBtn`（计数）；默认把 `/rapfi/*` 改由本地 `public/rapfi/` 供给资产（`--no-rapfi-local` 可关），规程与四条坑见 [agents/playbooks.md](agents/playbooks.md) §7 | 改实验面板 / 渠道 / 重试逻辑后；**会真花上游配额**，日常不跑 |
 | `npm run check:docs` | MEMORY 置顶、所有 md 相对链接可解析、status 日期在 30 天内 | 改任何 md 后（CI 里也跑） |
 | `npm run deploy` | `vite build && wrangler deploy` | 发布（`deploy.yml` 同样只手动触发） |
@@ -1104,7 +1116,7 @@
 
 按计划 §9（DoD）与 P8 的收尾清单，尚未完成的项：
 
-1. **归档面板**：「加载更多」分页（keyset 游标，首屏 50 份）与按 `code_version` 分组 + 按棋种/标签/时间窗筛选**已于 2026-10-12 全部补齐**（见「已验证」首条）。**渠道筛选刻意不做**：服务端要 `black_channel = ? OR white_channel = ?`，走不了索引（ADR-0011）。
+1. **归档面板**：「加载更多」分页（keyset 游标，首屏 50 份）与按 `code_version` 分组 + 按棋种/标签/时间窗筛选**已于 2026-10-12 全部补齐**（见「已验证」首条）；「只看我的」（`#archiveMine` → `?device=me`）同期打通，设备身份由浏览器自持（见「仍存在」第 20 条已闭环）。**渠道筛选刻意不做**：服务端要 `black_channel = ? OR white_channel = ?`，走不了索引（ADR-0011）。
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
 3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0018；`npm run check:docs` 绿（2026-10-05 计数：65 个 md / 454 个链接）。
 4. **下一版入口由两条方向约束决定**（2026-10-02，[AGENTS.md](../AGENTS.md) §2 规则 10–11）：v10/v11 的败局都出在「算不出强制胜」的局面，所以优先做**无强制胜时的防守与长线取势**——要求是简单规则、快而不依赖长思考；**不**把 VCT 挖得更深。同一批待决项里，`live3After` 的语义纠偏（判「本手新造」而非「盘面上存在」）属于允许的「减法/纠偏」，**已于 2026-10-03 作为 v14 上线**（`b6c6921`）。**仍未闭环**：A 型速败（≤35 ½手被速杀）的「早盘为什么织不起活三网」属进攻侧开局形状问题（`docs/plans/2026-10-03-tactics-v14-fresh-live3.md` §8），以及 B 型长局（≥50 ½手、压力领先却换不了杀）——后者的两负实测都是「全程我方有杀 0」。**2026-10-03 更新**：v14 已按 m08704 抬档复核——`rapfi@1000ms` 12 局 9-1-2、`rapfi@2000ms` 20 局 **9-3-8**（不败率 60.0%）；**A 型的机制线在规则 10 之下判定收口**（静默普查 §4.3：早盘 72–95% 回合双方都没有 `vcf7`/`vct9` 胜，制造点 1.38 vs 0.42–0.45 是唯一指征，要抬它必须做 2-ply 以上规划 ⇒ 明令不做），剩下的杠杆是**配对样本**（同开局双跑）、模型侧提示、继续抬档看鲁棒性。**2026-10-03 收口（项目所有者）**：继续抬档已跑完（3 s 15-1-4、5 s 12-1-7，四档比分非单调）⇒ **机制线暂停、不再开新机制**（v14 是最后一版），只留维护、数据卫生与配对样本设计；恢复条件是「先有能分辨 5 pt 以内差异的配对样本口径」（详见 [v14 计划](plans/2026-10-03-tactics-v14-fresh-live3.md) §8 末尾的收口引块）。

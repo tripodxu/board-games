@@ -20,7 +20,8 @@ import { getGame } from '../core/registry.ts';
 import { createSession, randomGameUid } from '../core/session.ts';
 import { loadRecords } from '../core/record/book.ts';
 import { createSyncQueue, postViaSaveGame } from '../core/record/sync.ts';
-import { saveGame } from '../core/api/client.ts';
+import { saveGame, setDeviceId } from '../core/api/client.ts';
+import { loadDeviceId } from '../core/device.ts';
 import { createBoardRenderer } from '../ui/board-render.ts';
 import type { BoardRenderer } from '../ui/board-render.ts';
 import { createFoldStore, FOLD_DEFAULT_OPEN, initFolds } from '../ui/panels/collapse.ts';
@@ -103,6 +104,12 @@ export function pickStorage(): StorageLike {
 export function boot(opts: BootOptions = {}): AppCtx | null {
   const storage = opts.storage ?? pickStorage();
   const settings = loadSettings(storage);
+
+  /* 匿名设备 id（ADR-0013）：**必须早于任何 `/api/*` 请求**——探活、开局同步队列、三块数据
+     面板、归档都走同一份模块级状态，晚灌会让开局那几个请求不带设备头（历史归档
+     `device_id` 全为 NULL 就是这么来的）。生成规则与 Worker 侧校验值域同一份定义
+     （`src/shared/device-id.ts`），所以这里不需要再验一遍。 */
+  setDeviceId(loadDeviceId(storage));
 
   const startId = opts.gameId ?? START_GAME;
   const engine = getGame(startId) ?? getGame('gomoku');

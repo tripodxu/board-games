@@ -261,11 +261,12 @@ export function bindAll(ctx: AppCtx): void {
     refreshDataPanels(ctx);
   });
 
-  /* 归档筛选与分组口径（P1②）：棋种下拉按引擎注册表填，四个控件任一改动都重置游标、
-     重读第一页（`?game=` / `?tag=` / `?since=` 是服务端过滤，见 src/app/records.ts）。
-     `#archiveTag` 是文本框，`change` 事件在回车 / 失焦时触发——正是「填完再查」的语义。 */
+  /* 归档筛选与分组口径（P1②/P1③）：棋种下拉按引擎注册表填，五个控件任一改动都重置游标、
+     重读第一页（`?game=` / `?tag=` / `?since=` / `?device=me` 都是服务端过滤，见 src/app/records.ts）。
+     `#archiveTag` 是文本框，`change` 事件在回车 / 失焦时触发——正是「填完再查」的语义；
+     `#archiveMine` 是勾选框，`change` 即勾选状态变化。 */
   fillArchiveControls();
-  for (const id of ['archiveGame', 'archiveGroup', 'archiveSince', 'archiveTag']) {
+  for (const id of ['archiveGame', 'archiveGroup', 'archiveSince', 'archiveTag', 'archiveMine']) {
     onOnce(byId(id), 'change', () => {
       applyArchiveFilters(ctx, readArchiveControls());
     });

@@ -11,8 +11,40 @@
  *   - 新增 `/api/games/u/:gameUid`、`/api/openings`、`/api/leaderboard`、`/api/export/games`。
  */
 import type { Experience } from '../tactics.ts';
+import { DEVICE_ID_HEADER, normalizeDeviceId } from '../../shared/device-id.ts';
 
 const TIMEOUT_MS = 8000;
+
+/* ---------- 匿名设备标识（ADR-0013 的客户端半边） ----------
+ * 模块级一份：装配层开局 `setDeviceId(loadDeviceId(storage))` 灌一次（src/app/boot.ts），
+ * 之后所有 `/api/*` 请求自动带上 `X-Device-Id`。
+ * 为什么不是每个调用点传参：写下棋谱、实验台账、统计、归档过滤**共用同一个身份**，
+ * 哪一处漏传就是一处 NULL 归属（旧行为正是这样：浏览器完全不发这个头，
+ * `device_id` 全为 NULL，「只看我的」只有冒烟脚本走得通）。
+ *
+ * 只影响**我们自己的** Worker（本文件的 fetch）：上游渠道的直连请求走
+ * `src/core/jev/client.ts`，那边绝不能带这个头——多一个自定义头会触发跨域预检。 */
+let deviceId = '';
+
+/** 设置设备 id：不合法（空、太短、带空格）直接丢弃，退化成「不发这个头」。
+ *  宁可没有身份，也不要发一个服务端必然 400 的串（那会把面板打成「后端不可用」）。 */
+export function setDeviceId(id: string | null | undefined): void {
+  deviceId = normalizeDeviceId(id) ?? '';
+}
+
+/** 当前设备 id（空串 = 无身份；测试与调试用）。 */
+export function getDeviceId(): string {
+  return deviceId;
+}
+
+/** 请求头：有 body 才加 `Content-Type`，有设备 id 才加 `X-Device-Id`；
+ *  两者都没有时返回 undefined —— 保持旧的无头 GET 形状（测试与缓存行为都按它写的）。 */
+function headersFor(opts?: CallOpts): Record<string, string> | undefined {
+  const h: Record<string, string> = {};
+  if (opts && opts.body !== undefined) h['Content-Type'] = 'application/json';
+  if (deviceId) h[DEVICE_ID_HEADER] = deviceId;
+  return Object.keys(h).length ? h : undefined;
+}
 
 /** 查询参数（只序列化有值的键，顺序稳定：同参数 → 同 URL）。 */
 export type Query = Record<string, string | number | boolean | null | undefined>;
@@ -34,9 +66,10 @@ export async function call<T = unknown>(path: string, opts?: CallOpts): Promise<
       const init: RequestInit = { signal: ctrl.signal };
       if (opts && opts.method) init.method = opts.method;
       if (opts && opts.body !== undefined) {
-        init.headers = { 'Content-Type': 'application/json' };
         init.body = JSON.stringify(opts.body);
       }
+      const headers = headersFor(opts);
+      if (headers) init.headers = headers;
       const r = await fetch(path + qs(opts && opts.query), init);
       if (!r.ok) return null;
       return await r.json() as T;
@@ -183,7 +216,8 @@ export async function callText(path: string): Promise<string | null> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      const r = await fetch(path, { signal: ctrl.signal });
+      const headers = headersFor();
+      const r = await fetch(path, headers ? { signal: ctrl.signal, headers } : { signal: ctrl.signal });
       if (!r.ok) return null;
       return await r.text();
     } finally {
