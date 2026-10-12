@@ -4,9 +4,11 @@
 > 旧的 `js/*.js`（`board.js`/`charts.js`/`app.js` 的 DOM 段）已随 P8 退役，只存在于 git 历史，
 > 上表最后一列「旧实现来源」是**史料对照**，不是可改的活代码。
 > 另外三点现状说明（**不改变下面的表结构**）：
-> 1. 迁到 P7 之后新增了三个已存在的面板文件——`panels/replayer.ts`（棋谱回放）、
->    `panels/leaderboard.ts`（排行榜）、`panels/openings.ts`（开具体验）——本表的模块职责清单
->    尚未收录它们，`openings.ts` 的 `GAME_IDS` 属公共注册项（归编排者）。
+> 1. 迁到 P7 之后新增了三个面板文件——`panels/replayer.ts`（棋谱回放）、
+>    `panels/leaderboard.ts`（排行榜）、`panels/openings.ts`（开具体验）——**已收录进 §1 表**；
+>    它们的 DOM 契约与老面板**不同**（只吃 `props.root`、不查 `index.html` 既有 id、渲染时覆写
+>    `root.className`），单独写在 §4.1，不要按老面板的写法改它们。`openings.ts` 的 `GAME_IDS`
+>    属公共注册项（归编排者）。
 > 2. 样式表现在只有一份：`styles/style.css`，由 `index.html:11` 的
 >    `<link rel="stylesheet" href="/styles/style.css">` 引入，构建时经 Vite 打包进 `dist/client/assets/`；
 >    旧的 `css/style.css` 已随 P8 删除，本目录不拥有它。
@@ -33,6 +35,9 @@ DOM / SVG / canvas，并把用户操作通过 handlers 回调出去**。这里�
 | `panels/cockpit.ts` | 517 | 驾驶舱：回合徽标、duel 双方名、引擎灯、指标条、延迟火花、趋势面板、最新一手、评估条、花费 chip、走子流、账本 | `js/app.js` 驾驶舱段 |
 | `panels/collapse.ts` | 137 | 侧栏折叠：`.panel.collapsible` 的 `.folded` 切换 + 展开时按需重绘 hook + 注入式持久化 | `js/app.js:204-313` |
 | `panels/tabs.ts` | 146 | 侧栏页签：`play/exp/data` 三页切换、方向键循环、注入式持久化 | `js/app.js:204-313` |
+| `panels/replayer.ts` | 336 | 棋谱回放器：给调用方注入的 `renderBoard` 一个重建式棋盘宿主、逐手 `ply` 步进（键盘 ←/→/空格/Home/End）、双方耗时与记法表 | P7c 新增（无旧实现） |
+| `panels/leaderboard.ts` | 154 | 排行榜（presentational）：`rows` 三态（加载中… / 暂无数据 / 行列表）、Elo 与胜率列、`onSelect` 回调 | P7c 新增（无旧实现） |
+| `panels/openings.ts` | 186 | 开具体验（presentational）：按棋种列前缀统计（`prefix` 与 `opening_prefix` 两种字段名都认、胜率 0..1 与 0..100 两种口径都认） | P7c 新增（无旧实现） |
 
 ## 2. 幂等策略（两类，文件头注里都写了）
 
