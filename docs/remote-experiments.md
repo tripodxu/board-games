@@ -165,6 +165,24 @@ worker 被 kill / 断网后，重入同一个 plan：checkpoint 里 `ok` 的局�
 node scripts/experiment-batch.mjs resume --batch vplus-r10s --round 1
 ```
 
+### 2.5 ⚠️ `round-summary.json` 存在 ≠ 这一轮跑完了
+
+`round-summary.json` 是**单轮账本，每轮整体重写**，不是累计战绩。worker 把 120 个**槽位**跑完就写它并退出，
+哪怕其中一半是 `error` —— 从此 `status` 认为该轮结束，**不会再提示缺口**。
+
+vplus-r10s 实测：10:31 写下 summary 时 120 个槽位里只有 66 个 `ok`、54 个 `error`，缺口被静默吞了，
+靠人工监督续跑才在 11:15 上游恢复后补到 120。
+
+| 要问的问题 | 看哪个文件 |
+| --- | --- |
+| 累计跑成多少局 | **`round-1/games.jsonl` 的行数** |
+| 这一轮发生了什么 | `round-1/events.jsonl`（含 `game-skip` / `round-end`） |
+| 轮内记账 | `round-1/round-summary.json`（**会覆盖，只反映最后一轮 pass**） |
+
+另外，`round-summary.json` 里 `games[].status` 出现 `skipped` 是正常的——上一轮已完成的局这轮跳过。
+它的体积会随「完整 `ok` 记录 → 短存根」而大幅缩小（实测 314 B/条 → 121 B/条，66 条省 12.4 KB），
+**体积变小不等于丢数据**：存根带 `gameUid`，完整棋谱始终在 `games.jsonl`。
+
 ---
 
 ## 3. 上游挂掉时的自动续跑（长跑必备）
@@ -181,6 +199,33 @@ node scripts/experiment-batch.mjs resume --batch vplus-r10s --round 1
 - `done`（`games.jsonl` 行数，**按行数不是 grep status**）
 
 两个都满足「worker 没了 + 没跑满」才重拉，否则会反复重拉一个已跑完的 batch。
+
+⚠️ **监督脚本自己也会先到期**：`MAX_ITER` 轮 × 60 秒就是它的寿命（vplus-r10s 那个是 400 轮 ≈ 6.7 小时，
+实验跑到第 7 小时时它先退了，**worker 还活着、实验照跑**）。**看到 `[sup] 达到迭代上限，退出` 不等于实验结束**，
+仍要看 `games.jsonl` 行数。长跑就把 `MAX_ITER` 放大到实验时长的 2–3 倍。
+
+⚠️ **别用 `pgrep -f "supervise.sh" | pkill` 预清理**：`-f` 匹配完整命令行，**会匹配到你自己那条启动它的
+ssh 命令并把它自己杀掉**（实测：输出断在半句、根本没启动）。直接启动，再 `ps` 验证只有一个实例。
+
+### 3.1 ⚠️ 连通性探针会骗人：判上游好坏要看真实对局
+
+vplus-r10s 第 65–120 槽位被同一个错误打废：
+
+```
+API 错误 400：the model uses an upstream protocol that opencode2api does not expose
+```
+
+而**同一时刻**用仓库那套连通性探针（单问 `noul`）打网关，**3/3 全部 HTTP 200 正常返回**。
+真实对局（move/edge/position 三问）流量却 100% 被拒——网关多源路由轮换，轮到 `opencode2api` 就挂，
+探针恰好都轮到了能用的源。
+
+| 想知道的 | 该看 |
+| --- | --- |
+| 上游坏没坏 | `round-1/events.jsonl` 里真实对局的 `status`，**不是**探针 |
+| 上游恢复了没 | 某局 `ply` 是否持续上涨（如 56 → 115 → 148）＝ 真的在逐手往返 |
+
+**速败判据**：一局 `durationMs` ≈ 60000 且 `plies` 为空 = 撞上游 400，不是棋局。
+恢复后的第一局可能很慢（ply 100+、十几分钟），那是在真下棋，别误判成又挂了。
 
 ---
 
@@ -237,6 +282,25 @@ node scripts/experiment-batch.mjs pull --batch vplus-r10s
 
 拉到的是 `round-<i>/` 全部产物：`games.jsonl`（逐局终局记录）、`games/*.json`（逐局展开）、
 `checkpoint/`、`progress.json`、`round-summary.json`、`events.jsonl`。
+
+⚠️ **两个坑**（vplus-r10s 收口时各踩一次）：
+
+1. **`pull` 的 scp 没有重试**（§1.5 只给 `submit` 的上传路径包了 `retrySync`）。链路抽风时它连挂两次。
+   兜底：自己 `scp` 并重试——
+   ```bash
+   scp -r -o BatchMode=yes -o ConnectTimeout=15 \
+     root@<host>:/root/board-games/.work/remote/<名>/round-1/games .work/staging
+   ```
+2. **`experiment-report.mjs` 读 `games.jsonl`，而 `loss-report.mjs` 读 `round-<i>/games/*.json`——
+   两个工具读的不是同一个源。** 只拉到 `games.jsonl` 时，`loss-report` **不会报错**，会按「本地已有的那些
+   逐局文件」出报告（我一度拿到 50 局的盘点，与报告的 120 局对不上才发现）。
+
+   ⇒ **收口第一件事**核对两个数一致：
+
+   ```bash
+   wc -l < .work/remote/<名>/round-1/games.jsonl
+   ls .work/remote/<名>/round-1/games/*.json | wc -l
+   ```
 
 ### 5.2 算 Elo / BT
 
