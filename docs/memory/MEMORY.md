@@ -19,6 +19,32 @@
 
 ---
 
+## 2026-10-12 · 归档面板补「代码版本分组 + 筛选」，顺带揪出并发重读把列表翻倍的真缺陷
+
+- **动机**：历史归档 54/54 都没有逐手 `ai.tv` ⇒ `tactics_version` 恒 NULL，按它分组只能看到一大坨
+  「未标注」；有值的是 `code_version`（unknown / 0.7.0 / 0.8.0 …）。服务端 `GET /api/games` 早就支持
+  `?game=`/`?tag=`/`?since=`/`?cursor=`，缺的只是面板控件。
+- **做法**：`index.html` 的 `#archiveFilters` 四控件（棋种 / 分组口径 / 时间窗 / 实验 tag），
+  `src/app/records.ts` 里 `archiveFilters` 模块级状态 + `archiveQuery()`（插入序 `limit → cursor → game →
+  tag → since`，测试按 URL 逐字断言）；筛选**全部走服务端参数**，改任一条件即作废 keyset 游标重读第一页。
+  分组口径两档：`tactics`（默认，输出与旧文案逐字一致）与 `code`（组头 `代码版本 <x> N 局`，按组内最新
+  `createdAt` 倒序，**「未标注」永远垫底**——它代表「不知道」，不是最旧）。
+- **刻意不做渠道筛选**：服务端要 `black_channel = ? OR white_channel = ?`，走不了索引（ADR-0011 查询必须
+  走索引）。理由写进 `src/app/records.ts` 文件头，免得后人当成漏做。
+- **真缺陷（冒烟揪出来的，不是测试写出来的）**：换筛选/换分组时两个控件各发一个 `change` ⇒ 两次重读并发，
+  各自 `archiveRows = []` 再各推进一页 ⇒ 列表翻倍。真浏览器实测 note 从「50 份」变「100 份」；
+  单测当时只断言 URL 与文案，没断言行数，所以是**绿的**——两条教训：① 面板状态机的并发要有代次守卫
+  （`archiveGen`，过期响应整页丢弃、不动 loading）；② 断言要钉住「结果条数」这类可观察量，光看请求串会漏。
+- **验证**：`test/app/data-panels.spec.ts` +4 例（棋种选项按注册表填 8 个、换条件作废游标且 URL 逐字、筛选
+  空态不冒充「后端还没有棋谱」、并发代次守卫）、`test/ui/index-shell.spec.ts` 的 `REQUIRED_IDS` 补五个 id；
+  **两处负向对照**（关掉 `?tag=` 拼接 ⇒ 用例红；去掉代次守卫 ⇒ 并发用例红）；`smoke:browser` 新增 7.5b
+  两项（切「代码版本」得 4 组、按棋种筛选后 50 行全是五子棋）⇒ 冒烟 16/16（`--channel rapfi` 17 项、
+  `--offline` 仍 13 项）；`npm test` **57 文件 / 796 例全绿**、`typecheck` 干净。
+- **小坑**：happy-dom 的 `HTMLSelectElement.remove()` 返回 void ⇒ `byId<HTMLInputElement | HTMLSelectElement>`
+  直接报 `TS2344: Type 'HTMLInputElement | HTMLSelectElement' does not satisfy the constraint 'HTMLElement'`；
+  改用自有结构类型 `ControlLike`/`SelectLike`。测试里的 `pick()` 也别把 `getElementById` 的返回值窄化成
+  `{ value: string }`——会丢掉 `dispatchEvent`（`TS2339`），保留元素类型再单独转 `value` 字段。
+
 ## 2026-10-12 · P0 收口：CI 每日备份恢复（缺 secret 连挂数晚 → run `38205514039` 全绿）
 
 - **现象与根因**：`backup.yml` 的定时调度（UTC 04:23）自 2026-10-02 起每晚必红，日志停在

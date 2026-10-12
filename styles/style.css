@@ -913,8 +913,19 @@ button.fold svg { transition: transform .18s var(--ease); }
 }
 .ledger .tag.jev { color: var(--ink); border-color: var(--mo); }
 
-/* 棋谱归档：按战术版本分组的普通分组列表（无后端时只剩一句 hint） */
+/* 棋谱归档：按战术版本（或代码版本）分组的普通分组列表（无后端时只剩一句 hint） */
 .archive { display: block; }
+/* 筛选行：面板里的密集控件，尺寸收得比抽屉里的表单小一号（全局 select/input 是 13px / width:100%） */
+.arc-filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin: 0 0 8px; font-size: 11px; color: var(--ink-mute);
+}
+.arc-filters label { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+.arc-filters select, .arc-filters input {
+  width: auto; max-width: 168px; margin-top: 0; padding: 3px 6px;
+  font-size: 11px; border-radius: 6px; background: var(--bg2);
+}
+.arc-filters input::placeholder { color: var(--ink-mute); }
 .arc-group + .arc-group { margin-top: 10px; }
 .arc-head {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;

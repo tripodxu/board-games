@@ -15,7 +15,7 @@
 | 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
 | 渠道 | ✅ 九个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`jevrouter`（自建网关，多源路由 + 出口轮换，**强制 BYOK**，[ADR-0024](adr/0024-jevrouter-gateway-channel.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
-| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
+| 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加，**2026-10-12 起可按 `code_version` 或战术版本分组并筛选棋种/标签/时间窗**——筛选全部走服务端查询参数，见「已验证」首条）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
 | 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
@@ -287,6 +287,22 @@
 
 ## 已验证（验收证据）
 
+- **归档面板：按代码版本分组 + 按棋种 / 标签 / 时间窗筛选（2026-10-12，业主「继续优化」⇒ P1 第二项）**：
+  补上「下一步 ①」点名的两件缺事。**为什么必须加代码版本口径**：历史归档 54/54 都没有逐手 `ai.tv`
+  ⇒ `tactics_version` 恒 NULL，只按战术版本分组只会得到一大坨「未标注」；有值的是 `code_version`
+  （unknown / 0.7.0 / 0.8.0 …）。做法（全在装配层 `src/app/records.ts`）：`index.html` 的 `#archiveFilters`
+  四个控件（棋种 / 分组口径 / 时间窗 / 实验 tag），筛选条件**全部走服务端查询参数**（`?game=`/`?tag=`/`?since=`，
+  客户端不下载再过滤），改任一条件即作废 keyset 游标重读第一页；分组口径 `tactics`（默认，输出与旧行为逐字
+  一致）与 `code` 两档，`code` 口径按组内最新 `createdAt` 倒序、**「未标注」永远垫底**（它代表「不知道」，
+  不是最旧）。**渠道筛选刻意没做**：服务端要 `black_channel = ? OR white_channel = ?`，走不了索引
+  （ADR-0011 查询必须走索引），理由写进 `src/app/records.ts` 文件头注释。
+  **顺带修掉一个真缺陷**：换筛选/换分组时两个控件各发一个 `change` ⇒ 两次重读并发，各自清空再各推进一页
+  ⇒ 列表翻倍（真浏览器实测「50 份」→「100 份」）；修法是给重读加代次（`archiveGen`），过期响应整页丢弃
+  （不并入、不改画、不动 loading）。**验证**：`test/app/data-panels.spec.ts` 新增 4 例（棋种选项按引擎注册表
+  填 8 个、换条件作废游标且 URL 逐字、筛选空态不冒充「后端还没有棋谱」、代码版本分组 + 并发代次守卫）、
+  `test/ui/index-shell.spec.ts` 的 `REQUIRED_IDS` 补五个控件 id；两处负向对照（关掉 `?tag=` 拼接 ⇒ 用例红；
+  去掉代次守卫 ⇒ 并发用例红）；`smoke:browser` 新增 7.5b 两项在线断言（实测切「代码版本」得 4 组、首组
+  「代码版本 1.0.0+0e751961 局」，按棋种筛选后 50 行全是五子棋），**16/16 通过**。
 - **Rapfi 思考搬进 Web Worker（2026-10-12，业主「继续优化」⇒ P1 第一项）**：闭环「仍存在」第 5 条剩下的主体
   （10s 档每手冻结约 10 秒）。机制与理由见 [ADR-0006](adr/0006-rapfi-wasm-opponent.md) 的 2026-10-12 增补与
   `src/app/rapfi-worker.ts` 文件头：① Worker 脚本是**手写 classic worker**（`public/rapfi/rapfi-worker.js`，
@@ -1078,7 +1094,7 @@
 | `npm run verify:backup` | 备份可重建（`--structural` 是定时任务用的结构模式） | 拿到 D1 导出后 / 排查数据漂移 |
 | `npm run db:export` | 从远程导出一份 SQL 快照到 `backups/` | 切流前、发布前后留底 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 30 项 | 部署后（**会写一行再删掉，注意线上数据**） |
-| `npm run smoke:browser` | 真浏览器（CDP）冒烟 14 项（含归档分页的游标追加、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道并多断言一项「走子经 Web Worker 会话（未静默回退主线程）」（共 15 项） | 部署后、改前端入口后 |
+| `npm run smoke:browser` | 真浏览器（CDP）冒烟 16 项（含归档分页的游标追加、归档分组口径与筛选、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道并多断言一项「走子经 Web Worker 会话（未静默回退主线程）」（共 17 项） | 部署后、改前端入口后 |
 | `node scripts/experiment-run.mjs --games N` | 用干净 profile 的真浏览器跑一轮 A/B 对比实验并留 JSON 证据：填渠道与 key（**只从 `JEV_API_KEY` 环境变量读**）→ 点「开始实验」→ 轮询心跳（局数、上游调用次数与 HTTP 状态序列）→ 回查 `GET /api/games?tag=` 确认每局都进了 D1；页面停在「等人工重试」时代点 `#retryBtn`（计数）；默认把 `/rapfi/*` 改由本地 `public/rapfi/` 供给资产（`--no-rapfi-local` 可关），规程与四条坑见 [agents/playbooks.md](agents/playbooks.md) §7 | 改实验面板 / 渠道 / 重试逻辑后；**会真花上游配额**，日常不跑 |
 | `npm run check:docs` | MEMORY 置顶、所有 md 相对链接可解析、status 日期在 30 天内 | 改任何 md 后（CI 里也跑） |
 | `npm run deploy` | `vite build && wrangler deploy` | 发布（`deploy.yml` 同样只手动触发） |
@@ -1088,7 +1104,7 @@
 
 按计划 §9（DoD）与 P8 的收尾清单，尚未完成的项：
 
-1. **归档面板**已补「加载更多」分页（keyset 游标，首屏 50 份）；仍缺按 `code_version` 分组（现在按 `tactics_version` 分组，历史归档全是「未标注」）与按棋种/渠道/标签筛选（服务端 `?game=`/`?tag=`/`?since=` 都已支持，只是面板没给控件）。
+1. **归档面板**：「加载更多」分页（keyset 游标，首屏 50 份）与按 `code_version` 分组 + 按棋种/标签/时间窗筛选**已于 2026-10-12 全部补齐**（见「已验证」首条）。**渠道筛选刻意不做**：服务端要 `black_channel = ? OR white_channel = ?`，走不了索引（ADR-0011）。
 2. **浏览器全流程回归**：计划附录 C 的 10 项手工清单里，页签/棋盘/渠道/开局/落子/AI 走子/曲线/抽屉/离线降级/Rapfi 首用懒加载/归档分页/实验报告分桶/最新棋谱一键回放/服务端战报并入已由 `smoke:browser` 自动覆盖（三种渠道全绿）；仍建议人工过一次七棋种各开一局、机机模式、换边重开、对比实验、人手认输、归档逐手回放。
 3. **文档**：`README.md` / `docs/architecture.md` / `docs/status.md` / `docs/jev-api.md` / `AGENTS.md` / `docs/agents/**` / `src/ui/README.md` 均已收口，两份 ADR 索引（[docs/README.md](README.md) 目录树与 [docs/adr/README.md](adr/README.md) 表）都已补到 0018；`npm run check:docs` 绿（2026-10-05 计数：65 个 md / 454 个链接）。
 4. **下一版入口由两条方向约束决定**（2026-10-02，[AGENTS.md](../AGENTS.md) §2 规则 10–11）：v10/v11 的败局都出在「算不出强制胜」的局面，所以优先做**无强制胜时的防守与长线取势**——要求是简单规则、快而不依赖长思考；**不**把 VCT 挖得更深。同一批待决项里，`live3After` 的语义纠偏（判「本手新造」而非「盘面上存在」）属于允许的「减法/纠偏」，**已于 2026-10-03 作为 v14 上线**（`b6c6921`）。**仍未闭环**：A 型速败（≤35 ½手被速杀）的「早盘为什么织不起活三网」属进攻侧开局形状问题（`docs/plans/2026-10-03-tactics-v14-fresh-live3.md` §8），以及 B 型长局（≥50 ½手、压力领先却换不了杀）——后者的两负实测都是「全程我方有杀 0」。**2026-10-03 更新**：v14 已按 m08704 抬档复核——`rapfi@1000ms` 12 局 9-1-2、`rapfi@2000ms` 20 局 **9-3-8**（不败率 60.0%）；**A 型的机制线在规则 10 之下判定收口**（静默普查 §4.3：早盘 72–95% 回合双方都没有 `vcf7`/`vct9` 胜，制造点 1.38 vs 0.42–0.45 是唯一指征，要抬它必须做 2-ply 以上规划 ⇒ 明令不做），剩下的杠杆是**配对样本**（同开局双跑）、模型侧提示、继续抬档看鲁棒性。**2026-10-03 收口（项目所有者）**：继续抬档已跑完（3 s 15-1-4、5 s 12-1-7，四档比分非单调）⇒ **机制线暂停、不再开新机制**（v14 是最后一版），只留维护、数据卫生与配对样本设计；恢复条件是「先有能分辨 5 pt 以内差异的配对样本口径」（详见 [v14 计划](plans/2026-10-03-tactics-v14-fresh-live3.md) §8 末尾的收口引块）。

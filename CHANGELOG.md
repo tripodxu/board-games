@@ -8,6 +8,18 @@
 
 ### 新增
 
+- **归档面板：可切「代码版本」分组 + 按棋种/标签/时间窗筛选（2026-10-12，P1 第二项，闭环 `status.md` 下一步 ①）**：
+  `index.html` 新增 `#archiveFilters` 四控件；`src/app/records.ts` 里 `archiveQuery()` 把条件**全部翻成服务端
+  查询参数**（`?game=`/`?tag=`/`?since=`，客户端不下载再过滤），改任一条件即作废 keyset 游标重读第一页。
+  分组两档：`tactics`（默认，输出与旧文案逐字一致）与 `code`（历史归档 54/54 没有逐手 `ai.tv` ⇒
+  `tactics_version` 恒 NULL，只有 `code_version` 有值；组头 `代码版本 <x> N 局`，按组内最新 `createdAt` 倒序，
+  「未标注」永远垫底）。**渠道筛选刻意不做**：服务端要 `black_channel = ? OR white_channel = ?`，走不了索引
+  （ADR-0011），理由写在 `src/app/records.ts` 文件头。
+  **顺带修掉一个真缺陷**：换筛选/换分组时两个控件各发一个 `change` ⇒ 两次重读并发、各自清空再各推进一页
+  ⇒ 列表翻倍（真浏览器实测 note 从「50 份」变「100 份」）；给重读加代次 `archiveGen`，过期响应整页丢弃。
+  **验证**：`test/app/data-panels.spec.ts` +4 例（含并发守卫）、`test/ui/index-shell.spec.ts` 补五个控件 id、
+  两处负向对照、`smoke:browser` 新增两项在线断言（切「代码版本」得 4 组、按棋种筛选后 50 行全是五子棋）；
+  `npm test` **57 文件 / 796 例全绿**、`typecheck` 干净、`smoke:browser` **16/16**（`--channel rapfi` 17 项）。
 - **Rapfi 思考搬进 Web Worker：10s 档不再冻结界面（2026-10-12，P1 第一项，闭环 `status.md` 已知限制 #5 的主体）**：
   浏览器侧 Rapfi 的同步 `sendCommand` 改在 **classic Web Worker**（`public/rapfi/rapfi-worker.js`，手写、不进打包——
   Vite 的 `?worker` 在 dev 一律产出 module worker，而 module worker 禁 `importScripts`，无法把普通脚本形态的

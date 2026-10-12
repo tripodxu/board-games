@@ -273,7 +273,8 @@
       </div>
     </section>
 
-    <!-- 棋谱归档：按战术版本分组的归档棋谱（games/ 目录，后端在线时可读） -->
+    <!-- 棋谱归档：按战术版本（或代码版本）分组的归档棋谱（D1 `games` 表，后端在线时可读）。
+         筛选条件全部走服务端查询参数（`?game=` / `?tag=` / `?since=`），改任一项都重置游标重读第一页。 -->
     <section class="panel collapsible" data-panel="archive" aria-label="棋谱归档">
       <div class="panel-title">
         <button class="fold" aria-expanded="false" aria-controls="body-archive" title="收起 / 展开" aria-label="收起或展开「棋谱归档」">
@@ -285,6 +286,33 @@
         <button id="archiveReload" class="mini-btn" title="重新读取后端棋谱列表">刷新</button>
       </div>
       <div class="panel-body" id="body-archive">
+        <!-- 筛选行：棋种下拉的空选项由装配层按引擎注册表填（`src/app/records.ts` 的 `fillArchiveControls`），
+             不在这里手抄一份棋种清单——注册表加了棋种这里自动跟上。 -->
+        <div class="arc-filters" id="archiveFilters">
+          <label>棋种
+            <select id="archiveGame" title="只看这个棋种（服务端 ?game=，值为引擎 id）">
+              <option value="">全部棋种</option>
+            </select>
+          </label>
+          <label>分组
+            <select id="archiveGroup" title="分组口径：战术版本（tactics_version）/ 代码版本（code_version）">
+              <option value="tactics">战术版本</option>
+              <option value="code">代码版本</option>
+            </select>
+          </label>
+          <label>时间
+            <select id="archiveSince" title="只看最近 N 天（服务端 ?since=，与 day 列同为 UTC 日）">
+              <option value="">全部时间</option>
+              <option value="7">最近 7 天</option>
+              <option value="30">最近 30 天</option>
+              <option value="90">最近 90 天</option>
+            </select>
+          </label>
+          <label>标签
+            <input id="archiveTag" type="text" placeholder="实验 tag（精确）"
+              title="按实验 tag 精确匹配（服务端 ?tag=）；填完回车或点别处生效" />
+          </label>
+        </div>
         <div id="archiveBody" class="archive"></div>
       </div>
     </section>

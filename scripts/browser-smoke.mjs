@@ -526,6 +526,77 @@ try {
     }
   }
 
+  // 7.5b) 归档分组口径与筛选（2026-10-12，P1②）：切「代码版本」按 code_version 归组；
+  //       按棋种重查走服务端 `?game=`。两者都要真数据才看得到，离线跳过。
+  if (!OFFLINE) {
+    const switched = await evaluate(`(() => {
+      const sel = document.querySelector('#archiveGroup');
+      if (!sel) return { err: 'no-archiveGroup' };
+      if (sel.options.length < 2) return { err: 'no-archiveGroup-options' };
+      sel.value = 'code';
+      sel.dispatchEvent(new Event('change'));
+      return { ok: true };
+    })()`);
+    const byCode = switched?.ok
+      ? await waitFor(
+        `(() => {
+          const note = document.querySelector('#archiveNote')?.textContent ?? '';
+          const heads = [...document.querySelectorAll('#archiveBody .arc-head')].map((h) => (h.textContent ?? '').trim());
+          if (!note.includes('按代码版本分组') || !heads.length) return '';
+          return { note: note.trim(), groups: heads.length, first: heads[0] };
+        })()`,
+        { label: '代码版本分组', timeout: 15000, every: 250 },
+      )
+      : null;
+    check(
+      '归档分组：可切「代码版本」（历史归档 tactics_version 恒 NULL，只有 code_version 有值）',
+      Boolean(switched?.ok && byCode && byCode.groups > 0),
+      switched?.err
+        ? String(switched.err)
+        : (byCode
+          ? `${byCode.groups} 组，note「${byCode.note}」，首组「${byCode.first}」`
+          : '等待 15000ms 后仍未按代码版本分组'),
+    );
+
+    const filtered = await evaluate(`(() => {
+      const g = document.querySelector('#archiveGroup');
+      if (g) { g.value = 'tactics'; g.dispatchEvent(new Event('change')); }
+      const sel = document.querySelector('#archiveGame');
+      if (!sel || sel.options.length < 2) return { err: 'no-archiveGame-options' };
+      sel.value = 'gomoku';
+      sel.dispatchEvent(new Event('change'));
+      return { ok: true, options: sel.options.length };
+    })()`);
+    const byGame = filtered?.ok
+      ? await waitFor(
+        `(() => {
+          const note = document.querySelector('#archiveNote')?.textContent ?? '';
+          if (!note.includes('筛选：五子棋')) return '';
+          const games = [...document.querySelectorAll('#archiveBody .arc-game')].map((x) => (x.textContent ?? '').trim());
+          if (!games.length) return '';
+          return { note: note.trim(), rows: games.length, others: games.filter((n) => n !== '五子棋').length };
+        })()`,
+        { label: '按棋种筛选', timeout: 15000, every: 250 },
+      )
+      : null;
+    check(
+      '归档筛选：按棋种重查（服务端 ?game=），结果里只剩该棋种',
+      Boolean(filtered?.ok && byGame && byGame.others === 0),
+      filtered?.err
+        ? String(filtered.err)
+        : (byGame
+          ? `#archiveGame 有 ${filtered.options} 个选项，${byGame.rows} 行全是五子棋，note「${byGame.note}」`
+          : '等待 15000ms 后仍未见「筛选：五子棋」'),
+    );
+
+    /* 复位：棋种退回「全部」，免得把筛选状态留给后续检查 */
+    await evaluate(`(() => {
+      const sel = document.querySelector('#archiveGame');
+      if (sel) { sel.value = ''; sel.dispatchEvent(new Event('change')); }
+      return 'reset';
+    })()`);
+  }
+
   // 7.6) 实验报告：按「渠道 · 战术版本」分桶的对比表（本机归档 + 服务端合并后渲染）
   const expReport = await waitFor(
     `(() => { const rows = document.querySelectorAll('#expHistory .exp-agg-row');

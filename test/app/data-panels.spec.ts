@@ -10,6 +10,7 @@ import type { AppCtx } from '../../src/app/ctx.ts';
 import { resetSession } from '../../src/app/loop.ts';
 import { switchGame } from '../../src/app/modes.ts';
 import { openReplayer } from '../../src/app/panels.ts';
+import { archiveFilters, archiveSinceDay } from '../../src/app/records.ts';
 import {
   STORE_KEY,
   fakeRenderer,
@@ -318,5 +319,188 @@ describe('归档面板分页（keyset 游标）', () => {
     const again = moreBtn();
     expect(again?.textContent).toBe('加载更多');
     expect(again?.hasAttribute('disabled')).toBe(false);
+  });
+});
+
+/* 归档筛选与分组口径（2026-10-12，P1②）：棋种 / 标签 / 时间窗走服务端参数（`src/worker/routes/games.ts:106-142`），
+ * 分组口径在「战术版本」与「代码版本」之间切（历史归档 `tactics_version` 恒 NULL，只有 `code_version` 有值）。 */
+describe('归档筛选与分组口径', () => {
+  function arcRow(uid: string, day: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      gameUid: uid,
+      gameId: 'gomoku',
+      game: '五子棋',
+      slug: 'human-vs-mock',
+      name: 'human-vs-mock-' + uid.slice(0, 8) + '.json',
+      path: 'games/' + day + '/human-vs-mock-' + uid.slice(0, 8) + '.json',
+      day,
+      createdAt: day + 'T10:00:00.000Z',
+      tacticsVersion: 'v9-vcf-sound',
+      codeVersion: '1.0.0+aaaaaaa',
+      ...extra,
+    };
+  }
+
+  const rowsIn = () => document.querySelectorAll('#archiveBody .arc-row').length;
+  const heads = () => Array.from(document.querySelectorAll('#archiveBody .arc-head')).map((h) => h.textContent);
+
+  function refreshArchive(): void {
+    const btn = document.getElementById('archiveReload');
+    if (!btn) throw new Error('缺少 #archiveReload');
+    btn.dispatchEvent(new Event('click'));
+  }
+
+  function pick(id: string, value: string): void {
+    const n = document.getElementById(id);
+    if (!n) throw new Error('缺少 #' + id);
+    (n as unknown as { value: string }).value = value;
+    n.dispatchEvent(new Event('change'));
+  }
+
+  /** 面板状态是模块级的：本组用例改过就还原，免得污染同文件里后面的用例。 */
+  afterEach(() => {
+    archiveFilters.game = '';
+    archiveFilters.tag = '';
+    archiveFilters.since = '';
+    archiveFilters.group = 'tactics';
+  });
+
+  it('棋种下拉按引擎注册表填；改筛选即作废游标、带参数重读第一页，note 说明当前筛选', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    const calls = stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': (u: URL) => {
+        if (u.searchParams.get('cursor') === null) {
+          return { ok: true, games: [arcRow('uidf1', '2026-08-22'), arcRow('uidf2', '2026-08-21')], nextCursor: 'cur-2' };
+        }
+        return { ok: true, games: [arcRow('uidf3', '2026-08-20')], nextCursor: null };
+      },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 2, 2000, '归档首屏');
+
+    /* 棋种选项：空选项 + 注册表七个（顺序 = 引擎注册顺序，值是服务端认的 game_id） */
+    const game = document.getElementById('archiveGame') as unknown as
+      { options: { length: number; [i: number]: { value: string } } } | null;
+    expect(game?.options.length).toBe(8);
+    expect(Array.from({ length: 8 }, (_, i) => game?.options[i]?.value)).toEqual(
+      ['', 'gomoku', 'gomoku-pro', 'go', 'xiangqi', 'chess', 'checkers', 'cc'],
+    );
+
+    /* 先翻到第二页，制造一个「上一套条件的游标」 */
+    const more = document.getElementById('archiveMoreBtn');
+    more?.dispatchEvent(new Event('click'));
+    await waitUntil(() => rowsIn() === 3, 2000, '第二页');
+    expect(calls).toContain('/api/games?limit=50&cursor=cur-2');
+
+    /* 改棋种：必须从第一页重来（不带 cursor），累积行清空后重画 */
+    pick('archiveGame', 'gomoku');
+    await waitUntil(() => calls.some((c) => c.startsWith('/api/games?limit=50&game=gomoku')), 2000, '按棋种重读');
+    const afterGame = calls.filter((c) => c.startsWith('/api/games?limit=50&game=gomoku'));
+    expect(afterGame[0]).toBe('/api/games?limit=50&game=gomoku');
+    expect(afterGame.some((c) => c.includes('cursor=')), '换条件必须作废游标').toBe(false);
+    await waitUntil(() => rowsIn() === 2, 2000, '第一页重画');
+
+    /* 再叠时间窗与标签：三个参数按插入序拼在 URL 上（limit, game, tag, since）。
+       等 note 落地（fetch 被记下 ≠ 响应已画完），再逐字核对 URL。 */
+    pick('archiveSince', '7');
+    pick('archiveTag', 'l2n1');
+    const since7 = archiveSinceDay('7');
+    await waitUntil(
+      () => (document.getElementById('archiveNote')?.textContent || '').includes('筛选：五子棋 / tag=l2n1 / 最近 7 天'),
+      2000,
+      '三条件同查',
+    );
+    expect(calls).toContain('/api/games?limit=50&game=gomoku&tag=l2n1&since=' + since7);
+    expect(since7, 'UTC 日，与 day 列同口径').toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('筛选后没有结果：给筛选口径的空态文案，不冒充「后端还没有棋谱」', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': { ok: true, games: [], nextCursor: null },
+    });
+
+    bootCtx(store);
+    pick('archiveTag', 'no-such-tag');
+    await waitUntil(
+      () => (document.getElementById('archiveNote')?.textContent || '').includes('no-such-tag'),
+      2000,
+      '空态文案',
+    );
+    const hint = document.querySelector('#archiveBody .hint')?.textContent || '';
+    expect(hint).toContain('当前筛选');
+    expect(hint).not.toContain('后端还没有归档棋谱');
+  });
+
+  it('分组切「代码版本」：按 code_version 归组，未标注的排最后；切回战术版本还原旧口径', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': {
+        ok: true,
+        nextCursor: null,
+        games: [
+          /* 历史归档的形状：tactics_version 为空、只有 code_version */
+          arcRow('uidc1', '2026-08-22', { tacticsVersion: null, codeVersion: '1.0.0+aaaaaaa' }),
+          arcRow('uidc2', '2026-08-21', { tacticsVersion: null, codeVersion: '0.8.0' }),
+          arcRow('uidc3', '2026-08-20', { tacticsVersion: null, codeVersion: null }),
+        ],
+      },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 3, 2000, '归档首屏');
+    /* 默认口径 = 战术版本：三行都没标注 → 只该有一个「未标注」组 */
+    expect(heads()).toEqual(['未标注战术版本（行里没有 tactics_version）3 局']);
+
+    pick('archiveGroup', 'code');
+    await waitUntil(() => heads().length === 3, 2000, '切代码版本');
+    /* 组头顺序 = 组内最新一局倒序；「未标注」永远垫底（它代表「不知道」，不是最旧） */
+    expect(heads()[0]).toContain('代码版本 1.0.0+aaaaaaa');
+    expect(heads()[1]).toContain('代码版本 0.8.0');
+    expect(heads()[2]).toContain('未标注代码版本（行里没有 code_version）');
+    expect(document.getElementById('archiveNote')?.textContent).toContain('按代码版本分组');
+
+    pick('archiveGroup', 'tactics');
+    await waitUntil(() => heads().length === 1, 2000, '切回战术版本');
+    expect(document.getElementById('archiveNote')?.textContent).toContain('按战术版本分组');
+  });
+
+  it('两个控件连着 change：并发重读第一页不会把两页叠起来（代次守卫）', async () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    /* 每页给两行、带游标：若两次响应都被并入，列表会变成 4 行 / note「4 份」 */
+    stubFetch({
+      '/api/health': { ok: true, service: 'jev-qiguan-worker', d1: true },
+      '/api/games': { ok: true, nextCursor: 'cur-more', games: [arcRow('uidr1', '2026-08-22'), arcRow('uidr2', '2026-08-21')] },
+    });
+
+    bootCtx(store);
+    refreshArchive();
+    await waitUntil(() => rowsIn() === 2, 2000, '归档首屏');
+
+    /* 同一个 tick 里连发两个 change：两次重读并发（冒烟里就是这一步把 50 份变 100 份的） */
+    pick('archiveGroup', 'code');
+    pick('archiveGame', 'gomoku');
+
+    await waitUntil(
+      () => (document.getElementById('archiveNote')?.textContent || '').includes('筛选：五子棋'),
+      2000,
+      '两次 change 落地',
+    );
+    await waitUntil(() => rowsIn() === 2, 2000, '只留一页');
+    const note = document.getElementById('archiveNote')?.textContent || '';
+    expect(rowsIn(), '过期响应不许并入').toBe(2);
+    expect(note).toContain('2 份');
+    expect(note).toContain('按代码版本分组');
+    expect(note).toContain('筛选：五子棋');
   });
 });

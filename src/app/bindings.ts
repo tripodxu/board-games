@@ -24,7 +24,10 @@ import { buildGameExport } from '../core/record/export.ts';
 import { bindTrendChips } from '../ui/panels/cockpit.ts';
 import { bindClearRecords } from '../ui/panels/record-book.ts';
 import { bindExperimentPanel, bindMatchSettings, bindModeSwitch } from '../ui/panels/experiment.ts';
-import { loadGameArchive, loadLatestGames } from './records.ts';
+import {
+  loadGameArchive, loadLatestGames,
+  fillArchiveControls, readArchiveControls, applyArchiveFilters,
+} from './records.ts';
 import {
   isTurnAI,
   passTurn,
@@ -257,6 +260,16 @@ export function bindAll(ctx: AppCtx): void {
     void loadLatestGames(ctx);
     refreshDataPanels(ctx);
   });
+
+  /* 归档筛选与分组口径（P1②）：棋种下拉按引擎注册表填，四个控件任一改动都重置游标、
+     重读第一页（`?game=` / `?tag=` / `?since=` 是服务端过滤，见 src/app/records.ts）。
+     `#archiveTag` 是文本框，`change` 事件在回车 / 失焦时触发——正是「填完再查」的语义。 */
+  fillArchiveControls();
+  for (const id of ['archiveGame', 'archiveGroup', 'archiveSince', 'archiveTag']) {
+    onOnce(byId(id), 'change', () => {
+      applyArchiveFilters(ctx, readArchiveControls());
+    });
+  }
 
   /* 趋势芯片（胜率 / 形势分 / 置信度） */
   bindTrendChips((mode) => {
