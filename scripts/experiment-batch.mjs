@@ -36,7 +36,7 @@ import {
   PRODUCTION_ORIGIN, productionGate, parallelGate,
 } from './lib/batch-common.mjs';
 import { loadRecords, rankTable, formatRankTable, computeElo, bootstrapBt, DEFAULT_ANCHOR, MIN_GAMES } from './lib/batch-elo.mjs';
-import { launchRoundCommand, pollRoundCommand, parsePollOutput, formatPollTick, sleepSync } from './lib/ladder.mjs';
+import { launchRoundCommand, pollRoundCommand, parsePollOutput, formatPollTick, sleepSync, retrySync } from './lib/ladder.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..'); // scripts/ → 仓库根
@@ -256,11 +256,20 @@ async function cmdSubmit(args) {
     console.log(`  （origin ${origin} 本轮不会被触碰；--origin 缺省仍要 --allow-production 是 P1 的闸门，与运行面无关）`);
   }
 
-  // 远端建目录 + 逐个上传 plan
-  if (!ssh(host, user, `mkdir -p ${repo}/.work/remote/${batchId}/{plans,logs}`)) die('远端 mkdir 失败（ssh 不通？）');
+  /* 远端建目录 + 逐个上传 plan。box 的 22 端口链路会间歇性抽风（scp 直接 exit=1 且没有任何 stderr，
+     同一命令手工跑就成功 —— 见 ladder.mjs 里 retrySync 的注释）：ladder 那条路径早就包了重试，
+     batch 的这条上传路径此前漏了，两次「上传 round-N plan 失败」都出在这里。 */
+  const mk = retrySync(() => ssh(host, user, `mkdir -p ${repo}/.work/remote/${batchId}/{plans,logs}`), {
+    attempts: 4, sleepMs: 2000, onRetry: (i) => console.log(`  ⚠ 远端 mkdir 第 ${i} 次重试…`),
+  });
+  if (!mk.ok) die('远端 mkdir 失败（ssh 不通？重试 4 次后仍失败）');
   for (const p of plans) {
     const rel = path.join('.work/remote', batchId, 'plans', `round-${p.round}.json`);
-    if (!scp([rel, `${user}@${host}:${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`])) die(`上传 round-${p.round} plan 失败`);
+    const dest = `${user}@${host}:${repo}/.work/remote/${batchId}/plans/round-${p.round}.json`;
+    const up = retrySync(() => scp([rel, dest]), {
+      attempts: 5, sleepMs: 2000, onRetry: (i) => console.log(`  ⚠ round-${p.round} plan 上传第 ${i} 次重试…`),
+    });
+    if (!up.ok) die(`上传 round-${p.round} plan 失败（重试 ${up.attempts} 次仍失败）`);
   }
 
   /* M2：轮次必须**串行**（起一轮 → 等它退出 → 再起下一轮）。早先 for 循环一口气 nohup 全部轮次，

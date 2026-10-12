@@ -19,6 +19,31 @@
 
 ---
 
+## 2026-10-12 · 远端批量启动被链路抖动掐死：batch 的上传路径漏了 retrySync
+
+- **现象**：`scripts/experiment-batch.mjs submit` 连挂两次 —— dry-run 时 `✗ 上传 round-2 plan 失败`（exit 2）、
+  正式跑时 `✗ 上传 round-1 plan 失败`（exit 1）；同一 `scp` 命令手工跑 3/3 成功，
+  `.work/scp-repro.cjs`（复刻 `execFileSync('scp', …, {stdio:'inherit'})`）也 3/3 成功 ⇒ **不是** stdio / 路径问题。
+  box `auth.log` 旁证 `Read error from remote host …: Connection reset by peer`（客户端侧中断；sshd 的
+  `MaxStartups` 是注释态，不是原因）。
+- **根因**：`scripts/lib/ladder.mjs:556` 的 `retrySync()` 就是为这件事写的（注释原话：box 的 22 端口链路会
+  **间歇性抽风**，`scp` 直接 `exit=1` 且没有任何 stderr，同一命令手工跑就成功）；`scripts/experiment-ladder.mjs:210`
+  （scp）与 `:319`（ssh）都包了它，**只有 batch 的「远端 mkdir + 逐个上传 plan」是裸调用**
+  （`if (!scp([...])) die(...)`）。
+- **修法**：`scripts/experiment-batch.mjs` 的这两步都包进 `retrySync`（mkdir 4 次 / 每个 plan 5 次、间隔 2s，
+  重试时打 `⚠ round-N plan 上传第 i 次重试…`）；实测第 3 轮 plan 连挂 2 次后成功 ⇒ 6 份 plan 全部到位。
+  单测面：`retrySync` 自身早有 5 例（`test/scripts/ladder.spec.mjs:231`）；`experiment-batch.mjs` 是带 ssh/scp
+  副作用的 CLI，没有 import 级测试，所以这次的实证就是上面那次真跑日志。
+- **顺带纠正两条口径**（已写进 `docs/remote-experiments.md`）：① `--upstream direct` 面**不许出现 `proxy` 臂**
+  （闸门原话「直连上游请把它写成 official」，同一上游、同一 `Bearer` 协议）；② box 就是网关所在的 VPS，
+  `/root/.jev-key` 里装的是 `jv-` 网关 key ⇒ TypeSafe `official` 臂会被 `keyShapeProblem()` 形状闸门拒
+  （放错文件不会立刻报错，而是一整轮 401、每局十几分钟才失败一次），这台机器上跑 Jev 臂只能用
+  `jevrouter` + `/root/.jev-router-key`。本轮据此把臂从 `proxy` 改成 `jevrouter:v14-plus:0`。
+- **本机到 box 的 scp/ssh 至今仍会瞬时失败**（一次 submit 的轮询连续 51 次 ssh 失败；`status` 也可能
+  `✗ scp 拉取失败`，此时本地旧副本保持不动）⇒ 看真实进度优先直连
+  `ssh root@185.242.234.48 cat /root/board-games/.work/remote/<名>/round-1/progress.json`，
+  完成度看 `wc -l < …/round-1/games.jsonl`（`games.jsonl` 里**没有** `status` 字段，grep 它永远 0 命中）。
+
 ## 2026-10-12 · 归档面板补「代码版本分组 + 筛选」，顺带揪出并发重读把列表翻倍的真缺陷
 
 - **动机**：历史归档 54/54 都没有逐手 `ai.tv` ⇒ `tactics_version` 恒 NULL，按它分组只能看到一大坨

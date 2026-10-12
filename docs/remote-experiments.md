@@ -98,6 +98,21 @@ key 只从远端文件注入，**本机不需要持有**。批量 CLI 启动时�
 worker 运行期直接从文件读（启动日志会印 `key 来源：jevrouter←file:/root/.jev-router-key`）。
 ⚠️ 但这个 `source` 报错**会把完整 key 打到本地终端**，别反复触发；日志与仓库本身不含 key。
 
+### 1.5 启动阶段的重试（别再被链路抖动掐死）
+
+`submit` 在起跑前会先远端 `mkdir`、再逐个 `scp` 上传 plan。box 的 22 端口链路**间歇性抽风**：
+`scp` 直接 `exit=1`、没有任何 stderr，同一命令手工跑就成功。**这两步现在都包了 `retrySync`**
+（mkdir 4 次 / 每个 plan 5 次，间隔 2 秒），重试时打 `⚠ round-N plan 上传第 i 次重试…` ——
+看到这行是**正常现象，不是故障**；修之前它会把整次启动掐死（`✗ 上传 round-N plan 失败`）。
+
+`status` / `pull` 里的 `scp` 仍是裸调用：瞬时 `✗ scp 拉取失败` 同样属链路抖动（本地旧副本保持不动），
+重跑一次即可。要看**不掺抖动**的真实进度，优先直连：
+
+```bash
+ssh root@185.242.234.48 'cat /root/board-games/.work/remote/<名>/round-1/progress.json'
+ssh root@185.242.234.48 'wc -l < /root/board-games/.work/remote/<名>/round-1/games.jsonl'
+```
+
 ---
 
 ## 2. 看进度：跑到第几步了
