@@ -52,6 +52,11 @@ export interface AiGameMeta {
   aiMoves: number;
   costUsd: number;
   tokens: number;
+  /** 输出 token 合计（`tokens_out` 那列的数据源）。**只在 > 0 时写出这个键**：
+   *  多数响应回 `output_tokens: 0`（输出不计费），把 0 写成值会让 `tokens_out` 从
+   *  「没测到」变成「测到 0」，而分析口径只关心 > 0 的部分；无样本整个键省略，
+   *  历史归档的往返一致性也靠它（同 `tacticsMs`/`candStats` 的纪律）。 */
+  tokensOut?: number;
   latencyMs: { avg: number; max: number } | null;
   /** 战术层耗时汇总：只统计 `tacticsMs` 有值的那些手（即真过了战术层的）。
    *  没有任何样本时**整个键省略**（历史归档没有这个字段，往返一致性靠它）。 */
@@ -112,7 +117,7 @@ export function aiMoveMeta(notation: string, m: Move | Record<string, unknown> |
 export function aiGameMeta(history: { meta?: Move | Record<string, unknown> | null }[] | null | undefined, opts?: { topK?: number } | null): AiGameMeta {
   const o = opts || {};
   const items = (history || []).filter((h) => h && h.meta && (h.meta as Record<string, unknown>).byAI) as { meta: Record<string, unknown> }[];
-  let cost = 0, tokens = 0, confSum = 0, confN = 0;
+  let cost = 0, tokens = 0, tokensOut = 0, confSum = 0, confN = 0;
   let msSum = 0, msMax = 0, msN = 0;
   let tacSum = 0, tacMax = 0, tacN = 0;
   /* 候选点三数（C0/m13627）：只统计有值的手，缺的落进样本外（不许用 0 冒充）。 */
@@ -127,6 +132,8 @@ export function aiGameMeta(history: { meta?: Move | Record<string, unknown> | nu
     cost += typeof meta.costUsd === 'number' ? meta.costUsd : 0;
     const usage = (meta.usage || {}) as Record<string, unknown>;
     tokens += typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
+    /* 输出 token 同样只累加真给了数的手；回复 0（官方口径输出免费）与不给字段等价。 */
+    tokensOut += typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
     if (typeof meta.confidence === 'number') { confSum += meta.confidence; confN++; }
     if (typeof meta.latencyMs === 'number') { msSum += meta.latencyMs; msN++; if (meta.latencyMs > msMax) msMax = meta.latencyMs; }
     /* 战术层耗时：只有真跑过战术层的手才有值（Rapfi/mock 是 null）——把 null 排除在样本外，
@@ -159,6 +166,8 @@ export function aiGameMeta(history: { meta?: Move | Record<string, unknown> | nu
   /* 提供方 / 概率来源分布（C2）：没有样本就不写这个键（同 `tacticsMs` 的纪律）。 */
   if (Object.keys(providers).length) out.providers = providers;
   if (Object.keys(probSources).length) out.probSources = probSources;
+  /* 输出 token 合计（`status.md` 仍存在 #22）：只有真有输出 token 时写，0 与「没测到」都留空。 */
+  if (tokensOut > 0) out.tokensOut = tokensOut;
   /* 候选点三数（C0/m13627）：一局的均值，样本 = 「真过了 Jev 候选集的手」（`candsSent` 有值）。
    * 同款纪律：没有样本不写这个键。`graded`/`labeled` 可能与 `sent` 的样本数不同（历史手只有前者）。 */
   if (candSentN) {

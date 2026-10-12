@@ -217,6 +217,28 @@ describe('record-map：解析与边界', () => {
     expect(moves[1]).toMatchObject({ provider: null, prob_source: null });
   });
 
+  it('token 两列：输入取汇总键 tokens，输出只在真有值时落库（缺失 = NULL，不是 0）', () => {
+    /* 修的是「`games.tokens_out` 恒 NULL」：`aiGameMeta` 只写输入汇总 `tokens`，
+     * 映射层却去读局级 `meta.usage.output_tokens`（那个键从来不存在）。 */
+    const base: GamePayload = { exported: '2026-10-01T00:00:00.000Z', game: '五子棋', notation: 'h8', moves: [] };
+    const both = mapGameRecord({ ...base, meta: { tokens: 2900, tokensOut: 117 } }, { gameUid: 'u', dedupKey: 'd' });
+    expect(both.row.tokens_in).toBe(2900);
+    expect(both.row.tokens_out).toBe(117);
+
+    /* 没有输出 token 样本（官方口径输出免费、回 0 ⇒ `aiGameMeta` 整键省略）⇒ NULL，不许冒 0 */
+    const inputOnly = mapGameRecord({ ...base, meta: { tokens: 2900 } }, { gameUid: 'u', dedupKey: 'd' });
+    expect(inputOnly.row.tokens_in).toBe(2900);
+    expect(inputOnly.row.tokens_out).toBeNull();
+
+    /* 局级 usage 在场时优先（历史归档形状）：两列都从它取 */
+    const viaUsage = mapGameRecord(
+      { ...base, meta: { usage: { input_tokens: 12, output_tokens: 34 }, tokens: 2900, tokensOut: 117 } },
+      { gameUid: 'u', dedupKey: 'd' },
+    );
+    expect(viaUsage.row.tokens_in).toBe(12);
+    expect(viaUsage.row.tokens_out).toBe(34);
+  });
+
   it('脏输入只记 warning 不抛：无 moves / 未知棋种 / 未知 mode / 超限 payload', () => {
     const base: GamePayload = { exported: '2026-10-01T00:00:00.000Z', notation: 'x', moves: [] };
     const noMoves = mapGameRecord(base, { gameUid: 'u', dedupKey: 'd' });

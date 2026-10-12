@@ -187,6 +187,30 @@ S.t('meta：全局汇总（延迟/置信度/token/战术分布/成本）', () =>
   ok(gm.costUsd > 0 && gm.costUsd < 0.001, '成本量级不对：' + gm.costUsd);
 });
 
+S.t('meta：输出 token 只在真给了数时写出（tokens_out 的数据源）', () => {
+  /* `tokens_out` 那列曾恒 NULL：`aiGameMeta` 只累加输入 token，而 `record-map` 读的是
+   * 「局级 usage.output_tokens」这个不存在的字段。修法是汇总键 `tokensOut`（回落链同 tokens）。
+   * 纪律：官方口径输出免费、多数响应回 `output_tokens: 0`，那种情况**整键省略**——
+   * 写 0 会把「没测到」变成「测到 0」，也会破坏历史归档「反推再导出逐字段一致」的往返用例。 */
+  const withOut = [
+    { meta: aiM('H8', { usage: { input_tokens: 1200, output_tokens: 21 } }) },
+    { meta: aiM('G8', { usage: { input_tokens: 900, output_tokens: 96 } }) },
+    { meta: aiM('H7', { usage: { input_tokens: 800, output_tokens: 0 } }) },
+    { meta: { human: true } },
+  ];
+  const gm = aiGameMeta(withOut, {});
+  eq(gm.tokensOut, 117, '输出 token 应为 21+96+0（人走的手不计）：' + gm.tokensOut);
+  eq(gm.tokens, 2900, '输入 token 合计不应被输出改动影响：' + gm.tokens);
+
+  const allZero = [
+    { meta: aiM('H8', { usage: { input_tokens: 1200, output_tokens: 0 } }) },
+    { meta: aiM('G8') }, /* aiM 默认 usage 只有 input_tokens：等价于「没测到输出」 */
+  ];
+  const g0 = aiGameMeta(allZero, {});
+  ok(!('tokensOut' in g0), '全是 0 / 无字段时不该写出 tokensOut 键：' + JSON.stringify(g0));
+  ok(!('tokensOut' in aiGameMeta([], {})), '空局不该写出 tokensOut 键');
+});
+
 S.t('meta：空局不产假数字（latency null、conf null、tactics 空）', () => {
   const g0 = aiGameMeta([], { topK: 1 });
   ok(g0.aiMoves === 0 && g0.latencyMs === null && g0.conf === null, '空局 meta 不应有汇总值：' + JSON.stringify(g0));

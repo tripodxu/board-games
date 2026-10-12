@@ -159,6 +159,18 @@
 
 ### 修复
 
+- **`games.tokens_out` 死列修好：写入侧从来没写过输出 token（2026-10-12，闭环 `status.md` 已知限制 #22）**：
+  局级汇总 `aiGameMeta()` 只把 `usage.input_tokens` 累进 `meta.tokens`，而 `src/shared/record-map.ts`
+  读的是**局级** `meta.usage.output_tokens` —— 那个键在 payload 里从来不存在 ⇒ 该列恒 NULL
+  （Worker 侧列 / INSERT / 导出 / 回导本来就是齐的，等的是一个没人写的值）。
+  修法：`AiGameMeta` 加 `tokensOut?: number`，逐手累加 `usage.output_tokens`，**只在 > 0 时写出这个键**；
+  `tokens_out` 改成 `num(meta.usage?.output_tokens) ?? num(meta.tokensOut)`（与 `tokens_in` 同一条回落链）；
+  公共契约 `GameMeta` 补 `tokensOut?`（缺了它 `tsc` 当场报错，能挡住这类「读取侧先跑」的漂移）。
+  **为什么是「> 0 才写」而不是写 0**：官方口径输出免费、多数响应回 `output_tokens: 0`，
+  写 0 会把「没测到」变成「测到 0」（历史 936 局会被读成「量出来就是 0」），也会破坏
+  「归档反推再导出逐字段一致」的往返用例（那份回放夹具注入的正是 `output_tokens: 0`）。
+  **验证**：引擎套件 **171 例**（`test/engines/util.test.mjs` +1）、`test/core/record-map.spec.ts` +1、
+  `npm test` **58 文件 / 811 例全绿**、`npm run typecheck` 干净。历史 936 局仍是 NULL（不猜补）。
 - **败局追因判据：裸 `vcfWin()` 漏判「对手已一手成五」，`13–14/49` 是下界（2026-10-05）**：
   `vcfWin()` 的入口前提是「双方无一步杀」（`src/core/engines/gomoku.ts:220`）—— 逼迫着法生成器只收
   「落子后造出**新**致胜点」的着法（`winsAfter` 找含新子的 5 窗口里 4 子 + 1 空），**直接成五那一手窗口已满、

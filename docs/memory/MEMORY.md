@@ -19,6 +19,27 @@
 
 ---
 
+## 2026-10-12 · `games.tokens_out` 死列：列是好的，写数据的半边从来没写
+
+- **问题**：`games.tokens_out` 恒 NULL（`status.md` 仍存在 #22）。根因不是管线断，而是**两侧对不上**：
+  局级汇总 `aiGameMeta()` 只把 `usage.input_tokens` 累进 `meta.tokens`（输出 token 谁都没汇总），
+  而 `src/shared/record-map.ts` 读的是**局级** `meta.usage.output_tokens` —— 那个键在 payload 里从来不存在。
+  Worker 侧（`tokens_out` 列、INSERT、导出、回导）一直是齐的，等的是一个没人写的值。
+- **做法**：`AiGameMeta` 加 `tokensOut?: number`，逐手累加 `usage.output_tokens`，**只在 > 0 时写出这个键**；
+  `tokens_out` 改成 `num(meta.usage?.output_tokens) ?? num(meta.tokensOut)`（与 `tokens_in` 同一条回落链）；
+  公共契约 `GameMeta` 补 `tokensOut?`（`src/shared/**` 是 Worker 与前端共用的契约，
+  缺了它 `tsc` 当场报错——这次是好事，能挡住「读取侧先跑、写入侧忘了」）。
+- **为什么「只在 > 0 时写出」而不是写 0**：官方口径输出免费，多数响应回 `output_tokens: 0`；
+  写 0 会把「没测到」变成「测到 0」（历史 936 局会被读成「量出来就是 0」），
+  并且破坏 `test/core/record.spec.ts` 的「归档反推再导出逐字段一致」——那份回放夹具注入的正是
+  `usage: { input_tokens: …, output_tokens: 0 }`。口径同 `tacticsMs` / `candsSent` 的可选键纪律。
+- **教训**：汇总键必须与读取侧用**同一条回落链**。这次是写入侧少一个键、读取侧按另一种形状取，
+  结果空值静默变 NULL、不报任何错——与 `code_version` 手工常量、限流用 isolate 内存 Map 属同一类
+  「看着有、其实没有」的坑（见 `status.md` 已修复表）。
+- **验证**：引擎套件 **171 例**（`test/engines/util.test.mjs` +1：21+96+0=117、输入合计不受影响、
+  全 0 / 缺字段 / 空局整键省略）；`test/core/record-map.spec.ts` +1（两列取值、缺失落 NULL 不冒 0、
+  局级 `usage` 在场时优先）；`npm test` **58 文件 / 811 例全绿**、`typecheck` 干净。历史 936 局仍是 NULL（不猜补）。
+
 ## 2026-10-12 · 浏览器自带匿名设备身份：值域单点定义，客户端那一半终于接上
 
 - **问题**：ADR-0013 当时只落地了服务端（校验 / 写库 / `?device=me` 过滤），客户端 `call()` 只设

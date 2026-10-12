@@ -287,6 +287,19 @@
 
 ## 已验证（验收证据）
 
+- **`games.tokens_out` 不再是死列（2026-10-12，业主「继续优化」，P1 之后的小债）**：闭环「仍存在」第 22 条。
+  机制：局级汇总只写了输入 token（`aiGameMeta` → `meta.tokens`），而映射层读的是**局级**
+  `meta.usage.output_tokens` —— 那个键从来不存在 ⇒ 该列恒 NULL。修法就是「把该有的数写出来 + 回落链对齐」：
+  `src/core/meta.ts` 的 `AiGameMeta` 加可选 `tokensOut`，逐手累加 `usage.output_tokens`，**只在 > 0 时写出这个键**
+  （官方口径输出免费、多数响应回 `output_tokens: 0`；写 0 会把「没测到」变成「测到 0」，也会破坏历史归档
+  「反推再导出逐字段一致」的往返用例）；`src/shared/record-map.ts` 的 `tokens_out` 改成
+  `num(meta.usage?.output_tokens) ?? num(meta.tokensOut)`（与 `tokens_in` 同一条回落链），公共契约 `GameMeta`
+  同步补 `tokensOut?`。Worker 侧管线（`tokens_out` 列 / INSERT / 导出 / 回导）本来就齐，一处未动。
+  **验证**：`npm run typecheck` 干净；引擎套件 **171 例**（`test/engines/util.test.mjs` 新增 1 例：21+96+0=117 求和、
+  输入合计不受影响、全 0 / 无字段 / 空局时整键省略）、`test/core/record-map.spec.ts` 新增 1 例（`tokens`→`tokens_in`、
+  `tokensOut`→`tokens_out`、缺失落 NULL 不许冒 0、局级 `usage` 在场时优先）；`npm test` **58 文件 / 811 例全绿**。
+  **口径**：历史 936 局的 `tokens_out` 仍是 NULL（当时没有这个数据，不猜补）；此后新下的局，只有提供方真给了
+  输出 token 才有值。成本列不受影响（计费按输入 token，输出免费）。
 - **归档面板：按代码版本分组 + 按棋种 / 标签 / 时间窗筛选（2026-10-12，业主「继续优化」⇒ P1 第二项）**：
   补上「下一步 ①」点名的两件缺事。**为什么必须加代码版本口径**：历史归档 54/54 都没有逐手 `ai.tv`
   ⇒ `tactics_version` 恒 NULL，只按战术版本分组只会得到一大坨「未标注」；有值的是 `code_version`
@@ -1067,7 +1080,7 @@
 19. **`src/ui/README.md` 的模块职责表未收录 P7c 三个面板**（`panels/replayer.ts` / `leaderboard.ts` / `openings.ts` 只在 §4.1 单独说明；`openings.ts` 的 `GAME_IDS` 属公共注册项）。
 20. ~~**浏览器端不发送 `X-Device-Id`**：`src/core/api/client.ts` 的 `call()` 只设 `Content-Type`，所以 UI 归档的棋谱 `device_id` 为 NULL，「只看我的」（`?device=me`）只有冒烟脚本这条路走得通。~~ **已闭环（2026-10-12，P1③）**：值域定义提到 [src/shared/device-id.ts](../src/shared/device-id.ts)（`DEVICE_ID_HEADER = 'X-Device-Id'`、`DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/`、`normalizeDeviceId()`），Worker 的 `parseDeviceId()` 与浏览器生成**共用同一份**（`src/worker/lib/validate.ts` 重导出 `DEVICE_ID_RE`，值域漂了不是报错而是静默 400）；[src/core/device.ts](../src/core/device.ts) 负责生成与读盘（localStorage `jev_qiguan_device_id`，`crypto.randomUUID()` 优先、读写抛错一律吞掉并返回本次可用 id），`boot()` 在**任何 `/api/*` 请求之前** `setDeviceId(loadDeviceId(storage))`；`src/core/api/client.ts` 的 `headersFor()` 给每个请求（含 `callText` 的导出与下载）挂 `X-Device-Id`，非法 id 直接丢弃 ⇒ 退化成「不发这个头」。归档面板加 `#archiveMine` 勾选框 → `?device=me`。**口径**：历史 936 局落库时没有这个头，`device_id` 仍是 NULL，所以「只看我的」只覆盖**本机新下**的局；全新浏览器 profile 上勾选得 0 份，而同一刻不带参数是 55 份——**这正是过滤真的生效**（服务端没忽略这个参数）。**验证**：`test/core/device-id.spec.ts` 13 例（值域 / 读盘 / 请求头注入三段）、`test/app/data-panels.spec.ts` +1 例、`test/ui/index-shell.spec.ts` 补 `archiveMine`、`smoke:browser` 新增两项在线断言（存储里有合法 id；勾选后 note 标「只看我的」且不是「后端不可用」）。
 21. **`jev` 档限流仍会挡住极端场景**：60 次/分对「机机对局 + 对比实验」够用（2026-10-02 两臂串行实测窗口峰值 **19 次/分**，零 429；此前 proxy-vs-proxy 那轮是 34 次/分），但同一出口 IP 下**同时**跑多个实验、或一轮里双方都用最慢思考档，仍可能触顶；触顶时的表现是自动退避重试（最多 3 次，约 41 秒窗口），再失败就交给用户。
-22. **`games.tokens_out` 是一列死数据**：一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，导出的 `meta` 里**没有**输出 token；而 `src/shared/record-map.ts:376` 读的是 `meta.usage?.output_tokens`（局级 meta 从来没这个字段）⇒ 该列恒为 NULL。实测真实验 4 局的 `tokens_in` 约 645K 全都落库，`tokens_out` 全为 0。影响仅限「输出 token 的分析口径」（计费按官方口径输出免费，成本列不受影响）；要修就是给 `AiGameMeta` 加 `tokensOut` 并在 `record-map` 里回落读取——属可选增强，未做。
+22. ~~**`games.tokens_out` 是一列死数据**：一局汇总 `aiGameMeta()`（`src/core/meta.ts:62-82`）只累加 `usage.input_tokens` 进 `meta.tokens`，导出的 `meta` 里**没有**输出 token；而 `src/shared/record-map.ts:376` 读的是 `meta.usage?.output_tokens`（局级 meta 从来没这个字段）⇒ 该列恒为 NULL。实测真实验 4 局的 `tokens_in` 约 645K 全都落库，`tokens_out` 全为 0。影响仅限「输出 token 的分析口径」（计费按官方口径输出免费，成本列不受影响）；要修就是给 `AiGameMeta` 加 `tokensOut` 并在 `record-map` 里回落读取——属可选增强，未做。~~ **已闭环（2026-10-12）**：`src/core/meta.ts` 的 `AiGameMeta` 加 `tokensOut?: number` 并逐手累加 `usage.output_tokens`（**只在 > 0 时写出**——官方口径输出免费、多数响应回 0，写 0 会把「没测到」变成「测到 0」，且会破坏历史归档的往返一致性）；`src/shared/record-map.ts` 的 `tokens_out` 改成 `num(meta.usage?.output_tokens) ?? num(meta.tokensOut)`（与 `tokens_in` 同一条回落链），公共契约 `GameMeta` 同步补 `tokensOut?`。Worker 侧（`tokens_out` 列 / INSERT / 导出 / 回导）本来就齐，无需动。**遗留口径**：历史 936 局仍是 NULL（那时没有这个数据，不猜补）；此后只有提供方真给了输出 token 才有值。验证见「已验证」首条（引擎 171 例 / `npm test` 58 文件 811 例全绿）。
 23. **`v10-live3` 的推演边界**：只算到 4 手（对手 >4 手的杀仍要靠 Rapfi 或对方失误）；`live3Deny` 报的是「能拆掉对手全部活三制造点」的点，**不是全局最优**（并列时取评估顺序里最先出现的，且最多只评 24 个候选点，候选顺序 = 对手 L3 点在前、其余按模型候选表）；`live3Makers` / `live3Deny` 在禁手档里会跳过黑方的禁手点（黑走不得，可能因此少报一个 L3）。推出的点若不在模型概率榜内会被直接执行并在 `meta.warning` 标注「战术保险接管」（与其余保险层同规则）。对照实验暴露的两个边界：**和棋多**（12 局里 4 局 225 手满盘和棋、全是 v10 执白 ⇒ 守得住但滚不起胜势）、**攻击层接管偏多**（`live3Attack` 12 局 120 手，闸门只检查「对手没有 2 手剑」，未比较 L3 点与模型首选的价值差）。
 
 24. **A/B 局的「记录级 `tacticsVersion`」只反映黑方档位**：`src/core/record/export.ts:207` 写的是 `tacticsVersion: bCfg.tactics`，所以两臂用不同档位时（例如 2026-10-02 的 v10 实验：rapfi 执黑、proxy 执白），归档记录的顶层版本是**黑方**的，`games.tactics_version` 与「棋谱归档」面板的分组键也跟着走 —— 8 局 v10 臂里有 4 局被分到 `v9-vcf-sound` 组。权威字段是 `blackTactics` / `whiteTactics` 与每手 `ai.tv`（本次结论全部按这两个口径取），修法要么让客户端在混合档位时写「双方档位」要么让面板改按 `blackTactics`+`whiteTactics` 分组——属待决，未做。

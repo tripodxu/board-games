@@ -88,6 +88,9 @@ export type GameMeta = {
   aiMoves?: number;
   costUsd?: number;
   tokens?: number;
+  /** 输出 token 合计（`tokens_out` 那列的数据源）：`aiGameMeta` 只在真有输出 token 时写出这个键，
+   *  所以缺失必须映射成 NULL 而不是 0（同 `tacticsMs`/`candStats` 的可选键纪律）。 */
+  tokensOut?: number;
   latencyMs?: { avg?: number; max?: number } | number | null;
   /** 战术层耗时汇总（只统计真过了战术层的手）；历史棋谱没有 */
   tacticsMs?: { avg?: number; max?: number; n?: number } | number | null;
@@ -397,8 +400,10 @@ export function mapGameRecord(
     top_k: meta ? num(meta.topK) : null,
     seed: meta ? strOrNull(meta.seed) : null,
     cost_usd: meta ? num(meta.costUsd) : null,
+    /* `meta.usage` 是「局级 usage」（历史归档若有则优先）；常态是 `aiGameMeta` 写出的汇总键
+     * `tokens`（输入）/`tokensOut`（输出，无样本时不写）——与 `tokens_in` 同一条回落链。 */
     tokens_in: meta ? num(meta.usage?.input_tokens) ?? num(meta.tokens) : null,
-    tokens_out: meta ? num(meta.usage?.output_tokens) : null,
+    tokens_out: meta ? num(meta.usage?.output_tokens) ?? num(meta.tokensOut) : null,
     latency_avg_ms: lat ? num(lat.avg) : latNum,
     latency_max_ms: lat ? num(lat.max) : null,
     tac_avg_ms: tac ? num(tac.avg) : tacNum,
