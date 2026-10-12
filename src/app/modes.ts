@@ -356,7 +356,7 @@ export function renderFoe(ctx: AppCtx): void {
     (tv ? tv.id + ' ' + tv.name : String(eff.tactics || '—')) +
     (eff.rapfiThinkMs ? ' · ' + (eff.rapfiThinkMs / 1000) + 's' : '') +
     '。留空 = 跟随全局设置；改动只影响机器方，不动你自己的引擎。' +
-    'Rapfi 思考期间界面会短暂卡住（ADR-0006）。');
+    'Rapfi 在后台线程思考，界面不卡；老浏览器不支持 Web Worker 时回退主线程（那才会短暂卡住）。');
   syncFoeEnabled(ctx);
 }
 

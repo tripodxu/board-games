@@ -21,6 +21,7 @@ import {
   setGlueUrl,
   setLoader,
   setModule,
+  setSessionFactory,
 } from '../../src/core/jev/rapfi.ts';
 import type { RapfiModule } from '../../src/core/jev/rapfi.ts';
 import {
@@ -54,17 +55,18 @@ function fakeModule(onOther: (cmd: string) => string[]): FakeModule {
 /** 记录工厂收到的东西，并按 Emscripten 约定回一个模块（START 15 必须回 OK）。 */
 function fakeFactory(onInit?: (opts: Parameters<RapfiFactory>[0]) => void) {
   const seen: Parameters<RapfiFactory>[0][] = [];
+  const mods: FakeModule[] = [];
   const factory: RapfiFactory = (opts) => {
     seen.push(opts);
     if (onInit) onInit(opts);
-    return Promise.resolve(
-      fakeModule((cmd) => {
-        if (cmd === 'START 15') { opts.onReceiveStdout('OK'); return []; }
-        return [];
-      }) as RapfiModule,
-    );
+    const mod = fakeModule((cmd) => {
+      if (cmd === 'START 15') { opts.onReceiveStdout('OK'); return []; }
+      return [];
+    });
+    mods.push(mod);
+    return Promise.resolve(mod as RapfiModule);
   };
-  return { factory, seen };
+  return { factory, seen, mods };
 }
 
 /** 装配层注入的脚本：happy-dom 会在 appendChild 时真的去下载脚本（必然失败并抢先 fire onerror），
@@ -93,6 +95,7 @@ function injectedScript(): HTMLScriptElement | null {
 afterEach(() => {
   reset();
   setLoader(null);
+  setSessionFactory(null);
   setGlueUrl('');
   vi.unstubAllGlobals();
   if (restoreAppend) { restoreAppend(); restoreAppend = null; }
@@ -119,19 +122,20 @@ describe('真实注入路径（createElement → onload → 工厂）', () => {
     const script = injectedScript();
     expect(script, '应在 document.head 注入胶水脚本').not.toBeNull();
 
-    const { factory, seen } = fakeFactory();
+    const { factory, seen, mods } = fakeFactory();
     vi.stubGlobal('Rapfi', factory);
     script!.onload!.call(script!, new Event('load'));
 
-    const mod = await pending;
-    expect(typeof mod.sendCommand).toBe('function');
+    /* P1① 起 `ensureLoaded()` 返回的是**会话**（Module 与 Worker 两条实现同形），不再是 Module 本身。 */
+    const sess = await pending;
+    expect(typeof sess.send).toBe('function');
     expect(seen).toHaveLength(1);
     /* Emscripten 用 locateFile 找 .wasm/.data：必须落在 /rapfi/ 下，否则线上 404 */
     expect(seen[0]!.locateFile('rapfi-single-simd128.wasm')).toBe('/rapfi/rapfi-single-simd128.wasm');
     expect(seen[0]!.locateFile('rapfi-single-simd128.data')).toBe('/rapfi/rapfi-single-simd128.data');
     /* stdout 必须接回 core 的收集器：START 15 的 OK 就是靠它被看见的 */
     seen[0]!.onReceiveStdout('OK');
-    const sent = (mod as unknown as { sent: string[] }).sent;
+    const sent = mods[0]!.sent;
     expect(sent[0]).toBe('START 15');
     expect(sent[1]).toBe('INFO rule 0');
   });

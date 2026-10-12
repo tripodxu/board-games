@@ -45,6 +45,45 @@
 
 ---
 
+## 2026-10-12 · Rapfi 思考搬进 Web Worker：限制 #5 收口，并补一条「静默回退」断言
+
+- **任务来源**：业主「继续优化」⇒ P0（CI 备份）之后 P1 第一项。闭环 `docs/status.md` 已知限制 #5 剩下的主体
+  「10s 档每手冻结约 10 秒，Web Worker 化仍未做」。
+- **架构三条硬约束（决定实现长什么样，别再试别的路）**：
+  ① **Worker 脚本必须手写 classic worker**（`public/rapfi/rapfi-worker.js`，不进打包）：Rapfi 胶水是普通脚本
+  （`var Rapfi=…`），只有 classic worker 的 `importScripts` 能把它挂成 worker 全局；Vite 的 `?worker`
+  **在 dev 一律产出 module worker**（`node_modules/vite/dist/node/chunks/node.js:26121`：`isBundled ? … : "module"`），
+  而 module worker 禁 `importScripts` ⇒ dev 与线上行为不一致，不能用。
+  ② **资产字节仍在页面上下文抓取**（fetch 胶水文本 + `.wasm` + `.data`，带进度）再 transfer 给 Worker：
+  `scripts/browser-smoke.mjs` 与 `scripts/experiment-run.mjs` 都用 CDP `Fetch` 域把 `/rapfi/*` 改由本地
+  `public/rapfi/` 供给（本机到线上 11 MB 曾实测 22 KB/s，整轮实验卡死在第 1 局），而 **CDP `Fetch` 按 target 生效**
+  ⇒ Worker 自己发请求就绕过这条捷径。给 harness 加 `Target.setAutoAttach` 逐 worker 装拦截风险高，不做。
+  ③ core 只认「会话」不认「模块」：新增 `RapfiSession { send(cmd): string[] | Promise<string[]>; kind?; dispose? }`
+  + `setSessionFactory()` + `ensureSession()`（`ensureLoaded` 保留为别名），`decide()` 改 `await sess.send(...)`；
+  主线程 Module 用 `sessionFromModule()` 包成同签名会话，Node 夹具与既有测试不受影响。
+- **静默回退是新机制最危险的地方**：Worker 不可用/初始化失败要回退主线程（界面重新卡但还能下棋），
+  可两条路径**都能正常落子** ⇒ 只看「对手走子」的冒烟会假绿，限制 #5 其实没解决。
+  装配层因此把实际路径写到 `<html data-rapfi-session>`（`markRapfiSession()`），
+  `smoke:browser -- --channel rapfi` 新增一项断言它 `= worker`。**机制越容易静默降级，越需要一条只认「走了哪条路」的断言。**
+- **顺带修掉一个真缺陷**：`src/app/rapfi-worker.ts` 的工具函数原名 `marked()`，**只做类型转换、从没真的置过
+  `retryable = true`** ⇒ 资产/胶水请求失败不会被自动退避，反而走「回退主线程再白等一遍 11 MB」这条错路；
+  现改名 `retryableError()` 并真正置位（`init-error` 分支**刻意不默认重试**，只有 worker 明确报 `retryable` 才置位）。
+  发现方式值得记：**typecheck 报的 `Property 'retryable' does not exist on type 'Error'` 正是「这函数没在干它说的事」的线索**。
+- **验证**：`npm run typecheck` 干净；`npm test` **57 文件 / 792 例全绿**（新增
+  `test/app/rapfi-worker.spec.ts` 10 例、`test/engines/rapfi.test.mjs` 4 例：会话工厂优先于 loader / START 无 OK 即 dispose
+  / 工厂错误原样透传 / `ensureLoaded === ensureSession`）；`npm run smoke:browser -- --channel rapfi` **15/15**
+  （第 8 项输出 `data-rapfi-session=worker`），`--channel mock` 与 `--offline` 未受影响。
+- **工具链坑（本地 dev 会被编辑动作掀翻）**：`vite dev` 的 chokidar 会 watch 整个仓库，碰到被独占的文件直接抛
+  EBUSY 且**无人接 error 事件 ⇒ 进程退出**。两次实测：headless Chrome 独占
+  `.work/chrome-profile/Default/Network/Cookies`（冒烟跑到一半站台没了 ⇒ 归档/最新棋谱/服务端战报三项在线断言假红，
+  看着像产品回归）；编辑工具做原子替换时的 `.dotfile.<pid>.<rand>.tmpdir/….tmp`（跑着 dev 时改任何文件都能触发）。
+  `vite.config.ts` 已加 `server.watch.ignored: ['**/.work/**', '**/*.tmpdir/**', '**/*.tmp']`。
+  **推论：三条在线断言同时红时，先确认站台还活着，别急着查产品。**
+- **Windows 附注**：编辑 `src/**` 时若 dev 在跑，可能报 `ReplaceFileW EIO (Win32 32)`（共享冲突）——
+  停掉 dev（`job_kill`）再改即可，不是文件损坏。
+
+---
+
 ## 2026-10-09 · 命名改制 + 全量整合档 `v14-plus` 配对轮 436 局过判定带，`CURRENT` 已升本档
 
 - **业主动作三连**（同日）：「将 v15 v16 v17 里的所有策略都合并到 v14plus 中，并且通过大量实验数据证明有提升」／「之后的编号废弃，最新的就是 v14plus」／「v15 v16 v17 可以重命名为 v14.1 v14.2 v14.3」，再补一轮「多跑一整子，做一个压力测试，做一整晚」。

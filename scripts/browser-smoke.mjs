@@ -422,6 +422,18 @@ try {
       { label: '对手落子', timeout: aiTimeout, every: 250 },
     );
     check('「对手」也落了子（AI 走子链路）', Boolean(aiMoved), aiMoved || `等待 ${aiTimeout}ms 后棋盘与流水区都没再变化`);
+    /* Rapfi 渠道多一条：这一手必须来自 **Web Worker 会话**。
+     * 只看「对手落子」分不出走的是 Worker 还是静默回退的主线程加载器（两者都能落子），
+     * 而主线程路径正是限制 #5 要消掉的东西（`<html data-rapfi-session>` 由
+     * src/app/rapfi-worker.ts 的 markRapfiSession() 打标）。 */
+    if (CHANNEL === 'rapfi') {
+      const sessionKind = await evaluate(`document.documentElement.dataset.rapfiSession || ''`);
+      check(
+        'Rapfi 走子经 Web Worker 会话（未静默回退主线程）',
+        sessionKind === 'worker',
+        sessionKind === 'worker' ? 'data-rapfi-session=worker' : `data-rapfi-session=${JSON.stringify(sessionKind)}`,
+      );
+    }
   }
 
   // 7) 面板交互：趋势曲线切换 + 设置抽屉开合

@@ -40,5 +40,16 @@ export default defineConfig({
   server: {
     port: 8787,
     strictPort: false,
+    watch: {
+      // .work/ 是本地临时目录（探针脚本、CDP 截图、headless Chrome 的用户资料）。
+      // 不忽略它真的会把 dev 进程搞崩：Chrome 运行时会独占
+      // .work/chrome-profile/Default/Network/Cookies，chokidar 对它的 watch 抛
+      // EBUSY 且无人接 'error' 事件 ⇒ Vite 进程直接退出（2026-10-12 实测，
+      // 冒烟跑到一半本地站台就没了）。这些文件也永远不是重建输入。
+      // 后两条同理，但元凶是编辑工具：它做原子替换时会先在同目录建
+      // `.dotfile.<pid>.<rand>.tmpdir/…tmp`，Windows 上那个临时文件仍被占用，
+      // chokidar 一 watch 就 EBUSY —— 也就是说「跑着 dev 时改任何文件」都能掀翻站台。
+      ignored: ['**/.work/**', '**/*.tmpdir/**', '**/*.tmp'],
+    },
   },
 });

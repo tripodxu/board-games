@@ -8,6 +8,27 @@
 
 ### 新增
 
+- **Rapfi 思考搬进 Web Worker：10s 档不再冻结界面（2026-10-12，P1 第一项，闭环 `status.md` 已知限制 #5 的主体）**：
+  浏览器侧 Rapfi 的同步 `sendCommand` 改在 **classic Web Worker**（`public/rapfi/rapfi-worker.js`，手写、不进打包——
+  Vite 的 `?worker` 在 dev 一律产出 module worker，而 module worker 禁 `importScripts`，无法把普通脚本形态的
+  Rapfi 胶水挂成 worker 全局）里跑，主线程只等消息；core 新增会话抽象（`RapfiSession` / `setSessionFactory` /
+  `ensureSession`，`ensureLoaded` 保留为别名，`decide()` 改 `await sess.send(...)`）。
+  **资产字节仍由页面抓取**（fetch 胶水文本 + `.wasm` + `.data`，带进度）再 transfer 给 Worker：两个自动化 harness
+  靠 CDP `Fetch`（按 target 生效）把 `/rapfi/*` 改由本地 `public/rapfi/` 供给，Worker 自己发请求会绕过这条捷径。
+  Worker 不可用/初始化失败**回退主线程加载器**（界面重新卡但还能下棋），带 `retryable` 的网络类失败**不回退**
+  （交给装配层自动退避，免得白等两遍 11 MB）。
+  **防假绿**：装配层把实际路径写到 `<html data-rapfi-session>`，`smoke:browser --channel rapfi` 新增一项断言它
+  `= worker`——两条路径都能落子，只看「对手走子」分不出静默回退（该项使 rapfi 冒烟由 14 项变 15 项）。
+  **验证**：`npm run typecheck` 干净；`npm test` **57 文件 / 792 例全绿**（新增 `test/app/rapfi-worker.spec.ts` 10 例、
+  `test/engines/rapfi.test.mjs` 4 例）；`smoke:browser -- --channel rapfi` **15/15**；Node 侧实验夹具仍走同进程同步调用，行为不变。
+- **顺带修掉 `rapfi-worker.ts` 的 `retryable` 缺陷与本地 dev 站台的 EBUSY 崩溃（2026-10-12）**：
+  ① 工具函数 `marked()` 只做类型转换、**从没真的置过 `retryable = true`** ⇒ 资产/胶水请求失败不会自动退避，
+  反而走「回退主线程再白等一遍 11 MB」的错路（现名 `retryableError()` 并真正置位；`init-error` 分支刻意不默认重试）。
+  ② `vite.config.ts` 增加 `server.watch.ignored: ['**/.work/**', '**/*.tmpdir/**', '**/*.tmp']`——
+  chokidar 碰到被独占的文件（headless Chrome 的 `.work/chrome-profile/.../Cookies`、编辑工具原子替换的
+  `.dotfile.<pid>.<rand>.tmpdir/….tmp`）会抛 EBUSY 且无人接 error 事件，**整个 dev 进程直接退出**，
+  症状是「浏览器冒烟跑到一半，三条在线断言突然红」。
+
 - **战术档 `v14-plus`（全量整合）：v15/v16/v17 三条策略合并，配对轮 436 局 = 218 对过预注册判定带，升为 `CURRENT`（2026-10-08/09）**：
   命名改制同期落地——版本号不再递增，`v15-vctfirst`/`v16-softgate`/`v17-fusion` 改登记为 `v14.1`/`v14.2`/`v14.3`，
   旧 `v14-plus`（整合收紧）让位改名 `v14-tighten`；旧 id 走 `ALIASES` + `canonicalId` 仍可解析，历史棋谱的回放与归因逐字不变。

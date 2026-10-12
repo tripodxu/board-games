@@ -12,7 +12,9 @@
  *    color=2 是对方（OPPO）；引擎回一行 "x,y" 即着法。
  *  - 坐标：x=列（0 最左），y=行（0 最顶），与项目记法 A1=(0,0) 一致。
  *  - 单线程构建下 sendCommand 是同步阻塞的：一次调用即走完一整手思考，
- *    时长由 INFO timeout_turn 限定；UI 会在思考期间冻结（见 ADR 已知局限）。
+ *    时长由 INFO timeout_turn 限定。主线程实现会在这期间冻结 UI，所以装配层默认
+ *    注入 **Worker 会话工厂**（`setSessionFactory`，见 src/app/rapfi-worker.ts）：
+ *    思考在 Worker 里跑，Worker 不可用或初始化失败才回退主线程加载器。
  */
 import type { Engine, Move } from '../types.ts';
 
@@ -40,6 +42,20 @@ export type ProgressFn = (stage: 'script' | 'wasm' | 'download', detail?: string
 
 /** 胶水脚本加载器：由 UI 层注入（core 里没有 document）。 */
 export type RapfiLoader = (url: string, onProgress?: ProgressFn) => Promise<RapfiModule>;
+
+/** 已就绪的引擎会话：发一条协议命令，取回**本次新增**的 stdout 行。
+ *  同步实现（主线程 Module，`sendCommand` 同步阻塞）与异步实现（Worker，postMessage）
+ *  都行——core 一律 await，于是「思考搬进 Worker」对协议层完全透明。
+ *  `kind` 只供诊断与测试断言，不参与决策；`dispose` 用来释放底层资源（Worker 会 terminate）。 */
+export interface RapfiSession {
+  send(cmd: string): string[] | Promise<string[]>;
+  kind?: 'module' | 'worker' | 'main';
+  dispose?(): void;
+}
+
+/** 会话工厂：装配层实现（Worker 版 Rapfi）。返回的会话**尚未** START——
+ *  初始化（START 15 / INFO rule 0）由 core 统一做，两条来源的行为才不会漂。 */
+export type RapfiSessionFactory = (url: string, onProgress?: ProgressFn) => Promise<RapfiSession>;
 
 export interface RapfiOpts {
   thinkMs?: number;
@@ -75,14 +91,22 @@ export function glueUrl(): string {
   return _glueUrl;
 }
 
-/* ---------------- 加载器注入 ---------------- */
+/* ---------------- 加载器 / 会话注入 ---------------- */
 
 let _loader: RapfiLoader | null = null;
+let _sessionFactory: RapfiSessionFactory | null = null;
 
 /** 注入胶水脚本加载器（UI 层实现 document 注入；Node 下不注入）。 */
 export function setLoader(fn: RapfiLoader | null): void {
   _loader = fn;
-  _loadPromise = null; /* 换加载器等于换引擎来源，丢弃进行中的加载 */
+  _sessionPromise = null; /* 换加载器等于换引擎来源，丢弃进行中的加载 */
+}
+
+/** 注入会话工厂（装配层把 Worker 版 Rapfi 接进来的入口，见 src/app/rapfi-worker.ts）。
+ *  工厂优先于 `_loader`；工厂自己负责在 Worker 不可用时回退到主线程加载器。 */
+export function setSessionFactory(fn: RapfiSessionFactory | null): void {
+  _sessionFactory = fn;
+  _sessionPromise = null;
 }
 
 /* ---------------- 纯函数（无 DOM、无引擎，可单测） ---------------- */
@@ -154,9 +178,10 @@ export function isErrorLine(line: unknown): boolean {
 
 /* ---------------- 引擎实例管理 ---------------- */
 
-let _module: RapfiModule | null = null;      // 就绪的 Emscripten Module
-let _loadPromise: Promise<RapfiModule> | null = null; // 进行中的加载 Promise（并发复用）
-let _stdoutLines: string[] = [];             // 引擎全部 stdout 行（含 OK/MESSAGE 等）
+let _module: RapfiModule | null = null;      // 就绪的 Emscripten Module（注入的或 loader 产出的）
+let _session: RapfiSession | null = null;    // 就绪的会话（Module 会话或 Worker 会话）
+let _sessionPromise: Promise<RapfiSession> | null = null; // 进行中的会话建立 Promise（并发复用）
+let _stdoutLines: string[] = [];             // 主线程 Module 的全部 stdout 行（含 OK/MESSAGE 等）
 
 /** 引擎输出行入口（loader 把它接到 Module 的 onReceiveStdout 上）。 */
 export function onStdout(line: unknown): void {
@@ -170,53 +195,84 @@ function _onStderr(line: unknown): void {
 /** 供 UI 层把 loader 接到 Module 的回调上（旧实现闭包内的私有函数）。 */
 export const stderrHandler = _onStderr;
 
-/** 向引擎发一条完整协议命令（单行或 BOARD 多行块），返回本次新增的 stdout 行。 */
-function _send(cmd: string): string[] {
-  if (!_module || typeof _module.sendCommand !== 'function')
-    throw new Error('Rapfi 引擎尚未就绪');
-  const mark = _stdoutLines.length;
-  _module.sendCommand(cmd);
-  return _stdoutLines.slice(mark);
+/** 把已就绪的 Emscripten Module 包成会话。语义与旧 `_send` 完全一致：
+ *  `sendCommand` 同步阻塞，返回「本次调用新增的 stdout 行」。
+ *  主线程 loader 路径与装配层回退路径共用这一份实现。 */
+export function sessionFromModule(m: RapfiModule): RapfiSession {
+  return {
+    kind: 'module',
+    send(cmd: string): string[] {
+      if (!m || typeof m.sendCommand !== 'function')
+        throw new Error('Rapfi 引擎尚未就绪');
+      const mark = _stdoutLines.length;
+      m.sendCommand(cmd);
+      return _stdoutLines.slice(mark);
+    },
+  };
 }
 
-/** 加载并实例化引擎。onProgress 可选回调('script'|'wasm'|'download', detail?)。
- * 并发调用复用同一 Promise；加载失败后自动清零以允许重试（失败错误带 `retryable`，
- * 装配层的自动退避会接住——2026-10-06 前 load 路径的错误从不打这个标）。 */
-export function ensureLoaded(onProgress?: ProgressFn): Promise<RapfiModule> {
-  if (_module) return Promise.resolve(_module);
-  if (_loadPromise) return _loadPromise;
-  _loadPromise = new Promise<RapfiModule>((resolve, reject) => {
+/** 给错误打 `retryable`（网络/资产类失败应触发装配层的自动退避）。 */
+function retryableError(e: unknown): Error {
+  const err = e instanceof Error ? e : new Error(String(e));
+  (err as Error & { retryable?: boolean }).retryable = true;
+  return err;
+}
+
+/** 建立并初始化引擎会话。onProgress 可选回调('script'|'wasm'|'download', detail?)。
+ *
+ *  来源优先级：注入的 `_module`（测试快速路径，**不发 START**，注入者视为已就绪）
+ *  → 注入的会话工厂（Worker 版）→ 胶水加载器（主线程回退）。
+ *  并发调用复用同一 Promise；失败后清零以允许重试（网络类错误带 `retryable`，
+ *  装配层的自动退避会接住——2026-10-06 前 load 路径的错误从不打这个标）。 */
+export function ensureSession(onProgress?: ProgressFn): Promise<RapfiSession> {
+  if (_session) return Promise.resolve(_session);
+  if (_sessionPromise) return _sessionPromise;
+  _sessionPromise = new Promise<RapfiSession>((resolve, reject) => {
+    if (_module) { resolve(sessionFromModule(_module)); return; }
+    const url = glueUrl();
+    if (typeof onProgress === 'function') { try { onProgress('script'); } catch (_) { /* ignore */ } }
+
+    /* 两条来源拿到会话后走同一段初始化；初始化失败视为引擎不可用（不可重试）。 */
+    const boot = (p: Promise<RapfiSession>): void => {
+      p.then((sess) => {
+        Promise.resolve()
+          .then(() => sess.send('START 15'))
+          .then((initOut) => {
+            if (!initOut.some((l) => /^\s*OK\s*$/.test(l)))
+              throw new Error('引擎 START 无 OK 回应：' + initOut.join('|'));
+            return sess.send('INFO rule 0'); // 无禁手自由五子棋
+          })
+          .then(() => { _session = sess; resolve(sess); },
+                (e: unknown) => {
+                  try { if (sess.dispose) sess.dispose(); } catch (_) { /* ignore */ }
+                  _module = null;
+                  reject(e);
+                });
+      }, reject);
+    };
+
+    if (_sessionFactory) { boot(_sessionFactory(url, onProgress)); return; }
     if (!_loader) {
       reject(new Error('当前环境不支持动态加载 Rapfi 脚本（无 document）'));
       return;
     }
-    /* 环境性问题（无 document）不该自动重试；网络/资产类失败才打 `retryable`。 */
-    const rejectRetryable = (e: unknown): void => {
-      const err = e instanceof Error ? e : new Error(String(e));
-      (err as Error & { retryable?: boolean }).retryable = true;
-      reject(err);
-    };
-    const url = glueUrl();
-    if (typeof onProgress === 'function') { try { onProgress('script'); } catch (_) { /* ignore */ } }
-    _loader(url, onProgress).then((mod) => {
-      try {
-        if (!mod || typeof mod.sendCommand !== 'function')
-          throw new Error('Rapfi 胶水脚本未导出工厂函数 Rapfi：' + url);
-        _module = mod;
-        const initOut = _send('START 15');
-        const ok = initOut.some((l) => /^\s*OK\s*$/.test(l));
-        if (!ok) throw new Error('引擎 START 无 OK 回应：' + initOut.join('|'));
-        _send('INFO rule 0'); // 无禁手自由五子棋
-        resolve(mod);
-      } catch (e) { _module = null; reject(e); }
+    boot(_loader(url, onProgress).then((mod) => {
+      if (!mod || typeof mod.sendCommand !== 'function')
+        throw new Error('Rapfi 胶水脚本未导出工厂函数 Rapfi：' + url);
+      _module = mod;
+      return sessionFromModule(mod);
     }, (e: unknown) => {
-      rejectRetryable(new Error('Rapfi 脚本加载失败：' + url + '（需经 HTTP 提供，且 .data/.wasm 与脚本同源可访问）'
+      throw retryableError(new Error('Rapfi 脚本加载失败：' + url + '（需经 HTTP 提供，且 .data/.wasm 与脚本同源可访问）'
         + (e && (e as Error).message ? '：' + (e as Error).message : '')));
-    });
+    }));
   });
-  _loadPromise.then(null, () => { _loadPromise = null; });
-  return _loadPromise;
+  _sessionPromise.then(null, () => { _sessionPromise = null; });
+  return _sessionPromise;
 }
+
+/** 旧名（返回类型已从 Module 改为会话）：保留给既有装配层调用点与旧测试。
+ *  新代码请直接用 `ensureSession`。 */
+export const ensureLoaded = ensureSession;
 
 /* ---------------- 决策 ---------------- */
 
@@ -237,19 +293,19 @@ export async function decide(
   if (o.signal && o.signal.aborted) throw new Error('aborted');
   const thinkMs = Math.max(500, Math.min(60000, o.thinkMs || DEFAULT_THINK_MS));
 
-  const mod = await ensureLoaded(o.onProgress);
+  const sess = await ensureSession(o.onProgress);
   if (o.signal && o.signal.aborted) throw new Error('aborted');
-  void mod; // _send 内部使用 _module
 
-  /* 让出事件循环一拍，使「思考中」指示先 paint（sendCommand 是同步阻塞的） */
+  /* 让出事件循环一拍，使「思考中」指示先 paint（主线程会话的 sendCommand 是同步阻塞的；
+     Worker 会话本来就异步，这一拍无害） */
   await new Promise<void>((r) => { setTimeout(r, 0); });
   if (o.signal && o.signal.aborted) throw new Error('aborted');
 
   const boardCmd = buildBoardCommand(st, side);
   let fresh: string[];
   try {
-    _send('INFO timeout_turn ' + thinkMs);
-    fresh = _send(boardCmd);
+    await sess.send('INFO timeout_turn ' + thinkMs);
+    fresh = await sess.send(boardCmd);
   } catch (e) {
     throw new Error('Rapfi 引擎调用失败：' + (e && (e as Error).message || e));
   }
@@ -292,19 +348,32 @@ export const emitStdout = onStdout;
 
 /** 测试：注入假 Module（跳过加载器）。 */
 export function setModule(m: RapfiModule | null): void {
+  _disposeSession();
+  _session = null;
+  _sessionPromise = null;
   _module = m;
 }
 
 /** 测试：清空引擎状态。 */
 export function reset(): void {
+  _disposeSession();
+  _session = null;
+  _sessionPromise = null;
   _module = null;
-  _loadPromise = null;
   _stdoutLines = [];
+}
+
+/** 释放当前会话（Worker 会话会 terminate）。 */
+function _disposeSession(): void {
+  const s = _session;
+  if (s && s.dispose) { try { s.dispose(); } catch (_) { /* ignore */ } }
 }
 
 /** 汇总出口，对应旧实现的 `BG.rapfi` 命名空间。 */
 export const rapfi = {
   ensureLoaded,
+  ensureSession,
+  sessionFromModule,
   decide,
   notationToXY,
   xyToNotation,
@@ -314,6 +383,7 @@ export const rapfi = {
   glueUrl,
   setGlueUrl,
   setLoader,
+  setSessionFactory,
   stderrHandler,
   emitStdout,
   setModule,

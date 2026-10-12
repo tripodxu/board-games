@@ -47,7 +47,14 @@
   与项目记法 `A1=(0,0)` 对齐（`String.fromCharCode(65+x)+(y+1)`）。
 - 单线程构建的 `sendCommand` 是**同步阻塞**的：一次调用跑完一整手搜索，
   时长由 `timeout_turn` 限定；`decide` 在调用前让出事件循环一拍，
-  使「思考中」指示先 paint。
+  使「思考中」指示先 paint。**2026-10-12 更新**：浏览器侧已把思考搬进
+  **Web Worker**——`src/app/rapfi-worker.ts`（装配层会话工厂）+ `public/rapfi/rapfi-worker.js`
+  （手写 classic worker，刻意不进打包：胶水是普通脚本，只有 classic worker 的
+  `importScripts` 能把它挂成 worker 全局，而 Vite `?worker` 在 dev 一律产出 module worker）。
+  资产字节仍由**页面**抓取（fetch 胶水文本 + `.wasm` + `.data`，带进度）再 transfer 给 Worker，
+  因为两个自动化 harness 靠 CDP `Fetch`（**按 target 生效**）把 `/rapfi/*` 改由本地
+  `public/rapfi/` 供给，Worker 自己发请求会绕过这条捷径。Node 侧（实验夹具）仍是同进程同步调用，
+  不受影响。
 
 ## 构建中的坑（已解决）
 
@@ -69,8 +76,14 @@
 - 优点：零依赖守住（无 npm、无打包器、无 CDN；WASM 是预编译产物，
   非构建步骤）；新渠道开箱即用，实验框架直接可用作强基线。
 - 缺点/已知局限：
-  ① 单线程同步搜索会冻结 UI 约 `thinkMs`（默认 3s）——机机实验可接受，
-  人机对弈时每手卡 3s；**后续应迁到 Web Worker**（本轮为控制复杂度未做）。
+  ① ~~单线程同步搜索会冻结 UI 约 `thinkMs`（默认 3s）——机机实验可接受，
+  人机对弈时每手卡 3s；后续应迁到 Web Worker~~。**已落地（2026-10-12）**：
+  浏览器侧思考默认跑在 classic Web Worker 里，主线程只等消息（10s 档不再冻结 UI）；
+  Worker 不可用或初始化失败时**回退主线程加载器**（界面重新卡，但还能下棋），
+  带 `retryable` 的网络类失败**不回退**（交给装配层自动退避，免得白等两遍 11 MB）。
+  是否真的走了 Worker 由 `<html data-rapfi-session>` 标记、
+  `npm run smoke:browser -- --channel rapfi` 断言（**只有这条能识破「静默回退」**：
+  两种路径都能落子，只看对手走子会假绿）。
   ② `file://` 双击打开时 `.data` 的 fetch 可能被浏览器拦截，需 HTTP 托管
   （`node server.js` / `dev-proxy.py` / Pages 均可）。
   ③ 引擎搜索日志走 `MESSAGE` 行，已在解析层过滤；`timeout_turn` 是引擎侧

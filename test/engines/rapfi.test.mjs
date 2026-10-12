@@ -2,7 +2,8 @@
  *
  * 覆盖旧 test/rapfi-tests.cjs 的全部 16 项，并补上旧套件测不到的两类：
  *   ①「无 document」分支（Node 里可直接验证加载器注入契约）；
- *   ②加载状态机的失败路径（START 无 OK / 脚本加载失败 / 未导出工厂 / 失败后可重试）。
+ *   ②加载状态机的失败路径（START 无 OK / 脚本加载失败 / 未导出工厂 / 失败后可重试）；
+ *   ③会话工厂（P1① 的 Worker 路径）：优先于 loader、START 无 OK 要 dispose、错误原样透传。
  * 只 stub Emscripten Module，不加载真实 WASM（真实引擎冒烟见 docs/adr/0006）。
  */
 import { suite, ok, eq } from './harness.mjs';
@@ -11,7 +12,8 @@ import { getGame } from '../../src/core/registry.ts';
 import {
   BOARD_N, DEFAULT_THINK_MS,
   notationToXY, xyToNotation, buildBoardCommand, parseMoveLine, isErrorLine,
-  ensureLoaded, decide, glueUrl, setGlueUrl, setLoader, onStdout, setModule, reset,
+  ensureLoaded, ensureSession, decide, glueUrl, setGlueUrl, setLoader, onStdout, setModule, reset,
+  setSessionFactory,
 } from '../../src/core/jev/rapfi.ts';
 
 const S = suite();
@@ -312,6 +314,96 @@ S.t('rapfi：加载器返回非工厂时按「未导出工厂函数」报错', a
   ok(err && /未导出工厂函数 Rapfi/.test(err.message), '应抛未导出工厂，实际：' + (err && err.message));
   reset();
   setLoader(null);
+});
+
+/* ---------------- 会话工厂（Worker 路径，P1① 2026-10-12） ---------------- */
+
+/** 假会话：send 异步返回预设行（模拟 Worker 的 postMessage 往返）。 */
+function fakeSession(onCmd) {
+  const sent = [];
+  return {
+    kind: 'worker',
+    sent: sent,
+    send: async (cmd) => { sent.push(cmd); return (onCmd && onCmd(cmd)) || []; },
+  };
+}
+
+S.t('rapfi：注入会话工厂后优先走工厂（Worker 路径），复用同一会话且 decide 走异步会话', async () => {
+  reset();
+  const factoryCalls = [];
+  const loaderCalls = [];
+  let sess = null;
+  setSessionFactory(async (url, onProgress) => {
+    factoryCalls.push(url);
+    if (typeof onProgress === 'function') onProgress('wasm');
+    sess = fakeSession((cmd) => {
+      if (cmd === 'START 15') return ['OK'];
+      return /^BOARD/.test(cmd) ? ['7,7'] : [];
+    });
+    return sess;
+  });
+  setLoader(async (url) => { loaderCalls.push(url); throw new Error('不应走到 loader'); });
+
+  const s1 = await ensureSession();
+  ok(!!s1, '已建立会话');
+  eq(s1.kind, 'worker', '会话来自工厂');
+  eq(factoryCalls.length, 1, '工厂只调用一次');
+  eq(loaderCalls.length, 0, 'loader 未被使用（工厂优先）');
+  eq(sess.sent[0], 'START 15', '首条命令 START 15');
+  eq(sess.sent[1], 'INFO rule 0', '次条命令 INFO rule 0');
+
+  const s2 = await ensureSession();
+  ok(s1 === s2, '就绪后直接复用同一会话');
+  eq(factoryCalls.length, 1, '仍未再次调用工厂');
+
+  const st = gomoku.newGame();
+  const d = await decide(gomoku, st, 'black', gomoku.getLegalMoves(st), null, {});
+  eq(d.notation, 'H8', 'decide 经异步会话拿到着法');
+
+  reset();
+  setSessionFactory(null);
+  setLoader(null);
+});
+
+S.t('rapfi：会话工厂的 START 无 OK 视为加载失败——失败会话被 dispose，且可重试', async () => {
+  reset();
+  let attempt = 0;
+  let disposed = 0;
+  setSessionFactory(async () => {
+    attempt++;
+    const bad = attempt === 1;
+    return {
+      kind: 'worker',
+      dispose: () => { disposed++; },
+      send: async (cmd) => (cmd === 'START 15' ? (bad ? ['ERROR bad size'] : ['OK']) : []),
+    };
+  });
+  const err = await errOf(() => ensureSession());
+  ok(err && /引擎 START 无 OK 回应/.test(err.message), '应抛无 OK 回应，实际：' + (err && err.message));
+  eq(disposed, 1, '失败会话被 dispose（Worker 会 terminate）');
+  const s = await ensureSession(); /* 失败后 _sessionPromise 已清零 → 可重试 */
+  ok(!!s, '第二次成功');
+  eq(attempt, 2, '工厂被调用两次');
+  reset();
+  setSessionFactory(null);
+});
+
+S.t('rapfi：会话工厂的错误原样透传（retryable 由装配层打，core 不吞不改）', async () => {
+  reset();
+  setSessionFactory(async () => {
+    const e = new Error('Rapfi Worker 初始化失败');
+    e.retryable = true;
+    throw e;
+  });
+  const err = await errOf(() => ensureSession());
+  ok(err && err.retryable === true && /Rapfi Worker 初始化失败/.test(err.message),
+    '应透传原错误与 retryable，实际：' + (err && err.message));
+  reset();
+  setSessionFactory(null);
+});
+
+S.t('rapfi：ensureLoaded 是 ensureSession 的别名（旧调用点仍可用）', () => {
+  ok(ensureLoaded === ensureSession, '两个名字指向同一函数');
 });
 
 S.t('rapfi：glueUrl 默认相对路径，可被 UI 层覆盖', () => {

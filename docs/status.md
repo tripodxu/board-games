@@ -287,6 +287,26 @@
 
 ## 已验证（验收证据）
 
+- **Rapfi 思考搬进 Web Worker（2026-10-12，业主「继续优化」⇒ P1 第一项）**：闭环「仍存在」第 5 条剩下的主体
+  （10s 档每手冻结约 10 秒）。机制与理由见 [ADR-0006](adr/0006-rapfi-wasm-opponent.md) 的 2026-10-12 增补与
+  `src/app/rapfi-worker.ts` 文件头：① Worker 脚本是**手写 classic worker**（`public/rapfi/rapfi-worker.js`，
+  刻意不进打包——Vite `?worker` 在 dev 一律产出 module worker，而 module worker 禁 `importScripts`，
+  dev 与线上行为会不一致）；② 资产字节**仍在页面上下文抓取**（fetch 胶水文本 + `.wasm` + `.data`，带进度）
+  再 postMessage transfer 给 Worker：两个 harness 靠 CDP `Fetch`（**按 target 生效**）把 `/rapfi/*` 改由本地
+  `public/rapfi/` 供给，Worker 自己发请求会绕过这条捷径；③ core 新增会话抽象（`RapfiSession` /
+  `setSessionFactory` / `ensureSession`，`ensureLoaded` 保留为别名，`decide` 改 `await sess.send`）；
+  ④ Worker 不可用或初始化失败**回退主线程加载器**，带 `retryable` 的网络类失败**不回退**（免得白等两遍 11 MB）。
+  **验证**：`npm run typecheck` 干净；`npm test` **57 文件 / 792 例全绿**（新增 `test/app/rapfi-worker.spec.ts` 10 例、
+  `test/engines/rapfi.test.mjs` 4 例）；`npm run smoke:browser -- --channel rapfi` **15/15**。
+  **新增第 8 项断言是唯一能识破「静默回退主线程」的东西**：两条路径都能落子，只看「对手走子」会假绿——
+  装配层把实际路径写到 `<html data-rapfi-session>`，冒烟断言它 `= worker`（MEMORY「注入点必须走真实调用链」的落地）。
+  顺带修掉一个真缺陷：工具函数 `marked()`（现 `retryableError()`）原先只做类型转换、**从没真的置过
+  `retryable = true`**，于是资产/胶水请求失败不会自动退避，反而走上「回退主线程再白等一遍 11 MB」的错路
+  （由新测试暴露）。
+  **工具链**：`vite.config.ts` 增加 `server.watch.ignored`（`**/.work/**`、`**/*.tmpdir/**`、`**/*.tmp`）——
+  本地 dev 站台会被 chokidar 的 EBUSY 掀翻（headless Chrome 独占 `.work/chrome-profile/Default/Network/Cookies`；
+  编辑工具的原子替换临时文件同样触发），表现为「冒烟跑到一半站台没了、三条在线断言假红」。
+
 - **自建 jev-router 网关渠道 `jevrouter`（2026-10-08，业主指令「用 opencodeproxy 的渠道做实验，
   用户端仍需自己准备 api key」）**：[ADR-0024](adr/0024-jevrouter-gateway-channel.md)。
   网关 = `https://jev.logicc.top/v1/systemone`，`jv-` 开头的客户端 key，**按腿分流**（zen-o2a /
@@ -462,7 +482,7 @@
 - **前端 + 后端优化轮（2026-10-06，计划模式三路只读探查立项 → 六项落地 → 部署 `e998ad32`）**：
   **后端**：① 导出 N+1 销账（技术债 #3，见技术债节）——`listGameDetails` 每页 2 次往返，行形状与 getGame 逐字段一致（export.spec 等价性钉子 + 跨页不重不漏）；② **读接口限流放行**：`rateLimit('read')` 直接过（不写 rate_limits、无 X-RateLimit 头、不 429）——ADR-0013「后果」节原文预留「读接口不计数或采样」，旧实现反而全量计数，单 IP 满速读可烧 17.3 万行写/日（免费档 10 万）；当天 D1 仪表盘 `rows_written_24h = 81,415`（80% 警戒）正好演示了写配额敏感性（其中 ~8.1 万是导入一次性成本，但读限流的写是常态燃烧）；aggregates.spec 的读限流用例改写为「桶满也不 429、不写库」；③ `getStats` 四条 SQL 合 `db.batch`（4 RT→1）+ 四个读路由加 `Cache-Control`（global `public, max-age=30`，device 维度 `no-store`）+ `public/_headers` 三档缓存（`/assets/*` immutable、`/rapfi/*` 86400、`/` no-cache——部署后 curl -I 逐档验证生效）。
   **前端**：④ **Rapfi 加载硬化**（根因与五项保护见「仍存在」第 5 条）+ `DecideOpts.rapfiOnProgress`/signal 透传链（tactics.ts → client.ts → rapfi.ts → loader）；⑤ **回放器增量化**：局面快照按 uid 缓存增量推进、canvas/renderer 复用、ply 变化 rAF 合帧——225 手局拖滑杆从「每格全量重放 + 重建 canvas」降到每帧一次重画（data-panels.spec 补两处刷帧断言）；⑥ 小件：棋谱面板每手增量追加（`appendLedgerPanel` 从死代码转正，第一手仍全量重建以清空态占位）、`#speed` 滑杆 input 只更新标签/落盘挪到 change、resize 全量重绘 rAF 合帧、Google Fonts 改非阻塞加载并砍 500 字重。
-  **验收**：`npm run typecheck` 干净；`npm test` **52 文件 / 746 例全绿**（含引擎套件与金样差分）；`smoke:browser` mock 与 `--channel rapfi` 各 **14/14**；部署后 `smoke:live` **30/30**（写入行已清）、线上浏览器冒烟 **14/14**（实验面板 52 轮 / 865 局）。**遗留候选**（探查实证、本轮未做）：Rapfi 思考 Web Worker 化（10s 档主线程冻结的主体）、四面板动态 import（首包 ~-10%）、leaderboard 物化、`/api/jev` 请求体大小上限。
+  **验收**：`npm run typecheck` 干净；`npm test` **52 文件 / 746 例全绿**（含引擎套件与金样差分）；`smoke:browser` mock 与 `--channel rapfi` 各 **14/14**；部署后 `smoke:live` **30/30**（写入行已清）、线上浏览器冒烟 **14/14**（实验面板 52 轮 / 865 局）。**遗留候选**（探查实证、本轮未做）：~~Rapfi 思考 Web Worker 化（10s 档主线程冻结的主体）~~ **已于 2026-10-12 落地**（见「仍存在」第 5 条）、四面板动态 import（首包 ~-10%）、leaderboard 物化、`/api/jev` 请求体大小上限。
 
 - **生产部署到 main + 阶梯 624 局导入 D1 + 快照重导（2026-10-06，业主批准的一次性收口）**：
   ① `npm run deploy` ⇒ 版本 `b2deae8b-3881-4af0-b7b7-4dab4e76c711`；复验手法（抓线上包 grep 字面量）`X-Jev-Provider`×3 / `commandcode`×4 / `上游兜底`×4 全部出现（C0 时代全 0）⇒ 生产含 C2 兜底代码与 C3 逐手归因写入；`JEV_FAILOVER` 仍 `"off"`（默认行为不变，BYOK 语义不变）；`smoke:live` **30/30**（写入行已手动清理，终态 936/56723/60）。② 阶梯五批 **624 局 / 37425 手 / 32 轮 experimentEntry** 导入线上 D1（驱动 `.work/ladder-import.mjs`，一次性不入库；内存 SQLite 自检 9 分片 ×2 遍计数不变；远程核对 games 936 / moves 56723 / experiments 60、uid 无重复、孤儿 0、逐手与 move_count 偏差 0、`provider`/`cands_sent` 各 21378 手）。③ `db:export` 重导 **32.4 MB** ⇒ `verify:backup --structural` 绿（936 局 payload 逐字节一致、派生列漂移 0）。
@@ -1002,7 +1022,7 @@
 2. **规则类未实现**：象棋长将/长捉判负、国象三次重复判和、中国跳棋「永堵营地门」都未实现；围棋只有 9 路。
 3. **官方 API 浏览器直连不可行**（CORS 白名单），必须走同源 `/api/jev` 代理；未带 key 时返回 401。
 4. **Jev 的概率判断仍可能出错**：「零幻觉」只保证输出结构体，不保证棋力判断正确。
-5. **Rapfi 渠道**：单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完；10s 档每手冻结约 10 秒——**Web Worker 化仍未做**，是这条限制剩下的主体）；只支持五子棋；**首次要下 10.7 MB 资产**。**应用侧保护已于 2026-10-05 优化轮补上（2026-10-06 部署）**：① 「假死」根因（`.data` 抓取失败时胶水 run dependency 永不解除 ⇒ 工厂 Promise 永不 settle ⇒ inflight 永占）被加载器看门狗切断——进度停滞 30s 即失败（`RAPFI_STALL_TIMEOUT_MS`），胶水的 `setStatus` 进度既当展示也当心跳，慢链路有进度不误杀；② 失败错误带 `retryable` 接入装配层自动退避，`_loadPromise` 失败即清零可重入；③ loop 传入的 abort signal 现在真的能穿到 rapfi（此前在 client 分支被丢弃）；④ 用户显式切到 rapfi 渠道时后台预取（只在五子棋页触发，不在 boot 时偷下 10 MB）；⑤ 下载进度显示到状态行。`npm run smoke:browser -- --channel rapfi` 14/14（2026-10-06 复验）。
+5. **Rapfi 渠道**：~~单线程同步思考会阻塞 UI（思考中先 paint 一拍再同步跑完；10s 档每手冻结约 10 秒——**Web Worker 化仍未做**，是这条限制剩下的主体）~~ **已闭环（2026-10-12）**：浏览器侧思考改跑在 **Web Worker** 里（`src/app/rapfi-worker.ts` 会话工厂 + `public/rapfi/rapfi-worker.js` 手写 classic worker，资产字节仍由页面抓取后 transfer 交给 Worker，保住两个 harness 的本地供给捷径），主线程只等消息，10s 档不再冻结界面；Worker 不可用/初始化失败**回退主线程加载器**（`<html data-rapfi-session>` 记录实际路径，`smoke:browser --channel rapfi` 会在 `main` 时红），带 `retryable` 的网络类失败不回退。**仍未变**：只支持五子棋；**首次要下 10.7 MB 资产**（预下载到 Service Worker 一类增强仍未做）；Node 侧实验夹具仍是同进程同步调用。**应用侧保护已于 2026-10-05 优化轮补上（2026-10-06 部署）**：① 「假死」根因（`.data` 抓取失败时胶水 run dependency 永不解除 ⇒ 工厂 Promise 永不 settle ⇒ inflight 永占）被加载器看门狗切断——进度停滞 30s 即失败（`RAPFI_STALL_TIMEOUT_MS`），胶水的 `setStatus` 进度既当展示也当心跳，慢链路有进度不误杀；② 失败错误带 `retryable` 接入装配层自动退避，加载 Promise 失败即清零可重入；③ loop 传入的 abort signal 现在真的能穿到 rapfi（此前在 client 分支被丢弃）；④ 用户显式切到 rapfi 渠道时后台预取（只在五子棋页触发，不在 boot 时偷下 10 MB）；⑤ 下载进度显示到状态行。`npm run smoke:browser -- --channel rapfi` **15/15**（2026-10-12 复验，新增第 8 项断言 `data-rapfi-session=worker`）。
 6. **战术档闸门**只影响 Jev 三渠道与 `random` 基线，`mock` / `rapfi` 早退不受影响。
 7. **`sideConfig` 是一份全局设置**（localStorage 键与旧实现逐字兼容），不按局快照；实验会借走并在结束后归还。
 8. **沿革竖列与设置抽屉改的是全局默认档**，不影响已经开打的那一局。
@@ -1058,7 +1078,7 @@
 | `npm run verify:backup` | 备份可重建（`--structural` 是定时任务用的结构模式） | 拿到 D1 导出后 / 排查数据漂移 |
 | `npm run db:export` | 从远程导出一份 SQL 快照到 `backups/` | 切流前、发布前后留底 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 30 项 | 部署后（**会写一行再删掉，注意线上数据**） |
-| `npm run smoke:browser` | 真浏览器（CDP）冒烟 14 项（含归档分页的游标追加、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道 | 部署后、改前端入口后 |
+| `npm run smoke:browser` | 真浏览器（CDP）冒烟 14 项（含归档分页的游标追加、实验报告分桶表、最新棋谱一键回放、服务端战报并入）；`--offline` 下三项在线断言让位给 2 项降级断言（共 13 项），`--channel rapfi` 验 wasm 渠道并多断言一项「走子经 Web Worker 会话（未静默回退主线程）」（共 15 项） | 部署后、改前端入口后 |
 | `node scripts/experiment-run.mjs --games N` | 用干净 profile 的真浏览器跑一轮 A/B 对比实验并留 JSON 证据：填渠道与 key（**只从 `JEV_API_KEY` 环境变量读**）→ 点「开始实验」→ 轮询心跳（局数、上游调用次数与 HTTP 状态序列）→ 回查 `GET /api/games?tag=` 确认每局都进了 D1；页面停在「等人工重试」时代点 `#retryBtn`（计数）；默认把 `/rapfi/*` 改由本地 `public/rapfi/` 供给资产（`--no-rapfi-local` 可关），规程与四条坑见 [agents/playbooks.md](agents/playbooks.md) §7 | 改实验面板 / 渠道 / 重试逻辑后；**会真花上游配额**，日常不跑 |
 | `npm run check:docs` | MEMORY 置顶、所有 md 相对链接可解析、status 日期在 30 天内 | 改任何 md 后（CI 里也跑） |
 | `npm run deploy` | `vite build && wrangler deploy` | 发布（`deploy.yml` 同样只手动触发） |
@@ -1180,7 +1200,7 @@
 7. **测试库共享**：worker 项目用 `singleWorker: true`，同一实例里的 D1 是共享状态，新用例必须自己清理数据。
 8. **`npm run golden` 的失败是设计如此**（见「仍存在」第 18 条），别在 CI 里把它当回归。
 9. ~~**文档索引过期**~~ **已关闭（2026-10-02）**：[docs/README.md](README.md) 的目录树与 [docs/adr/README.md](adr/README.md) 的表格都已补到 0015，`npm run check:docs` 绿（45 个 md / 277 个链接）。注意它只校验链接可达，**不校验新 ADR 有没有登记进索引**——新增 ADR 时要自己补两处。
-10. ~~**Rapfi 的 10 MB 资产仍由页面在局中现抓**（慢链路上会假死，见「仍存在」第 5 条）：应用侧的重试/报错面与预取都未做~~ **已闭环（2026-10-06 优化轮）**：停滞看门狗 + 下载进度 + retryable 自动重试 + 显式切换时预取（见「仍存在」第 5 条的完整清单）。仍未做的只剩「局中同步思考阻塞 UI」与「资产预下载到 Service Worker」一类增强。
+10. ~~**Rapfi 的 10 MB 资产仍由页面在局中现抓**（慢链路上会假死，见「仍存在」第 5 条）：应用侧的重试/报错面与预取都未做~~ **已闭环（2026-10-06 优化轮）**：停滞看门狗 + 下载进度 + retryable 自动重试 + 显式切换时预取（见「仍存在」第 5 条的完整清单）。~~仍未做的只剩「局中同步思考阻塞 UI」与「资产预下载到 Service Worker」一类增强~~ **「局中同步思考阻塞 UI」已于 2026-10-12 闭环**（思考搬进 Web Worker，见「仍存在」第 5 条）；剩下的是「资产预下载到 Service Worker」一类增强。
 11. **在 DSH 里直接跑 wrangler 会被参数解析坑掉（2026-10-03 实测）**：DSH 的 `node` 跑在 Electron 里，yargs 的 `hideBin()` 判定成「打包版 Electron 应用」而多切片一位，报 `X [ERROR] Unknown arguments: remote, …\wrangler-dist\cli.js, d1, …`；直接 `node node_modules/wrangler/wrangler-dist/cli.js …` 又会因为 `require.main === module` 守卫静默什么都不做（exit 0、无输出）。绕行包装（`.work/wrangler-run.cjs`，不入库）：
 
     ```js

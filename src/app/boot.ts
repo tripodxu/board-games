@@ -30,7 +30,7 @@ import { byId } from '../ui/dom.ts';
 import { initBackend } from './backend.ts';
 import { bindAll, foldHooks } from './bindings.ts';
 import { loadLatestGames } from './records.ts';
-import { installRapfiLoader } from './rapfi-loader.ts';
+import { installRapfiWorker } from './rapfi-worker.ts';
 import type { AppCtx } from './ctx.ts';
 import { createCtx } from './ctx.ts';
 import { resetSession } from './loop.ts';
@@ -152,9 +152,11 @@ export function boot(opts: BootOptions = {}): AppCtx | null {
   });
 
   /* ---- 以下顺序＝旧启动顺序 ---- */
-  /* Rapfi 渠道的胶水脚本注入：core 不能碰 DOM，装配层必须显式装（P8 补齐 P6 拆层时漏掉的一段；
-     漏装时 Rapfi 渠道的对手会以「当前环境不支持动态加载 Rapfi 脚本（无 document）」静默不走子）。 */
-  installRapfiLoader();
+  /* Rapfi 渠道的装配：core 不能碰 DOM，装配层必须显式装（P8 补齐 P6 拆层时漏掉的一段；
+     漏装时 Rapfi 渠道的对手会以「当前环境不支持动态加载 Rapfi 脚本（无 document）」静默不走子）。
+     `installRapfiWorker()` 内部先装主线程胶水加载器（回退路径），再在能用的环境里装上
+     Worker 会话工厂——思考搬进 Worker，主线程不再冻结（ADR-0006 的已知局限）。 */
+  installRapfiWorker();
   buildTabs(ctx, (gid: string) => switchGame(ctx, gid, resetSession));
   loadSettingsUI(ctx);
   renderSideCfg(ctx);
