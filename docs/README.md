@@ -12,6 +12,7 @@ docs/
 ├── architecture.md         ← 架构地图：文件职责、数据流、关键不变量
 ├── engine-interface.md     ← 棋种引擎统一接口契约 + 新棋种接入指南
 ├── jev-api.md              ← Jev API 契约、五渠道 + random 基线、错误重试、成本模型
+├── remote-experiments.md   ← 远端对照实验全流程：启动 → 看进度 → 读战绩 → 取数据（含监督脚本）
 ├── memory/
 │   └── MEMORY.md           ← 项目记忆，【新条目在最上面】
 ├── adr/                    ← 架构决策记录（一次一文件，不可改历史）
@@ -84,6 +85,7 @@ docs/
 | 搞清楚代码怎么组织的 | [architecture.md](architecture.md) |
 | 写/改一个棋种引擎 | [engine-interface.md](engine-interface.md) |
 | 动 Jev 请求相关 | [jev-api.md](jev-api.md) |
+| 跑对照实验 / 看进度 / 取实验数据 | [remote-experiments.md](remote-experiments.md) |
 | 改 UI / 样式 / 可访问性 | [status.md](status.md)「设计例外」+ [architecture.md](architecture.md) 文件职责表 |
 | 接手一个进行中的任务 | [agents/handoff.md](agents/handoff.md) + [memory/MEMORY.md](memory/MEMORY.md) 最新 3 条 |
 | 和别的 agent 并行干活 | [agents/parallel-work.md](agents/parallel-work.md) |

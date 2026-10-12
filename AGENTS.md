@@ -78,6 +78,7 @@
 | 改样式 / 页面外壳 | architecture.md §2.1 | `index.html` + `styles/style.css` |
 | 改部署 / 代理 / 定时任务 | architecture.md §7 + wrangler.jsonc | `.github/workflows/**` + `src/worker/maintenance.ts` |
 | 改测试 | architecture.md §6 + test/parity/README.md | 各 `test/**` 分层（引擎纯 Node / worker 真 D1 / ui+app happy-dom） |
+| 跑对照实验 / 看进度 / 取实验数据 | **remote-experiments.md** | `scripts/experiment-{batch,report,loss-report}.mjs` |
 | 接手别人没做完的任务 | agents/handoff.md + memory 最新 3 条 | handoff 里指名的文件 |
 
 完整任务→阅读矩阵见 [docs/agents/reading-paths.md](docs/agents/reading-paths.md)。
