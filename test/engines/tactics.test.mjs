@@ -67,7 +67,7 @@ S.t('版本登记表：当前档 / 版本齐全 / rank 连续', () => {
     'v6-parry4', 'v7-vcf', 'v8-vcf-try', 'v9-vcf-sound', 'v10-live3', 'v11-vct', 'v12-vct-def', 'v13-pressure-gate', 'v14-live3-fresh',
     'v14-tighten', 'v14.1', 'v14.2', 'v14.3', 'v14-plus'];
   for (const id of ANCHORED) ok(R.VERSIONS.some((v) => v.id === id), '登记表漏版本 ' + id);
-  eq(R.VERSIONS.length, 20, '应为 19 个战术版本 + 1 基线');
+  eq(R.VERSIONS.length, 21, '应为 20 个战术版本 + 1 基线');
   eq(R.VERSIONS[0].id, 'v0-off', 'rank 0 应为无战术基线');
   R.VERSIONS.forEach((v, i) => eq(v.rank, i, v.id + ' rank 应为 ' + i));
   ok(R.VERSIONS.some((v) => v.id === R.CURRENT), 'CURRENT 应是已登记档位（回退后末档可与 CURRENT 不同）');
@@ -113,7 +113,7 @@ S.t('版本登记表：接管层（TIER）沿梯级单调不减（附加键是�
   eq(mechKeys('v14-plus'), mechKeys('v14.3'), 'v14-plus 与 v14.3 的 mech 键集应逐键相同');
 });
 
-S.t('版本登记表：层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/14）', () => {
+S.t('版本登记表：层数对照（…/14/14/14/14）', () => {
   const LAYERS = {
     'v0-off': 0, 'v1-facts': 2, 'v2-open4': 3, 'v3-make2': 5, 'v4-parry3': 6,
     'v5-safesort': 6, 'v6-parry4': 7, 'v7-vcf': 9, 'v8-vcf-try': 9, 'v9-vcf-sound': 9,
@@ -129,6 +129,8 @@ S.t('版本登记表：层数对照（2/3/5/6/6/7/9/9/9/11/12/13/14/14/14）', (
     'v14.3': 14,
     /* v14-plus（全量整合）不加层：vctFirst + softGate 都是开关，softGate 更是让 pressureGate 不开火 */
     'v14-plus': 14,
+    /* v15 不加层：quietShape 只是让 serializeForJev 少输出两个标签，接管链与预算逐键同 v14-plus */
+    'v15': 14,
   };
   const TIER = ['win', 'block', 'open4', 'threat', 'vcfAttack', 'vctAttack', 'vcfDefense', 'vctDefense',
     'pressureGate', 'live3Attack', 'live3Defense', 'parry', 'parry3', 'parry4'];
@@ -1086,6 +1088,60 @@ S.t('契约：mock 渠道 meta 字段（离线演示可归因）', async () => {
   ok(typeof d.meta.confidence === 'number' && d.meta.confidence <= 0.97, 'mock 置信度应有上限 0.97');
   ok(Array.isArray(d.meta.top) && d.meta.top.length === 3, 'topK=3 应给 3 个候选');
   near(d.meta.top[0].p, d.meta.confidence - 0.05, 'mock 首选概率应与置信度自洽', 1e-9);
+});
+
+/* v15 quietShape：只抹 `you:four` / `you:live3`，其余标签与接管链不受影响。
+ *
+ * 钉的是**意图**（指纹 test/parity/tactics-fingerprints.json 钉的是逐局面输出）：
+ *   ① v15 的 criteria 里不再出现 you:four / you:live3
+ *   ② deny:* / block:five / you:open4 / win **全部保留**（前两者是 parry3/parry4 的扫描依据，
+ *      砍掉会削弱接管链；you:open4 是「对手挡不住的胜势」属真事实）
+ *   ③ 老档（v14-plus 及以前）不传 opts ⇒ 输出与不传 opts 逐字相同
+ *   ④ v15 与 v14-plus 的 mech 只差 quietShape 一个键、预算逐键相同 ⇒ 单变量对照
+ */
+S.t('⑮ v15 quietShape：抹掉正向进攻标签，保留防守标签与全部接管层', async () => {
+  setSeed(42);
+  const gomoku = getGame('gomoku');
+  // 造一个中盘局面：双方都有三连/四连候选，保证能同时出现 you:* 与 deny:* 标签
+  let st = gomoku.newGame();
+  for (const n of ['H8', 'I8', 'J8', 'G9', 'H9', 'I9', 'H7', 'I10', 'J10', 'G10', 'K8', 'H11']) {
+    const mv = gomoku.moveFromNotation(st, n);
+    if (mv) st = gomoku.applyMove(st, mv);
+  }
+
+  const plain = gomoku.serializeForJev(st, 'black');
+  const quiet = gomoku.serializeForJev(st, 'black', { quietShape: true });
+
+  const labelsOf = (ser) => Object.values(ser.questions.move.criteria || {}).filter(Boolean);
+  const p = labelsOf(plain), q = labelsOf(quiet);
+
+  ok(p.length > 0, '基准局面的 criteria 应当非空（否则本用例无意义）');
+
+  // ① 两个正向进攻标签必须消失
+  eq(q.filter((t) => t.split('+').includes('you:four')).length, 0, 'v15 不应再输出 you:four');
+  eq(q.filter((t) => t.split('+').includes('you:live3')).length, 0, 'v15 不应再输出 you:live3');
+  ok(p.filter((t) => t.split('+').includes('you:four')).length > 0,
+    '基准档本应能看到 you:four（否则这条用例测不到东西）');
+
+  // ② 防守/真事实标签必须原样保留
+  const denysBefore = p.filter((t) => t.split('+').some((x) => x.startsWith('deny:'))).length;
+  const denysAfter = q.filter((t) => t.split('+').some((x) => x.startsWith('deny:'))).length;
+  eq(denysAfter, denysBefore, 'v15 不得改动 deny:* 标签的数量（parry3/parry4 的扫描依据）');
+  const keeps = (list) => list.filter((t) => t.split('+').some((x) =>
+    x === 'block:five' || x === 'you:open4' || x === 'win')).length;
+  eq(keeps(q), keeps(p), 'v15 必须原样保留 block:five / you:open4 / win');
+
+  // ③ 老档口径：不传 opts 与传 undefined 逐字相同
+  deepEq(gomoku.serializeForJev(st, 'black', undefined).questions.move.criteria,
+    plain.questions.move.criteria, '不传 opts 应与完全不传逐字相同（老档零影响）');
+
+  // ④ 单变量：mech 只差 quietShape、预算逐键相同
+  eq(mechOf('v15').quietShape, true, 'v15 应带 quietShape');
+  eq(mechOf('v14-plus').quietShape, undefined, 'v14-plus 不应带 quietShape');
+  const mk = [...new Set([...Object.keys(mechOf('v15')), ...Object.keys(mechOf('v14-plus'))])]
+    .filter((k) => (mechOf('v15')[k] || false) !== (mechOf('v14-plus')[k] || false));
+  deepEq(mk, ['quietShape'], 'v15 与 v14-plus 的 mech 差异应恰好只有 quietShape（单变量）');
+  ok(sameBudget(R.resolve('v15').budget, R.resolve('v14-plus').budget), 'v15 与 v14-plus 的预算应逐键相同');
 });
 
 export default S;

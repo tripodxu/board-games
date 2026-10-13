@@ -644,7 +644,9 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   /* 战术版本：整条事实/接管链都按它走；缺省/未知按当前档 */
   const ver = resolveVersion(opts.tacticsVersion);
   const M = ver.mech;
-  const ser = engine.serializeForJev(st, side);
+  /* v15 `quietShape`：把 mech 开关透给引擎，抹掉 `you:four`/`you:live3` 正向进攻标签。
+     老档不带该键 ⇒ 传 undefined ⇒ 标签输出逐字不变（test/parity 指纹钉死）。 */
+  const ser = engine.serializeForJev(st, side, M.quietShape === true ? { quietShape: true } : undefined);
   const legal = engine.getLegalMoves(st);
   const byNotation = new Map<string, Move>(legal.map((m) => [m.notation, m]));
   const t0 = Date.now();

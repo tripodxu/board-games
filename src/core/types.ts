@@ -170,6 +170,18 @@ export interface PressureCutOptions {
   keep?: number;
 }
 
+/**
+ * `serializeForJev` 的可选开关（v15 起）。
+ *
+ * `quietShape`：不输出 `you:four` / `you:live3` 正向进攻标签。
+ * 诊断依据见 `Engine.serializeForJev` 的注释与
+ * `docs/plans/2026-10-13-v15-quiet-labels.md`（预注册，跑前写死）。
+ * 不传 / undefined ⇒ 老档行为逐字不变。
+ */
+export interface SerializeOpts {
+  quietShape?: boolean;
+}
+
 /** 引擎统一接口（docs/engine-interface.md §2）。 */
 export interface Engine<S = any> {
   id: string;
@@ -186,7 +198,19 @@ export interface Engine<S = any> {
   applyMove(st: S, move: Move): S;
   getStatus(st: S): GameStatus;
   moveFromNotation(st: S, notation: string): Move | null;
-  serializeForJev(st: S, side: string): JevSerialized;
+  /**
+   * 产出「三问一次并行」的序列化结果（state + questions）。
+   *
+   * `opts.quietShape`（v15 起）：**不输出 `you:four` / `you:live3` 这类正向进攻标签**。
+   * 依据是 `.work/model-side.mjs` 的诊断——模型 34.9% 的自选着法带这类标签（其中 `you:four`
+   * 占 91.3%），而带标签的对局不败率 69.4%、不带标签的 80.4%（vplus-r10s 722 个自选手位）。
+   * 动机与判定规则见 `docs/plans/2026-10-13-v15-quiet-labels.md`。
+   *
+   * **可选参数**：老档不传 ⇒ 标签输出逐字不变（`test/parity/tactics-fingerprints.json` 钉死）。
+   * `deny:*` / `block:five` / `you:open4` / `win` 全部保留——`deny:*` 是 `parry3`/`parry4` 两层的
+   * 扫描依据，砍掉会削弱接管链；`you:open4` 是「对手挡不住的胜势」属真事实，与「造四」性质不同。
+   */
+  serializeForJev(st: S, side: string, opts?: SerializeOpts): JevSerialized;
   selfTest(): void;
 
   /* 渲染与交互（调用时才会碰到 gfx；模块加载期零 DOM 访问） */

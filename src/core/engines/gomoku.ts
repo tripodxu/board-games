@@ -16,7 +16,7 @@ import { gfx } from '../gfx.ts';
 import type { Canvas2D } from '../gfx.ts';
 import { LAYER_COLORS } from '../tactics-hints.ts';
 import type { TacticMark } from '../tactics-hints.ts';
-import type { Engine, GameStatus, JevSerialized, Live3Deny, Live3Options, Move, PickConfig, PressureCutOptions, PressureCutResult, UiState, VcfOptions, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
+import type { Engine, GameStatus, JevSerialized, Live3Deny, Live3Options, Move, PickConfig, PressureCutOptions, PressureCutResult, SerializeOpts, UiState, VcfOptions, VcfResult, VctDefenseOptions, VctDefenseResult, VctOptions } from '../types.ts';
 
 const N = 15;
 const num = (side: string): number => (side === 'black' ? 1 : 2);
@@ -1088,12 +1088,25 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     return parts.join('+');
   }
 
-  function serializeForJev(st: GomokuState, side: string): JevSerialized {
+  function serializeForJev(st: GomokuState, side: string, opts?: SerializeOpts): JevSerialized {
     const cand = candidates(st, 64);
     const notations = cand.map((m) => m.notation);
     const me = num(side);
+    /* v15 `quietShape`：抹掉 `you:four` / `you:live3` 两个**正向进攻标签**。
+       依据 `.work/model-side.mjs`：模型 34.9% 的自选着法带这类标签（`you:four` 占其中 91.3%），
+       而带标签的对局不败率 69.4%、不带标签的 80.4%（vplus-r10s，722 个自选手位）⇒ 疑为模型被
+       这些「造杀」措辞带进激进取势。判定规则见 docs/plans/2026-10-13-v15-quiet-labels.md。
+       **保留不动**：`deny:open4/four/live3` 与 `block:five`（`parry3`/`parry4` 两层的扫描依据，
+       砍掉会削弱接管链）、`you:open4`（对手挡不住的胜势，是真事实）、`win`（直接成五）。 */
+    const quiet = opts?.quietShape === true;
+    const stripPraise = (s: string): string =>
+      quiet ? s.split('+').filter((t) => t !== 'you:four' && t !== 'you:live3').join('+') : s;
     const criteria: Record<string, string | null | undefined> = {};
-    cand.forEach((m) => { criteria[m.notation] = labelPoint(st, m.r, m.c, me) || null; });
+    cand.forEach((m) => {
+      const raw = labelPoint(st, m.r, m.c, me);
+      const out = raw ? stripPraise(raw) : '';
+      criteria[m.notation] = out || null;
+    });
     const state: Record<string, unknown> = {
       game: 'gomoku (five-in-a-row) on 15x15 board, columns A-O left to right, rows 1-15 top to bottom',
       rules: forbidden ? RULES_PRO : RULES_FREE,
