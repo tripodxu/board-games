@@ -161,6 +161,12 @@ async function cmdSubmit(args) {
   /* jev-router 臂的第二个 key 文件：批量机就是网关所在的 VPS，`keyFile`（/root/.jev-key）里装的是
      `jv-` 网关 key，TypeSafe 臂要另给一个路径。两份都 source，谁缺席都不报错。 */
   const routerKeyFile = String(args['router-key-file'] || '/root/.jev-router-key');
+  /* jevrouter 臂的端点覆盖（可选，2026-10-13）。缺省 = worker 回落到 `src/worker/lib/upstream.ts`
+     的常量 `https://jev.logicc.top/v1/systemone`（经 Cloudflare 边缘，实测 1.18–3.00s，且会间歇 502：
+     错误体是 CF 的 HTML 错误页）。给了内网直连地址（实测 `http://172.18.0.4:8080/v1/systemone`
+     6/6 成功、0.58–1.36s，约快 1.8 倍）就绕开边缘。**同一网关同一模型，只是换条路**。
+     key 仍只从远端文件注入，不受这个开关影响。 */
+  const routerEndpoint = args['router-endpoint'] ? String(args['router-endpoint']) : '';
   /* P4b/D12：运行面与自限速。缺省 direct = box 直连上游、零 CF 触碰（G3）；限速在 worker 侧
      裹全局 fetch，每个真实上游请求都领令牌。`worker` 是本仓老路径（经业主 Worker 转发）。 */
   const upstream = String(args.upstream || 'direct');
@@ -286,7 +292,7 @@ async function cmdSubmit(args) {
     /* key 注入：box 上 /root/.jev-key（chmod 600，仓库外）由 shell source 进 worker 环境——
        key 不进仓库/日志/argv（AGENTS.md 铁律 7）；文件不存在时留空，worker 开局前会因缺 key 退出。 */
     const ok = ssh(host, user,
-      launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }),
+      launchRoundCommand({ repo, keyFile, routerKeyFile, routerEndpoint, planPath, logPath, pidPath }),
       20000, SSH_LAUNCH_OPTS, true);
     if (!ok) die(`round-${p.round} worker 启动失败`);
     console.log(`  round-${p.round} 已启动（pid 见 ${pidPath}）`);
@@ -321,7 +327,7 @@ function cmdResume(args) {
   /* M3：resume 必须与 submit 一样注入 key —— 早先漏了这段，走上游的臂续跑必定 exit 2，
      而断点续跑正是这套设施唯一的容错手段（ADR-0019 D3）。 */
   const ok = ssh(host, user,
-    launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }),
+    launchRoundCommand({ repo, keyFile, routerKeyFile, routerEndpoint, planPath, logPath, pidPath }),
     20000, SSH_LAUNCH_OPTS, true);
   if (!ok) die(`round-${round} 续跑失败（plan 不存在？ssh 不通？）`);
   console.log(`已续跑 batch=${batchId} round=${round}（已完成的对局会按 checkpoint 跳过并原样计入实验档案）`);

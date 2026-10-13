@@ -303,7 +303,15 @@ function decideEnvFor(cfg, plan) {
     : cfg.channel === 'jevrouter'
       ? (process.env.JEV_ROUTER_KEY || injected || '')
       : (injected || process.env.JEV_API_KEY || '');
-  const endpoint = cfg.channel === 'proxy' ? `${plan.origin}/api/jev` : '';
+  /* jevrouter 臂的端点：缺省留空 ⇒ client.ts 回落到 `src/worker/lib/upstream.ts` 的
+     `JEV_ROUTER_UPSTREAM_URL`（https://jev.logicc.top，经 Cloudflare 边缘；实测 1.18–3.00s，
+     且会间歇 502 —— 错误体是 CF 的 HTML 错误页，请求根本没到网关应用）。
+     设 `JEV_ROUTER_ENDPOINT` 可整体覆盖，实验机上用来走**内网直连**
+     （如 http://172.18.0.4:8080/v1/systemone：实测 6/6 成功、0.58–1.36s，约快 1.8 倍）。
+     **只影响实验运行面，不改生产**（生产读 upstream.ts 的常量）。 */
+  const endpoint = cfg.channel === 'proxy' ? `${plan.origin}/api/jev`
+    : cfg.channel === 'jevrouter' ? (process.env.JEV_ROUTER_ENDPOINT || '')
+    : '';
   /* C2/D-B1：兜底 key 只对 official 面有意义（proxy 面的切换在 Worker 里做；openrouter 是另一条渠道）。 */
   const backupApiKey = cfg.channel === 'official' ? ((plan.keys && plan.keys.backup) || process.env.COMMANDCODE_API_KEY || '') : '';
   return { apiKey, endpoint, backupApiKey };

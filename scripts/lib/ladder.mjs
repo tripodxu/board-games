@@ -530,9 +530,13 @@ export function sleepSync(ms) {
  * `routerKeyFile` 是 jev-router 臂的第二个 key 文件（可选）：批量机与网关同机，`/root/.jev-key`
  * 装的是 `jv-` 网关 key、TypeSafe 臂得用另一个路径。两份都 source 一次，谁缺席都只是 `set -a` 空转。
  */
-export function launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath }) {
+export function launchRoundCommand({ repo, keyFile, routerKeyFile, planPath, logPath, pidPath, routerEndpoint }) {
   const inject = [`set -a; [ -f ${keyFile} ] && . ${keyFile};`];
   if (routerKeyFile && routerKeyFile !== keyFile) inject.push(`[ -f ${routerKeyFile} ] && . ${routerKeyFile};`);
+  /* jevrouter 臂的端点覆盖（可选）：留空 ⇒ worker 回落到 upstream.ts 的常量（经 Cloudflare 边缘）。
+     给了内网直连地址（如 http://172.18.0.4:8080/v1/systemone）就绕开边缘，实测快 ~1.8 倍、
+     且不受边缘间歇 502 影响。key 一样只来自远端文件，绝不进这里。 */
+  if (routerEndpoint) inject.push(`JEV_ROUTER_ENDPOINT='${routerEndpoint}';`);
   inject.push('set +a;');
   const keyInject = inject.join(' ');
   return `cd ${repo} && ${keyInject}`
