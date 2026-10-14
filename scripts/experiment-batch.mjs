@@ -324,6 +324,10 @@ function cmdResume(args) {
   const pidPath = `${repo}/.work/remote/${batchId}/logs/round-${round}.pid`;
   const keyFile = String(args['key-file'] || '/root/.jev-key');
   const routerKeyFile = String(args['router-key-file'] || '/root/.jev-router-key');
+  /* jevrouter 臂的端点覆盖（与 cmdSubmit 同一开关）。**这里原本漏了定义** ——
+     launchRoundCommand 引用了 routerEndpoint，而它只在 cmdSubmit 的作用域里有，
+     走 resume 会 ReferenceError（scripts 套件没覆盖这条路径，是测试盲区）。 */
+  const routerEndpoint = args['router-endpoint'] ? String(args['router-endpoint']) : '';
   /* M3：resume 必须与 submit 一样注入 key —— 早先漏了这段，走上游的臂续跑必定 exit 2，
      而断点续跑正是这套设施唯一的容错手段（ADR-0019 D3）。 */
   const ok = ssh(host, user,
