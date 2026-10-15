@@ -231,6 +231,8 @@ async function cmdSubmit(args) {
       dryRun, origin, store,
       /* P4b：运行面与限速写进 plan（worker 也认 CLI 覆盖，但显式落盘才好复盘）。 */
       upstream, rateLimit, keyFile, routerKeyFile,
+      /* 调用留存：--capture ⇒ plan.capture，worker 把每次上游请求+响应原文写 <outDir>/calls.jsonl。 */
+      ...(args.capture ? { capture: true } : {}),
       outDir: `${repo}/.work/remote/${batchId}/round-${i}`,
     };
     plans.push(plan);

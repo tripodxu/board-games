@@ -72,6 +72,7 @@ import {
   formatThrottle,
   installFetchThrottle,
 } from './lib/throttle.mjs';
+import { installCallCapture } from './lib/capture.mjs';
 import {
   CC_KEY_HELP,
   DEFAULT_CC_KEY_FILE,
@@ -375,6 +376,9 @@ async function main() {
   const cliBackupKeyFile = argOf(argv, '--backup-key-file');
   const cliRateLimit = argOf(argv, '--rate-limit');
   const cliOrigin = argOf(argv, '--origin');
+  /* 调用留存：--capture 开（或 plan.capture），把每次上游请求+响应原文追加写到 <outDir>/calls.jsonl。
+     官方 API 重测要求「所有调用的官方数据和结果都要保存」；鉴权头由 capture.mjs 按前缀抹除，绝不入文件。 */
+  const wantCapture = argv.includes('--capture') || plan.capture === true;
   /* 「显式给了 origin」而不是 DEFAULTS 兜的生产地址：两道逃生门（worker 面 / store d1）都要求它。 */
   const originGiven = Object.prototype.hasOwnProperty.call(rawPlan, 'origin') || Boolean(cliOrigin);
   const { round, tag, games, pauseMs, timeoutMin, stallMin, maxPlies, topK, seed, dryRun, origin } = plan;
@@ -534,6 +538,12 @@ async function main() {
   const needUpstream = plan.upstream === 'direct' && !dryRun
     && [a, b].some((cfg) => UPSTREAM_CHANNELS.includes(cfg.channel));
   const throttle = needUpstream ? createThrottle({ perMinute: plan.rateLimit, sleep }) : null;
+  /* 调用留存：装在限速**之前**（外层）⇒ 卸载按反顺序（gate 先卸、capture 后卸）各自 guard 都能命中，
+     不会漏掉某一层。不限 host ⇒ 官方/网关一律记录；鉴权头由 capture.mjs 抹除；写失败不拖垮对局。dryRun 不装。 */
+  const capture = (wantCapture && !dryRun)
+    ? installCallCapture({ path: path.join(outDir, 'calls.jsonl'), enabled: true })
+    : null;
+  if (capture) log('调用留存：开（每次上游请求+响应原文 → <outDir>/calls.jsonl，鉴权头不落盘）');
   const gate = throttle ? installFetchThrottle(throttle, { hosts: DIRECT_UPSTREAM_HOSTS }) : null;
   if (throttle) {
     const src = Object.entries(keySources).map(([ch, s]) => `${ch}←${s}`).join('、') || '未用到';
@@ -613,6 +623,12 @@ async function main() {
   summary.throttle = throttle ? { ...throttle.state(), fetch: gate ? gate.stats() : null } : null;
   if (throttle) log(`限速轮末：${formatThrottle(throttle.state())}${gate ? `｜上游请求 ${gate.stats().gated} 次` : ''}`);
   if (gate) gate.uninstall();
+  if (capture) {
+    const cs = capture.stats();
+    summary.capture = cs;
+    if (!dryRun) log(`调用留存：${cs.captured} 次已写入 <outDir>/calls.jsonl（写错 ${cs.errors} 次）`);
+    capture.uninstall();
+  }
   const okCount = summary.games.filter((g) => g.status === 'skipped' || g.status === 'ok' || g.status === 'ok-dry').length;
   summary.progress = snapshot(state, {});
   /* 轮末补 experiments 行（只写真跑的局）：失败不坏出口码——棋谱才是主产物，
