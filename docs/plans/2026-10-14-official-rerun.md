@@ -1,6 +1,8 @@
 # v15 / v14-plus 对 rapfi@10s 的官方 API 重跑（待业主确认开跑）
 
-> 状态：**已实现、已验证、未启动**。业主指令「先不要开跑，落成文档和使用说明，让我确认是否开跑」。
+> 状态：**已开跑（2026-10-15 02:32 UTC），串行执行**。业主确认「开跑」；发现并行会因 CPU 竞争压低 rapfi 棋力后，业主指令「重来，改成串行」→ 批 2 暂停，批 1 满 120 后再启动。
+>
+> ⚠️ 教训：ADR-0021 的「concurrency=1」纪律**不只防上游限流，也防 box CPU 竞争**——rapfi 预算是固定墙钟 ms（timeout_turn 10000ms），两 worker 并行时各只剩 ~1 核（box 共 2 核），10 秒内搜索节点约减半 ⇒ **rapfi 真实变弱，批间与旧基准的对比被单向污染**（今天第三次同类错误：先定偏差再跑）。
 > 目的：把「v15 vs rapfi@10s」与「v14-plus vs rapfi@10s」两条挑战轮**在官方 API 上重跑**，
 > 彻底摆脱 lfree 腿污染（实测 lfree 对官方 ~39% 单边决策差异，见 [lfree-vs-official-2026-10-14.md](../experiments/lfree-vs-official-2026-10-14.md)），
 > 并把**每一次官方调用的请求与响应原文全量留存**。
@@ -152,3 +154,18 @@ node scripts/experiment-batch.mjs submit --batch v14p-vs-r10-official \
 ```
 
 预估各 1.5–2.5 小时（官方单次 ~0.4–0.8s、每局约 40 手、pause 2.5s）；串行合计 3–5 小时。
+
+## 十二、开跑记录与串行化（2026-10-15）
+
+- 02:32 UTC 两批几乎同时提交并启动（批名 v15-r10-off / v14p-r10-off——正则 16 字符上限，文档第五节的
+  `v15-vs-r10-official` 超长，实际批次以本条为准）。
+- 随即发现并行 CPU 竞争问题（见上），业主令改串行：批 2 的 worker 已 kill（**games 3 局 + checkpoint 保留**，
+  之后续跑幂等），旧看护已停；批 1 满 120 后由**新看护**（off-serial-guard.sh）自动重拉批 2（注入
+  `JEV_API_KEY`，key 只读 /root/.jev-official-key 不落日志）。
+- 批 2 那 3 局是并行期产物（rapfi 略被压制，量小：3/120）；若批 1 与它的混合比敏感可整批重来，默认保留。
+- 查询（只读，本地机器关机不影响，完成判据=games.jsonl 行数）：
+  `ssh root@185.242.234.48 'wc -l /root/board-games/.work/remote/<批>/round-1/games.jsonl; tail -2 /root/board-games/.work/remote/<批>/logs/round-1.log'`
+  批名：v15-r10-off（批1，进行中）、v14p-r10-off（批2，等批1完成后自动起）。
+- 看护日志：`/root/board-games/.work/off-serial.log`；两批满员后看护自动退出。
+- 结果出来后：两批同走官方、串行（与旧基准 vplus-r10s 的执行条件一致）⇒ 与基准**跨轮可比**，
+  按规则 11 + 批内配对（两批同 seed 同开局，可头对头）下 v15 晋升判据。
