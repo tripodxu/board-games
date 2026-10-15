@@ -32,3 +32,4 @@
 | [0022](0022-upstream-provider-failover.md) | 上游提供方兜底：换三元组（端点/模型/key）不写适配器、同局粘滞不回切、逐手 `provider`/`prob_source` 归属，Worker 侧默认关闭 | accepted |
 | [0023](0023-v14-plus-integration.md) | v14-plus 全量整合档：v14.1（vctFirst 防线排序纠偏）+ v14.2（softGate 压力层咨询化）+ 三处防守侧预算减法（vctDefMax 8 / vctDefKeep 2 / pressureCutMax 80），零新机制；2026-10-09 配对轮 436 局 = 218 对过预注册判定带，升为 `CURRENT`。含命名改制（版本号不再递增，v15/v16/v17 → v14.1/v14.2/v14.3） | accepted |
 | [0024](0024-jevrouter-gateway-channel.md) | 接入自建 jev-router 网关作为第四条 Jev 渠道（强制 BYOK、独立 key 文件 + 形状闸门；并把鉴权头判据从「渠道名」改成「解析后的端点」） | accepted |
+| [0025](0025-channel-equivalence-and-comparability.md) | 渠道等价性与跨轮可比性纪律：实测 zen-o2a ≡ 官方、lfree ≠ 官方（~39% 单边决策差异）⇒ 跨轮比分先查 `ai.mdl` 腿混合；批内头对头不受影响；官方升格为一等实验渠道 + `--capture` 调用留存 | accepted |

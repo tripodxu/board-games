@@ -68,6 +68,9 @@ node scripts/experiment-batch.mjs submit \
 | `--upstream direct\|worker` | `direct` | `direct` = box 直连上游、零 CF 触碰 |
 | `--rate-limit N` | 30 | 上游请求/分，连续 5 次 429 熔断 |
 | `--router-key-file` | `/root/.jev-router-key` | jevrouter 臂的 key 文件 |
+| `--router-endpoint` | 空（回落 `JEV_ROUTER_UPSTREAM_URL`） | jevrouter 臂端点覆盖；填内网直连 `http://172.18.0.4:8080/v1/systemone` 绕开 Cloudflare 边缘（边缘间歇 502；内网实测快 ~1.8 倍、0 失败）。**只影响实验运行面，不碰生产** |
+| `--key-file` | `/root/.jev-key` | **official 臂的 key 文件**：box 上默认文件装的其实是 `jv-` 网关 key，跑 official 臂必须显式指 `/root/.jev-official-key`，否则形状闸门开局即 exit 2 |
+| `--capture` | 关 | 每次上游调用（请求原文 + 响应）逐行追加写 `<outDir>/calls.jsonl`；鉴权头按前缀抹除、绝不落盘（规则 7）。rapfi 臂走本地 WASM 不发请求 ⇒ 文件里只有 Jev 臂调用 |
 
 ### 1.3 两道 P0 闸门（拦污染，不许绕）
 
@@ -75,6 +78,26 @@ node scripts/experiment-batch.mjs submit \
    想彻底不碰生产库，就 `--store local`（此时 `--origin` 不会被访问，但闸门仍要求显式确认）。
 2. **`--parallel` 只对双本地臂放行**：任一侧是 `official`/`openrouter`/`proxy`/`jevrouter` 就拒绝——
    并行会撞限流，且共享的上游延迟会污染对照。
+
+### 1.3b 臂渠道与跨轮可比性（2026-10-14/15 实测后新增，重要）
+
+**跨轮比分只有在同一执行模型上才可比。** 受控实测（
+[experiments/free-vs-official-2026-10-14.md](experiments/free-vs-official-2026-10-14.md) 与
+[experiments/lfree-vs-official-2026-10-14.md](experiments/lfree-vs-official-2026-10-14.md)）：
+网关三条腿里 `zen-o2a`（回 `jev-1.13-free`）**≡ 官方 API**（500 局面众数一致 95.0% = 噪声地板、TV 0.027、
+McNemar p=0.16）；`lfree-1`/`lfree-2`（回 `jev-1.13`）**显著偏离官方**（61.0%/62.0%、TV 0.236，
+z≈29、p<10⁻¹⁵；两腿互检 91.2% ⇒ 是另一稳定部署而非噪声）。
+
+操作含义：**official 臂（`--upstream direct`，key 在 `/root/.jev-official-key`）与锁 `zen-o2a` 的
+jevrouter 臂都可当作「真 Jev」**；默认路由的腿混合**随时间漂移、不可预测**（实测各批 free 占比 1%–99.8%）——凡网关批次跨轮对比前先查 `ai.mdl`
+混合（各批次占比见 lfree-vs-official 报告第七节污染地图；`experiment-report` 暂不输出该列）。
+**批内两臂共享路由 ⇒ 头对头对照不受影响**。另注意**命名反直觉**：带 `-free` 后缀的腿才是官方克隆。
+
+⚠️ **Git Bash 两个坑**（2026-10-15 探针实录，详见
+[plans/2026-10-14-official-rerun.md](plans/2026-10-14-official-rerun.md) 第十节）：
+① 所有带远端绝对路径的 submit 前加 `MSYS_NO_PATHCONV=1`，否则 `--key-file /root/...` 被改写成
+`C:/Program Files/Git/root/...`；② `--dry-run` 也会真启动远端 worker（秒退、留残目录），
+之后同批次名真跑前要先删两端目录（M4 同名拦截）。
 
 ### 1.4 key 前置条件
 
