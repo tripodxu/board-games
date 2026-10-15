@@ -1,6 +1,6 @@
 # 官方 API 基准数据集（渠道判别参照系）
 
-> 已完成的渠道检验：[free 腿（zen-o2a）≡ 官方，统计上不可区分](free-vs-official-2026-10-14.md)（2026-10-14）。
+> 已完成的渠道检验：**[free 腿（zen-o2a）≡ 官方](free-vs-official-2026-10-14.md)**；**[lfree-1/lfree-2 显著偏离官方](lfree-vs-official-2026-10-14.md)**（61/62% vs 地板 93.3%）。
 
 > 生成于 2026-10-14。用途：给「某个新渠道/网关/部署是不是真 Jev」提供**可复现的参照系**。
 > 计划与判据见 [../plans/2026-10-14-official-baseline.md](../plans/2026-10-14-official-baseline.md)。
