@@ -112,3 +112,43 @@ ssh root@185.242.234.48 \
 - [ ] 先跑第六节的 2 局探针，还是直接跑正式批次？
 - [ ] seed 用 `20261013`（与原 v15 轮一致）还是新值？
 - [ ] 实现改动（capture + 单测）是否现在提交？（当前未提交、工作区干净可复跑）
+
+## 九、探针实测记录（2026-15 02:06–02:09 UTC，批次 `v15cap1`，已跑完）
+
+**结论：探针全绿，正式批次可开跑。**
+
+- 对局：2/2 局正常完赛（`worker 完：2/2`），games.jsonl 2 行、逐局文件 2 个——常规产物链路完好。
+- 调用留存：`calls.jsonl` 逐次落盘（game-1 时 15 行），全部 `host=api.typesafe.ai`、`status=200`；
+  **鉴权泄漏扫描 0 命中**（`bearer|apikey_|jv-|authorization` 全无）。
+- 记录结构完整：`seq/t/method/url/host/headers/body/ms/status/response`；
+  `headers` 只剩 `Content-Type`（鉴权头被抹 ✓）；`body` = 完整 state（board_ascii/rules/子力/候选）+ 三问（move/edge/position）；
+  `response` = `{model: jev-1.13.0, answers:{move:{choice,confidence,probabilities},…}, usage}`——
+  **官方模型名 jev-1.13.0 亲证走的就是官方直连**，token 用量也在案（如 input 1690 / output 56，单次 ms≈382）。
+
+## 十、探针暴露的两个坑（正式跑命令已含对策）
+
+1. **Git Bash 会把 `--key-file /root/...` 改写成 `C:/Program Files/Git/root/...`**（MSYS 路径转换），
+   plan 落盘后即成死路径。**对策：命令前加 `MSYS_NO_PATHCONV=1`**（已在第五节命令示例采用，此处补记）。
+2. `--dry-run` 也会真启动远端 worker（只跳过上臂调用、秒退），并留下半成品批次目录——
+   dry-run 之后若要用同批次名，先删远端与本地目录（M4 同名拦截会挡真跑）。
+3. 小噪声：`formatSpec` 把 `rapfi::10000` 的空战术段归一为 `rapfi:v14-plus:10000`——rapfi 臂不消费战术段
+   （思考 ms 才是它的有效参数），行为无影响，仅 plan 文本有出入。
+
+## 十一、正式开跑 checklist（等业主点头）
+
+```bash
+cd "E:/mimo/temp/ttemp/jev_games/board-games"
+export MSYS_NO_PATHCONV=1
+# 批 1
+node scripts/experiment-batch.mjs submit --batch v15-vs-r10-official \
+  --a "official:v15:0" --b "rapfi::10000" --games 120 --pause 2500 --seed 20261013 \
+  --store local --upstream direct --rate-limit 30 --key-file /root/.jev-official-key --capture \
+  --allow-production --host 185.242.234.48 --user root
+# 批 1 跑完（games.jsonl ≥ 120 行）再批 2
+node scripts/experiment-batch.mjs submit --batch v14p-vs-r10-official \
+  --a "official:v14-plus:0" --b "rapfi::10000" --games 120 --pause 2500 --seed 20261013 \
+  --store local --upstream direct --rate-limit 30 --key-file /root/.jev-official-key --capture \
+  --allow-production --host 185.242.234.48 --user root
+```
+
+预估各 1.5–2.5 小时（官方单次 ~0.4–0.8s、每局约 40 手、pause 2.5s）；串行合计 3–5 小时。
