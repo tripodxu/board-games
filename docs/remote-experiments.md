@@ -18,6 +18,7 @@
 | 把数据拉回本地 | `node scripts/experiment-batch.mjs pull --batch <名>` |
 | 算 Elo / BT | `node scripts/experiment-batch.mjs elo .work/remote/<名>` |
 | 断了要续跑 | `node scripts/experiment-batch.mjs resume --batch <名> --round 1` |
+| 查这批的**腿成分**（吃了多少 lfree，见 §1.3b） | 按 §2.3a 的一行 `node -e` 现算，输出 `渠道:模型 手数` 排行 |
 
 `<名>` = batch id；产物落在本地 `.work/remote/<名>/`、远端 `/root/board-games/.work/remote/<名>/`。
 
@@ -99,6 +100,29 @@ jevrouter 臂都可当作「真 Jev」**；默认路由的腿混合**随时间�
 `C:/Program Files/Git/root/...`；② `--dry-run` 也会真启动远端 worker（秒退、留残目录），
 之后同批次名真跑前要先删两端目录（M4 同名拦截）。
 
+### 1.3c 锁腿规程（2026-10-16 跑通，要「官方克隆那条腿」时就用它）
+
+想用 jevrouter 臂、但**把腿锁死在 `zen-o2a`（≡ 官方 API）**，靠端点参数而不是靠 key 文件：
+
+```bash
+node scripts/experiment-batch.mjs submit \
+  --a "jevrouter:v14.3:0" --b "rapfi::10000" \
+  --router-endpoint 'http://172.18.0.4:8080/v1/systemone?leg=zen-o2a&strict=1' \
+  --games 120 --seed 20261012 --store local --capture \
+  --allow-production --host 185.242.234.48 --user root
+```
+
+- `--router-endpoint` 会写进 worker 的 `JEV_ROUTER_ENDPOINT` 环境变量
+  （提交侧注入见 [lib/ladder.mjs](../scripts/lib/ladder.mjs)，worker 侧读取见
+  [experiment-worker.mjs](../scripts/experiment-worker.mjs)）。**端点里带 query 也是合法的**。
+- `?leg=zen-o2a` = 锁官方克隆腿；`strict=1` = 锁定后不再多源回退（回退就会把 lfree 混进来）。
+- 公网端点 `https://jev.logicc.top/v1/systemone?leg=zen-o2a&strict=1` 同样能锁，
+  但内网直连更快（边缘间歇 502），长跑优先内网。
+- **验证锁没锁住，看两处**：响应头 `x-jev-leg: zen-o2a`；以及 §2.3a 的腿成分扫描（应 100% `jev-1.13-free`）。
+- ⚠️ 命名反直觉：**`-free` 才是官方克隆**（§1.3b）。锁 `zen-o2a` 就是锁 `jev-1.13-free`；
+  想要 lfree 那条腿得锁 `leg=lfree-1` / `lfree-2`——**默认不加参数 = 多源随机轮换 = 不可比**。
+- 正式长跑前先起 **2 局探针批**（换批次名）验证腿纯度与零 400，再起正式批；探针批目录留着作事故记录。
+
 ### 1.4 key 前置条件
 
 远端两个 key 文件，**缺任一会在开局前 `exit 2`，日志可见**：
@@ -179,6 +203,22 @@ ssh root@185.242.234.48 'wc -l < /root/board-games/.work/remote/vplus-r10s/round
 
 > ⚠️ 别写 `grep '"status":"ok"' games.jsonl`——那个字段不存在，永远 0 命中，会让你误判「一局没跑」。
 
+### 2.3a 腿成分体检：这批到底吃了多少 lfree（跨轮对比前的必查项）
+
+每局展开文件 `round-1/games/round-1-game-N.json` 的**每一手**都带 `moves[].ai`，
+其中 `ai.ch` = 渠道、`ai.mdl` = 实际回话的模型、`ai.ms` = 耗时（是 number 才算真打上游）。
+腿成分 = 对**全批所有手**统计 `ch:mdl` 的分布。**官方直连臂全是 `jev-1.13`；锁 `zen-o2a` 腿全是
+`jev-1.13-free`；网关多源混路由会两种都有 ⇒ 那批不可跨轮比**（§1.3b）。
+
+```bash
+# 本地已 pull 时（d= 换成远端路径就是远端现算）：
+node -e "const fs=require('fs'),c={},d=process.argv[1];for(const f of fs.readdirSync(d)){const g=JSON.parse(fs.readFileSync(d+'/'+f));for(const m of g.moves||[]){const a=m.ai||{};if(!a.mdl)continue;const k=a.ch+':'+a.mdl;c[k]=(c[k]||0)+1}}console.log(Object.entries(c).sort((x,y)=>y[1]-x[1]))" .work/remote/<名>/round-1/games
+```
+
+实读例子：`[["jevrouter:jev-1.13-free",12345], ["rapfi:…",…]]` = 100% 官方克隆；
+一旦出现 `jev-1.13`（**无 `-free`**）的行就是 lfree 腿，**占比 > 0 必须在报告里注明，
+且禁止与官方直连批比比分**。同一命令对历史批次批量扫，就得到「污染地图」。
+
 ### 2.4 断点续跑
 
 worker 被 kill / 断网后，重入同一个 plan：checkpoint 里 `ok` 的局跳过，`error` 的局复用同一
@@ -234,6 +274,13 @@ rapfi 的固定墙钟预算（`timeout_turn` ms）被饿、搜索节点减半 �
 
 ⚠️ **别用 `pgrep -f "supervise.sh" | pkill` 预清理**：`-f` 匹配完整命令行，**会匹配到你自己那条启动它的
 ssh 命令并把它自己杀掉**（实测：输出断在半句、根本没启动）。直接启动，再 `ps` 验证只有一个实例。
+
+⚠️ **手动起过 worker 之后又挂看护 = 两个 worker（2026-10-16 实测踩中）**：看护的存活检测是
+`pgrep -f "experiment-worker.mjs --plan $PLAN"`（**绝对 plan 路径**），手动那条若用相对路径启动就匹配不上
+⇒ 看护判定「worker 死了」⇒ **再拉一个**，2 核 box 上双进程并行（ADR-0025 明令禁止，且违反
+[plans/2026-10-14-official-rerun.md](plans/2026-10-14-official-rerun.md) 的串行纪律）。
+**自检纪律：worker 与看护都起来之后，`ssh … 'ps -ef | grep -c "[e]xperiment-worker"'` 必须是 1**，
+不是 1 就全停重来（**只用显式 PID 杀，别用 `pkill -f`**，见上一条）。
 
 ### 3.1 ⚠️ 连通性探针会骗人：判上游好坏要看真实对局
 
@@ -391,9 +438,10 @@ echo $! > logs/supervise.pid
 ## 7. 跑完之后
 
 1. `pull` 拉回 → `experiment-report` 出报告 → `loss-report` 解释败局。
-2. 结论写进 [status.md](status.md)（**胜/和/负 + 不败率 + 败局交代**）与对应 plan/ADR。
-3. 踩坑/运维教训追加到 [memory/MEMORY.md](memory/MEMORY.md) **顶部**。
-4. 若改过战术层，同步 [../src/core/tactics-versions.ts](../src/core/tactics-versions.ts) 版本表。
+2. **跑 §2.3a 的腿成分体检**（跨轮比分的批必做；> 0 lfree 就写进报告的限制条件）。
+3. 结论写进 [status.md](status.md)（**胜/和/负 + 不败率 + 败局交代**）与对应 plan/ADR。
+4. 踩坑/运维教训追加到 [memory/MEMORY.md](memory/MEMORY.md) **顶部**。
+5. 若改过战术层，同步 [../src/core/tactics-versions.ts](../src/core/tactics-versions.ts) 版本表。
 
 ## 相关
 
@@ -401,3 +449,4 @@ echo $! > logs/supervise.pid
 - [adr/0019-remote-batch-experiments.md](adr/0019-remote-batch-experiments.md) —— 远端批量地基决策
 - [adr/0021-standalone-experiment-plane.md](adr/0021-standalone-experiment-plane.md) —— 离线运行面（直连上游 + 本地 JSONL）
 - [adr/0024-jevrouter-gateway-channel.md](adr/0024-jevrouter-gateway-channel.md) —— jevrouter 网关渠道（BYOK / 形状闸门）
+- [adr/0025-channel-equivalence-and-comparability.md](adr/0025-channel-equivalence-and-comparability.md) —— 渠道等价性（§1.3b 的依据）与「必须串行」纪律（§3）

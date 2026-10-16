@@ -63,3 +63,23 @@ v15 挑战轮（`v15-vs-r10`）与基准（`vplus-r10s`）的归档 `ai.mdl` 显
 `docs/experiments/README.md` + 两份报告（free/lfree vs official）+ 脚本（`free-vs-official.mjs`、
 `analyze-free-vs-official.mjs`）；官方基准数据 `official-baseline-large-500x6.jsonl`。
 命令与 key 前提见 `docs/remote-experiments.md` §1.3b 与重跑交接文档。
+
+## 落地结果（2026-10-15/16 回填）
+
+- **§决策 1 的腿成分体检已固化**为可复用命令：[remote-experiments.md](../remote-experiments.md) §2.3a
+  （扫 `round-1/games/*.json` 的 `moves[].ai.mdl`，输出 `渠道:模型 手数` 排行）。
+  对全部历史批次扫出的**污染地图**见 MEMORY 2026-10-16 条目与
+  [status.md](../status.md)「已验证」第二条：`v15-r10-off` / `v14p-r10-off` **lfree 0%**（官方直连干净）、
+  v14.1/v14.2 验证轮 official 直连一条没中；**v14.3 的挑战轮是一档两命**——实验 A（`vdef-3v-p`）
+  99.8% 官方克隆腿 ⇒ 有效；实验 B（`vdef-3r10`）96.6% lfree ⇒ 其数字**降级为参考**，不得与
+  `vplus-r10s` 比；`CURRENT` 保持 `v14-plus` 的否决结论不变（污染不会把否证翻成通过）。
+- **§决策 3 的官方重跑已完成**（`plans/2026-10-14-official-rerun.md` 里「待业主确认开跑」已兑现）：
+  `v15-r10-off` 与 `v14p-r10-off` 串行各 120 局全 ok —— **v15 vs v14-plus 比分「不可判」**
+  （+5.8pt，差值 95% 区间 −6.4 ~ +18.1pt 跨 0，配对符号检验 40:31 p≈0.30）；
+  规则 11 底线通过（v15 负局 41 < 48、不败率 65.8% > 60.0%），**`CURRENT` 未改动**（按约定报业主确认）。
+  两批均带 `--capture`、`store=local`、零 CF 触碰。
+- **§决策 1 的「锁定 `?leg=zen-o2a&strict=1`」已成规程**：[remote-experiments.md](../remote-experiments.md) §1.3c。
+  v14.3 实验 B 的干净重跑（批次 `v14p3free120`，同 seed 20261012、120 局、store local、capture 开）
+  已按此规程锁腿开跑；2 局探针 25/25 手全 `jev-1.13-free`、零 400。
+- **「必须串行」纪律（§3）补了自检**：worker 与看护都起后 `ps` 必须数出**恰好 1 个** worker——
+  看护存活检测用**绝对 plan 路径**，手动起相对路径那条会漏判 ⇒ 多拉一份 = 双 worker 并行（已实测踩中并处置）。
