@@ -91,6 +91,7 @@ docs/
 | 跑对照实验 / 看进度 / 取实验数据 | [remote-experiments.md](remote-experiments.md) |
 | 判「某渠道/某腿是不是真 Jev」「跨轮比分可不可比」 | [experiments/README.md](experiments/README.md)（官方基准数据集 + free/lfree 检验） |
 | 准备/启动官方 API 重跑（v15、v14-plus vs rapfi） | [plans/2026-10-14-official-rerun.md](plans/2026-10-14-official-rerun.md)（含 checklist，待业主确认开跑） |
+| 「卡在 v14/v15」下一步怎么走 | [plans/2026-10-16-v14-v15-stall-next-steps.md](plans/2026-10-16-v14-v15-stall-next-steps.md)（四堵墙诊断 + S0–S5 路线，含输出级随机性实测） |
 | 改 UI / 样式 / 可访问性 | [status.md](status.md)「设计例外」+ [architecture.md](architecture.md) 文件职责表 |
 | 接手一个进行中的任务 | [agents/handoff.md](agents/handoff.md) + [memory/MEMORY.md](memory/MEMORY.md) 最新 3 条 |
 | 和别的 agent 并行干活 | [agents/parallel-work.md](agents/parallel-work.md) |
