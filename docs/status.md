@@ -306,6 +306,11 @@
   GLM-5.3-Flash 子代理复审报 3 条，核销 **2 条误读**（后端芯片两行、420px 棋盘溢出——CDP 数值探针证伪
   scrollWidth=420=innerWidth）+ **1 条属实并已修**（同页折叠箭头两套语义：侧栏面板展开=▼ 而两处 details
   展开=◀，全站统一为**展开=▼、折叠=◀**）。
+  **⑥ 已部署上线（2026-10-24，版本 `ba6b671f`）**：`npm run deploy` 成功（4 资产 + Worker，custom domain
+  jevqipan.logicc.top）；线上 HTML 实证新界面（`#ruleBtn` 在 / `#tabs` 无 / 标题「五子棋对弈」），
+  五个 API 端点全 200（health 1.0.0·d1:true / stats 938 局 / games / leaderboard / openings 带 game 参数），
+  真浏览器截图确认页签已无、禁手/提示按钮在、棋盘居中、侧栏完整。
+  ⚠️ 本机 `smoke:live` 因到 Cloudflare API 的链路不稳挂起（部署与站点访问本身正常），改手动验端点收口。
 
 - **v14.1 / v14.2 锁腿挑战轮收口（2026-10-18/19 跑毕、10-24 收口，`v141free120` / `v142free120` 各 120 局）＝ 两个单变量档都不晋升，`CURRENT` 保持 `v14-plus`**。
   两批同一口径：`jevrouter` 锁 `zen-o2a` 腿（腿成分体检 **100% `jev-1.13-free`、3167/2839 手零 lfree**）、
