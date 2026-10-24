@@ -122,6 +122,12 @@ node scripts/experiment-batch.mjs submit \
 - ⚠️ 命名反直觉：**`-free` 才是官方克隆**（§1.3b）。锁 `zen-o2a` 就是锁 `jev-1.13-free`；
   想要 lfree 那条腿得锁 `leg=lfree-1` / `lfree-2`——**默认不加参数 = 多源随机轮换 = 不可比**。
 - 正式长跑前先起 **2 局探针批**（换批次名）验证腿纯度与零 400，再起正式批；探针批目录留着作事故记录。
+- ⚠️ **Windows 上（cmd / pwsh 跑 `submit`）URL 里的裸 `&` 会被 shell 拆开**（2026-10-19 实测）：
+  `--router-endpoint 'http://…?leg=zen-o2a&strict=1'` 即便用单引号，`&` 之后那段仍被本地 shell 截断去执行，
+  症状是「submit 打印已启动 + 本地报 `'strict' is not recognized`，但远端 `logs/round-1.log` 为空、
+  worker 进程不存在」。**submit 说「已启动」不算数，必须验远端真的活了**：`tail logs/round-1.log` 要看到 `worker 起`。
+  规避：换 Git Bash 跑 submit（`v14p3free120` 那批就是这么跑通的），或把端点写成无 `&` 的单参数
+  （`?leg=zen-o2a`），或改用 `ssh` 手工 `setsid nohup` 起 worker（带完整 key 注入 + `JEV_ROUTER_ENDPOINT`）。
 
 ### 1.4 key 前置条件
 
