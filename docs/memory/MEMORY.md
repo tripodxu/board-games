@@ -19,15 +19,21 @@
   全量 840 例 + smoke 18/18 绿。
 - **可视化审核路径（业主建议 GLM-5.3-Flash 子代理）**：静态截图用无头 Chrome `--screenshot`，
   交互态（点亮/展开/抽屉/页签）用一次性 CDP 脚本 `.work/ui-states.mjs`（复用 browser-smoke 的零依赖
-  WebSocket 模式）。审图实际走的是 vision 工具（analyze_image，七张全过、零阻断缺陷）；
-  **GLM-5.3-Flash 的 workflow 子代理路径这次没跑通**：单审图 ask 挂了 9 分钟零 token（疑似子代理 Read
-  图片在本环境被转成 CDN 上传链接、拿不到视觉内容），TaskStop 掉改用上面的通道。
-  **Agent 工具钉不了子代理模型，能钉的是 workflow 的 persona model / subagent_model**——
-  下次给子代理审图，要么喂 CDN URL + 自带视觉的 MCP 工具，要么先小成本探一次再上量。
+  WebSocket 模式）。**GLM-5.3-Flash 的 workflow 子代理审图最终出结果了**（TaskStop 后仍送达）：
+  报 3 条、核销后 **2 条误读 + 1 条属实**——「后端芯片两行」「420px 棋盘溢出裁列」均为误读
+  （独立视觉审查两轮 + CDP 数值探针证伪：scrollWidth=420=innerWidth、棋盘右缘 393<420）；
+  「同页折叠箭头两套语义」属实（侧栏面板展开=▼，两处 details 却展开=◀），已统一为**展开=▼、折叠=◀**。
+  **教训：审图模型的发现必须先核销再动手——视觉断言的误读率不低，数值探针
+  （scrollWidth/getBoundingClientRect）比再问一遍视觉模型可靠。**
+  另：**Agent 工具钉不了子代理模型，能钉的是 workflow 的 persona model / subagent_model**。
 - **新坑：杀 dev 服务必须连 workerd 一起杀**。`taskkill node.exe` 只杀掉 vite，**workerd.exe 会孤魂占着
   8787 继续应答 `/api/*`**——症状极具迷惑性：冒烟的「目标自证」（探 /api/health）通过，但浏览器打开
   页面全红（静态资产已死，连 document.title 都是空）。判据：**自证过 ≠ 页面能开**；排障先
   `curl /styles/style.css` 再下结论。杀法：按 8787 监听 PID 精确 kill + `taskkill /IM workerd.exe`。
+  **升级版（同日第二次踩）**：vite 只绑 `127.0.0.1`，孤魂 workerd 可占**通配 `0.0.0.0`/`[::]`** 与之共存——
+  `curl 127.0.0.1` 命中好服务（探针全绿），而 **Chrome 把 `localhost` 先解析到 IPv6 `[::1]` 命中僵尸**
+  （静态 404、冒烟全红）。一键判别：`curl http://[::1]:8787/styles/style.css` 若 404/有响应而
+  `127.0.0.1` 是 200，即双栈共存，`netstat -ano | grep 8787` 会看到两个 PID。
   另外 `taskkill /IM node.exe` 是霰弹枪，别在有多任务并行的机器上随手用。
 
 ---

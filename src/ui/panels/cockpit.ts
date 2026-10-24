@@ -417,7 +417,7 @@ export function renderCockpit(props: CockpitProps, root?: UiRoot | null): void {
   setText(qs(r, '#emCost'), fmtCost(mm.cost));
   setText(qs(r, '#emTokens'), fmtTokens(mm.tokens));
   setText(qs(r, '#emMoves'), String(mm.moves));
-  setText(qs(r, '#emFastest'), mm.fast == null || mm.slow == null ? '–' : mm.fast + ' / ' + mm.slow + 'ms');
+  setText(qs(r, '#emFastest'), mm.fast == null || mm.slow == null ? '– / –' : mm.fast + ' / ' + mm.slow + 'ms');
   if (mm.model) setText(qs(r, '#engineModel'), mm.model);
   renderSpark(
     items.map((h) => metaOf(h).latencyMs || 0).filter((x) => x > 0).slice(-20),

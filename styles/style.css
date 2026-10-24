@@ -470,6 +470,18 @@ button.fold svg { transition: transform .18s var(--ease); }
   color: var(--ink-mute);
   font-size: 12.5px;
 }
+/* 趋势图的空态盖在网格中央，而不是排在 svg 之后掉到图表下方
+ * （`.trend-root` 已是 position:relative；校准图的 .cal-empty 是独立块，不走这条）。 */
+.trend-root .chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 36px;
+}
 /* 空态标记用自绘 SVG，而不是拿 Unicode 字形顶替图标系统
  * （craft-floor 拒绝项）。这张图直接画出「本该出现的曲线」：坐标轴 + 一条虚线走势。 */
 .chart-empty .glyph { display: block; margin: 0 auto 12px; }
@@ -736,8 +748,10 @@ button.fold svg { transition: transform .18s var(--ease); }
 }
 .tactics-list summary::-webkit-details-marker { display: none; }
 .tactics-list summary:hover { color: var(--ink); }
-.tl-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transition: transform .18s var(--ease); }
-.tactics-list[open] .tl-chev { transform: rotate(-90deg); }
+/* 折叠指示统一全站口径：展开=▼、折叠=◀（与侧栏面板 button.fold 一致；
+ * 2026-10-24 前这两处 details 与面板正好相反，同页两套语义易误导）。 */
+.tl-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transform: rotate(-90deg); transition: transform .18s var(--ease); }
+.tactics-list[open] .tl-chev { transform: none; }
 .tactics-list[open] summary { border-bottom: 1px solid var(--line); }
 /* 展开后的登记表自身滚动（默认折叠，展开也不把棋盘推出视口） */
 .tactics-list-body {
@@ -949,8 +963,8 @@ details.settings summary {
 }
 details.settings summary::-webkit-details-marker { display: none; }
 /* 展开指示用自绘 SVG chevron（与面板折叠钮同一笔法），不再拿 ＋/－ 字符顶替图标 */
-.disc-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transition: transform .18s var(--ease); }
-details.settings[open] .disc-chev { transform: rotate(-90deg); }
+.disc-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transform: rotate(-90deg); transition: transform .18s var(--ease); }
+details.settings[open] .disc-chev { transform: none; }
 details.settings[open] summary { color: var(--ink); border-bottom: 1px solid var(--line); }
 details.settings .settings-body { padding: 4px 16px 14px; }
 .settings-body label { margin: 9px 0 0; }
