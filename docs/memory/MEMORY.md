@@ -6,6 +6,32 @@
 
 ---
 
+## 2026-10-24 · 前端收敛为五子棋单一棋种（页签退役→禁手规则开关；战术沿革折叠）；杀 dev 服务要连 workerd 一起杀
+
+- **一句话**：业主令「只留五子棋一种先，不要缺失功能，但要简洁」。做法是**保留式重构**（月白设计体系、
+  全部面板与功能原样）：七棋种页签退役，`五子棋·禁手` 收进棋盘头部「禁手」药丸开关（`#ruleBtn`，
+  点亮=朱砂=连珠规则，复用旧切棋种的 ≥6 手确认闸门）；其余六种引擎仍在注册表跑自检、归档筛选照常。
+  战术沿革登记表从「常开竖列」改为默认折叠 `<details>`。视觉修了三处：棋盘 canvas 居中（引擎定宽 560px
+  原先贴左）、页头齿轮与芯片同规格、品牌标题行高。
+- **测试契约跟着口径走**：index-shell 的 REQUIRED_IDS（−tabs +ruleBtn）与标题断言（「五子棋对弈」、
+  禁「七种/六种棋类」）、boot.spec 页签断言改规则开关断言、browser-smoke 与 experiment-run 的
+  「装配成功」代理从 `#tabs button` 换成 `#tacticsListBody .tv-row`（同为 boot 期 JS 渲染产物）。
+  全量 840 例 + smoke 18/18 绿。
+- **可视化审核路径（业主建议 GLM-5.3-Flash 子代理）**：静态截图用无头 Chrome `--screenshot`，
+  交互态（点亮/展开/抽屉/页签）用一次性 CDP 脚本 `.work/ui-states.mjs`（复用 browser-smoke 的零依赖
+  WebSocket 模式）。审图实际走的是 vision 工具（analyze_image，七张全过、零阻断缺陷）；
+  **GLM-5.3-Flash 的 workflow 子代理路径这次没跑通**：单审图 ask 挂了 9 分钟零 token（疑似子代理 Read
+  图片在本环境被转成 CDN 上传链接、拿不到视觉内容），TaskStop 掉改用上面的通道。
+  **Agent 工具钉不了子代理模型，能钉的是 workflow 的 persona model / subagent_model**——
+  下次给子代理审图，要么喂 CDN URL + 自带视觉的 MCP 工具，要么先小成本探一次再上量。
+- **新坑：杀 dev 服务必须连 workerd 一起杀**。`taskkill node.exe` 只杀掉 vite，**workerd.exe 会孤魂占着
+  8787 继续应答 `/api/*`**——症状极具迷惑性：冒烟的「目标自证」（探 /api/health）通过，但浏览器打开
+  页面全红（静态资产已死，连 document.title 都是空）。判据：**自证过 ≠ 页面能开**；排障先
+  `curl /styles/style.css` 再下结论。杀法：按 8787 监听 PID 精确 kill + `taskkill /IM workerd.exe`。
+  另外 `taskkill /IM node.exe` 是霰弹枪，别在有多任务并行的机器上随手用。
+
+---
+
 ## 2026-10-24 · v14.1 / v14.2 锁腿 120 局收口：**都不晋升（一个底线不过、一个恰好持平），CURRENT 保持 v14-plus**；顺带修掉 paired.mjs 的和棋误判
 
 - **一句话**：业主令的两个单变量档（v14.1 = 原 v15 的 `vctFirst`、v14.2 = 原 v16 的 `softGate`）

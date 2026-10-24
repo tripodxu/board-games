@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jev 棋馆 · 七种棋类对弈</title>
-<meta name="description" content="TypeSafe Jev「系统一模型」驱动的七种棋类对弈：人机、机机，实时胜率与决策可视化。">
+<title>Jev 棋馆 · 五子棋对弈</title>
+<meta name="description" content="TypeSafe Jev「系统一模型」驱动的五子棋对弈：人机、机机，实时胜率与决策可视化，可选连珠禁手规则。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- F3（2026-10-06）：字体 CSS 改非阻塞（media=print 加载完切回 all），关键渲染链不再等
@@ -20,7 +20,7 @@
     <div class="brand-mark" aria-hidden="true">弈</div>
     <div>
       <h1>JEV 棋馆</h1>
-      <div class="sub">系统一模型对弈室 · System One Game Salon</div>
+      <div class="sub">系统一模型 · 五子棋对弈室</div>
     </div>
   </div>
   <div class="head-spacer"></div>
@@ -32,15 +32,23 @@
   <span class="chip">累计成本 <b id="costChip">$0.00000</b></span>
 </header>
 
-<nav id="tabs" aria-label="棋种"></nav>
-
 <main>
   <!-- 棋盘 -->
   <section class="board-card" aria-label="棋盘">
     <div class="board-head">
-      <span id="gameName">五子棋</span>
-      <span id="turnBadge">就绪</span>
-      <button id="hintBtn" class="hint-btn" type="button" aria-pressed="false" title="战术模式提示（五子棋 · 按层颜色标出待选点）">提示</button>
+      <div class="board-head-left">
+        <span id="gameName">五子棋</span>
+        <!-- 只留五子棋（2026-10-24）：禁手变体不再占页签，改为规则开关。
+             语义 = 在 gomoku（大众规则）与 gomoku-pro（连珠禁手）两个同族引擎间切换。 -->
+        <button id="ruleBtn" class="rule-btn" type="button" aria-pressed="false"
+                title="禁手规则（连珠）：黑方三三/四四/长连判负。点亮=禁手局，再点回大众规则">
+          禁手
+        </button>
+      </div>
+      <div class="board-head-right">
+        <span id="turnBadge">就绪</span>
+        <button id="hintBtn" class="hint-btn" type="button" aria-pressed="false" title="战术模式提示（五子棋 · 按层颜色标出待选点）">提示</button>
+      </div>
     </div>
     <div class="board-row">
       <div class="eval-bar" id="evalBar" title="实时局势：琥珀=先手方，青玉=后手方"
@@ -54,11 +62,15 @@
         <div id="promoBox" class="hidden"></div>
       </div>
     </div>
-    <!-- 战术沿革：普通竖列（10 档登记表原样列出，点击把该档设为全局默认） -->
-    <section class="tactics-list" id="tacticsList" aria-label="战术版本沿革（点击设为默认战术档位）">
-      <div class="tactics-list-title" id="tacticsListTitle">战术沿革</div>
+    <!-- 战术沿革：默认折叠的登记表（点击行把该档设为全局默认）。
+         一局长长的版本列表常驻棋盘下方是首屏最占版面的块，收进 details 后按需展开。 -->
+    <details class="tactics-list" id="tacticsList" aria-label="战术版本沿革（展开后点击档位设为默认）">
+      <summary id="tacticsListTitle" title="展开 / 收起战术档位登记表">
+        战术沿革
+        <svg class="tl-chev" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 3.5 L5 6.5 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </summary>
       <div class="tactics-list-body" id="tacticsListBody"></div>
-    </section>
+    </details>
     <div class="status-strip" id="status" aria-live="polite">选择模式后点「开始对局」。</div>
     <div class="controls">
       <button id="startBtn" class="primary">开始对局</button>

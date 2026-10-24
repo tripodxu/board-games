@@ -5,8 +5,8 @@
  * `boot(opts)`——测试可以先摆好 DOM 与内存 storage，再 `boot({storage})` 拿到 ctx 断言；
  * 真正的自动启动只有 `main.ts` 那 6 行。
  *
- * 旧启动顺序（逐字对照，`js/app.js`:2049-2064）：
- *   buildTabs → loadSettings → renderSideCfg → renderFoe → renderTacticsStrip → initFolds
+ * 旧启动顺序（逐字对照，`js/app.js`:2049-2064；2026-10-24 起页签段换成了禁手规则开关）：
+ *   bindRuleButton → loadSettings → renderSideCfg → renderFoe → renderTacticsStrip → initFolds
  *   → initSideTabs → bind → syncModeButtons → switchGame('gomoku') → renderRecords
  *   → #speedVal 回填 → initBackend（不阻塞首屏）→ ?test=1 时 runTests
  * 顺序有语义：`initFolds`/`initSideTabs` 必须在面板已有初值后跑（它们会按存储应用折叠态），
@@ -36,7 +36,7 @@ import type { AppCtx } from './ctx.ts';
 import { createCtx } from './ctx.ts';
 import { resetSession } from './loop.ts';
 import {
-  buildTabs,
+  bindRuleButton,
   loadSettingsUI,
   renderFoe,
   renderSideCfg,
@@ -164,7 +164,8 @@ export function boot(opts: BootOptions = {}): AppCtx | null {
      `installRapfiWorker()` 内部先装主线程胶水加载器（回退路径），再在能用的环境里装上
      Worker 会话工厂——思考搬进 Worker，主线程不再冻结（ADR-0006 的已知局限）。 */
   installRapfiWorker();
-  buildTabs(ctx, (gid: string) => switchGame(ctx, gid, resetSession));
+  /* 只留五子棋（2026-10-24）：七棋种页签退役，「禁手」规则开关接同一确认闸门 */
+  bindRuleButton(ctx, (gid: string) => switchGame(ctx, gid, resetSession));
   loadSettingsUI(ctx);
   renderSideCfg(ctx);
   renderFoe(ctx);

@@ -367,9 +367,9 @@ try {
   }
   await send('Page.navigate', { url: URL_TARGET });
 
-  // 3) 应用装配起来了
-  const tabsOk = await waitFor(`document.querySelectorAll('#tabs button, #tabs [role=tab]').length > 0`, { label: '#tabs' });
-  if (!tabsOk) throw new Error('页面没渲染出页签（站点没起来？）');
+  // 3) 应用装配起来了（2026-10-24 起 #tabs 退役，用 boot 渲染的战术档位行当代理）
+  const tabsOk = await waitFor(`document.querySelectorAll('#tacticsListBody .tv-row').length > 0`, { label: '#tacticsListBody' });
+  if (!tabsOk) throw new Error('页面没渲染出战术档位行（站点没起来？）');
   log('页面已加载，装配层已跑起来');
   await evaluate(METER_INSTALL);
 

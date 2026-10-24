@@ -105,7 +105,8 @@ header {
   font-weight: 400;
   font-size: 27px;
   letter-spacing: 1px;
-  line-height: 1.15;
+  /* 展示字下行高大、副标题才有呼吸（窄屏下 h1 与 .sub 几乎贴住） */
+  line-height: 1.3;
 }
 
 .brand .sub {
@@ -133,45 +134,6 @@ header {
 #backendChip.static b { color: var(--ink-mute); }
 #backendChip.live b { color: #2F7D53; }
 
-/* ---------- 棋种页签 ---------- */
-
-#tabs {
-  display: flex; gap: 4px;
-  max-width: 1240px;
-  margin: 14px auto 0;
-  padding: 0 26px;
-  border-bottom: 1px solid var(--line);
-}
-
-#tabs button {
-  appearance: none;
-  position: relative;
-  border: none; background: none;
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 15.5px;
-  letter-spacing: 2px;
-  color: var(--ink-mute);
-  padding: 8px 16px 10px;
-  white-space: nowrap;
-  flex: 0 0 auto;
-  transition: color .2s var(--ease);
-}
-
-#tabs button::after {
-  content: "";
-  position: absolute; left: 14px; right: 14px; bottom: -1px;
-  height: 2px; border-radius: 2px;
-  background: var(--zhu);
-  transform: scaleX(0);
-  transition: transform .28s var(--ease);
-}
-
-#tabs button:hover { color: var(--ink-dim); }
-#tabs button.active { color: var(--ink); }
-#tabs button.active::after { transform: scaleX(1); }
-/* 焦点样式统一由文首的 :where(...) 规则提供，此处不再重复 */
-
 /* ---------- 主布局 ---------- */
 
 main {
@@ -182,7 +144,7 @@ main {
   align-items: start;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 18px 26px 40px;
+  padding: 22px 26px 40px;
 }
 
 @media (max-width: 1080px) {
@@ -200,9 +162,11 @@ main {
 }
 
 .board-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  margin-bottom: 12px; gap: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px; gap: 10px; flex-wrap: wrap;
 }
+.board-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.board-head-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
 #gameName {
   font-family: var(--font-display);
@@ -248,7 +212,10 @@ main {
   height: 0; border-top: 1px dashed rgba(255, 255, 255, .75);
 }
 
-#board { display: block; border-radius: 8px; max-width: 100%; height: auto; border: 1px solid var(--line); }
+/* 棋盘 canvas 是引擎写死的定宽（560px），父容器更宽时必须居中——
+ * 否则棋盘贴左、右侧留一大块空白，卡片看起来「歪」。
+ * 局势条在棋盘左侧占 13px，居中后以「条 + 棋盘」整体为视觉单元，两侧留白对称。 */
+#board { display: block; margin-inline: auto; border-radius: 8px; max-width: 100%; height: auto; border: 1px solid var(--line); }
 canvas { cursor: pointer; }
 #boardWrap { position: relative; flex: 1 1 auto; min-width: 0; }
 
@@ -753,21 +720,41 @@ button.fold svg { transition: transform .18s var(--ease); }
 }
 .rec-row .rec-time { color: var(--ink-mute); }
 .rec-row .rec-game { font-weight: 600; }
-/* ---------- 战术沿革（普通竖列，棋盘下方） ---------- */
-.tactics-list { margin: 10px 0 0; border: 1px solid var(--line); border-radius: 10px; background: var(--bg2); overflow: hidden; }
-.tactics-list-title {
-  font-size: 11px; color: var(--ink-dim); letter-spacing: .12em;
-  padding: 7px 10px; border-bottom: 1px solid var(--line); background: var(--bg1);
+/* ---------- 战术沿革（棋盘下方，默认折叠的 details 登记表） ---------- */
+.tactics-list {
+  margin: 12px 0 0;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--bg2); overflow: hidden;
 }
-.tactics-list-body { display: block; }
+.tactics-list summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; list-style: none; user-select: none;
+  font-size: 11.5px; color: var(--ink-dim); letter-spacing: .12em;
+  padding: 8px 12px;
+  background: var(--bg1);
+  transition: color .15s;
+}
+.tactics-list summary::-webkit-details-marker { display: none; }
+.tactics-list summary:hover { color: var(--ink); }
+.tl-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transition: transform .18s var(--ease); }
+.tactics-list[open] .tl-chev { transform: rotate(-90deg); }
+.tactics-list[open] summary { border-bottom: 1px solid var(--line); }
+/* 展开后的登记表自身滚动（默认折叠，展开也不把棋盘推出视口） */
+.tactics-list-body {
+  display: block;
+  max-height: 244px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
+}
+.tactics-list-body::-webkit-scrollbar { width: 8px; }
+.tactics-list-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 2px solid var(--bg2); }
 .tv-row {
   display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
-  font: inherit; font-size: 11.5px; line-height: 1.5; padding: 4px 10px;
+  font: inherit; font-size: 11.5px; line-height: 1.5; padding: 4px 12px;
   border: none; border-bottom: 1px solid var(--line); background: transparent;
   color: var(--ink-dim); cursor: pointer;
 }
 .tactics-list-body .tv-row:last-child { border-bottom: none; }
-.tv-row:hover { background: var(--bg1); color: var(--ink); }
+.tv-row:hover { background: var(--bg1); color: var(--ink); box-shadow: none; }
 .tv-row .tv-id { font-family: var(--font-mono); font-size: 11px; flex: 0 0 34px; color: var(--ink-mute); }
 .tv-row .tv-name { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tv-row .tv-meta { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-mute); }
@@ -974,11 +961,12 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   width: auto; margin: 0; accent-color: var(--mo, #1f242c);
 }
 /* ---------- 全局设置抽屉（R3：引擎/连接/战术版本从侧栏「设置」页签搬到这里） ---------- */
+/* 齿轮钮与 .chip 同一竖排metrics（同 11.5px 字号、同内边距），页头两种胶囊高度一致 */
 .gear-btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--line-strong); border-radius: 999px;
-  background: var(--bg2); color: var(--ink-dim);
-  font: inherit; font-size: 12px; padding: 5px 12px; cursor: pointer;
+  background: rgba(255, 255, 255, .8); color: var(--ink-dim);
+  font: inherit; font-size: 11.5px; padding: 4px 12px; cursor: pointer;
 }
 .gear-btn:hover { color: var(--zhu); border-color: rgba(194, 64, 42, .45); }
 .drawer-mask { position: fixed; inset: 0; background: rgba(23, 27, 33, .34); z-index: 40; }
@@ -1176,7 +1164,7 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 /* ---------- 滚动条：浏览器原生件也是设计的一部分 ----------
  * 滚动条和焦点环一样，默认样式不属于任何设计系统。
  * 这里只做一处主题化，所有可滚动容器共享；WebKit 用伪元素，Firefox 用标准属性。 */
-.feed, .records, .ledger, #promoBox, #testPanel, .settings-body, #toast, #tabs {
+.feed, .records, .ledger, #promoBox, #testPanel, .settings-body, #toast {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
@@ -1185,15 +1173,13 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .ledger::-webkit-scrollbar,
 #promoBox::-webkit-scrollbar,
 #testPanel::-webkit-scrollbar,
-.settings-body::-webkit-scrollbar,
-#tabs::-webkit-scrollbar { width: 8px; height: 8px; }
+.settings-body::-webkit-scrollbar { width: 8px; height: 8px; }
 .feed::-webkit-scrollbar-thumb,
 .records::-webkit-scrollbar-thumb,
 .ledger::-webkit-scrollbar-thumb,
 #promoBox::-webkit-scrollbar-thumb,
 #testPanel::-webkit-scrollbar-thumb,
-.settings-body::-webkit-scrollbar-thumb,
-#tabs::-webkit-scrollbar-thumb {
+.settings-body::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border-radius: 999px;
   border: 2px solid var(--bg1);   /* 与轨道同底，视觉上让滑块变细 */
@@ -1203,15 +1189,13 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 .ledger::-webkit-scrollbar-thumb:hover,
 #promoBox::-webkit-scrollbar-thumb:hover,
 #testPanel::-webkit-scrollbar-thumb:hover,
-.settings-body::-webkit-scrollbar-thumb:hover,
-#tabs::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+.settings-body::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
 .feed::-webkit-scrollbar-track,
 .records::-webkit-scrollbar-track,
 .ledger::-webkit-scrollbar-track,
 #promoBox::-webkit-scrollbar-track,
 #testPanel::-webkit-scrollbar-track,
-.settings-body::-webkit-scrollbar-track,
-#tabs::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-track { background: transparent; }
 
 /* ---------- 动效与响应式 ---------- */
 
@@ -1225,7 +1209,6 @@ details.settings .settings-body { padding: 4px 16px 14px; }
 
 @media (max-width: 640px) {
   header, main { padding-left: 14px; padding-right: 14px; }
-  #tabs { padding: 0 14px; overflow-x: auto; }
   .board-card { padding: 12px; }
   .brand h1 { font-size: 19px; }
   /* 窄屏头部：品牌独占一行、状态芯片自成一行。chip 是 nowrap 的，
@@ -1512,8 +1495,10 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   line-height: 15px;
 }
 
-/* 战术提示的一键开关（棋盘头部）；aria-pressed + is-on 双状态，与设置抽屉的 hints 互为同一设置 */
-.hint-btn {
+/* 棋盘头部两个一键开关（规则 / 提示）共用同一枚小药丸；点亮色按语义区分：
+   提示=玄墨（查看类），禁手=朱砂（改规则，红印章的语义）。 */
+.hint-btn,
+.rule-btn {
   font-size: 12px;
   padding: 2px 10px;
   border-radius: 999px;
@@ -1522,8 +1507,15 @@ details.settings .settings-body { padding: 4px 16px 14px; }
   color: var(--ink-dim);
   cursor: pointer;
 }
+.hint-btn:hover,
+.rule-btn:hover { color: var(--ink); border-color: var(--mo); box-shadow: none; }
 .hint-btn.is-on {
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);
+}
+.rule-btn.is-on {
+  background: var(--zhu);
+  color: #fff;
+  border-color: var(--zhu);
 }

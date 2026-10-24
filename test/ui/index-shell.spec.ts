@@ -23,8 +23,8 @@ const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 
 /** 装配层与面板必须能取到的 id（`src/app/**`、`src/ui/panels/**` 的 `byId` 调用点）。 */
 const REQUIRED_IDS = [
-  // 外壳与页签
-  'tabs', 'pane-play', 'pane-exp', 'pane-data',
+  // 外壳与页签（2026-10-24 起棋种只留五子棋：#tabs 退役，#ruleBtn 在大众/禁手两个同族引擎间切换）
+  'ruleBtn', 'pane-play', 'pane-exp', 'pane-data',
   // 棋盘与对局控制
   'board', 'boardWrap', 'status', 'turnBadge', 'gameName', 'gameSync',
   'startBtn', 'undoBtn', 'swapBtn', 'resignBtn', 'passBtn', 'retryBtn', 'pauseBtn', 'stepBtn',
@@ -105,8 +105,13 @@ describe('index.html 外壳契约', () => {
     const second = html.match(/id="duelSecondName"[^>]*>([^<]*)</)?.[1]?.trim();
     expect(first).toBe('黑方');
     expect(second).toBe('白方');
-    // 旧事故②：标题/描述里的棋种数必须与注册表一致（七种）
-    expect(html).toContain('七种棋类');
-    expect(html).not.toContain('六种棋类');
+    // 旧事故②的延续：标题/描述里的棋种口径必须与外壳实际能力一致
+    //（2026-10-24 起只留五子棋，不再宣传七种；其余六种引擎仍在注册表里跑自检）
+    expect(html).toContain('五子棋对弈');
+    for (const stale of ['六种棋类', '七种棋类']) {
+      expect(html, `外壳不该再出现「${stale}」`).not.toContain(stale);
+    }
+    // 棋种页签已退役：单一棋种 + 禁手规则开关的形态下，外壳不得残留 #tabs
+    expect(html).not.toMatch(/id="tabs"/);
   });
 });

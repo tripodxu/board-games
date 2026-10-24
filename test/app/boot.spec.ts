@@ -50,7 +50,7 @@ describe('P6b 启动装配', () => {
     expect(document.querySelector('.panel[data-panel="records"]')).not.toBeNull();
   });
 
-  it('按旧顺序装配首屏：七页签、棋种名、双方图例、人类侧下拉、速度回填', () => {
+  it('按旧顺序装配首屏：无棋种页签、禁手开关熄灭、棋种名、双方图例、人类侧下拉、速度回填', () => {
     mountAppHtml();
     const store = seedStorage({ [STORE_KEY]: settingsJson({ speed: 4 }) });
     vi.stubGlobal('fetch', () => Promise.reject(new Error('offline')));
@@ -60,11 +60,12 @@ describe('P6b 启动装配', () => {
     const engine = getGame('gomoku');
     expect(engine).toBeDefined();
 
-    const gids = Array.from(document.querySelectorAll('#tabs button')).map((b) => b.getAttribute('data-gid'));
-    expect(gids).toEqual(['gomoku', 'gomoku-pro', 'go', 'xiangqi', 'chess', 'checkers', 'cc']);
-    /* 首屏棋种是 gomoku，且只有它处于 active */
-    const active = Array.from(document.querySelectorAll('#tabs button.active')).map((b) => b.getAttribute('data-gid'));
-    expect(active).toEqual(['gomoku']);
+    /* 2026-10-24 起只留五子棋：页签退役，规则开关（大众/禁手）接管同族切换 */
+    expect(document.getElementById('tabs'), '单一棋种形态下不应再有 #tabs').toBeNull();
+    const ruleBtn = document.getElementById('ruleBtn') as HTMLButtonElement;
+    expect(ruleBtn).not.toBeNull();
+    expect(ruleBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(ruleBtn.classList.contains('is-on')).toBe(false);
 
     expect(text('gameName')).toBe(engine?.name);
     expect(Array.from(document.querySelectorAll('#side option')).map((o) => o.textContent))
@@ -77,6 +78,27 @@ describe('P6b 启动装配', () => {
     expect(text('legendSecond')).toBe(engine?.sides[1]?.name);
     /* 旧启动末尾的 `#speedVal = (150 + speed*150)/1000 + 's'` */
     expect(text('speedVal')).toBe(((150 + 4 * 150) / 1000) + 's');
+  });
+
+  it('禁手规则开关：点亮切 gomoku-pro（按钮态/棋种名同步），再点回大众规则', () => {
+    mountAppHtml();
+    const store = seedStorage({ [STORE_KEY]: settingsJson() });
+    vi.stubGlobal('fetch', () => Promise.reject(new Error('offline')));
+
+    const ctx = boot({ storage: storageOf(store), renderer: fakeRenderer() });
+    expect(ctx).not.toBeNull();
+    const btn = document.getElementById('ruleBtn') as HTMLButtonElement;
+
+    btn.click();
+    expect(ctx?.session.gameId).toBe('gomoku-pro');
+    expect(text('gameName')).toBe(getGame('gomoku-pro')?.name);
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    expect(btn.classList.contains('is-on')).toBe(true);
+
+    btn.click();
+    expect(ctx?.session.gameId).toBe('gomoku');
+    expect(text('gameName')).toBe(getGame('gomoku')?.name);
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('localStorage 被禁用时退化为内存桩，装配照常完成', () => {

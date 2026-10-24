@@ -318,11 +318,12 @@ try {
   }
   await send('Page.navigate', { url: URL_TARGET });
 
-  // 3) 装配层真的跑起来了：页签是 JS 渲染的，`#tabs` 空着就说明 main.ts 没接上
-  const tabsOk = await waitFor(`document.querySelectorAll('#tabs button, #tabs [role=tab]').length > 0`, {
-    label: '#tabs 里有页签',
+  // 3) 装配层真的跑起来了：战术沿革行是 JS 渲染的（boot 里 renderTacticsStripPanel 的产物），
+  //    `#tacticsListBody` 空着就说明 main.ts 没接上（2026-10-24 起 #tabs 退役，此为其替代代理）
+  const tabsOk = await waitFor(`document.querySelectorAll('#tacticsListBody .tv-row').length > 0`, {
+    label: '#tacticsListBody 里有档位行',
   });
-  check('页签由 JS 渲染（src/app 装配成功）', tabsOk);
+  check('面板由 JS 渲染（src/app 装配成功）', tabsOk);
 
   const title = await evaluate('document.title');
   check('页面标题非空', typeof title === 'string' && title.length > 0, title);
@@ -747,9 +748,9 @@ try {
   if (OFFLINE) {
     check('离线模式：/api/* 请求确实被掐断', blockedApi > 0, `掐断 ${blockedApi} 次`);
     check(
-      '离线模式：功能不残（页签 + 棋盘 + 开局都在）',
+      '离线模式：功能不残（面板 + 棋盘 + 开局都在）',
       Boolean(tabsOk && ink0 && ink0.n > 0 && inkMove.ok),
-      `页签 ${tabsOk ? '有' : '无'}，棋盘上墨 ${ink0?.n ?? 0}，落子 ${inkMove.ok ? '成功' : inkMove.detail}`,
+      `战术档位行 ${tabsOk ? '有' : '无'}，棋盘上墨 ${ink0?.n ?? 0}，落子 ${inkMove.ok ? '成功' : inkMove.detail}`,
     );
   }
 } catch (err) {

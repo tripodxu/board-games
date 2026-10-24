@@ -12,7 +12,7 @@
 | 静态资产 | ✅ 已上线 | Workers Static Assets，Vite 产物；`/api/*` 由 `run_worker_first` 保证进 Worker，其余回落 SPA 外壳 |
 | 数据 | ✅ 已迁入 D1 | 数据库 `jev-qiguan`（WNAM），`database_id = f72390fe-a506-4a88-8db7-af7213657947`；见下「数据现状」 |
 | 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
-| 棋种 | ✅ 七种 | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts) |
+| 棋种 | ✅ 七种（引擎层） | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts)。**2026-10-24 起前端只呈现五子棋**（禁手变体收进棋盘头部的「禁手」规则开关，其余六种仍在注册表跑自检、归档面板仍可按棋种筛历史数据） |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
 | 渠道 | ✅ 九个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`jevrouter`（自建网关，多源路由 + 出口轮换，**强制 BYOK**，[ADR-0024](adr/0024-jevrouter-gateway-channel.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
 | 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加，**2026-10-12 起可按 `code_version` 或战术版本分组并筛选棋种/标签/时间窗，并可勾「只看我的」（服务端 `?device=me`，身份是客户端自持的 `X-Device-Id`）**——筛选全部走服务端查询参数，见「已验证」首条）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
@@ -286,6 +286,21 @@
 - 一次线上导出的快照留在 `backups/export.sql`（`npm run db:export` 的产物；`backups/` 不入库，需要时重新导出）。**2026-10-06 重导**：10.4 MB / 312 局 / 19298 手 / 28 轮，`verify:backup --structural` 绿（payload 逐字节一致、派生列零漂移）；迁移当天的旧快照保留为 `backups/export-2026-10-01-stale.sql`（1.9 MB / 54 局）。
 
 ## 已验证（验收证据）
+
+- **前端收敛为五子棋单一棋种 + 全量打磨（2026-10-24，业主令「只留五子棋一种先…不要缺失功能，但要简洁一些」）＝ 功能零缺失，首屏减负**。
+  **① 棋种面收敛**：七棋种页签（`#tabs`）退役，五子棋·禁手变体收进棋盘头部的「禁手」规则开关
+  （`#ruleBtn`，`bindRuleButton()`/`syncRuleButton()` 接管旧 `buildTabs` 的确认闸门——已下 ≥6 手切规则同旧切棋种一样要确认）；
+  其余六种引擎**仍在注册表**跑自检（`?test=1` 七棋种全 ✓ 不变），归档面板的棋种筛选仍按注册表填（历史数据可照常筛）。
+  **② 战术沿革折叠**：棋盘下方常开的十几行登记表改为默认折叠的 `<details>`（展开后列表自身滚动，max-height 244px），
+  首屏最占版面的块从视野里退场，点击切档功能原样保留。
+  **③ 视觉打磨（月白体系保留式重构）**：棋盘 canvas 在卡片内水平居中（引擎写死 560px 定宽，原先贴左）；
+  页头齿轮钮与状态芯片统一为同规格胶囊；品牌标题行高放宽（窄屏不再贴住副标题）。
+  **④ 验证**：`npm run typecheck` 干净；全量 `npm test` **60 文件 / 840 例全绿**（+1：禁手开关点亮↔熄灭与
+  棋种名/aria-pressed 同步）；`smoke:browser` **18/18**（装配代理从 `#tabs button` 换成
+  `#tacticsListBody .tv-row`，experiment-run.mjs 同步）；无头浏览器桌面/窄屏截图 + CDP 交互态截图
+  （规则点亮/沿革展开/抽屉/实验/数据页签）共七张全过视觉审查，**零阻断性缺陷**（禁手点亮态对比度 4.6:1 达 AA）。
+  受影响契约同步：`test/ui/index-shell.spec.ts`（REQUIRED_IDS：−tabs +ruleBtn；标题口径「五子棋对弈」、禁 `七种/六种棋类`）、
+  `test/app/boot.spec.ts`（页签断言改规则开关断言）。
 
 - **v14.1 / v14.2 锁腿挑战轮收口（2026-10-18/19 跑毕、10-24 收口，`v141free120` / `v142free120` 各 120 局）＝ 两个单变量档都不晋升，`CURRENT` 保持 `v14-plus`**。
   两批同一口径：`jevrouter` 锁 `zen-o2a` 腿（腿成分体检 **100% `jev-1.13-free`、3167/2839 手零 lfree**）、

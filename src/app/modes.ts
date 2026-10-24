@@ -6,7 +6,9 @@
  *                                             `syncChannelUI()` / `runProbe()`
  *   - 双方覆盖 + 实验 A/B 档位（旧 :931-1033）→ `renderSideCfg()` / `renderFoe()` /
  *                                             `syncFoeEnabled()` / `saveSideCfg()` / `saveFoe()`
- *   - 页签与会话（旧 :427-469）            → `buildTabs()` / `switchGame()`
+ *   - 页签与会话（旧 :427-469）            → `bindRuleButton()` / `switchGame()`
+ *     （2026-10-24 起只留五子棋：七棋种页签退役，「禁手」规则开关在大众/禁手两个
+ *      同族引擎间切换，确认闸门语义与旧切棋种一致）
  *
  * 与新架构的分工（本文件最重要的设计决定）：
  *   旧实现把「设置」同时存在 `S.settings` 与抽屉 DOM 两处，靠 `saveSettings()` 每次从输入框
@@ -40,7 +42,7 @@ import {
 } from '../ui/panels/settings.ts';
 import { renderExperimentSides, renderSideConfig } from '../ui/panels/side-config.ts';
 import { renderModeSwitch, syncMatchSettings } from '../ui/panels/experiment.ts';
-import { byId, qsa, setText } from '../ui/dom.ts';
+import { byId, setText } from '../ui/dom.ts';
 import type { SelectEl } from '../ui/dom.ts';
 import { effFor, persistSettings, setSideCfg, sideCfgOf, sideNameOf } from './ctx.ts';
 import type { AppCtx, SideSlot } from './ctx.ts';
@@ -53,7 +55,7 @@ import {
   refreshTacticHints,
 } from './panels.ts';
 
-/** 棋种顺序（旧 `GAME_ORDER`，js/app.js:11）：`#tabs` 与自检都按它遍历。 */
+/** 棋种顺序（旧 `GAME_ORDER`，js/app.js:11）：自检按它遍历全部注册引擎。 */
 export const GAME_ORDER: readonly string[] = Object.freeze([
   'gomoku', 'gomoku-pro', 'go', 'xiangqi', 'chess', 'checkers', 'cc',
 ]);
@@ -386,41 +388,34 @@ export function pickTactics(ctx: AppCtx, id: string): void {
   toast('默认战术档位 → ' + v.id + ' ' + v.name, false);
 }
 
-/* ---------- 页签与会话（旧 :428-469） ---------- */
+/* ---------- 禁手规则开关与会话（2026-10-24 起替代七棋种页签） ---------- */
 
-/** 旧 `buildTabs()`：`#tabs` 由棋种注册表生成；切棋种前对「已下 ≥6 手」的对局要确认。 */
-export function buildTabs(ctx: AppCtx, onSwitch: (gid: string) => void): void {
-  const nav = byId<HTMLElement>('tabs');
-  if (!nav) return;
-  nav.replaceChildren();
-  GAME_ORDER.forEach((gid) => {
-    const g = getGame(gid);
-    if (!g) return;
-    const b = document.createElement('button');
-    b.textContent = g.name;
-    b.dataset.gid = gid;
-    const on = gid === ctx.session.gameId;
-    b.className = on ? 'active' : '';
-    b.setAttribute('aria-pressed', String(on));
-    b.addEventListener('click', () => {
-      if (gid === ctx.session.gameId) return;
-      /* 对局进行中切棋需确认，避免误触丢弃真实对局 */
-      const confirmFn = (globalThis as { confirm?: (m: string) => boolean }).confirm;
-      if (ctx.session.history.length >= 6 && confirmFn &&
-        !confirmFn('当前已下 ' + ctx.session.history.length + ' 手，切换棋种将丢弃本局，确定？')) return;
-      onSwitch(gid);
-    });
-    nav.appendChild(b);
+/**
+ * `#ruleBtn`（棋盘头部「禁手」钮）的点击绑定：在 `gomoku`（大众规则）与
+ * `gomoku-pro`（连珠禁手）两个同族引擎间切换。这是旧 `buildTabs()` 确认闸门的
+ * 唯一存活入口：已下 ≥6 手的对局切换规则等同换棋种，要确认才丢。
+ */
+export function bindRuleButton(ctx: AppCtx, onSwitch: (gid: string) => void): void {
+  const btn = byId<HTMLButtonElement>('ruleBtn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const target = ctx.session.gameId === 'gomoku-pro' ? 'gomoku' : 'gomoku-pro';
+    if (target === ctx.session.gameId) return;
+    /* 对局进行中切规则需确认，避免误触丢弃真实对局（与旧切棋种同一闸门） */
+    const confirmFn = (globalThis as { confirm?: (m: string) => boolean }).confirm;
+    if (ctx.session.history.length >= 6 && confirmFn &&
+      !confirmFn('当前已下 ' + ctx.session.history.length + ' 手，切换规则将丢弃本局，确定？')) return;
+    onSwitch(target);
   });
 }
 
-/** `#tabs` 的选中态（切棋种后重画）。 */
-export function syncTabs(ctx: AppCtx): void {
-  for (const b of qsa<HTMLButtonElement>(document, '#tabs button')) {
-    const on = b.dataset.gid === ctx.session.gameId;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-pressed', String(on));
-  }
+/** `#ruleBtn` 的点亮态（禁手局 = 朱砂实心），切规则后与 `switchGame` 一起调用。 */
+export function syncRuleButton(ctx: AppCtx): void {
+  const btn = byId<HTMLButtonElement>('ruleBtn');
+  if (!btn) return;
+  const pro = ctx.session.gameId === 'gomoku-pro';
+  btn.classList.toggle('is-on', pro);
+  btn.setAttribute('aria-pressed', String(pro));
 }
 
 /**
@@ -432,7 +427,7 @@ export function switchGame(ctx: AppCtx, gid: string, reset: (ctx: AppCtx) => voi
   if (!engine) return;
   ctx.engine = engine;
   ctx.session.gameId = gid;
-  syncTabs(ctx);
+  syncRuleButton(ctx);
   setText(byId('gameName'), engine.name);
   const sideSel = byId<SelectEl>('side');
   if (sideSel) {
