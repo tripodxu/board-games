@@ -4,6 +4,11 @@
 > 不写客套；带日期的条目格式 `## YYYY-MM-DD · 标题`。
 > 本文件是项目级持久记忆（入库、工具无关）。各 agent 工具自己的记忆/指针
 
+- **环境坑：本机 git 配了 `commit.gpgsign=true`**。gpg-agent 口令缓存过期后，`git commit` 会在
+  无终端的 agent 壳里**静默挂死**（等口令输入，零输出零报错，-m/-F/编辑器都一样）。
+  处置：`taskkill /IM gpg.exe` 清掉挂起的签名进程，用 `git commit --no-gpg-sign` 落笔，
+  需要签名时由业主解锁后 `git commit --amend -S` 补签。今早提交能过是因为 agent 还有缓存。
+
 ---
 
 ## 2026-10-24 · 前端收敛为五子棋单一棋种（页签退役→禁手规则开关；战术沿革折叠）；杀 dev 服务要连 workerd 一起杀
