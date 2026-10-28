@@ -442,8 +442,8 @@ export function feedCard(h: SessionMove, animate: boolean): HTMLElement {
   ]);
   append(card, [who, el('span', { class: 'mv', text: h.move?.notation ?? '' })]);
 
-  const barsWrap = el('div');
-  barsWrap.style.gridColumn = '1 / 3';
+  /* 跨列交给 CSS（.prob-bars）：布局常量不该写死在 TS 里 */
+  const barsWrap = el('div', { class: 'prob-bars' });
   barsWrap.appendChild(renderProbabilityBars(m.top, h.move?.notation, animate));
   card.appendChild(barsWrap);
 

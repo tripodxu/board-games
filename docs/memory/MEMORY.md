@@ -31,6 +31,16 @@
   概率条、空态）用 `:where()` 把特异度降到 0，同优先级覆写**必须排在共享规则之后**
   （如 `:where(.rank-row .bar){height:5px}` 在 6px 共享规则后面才生效）。
 - 验证：`typecheck` 干净、`npm test` 172 + 840 全绿、`build` 绿、browser-smoke **18/18**。
+- **第二轮收敛（同日追加，同样零行为变更）**：① 全站 **7 处条形**（.rank-row / .bar-row /
+  .latest-head .conf / .lb-bar / .op-bar / .exp-bar / .exp-agg-bar）收编为一个共享「轨道 + 填充」
+  （JS 仍只写 transform，尺寸配色由上下文后置覆写）；② 三张表格的「数据行 + 粘性表头」收编为
+  共享语汇（`.lb-row/.op-row` 与 `.lb-head/.op-head/.rec-row.rec-head`，**列宽各自声明**）；
+  ③ 触屏 `:hover` 会「粘住」不复原 ⇒ 悬停底色收进 `@media (hover: hover)`，
+  **该媒体块必须排在 `.rp-move.is-cur` 之前**（同为 0,2,0 特异度，靠源顺序定胜负，
+  否则鼠标悬停会盖掉「当前手」的朱砂底）；④ 触控目标补到 WCAG 2.5.8 的 24×24 下限
+  （`button.fold` 20→24、`.mini-btn`/`.hint-btn`/`.rule-btn` padding 2→3px）；
+  ⑤ TS 里写死的布局常量 `barsWrap.style.gridColumn='1 / 3'` 移回 CSS（`.prob-bars`）。
+  验证：typecheck 干净、UI 191 + 引擎 172 + vitest 840 全绿、browser-smoke 18/18。
 - **部署（同日完成）**：`git commit --no-gpg-sign` → `git push` → `npm run deploy`
   （wrangler **已 OAuth 登录**，不设 CLOUDFLARE_API_TOKEN 也能直接部署；`wrangler whoami` 可确认）。
   `npm run smoke:live` **30/30** 通过；冒烟会在线上库写 `smoke-*` 设备数据，**跑完必须执行它给出的
