@@ -59,6 +59,11 @@ export default defineConfig(async () => {
             environment: 'node',
             // 工具链单测：scripts/lib 纯函数 + worker 的 mock 冒烟（不打线上）
             include: ['test/scripts/**/*.spec.mjs'],
+            /* 这些是**纯 CPU 的重推演**（`tactics-mechanics` 要重建几十个局面的战术层），
+             * 单跑 1.5–3.3s，但全量并行（63 个文件抢核）时会摸到默认的 5s 上限 ⇒
+             * 「Test timed out in 5000ms」的假红（2026-10-28 实测：连续两轮全量各红 1–2 例，
+             * 同一文件单跑全绿）。放宽到 30s；真变慢仍会红，只是不再被调度抖动判死。 */
+            testTimeout: 30_000,
           },
         },
       ],

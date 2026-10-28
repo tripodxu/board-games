@@ -296,6 +296,8 @@
   逐条比对「改了什么 → 可能坏在哪」，无未提交改动（`git status` 干净，与 `origin/main` 同步）。
   **② 回归判定**：`npm run typecheck` 干净；`npm run test:engines` **172 例**全绿；`npm test` vitest
   **63 文件 / 850 例**全绿；`npm run bench:tactics` 小样本可跑通（`BENCH_PLY=8 BENCH_RUNS=2`）。
+  复验过程中撞上 `tactics-mechanics` 的 5s 超时抖动（同一文件单跑 3.3s 全绿、全量并行各轮红 1–2 例），
+  已把 `vitest.config.ts` 的 `scripts` project `testTimeout` 放宽到 30s，**改后连续两轮全量全绿**。
   样式层做过一次机器比对：以 `f73ec3c:styles/style.css` 为基线，**旧有新无的类名只有 1 个误报**、
   「源码用到但 CSS 没定义」的类名均为迁移前遗留（`gear-txt` / `tl-title` / `crosshair`），
   **没有令牌化过程中被吃掉的契约**。

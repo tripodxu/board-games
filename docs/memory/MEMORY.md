@@ -33,6 +33,9 @@
 - **`bench:tactics` 的实际手感**（写进文档也写在这里）：默认 `BENCH_PLY=40` × `BENCH_RUNS=9` **含禁手档**，
   单次调用就能到几百秒 ⇒ 全量是「泡茶级」耗时。日常先用 `BENCH_PLY=8 BENCH_RUNS=3` 看量级，
   **但小样本的绝对数不能与 performance.md 的基线直接比**。
+- **顺手收口一个「假红」**：`tactics-mechanics` 的 5s 超时抖动（见下方同日的「测试抖动」条）已经
+  高到连续两轮全量各红 1–2 例，`vitest.config.ts` 的 `scripts` project 补 `testTimeout: 30_000`；
+  改后连续两轮 `172 + 850` 全绿。
 
 ---
 
@@ -78,6 +81,10 @@
 - `test/scripts/tactics-mechanics.spec.mjs` 的「v14-plus vs v15」用例在**全量并发跑**时会
   `Test timed out in 5000ms`（单跑 3.2s 通过，复跑全量 840/840 绿）——纯 CPU 争用的超时抖动。
   **先单跑该文件确认再判定，别急着改代码**。
+- **2026-10-28 晚已从根上收口**：`vitest.config.ts` 的 `scripts` project 加 `testTimeout: 30_000`
+  （与 `worker` project 同口径）。抖动频率已经高到「连续两轮全量各红 1–2 例」，靠「复跑一次」收不了账；
+  这些用例是**纯 CPU 重推演**（单跑 1.5–3.3s），放宽上限只是不再被调度抖动判死，真变慢仍会红。
+  改后连续两轮全量 `172 + 850` 全绿。
 
 ---
 
