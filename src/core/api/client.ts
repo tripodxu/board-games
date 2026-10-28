@@ -14,6 +14,9 @@ import type { Experience } from '../tactics.ts';
 import { DEVICE_ID_HEADER, normalizeDeviceId } from '../../shared/device-id.ts';
 
 const TIMEOUT_MS = 8000;
+/* 探活（/api/health）单独用更短的超时：它只用来画右上角那枚状态芯片，不该当首屏闸门。
+ * 后端不在线时要等满 8s 才降级，会把后面三块面板的取数一起拖住（原来就是串行瀑布）。 */
+const PROBE_TIMEOUT_MS = 2000;
 
 /* ---------- 匿名设备标识（ADR-0013 的客户端半边） ----------
  * 模块级一份：装配层开局 `setDeviceId(loadDeviceId(storage))` 灌一次（src/app/boot.ts），
@@ -54,6 +57,8 @@ export interface CallOpts {
   query?: Query;
   method?: string;
   body?: unknown;
+  /** 单次请求超时（毫秒）；缺省 `TIMEOUT_MS`（8s）。探活这类「只画状态」的请求传 2s。 */
+  timeoutMs?: number;
 }
 
 /** 单次请求：无 fetch / 超时 / 非 2xx / 非 JSON / 任何异常 → null。 */
@@ -61,7 +66,7 @@ export async function call<T = unknown>(path: string, opts?: CallOpts): Promise<
   try {
     if (typeof fetch !== 'function') return null;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), (opts && opts.timeoutMs) || TIMEOUT_MS);
     try {
       const init: RequestInit = { signal: ctrl.signal };
       if (opts && opts.method) init.method = opts.method;
@@ -160,8 +165,9 @@ export interface LeaderboardRow {
 
 /* ---------- 接口 ---------- */
 
-/** Worker/D1 探活。 */
-export const health = (): Promise<HealthInfo | null> => call<HealthInfo>('/api/health');
+/** Worker/D1 探活（2s 超时：只决定状态芯片，不挡首屏）。 */
+export const health = (): Promise<HealthInfo | null> =>
+  call<HealthInfo>('/api/health', { timeoutMs: PROBE_TIMEOUT_MS });
 
 /** 归档一局棋谱（返回 {ok,id,gameUid,dedup}，兼容字段 path）。 */
 export const saveGame = (payload: unknown): Promise<SaveGameResult | null> => post<SaveGameResult>('/api/games', payload);

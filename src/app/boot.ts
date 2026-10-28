@@ -12,6 +12,11 @@
  * 顺序有语义：`initFolds`/`initSideTabs` 必须在面板已有初值后跑（它们会按存储应用折叠态），
  * `switchGame` 在 `bind` 之后（它会重置会话，早跑会被随后的 reset 冲掉）。
  *
+ * 2026-10-28 改动（只动「探活与面板取数」这一段，语义不变）：
+ * 旧实现是 `initBackend`（探活 8s 超时）→ 两路补数 → 三块面板，三轮串行瀑布；
+ * 探活只决定右上角那枚状态芯片，不该当闸门 —— 现在四路并发发出，探活超时降到 2s，
+ * 后端不在线时最快 2s 就走完降级路径，三块面板也不再等它。
+ *
  * 本文件不 import node:*；网络只经 `backend.initBackend` → `core/api/client.ts`。
  */
 import type { StorageLike } from '../core/persist.ts';
@@ -24,6 +29,7 @@ import { saveGame, setDeviceId } from '../core/api/client.ts';
 import { loadDeviceId } from '../core/device.ts';
 import { createBoardRenderer } from '../ui/board-render.ts';
 import type { BoardRenderer } from '../ui/board-render.ts';
+import { watchBoardTheme } from '../ui/board-theme.ts';
 import { createFoldStore, FOLD_DEFAULT_OPEN, initFolds } from '../ui/panels/collapse.ts';
 import { createExperimentState, renderModeSwitch, syncMatchSettings } from '../ui/panels/experiment.ts';
 import { createSideTabStore, initSideTabs } from '../ui/panels/tabs.ts';
@@ -34,7 +40,7 @@ import { loadLatestGames } from './records.ts';
 import { installRapfiWorker } from './rapfi-worker.ts';
 import type { AppCtx } from './ctx.ts';
 import { createCtx } from './ctx.ts';
-import { resetSession } from './loop.ts';
+import { redraw, resetSession } from './loop.ts';
 import {
   bindRuleButton,
   loadSettingsUI,
@@ -158,6 +164,10 @@ export function boot(opts: BootOptions = {}): AppCtx | null {
     renderer: opts.renderer !== undefined ? opts.renderer : canvas ? createBoardRenderer(canvas) : null,
   });
 
+  /* 棋盘配色跟随系统主题（暗色压一档亮度）；切主题时重画一帧。
+     放在这里而不是 gfx/core 里：core 不碰 DOM，主题查询属于装配层。 */
+  watchBoardTheme(() => redraw(ctx));
+
   /* ---- 以下顺序＝旧启动顺序 ---- */
   /* Rapfi 渠道的装配：core 不能碰 DOM，装配层必须显式装（P8 补齐 P6 拆层时漏掉的一段；
      漏装时 Rapfi 渠道的对手会以「当前环境不支持动态加载 Rapfi 脚本（无 document）」静默不走子）。
@@ -193,14 +203,15 @@ export function boot(opts: BootOptions = {}): AppCtx | null {
   );
 
   const backendFn = opts.initBackendFn ?? initBackend;
-  void Promise.resolve(backendFn(ctx)).then(() => {
+  /* 探活与三块面板取数并发：探活只画状态芯片，三块面板离线时各自降级（null → 「加载中…」），
+     都不依赖 `ctx.backend.mode`，因此不必互相等。 */
+  const backendReady = Promise.resolve(backendFn(ctx));
+  void loadLeaderboardPanel(ctx);
+  void loadOpeningsPanel(ctx);
+  void loadLatestGames(ctx);
+  void backendReady.then(() => {
     /* 后端在线时补发上次失败积压的棋谱（队列按指数退避，不到点的会自己跳过）。 */
     if (ctx.backend.mode === 'live') void ctx.sync.flush();
-    /* 排行榜 / 开局库取数（离线时客户端返回 null → 面板停在「加载中…」，不报错）。 */
-    void loadLeaderboardPanel(ctx);
-    void loadOpeningsPanel(ctx);
-    /* 实验报告顶部的「最新棋谱」：归档最新一页（离线时同上下载失败 → 「加载中…」）。 */
-    void loadLatestGames(ctx);
   }).catch((e: unknown) => {
     console.warn('[jev-qiguan] 后端探活失败（按离线降级继续）', e);
   });

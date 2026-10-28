@@ -163,9 +163,8 @@
   /* 色点描边：14 个接管层色是「数据色」（同义于语义，不随主题改），
    * 但画在卡片上需要与底色分离——靠这枚随主题反转的内描边，而不是去改数据色本身。 */
   --swatch-ring: rgb(0 0 0 / 15%);
-  /* 棋盘是引擎自绘的木色，两个主题下都一样；暗色 UI 里它是最亮的一块，
-   * 轻微压亮度让它退进暗背景（不是换色，是压光）。 */
-  --board-filter: none;
+  /* 棋盘的暗色压光不在 CSS 里做（那要给 canvas 挂 filter，每次重绘多一遍滤镜管线）：
+   * 由 src/ui/board-theme.ts 换 gfx 的 board/line 配色实现，见 #board 处的注释。 */
 }
 
 /* ========== 暗色主题（跟随系统；只覆写令牌，不动选择器） ========== */
@@ -204,7 +203,6 @@
     --eval-b: #A04A38;
     /* 暗底上的色点改用亮描边：深色的数据色（深绿/紫/棕）才不会糊进卡片 */
     --swatch-ring: rgb(255 255 255 / 22%);
-    --board-filter: brightness(.92) saturate(.95);
     /* 暗色氛围光换「冷月微光」（投影三元组已换纯黑，aura 不能再用它） */
     --aura-1: radial-gradient(1100px 520px at 78% -8%, rgb(233 237 242 / 5%), transparent 62%);
     --aura-2: radial-gradient(900px 600px at -8% 108%, rgb(var(--rgb-zhu) / 7%), transparent 55%);
@@ -407,11 +405,12 @@ main {
 /* 棋盘 canvas 是引擎写死的定宽（560px），父容器更宽时必须居中——
  * 否则棋盘贴左、右侧留一大块空白，卡片看起来「歪」。
  * 局势条在棋盘左侧占 13px，居中后以「条 + 棋盘」整体为视觉单元，两侧留白对称。 */
+/* 刻意**不**给 canvas 挂 filter：那会让每次 draw() 之后多跑一遍整块位图的滤镜管线。
+   暗色下压亮改由绘制层换一组配色实现（src/ui/board-theme.ts → gfx 的 board/line）。 */
 #board {
   display: block; margin-inline: auto;
   border-radius: var(--r-md); max-width: 100%; height: auto;
   border: 1px solid var(--line);
-  filter: var(--board-filter);   /* 暗色下压掉木色棋盘的高光，见 L3 令牌注释 */
 }
 canvas { cursor: pointer; }
 #boardWrap { position: relative; flex: 1 1 auto; min-width: 0; }
@@ -1425,7 +1424,6 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 .rp-board { margin: 2px 0 var(--sp-4); }
 .rp-board canvas, .rp-board svg, .rp-board img {
   display: block; max-width: 100%; height: auto; margin: 0 auto;
-  filter: var(--board-filter);   /* 与主棋盘同一口径 */
 }
 
 /* 着法列表：一局最多 225 手，必须自己滚，不能把侧栏顶长 */

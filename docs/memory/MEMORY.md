@@ -50,6 +50,21 @@
 - **测试抖动（不是回归）**：`test/scripts/tactics-mechanics.spec.mjs` 的「v14-plus vs v15」用例在
   全量并发跑时会 `Test timed out in 5000ms`（单跑 3.2s 通过，复跑全量 840/840 绿）——
   纯 CPU 争用的超时抖动，**先单跑该文件确认再判定，别急着改代码**。
+- **性能第一轮（P0-2 + P0-3，同日）**：
+  - **P0-2 回退我自己引入的 canvas `filter`**：`--board-filter` 已删（亮/暗两组值都删）。
+    原因：canvas 带 filter ⇒ 每次 `draw()` 后浏览器都要对整块位图再跑一遍滤镜管线，暗色 100% 命中。
+    改法：暗色压光做进**绘制层换颜色**——`src/core/gfx.ts` 新增 `GfxPalette` + `setGfxTheme()`/
+    `gfxTheme()`（`clear` 用 `palette.board`、`intersections`/`cells` 用 `palette.line`），
+    `src/ui/board-theme.ts`（新）读 `prefers-color-scheme` 并订阅 change，装配层 `boot.ts`
+    `watchBoardTheme(() => redraw(ctx))`。暗色值 = 浅色值做 `brightness(.92) saturate(.95)` 的等价
+    结果（#FAFBFD→#E6E8EA、#3A4048→#353B42），**只压亮度不换色系**（深色底会让黑子糊掉）。
+  - **P0-3 探活不再当首屏闸门**：`client.ts` 加 `CallOpts.timeoutMs`，`health()` 单独 2s
+    （`PROBE_TIMEOUT_MS`，其余仍 8s）；`boot.ts` 把「探活」与三块面板取数**四路并发**
+    （原来 `initBackend` → 两路补数 → 三块面板三轮串行）。
+  - 新增契约测试两个：`test/ui/board-theme.spec.ts`（4 例：浅色逐字口径/暗色只压暗/绘制层真的读配色/
+    显式传色优先）、`test/app/boot-parallel.spec.ts`（2 例：让 `/api/health` 永不 settle，断言三块面板
+    请求照样发出——串行时代根本不会发）。
+  - 验证：typecheck 干净、引擎 172 + vitest **846** 全绿、build 绿、browser-smoke 18/18。
 - **部署（同日完成）**：`git commit --no-gpg-sign` → `git push` → `npm run deploy`
   （wrangler **已 OAuth 登录**，不设 CLOUDFLARE_API_TOKEN 也能直接部署；`wrangler whoami` 可确认）。
   `npm run smoke:live` **30/30** 通过；冒烟会在线上库写 `smoke-*` 设备数据，**跑完必须执行它给出的

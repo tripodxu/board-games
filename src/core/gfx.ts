@@ -46,6 +46,29 @@ export interface TextOpts {
   bold?: boolean;
 }
 
+/** 棋盘配色（默认 = 旧实现的浅色口径，逐字保留）。
+ *  暗色主题由 ui 层换成另一组值（见 src/ui/board-theme.ts）——**换颜色而不是给 canvas 挂
+ *  CSS filter**：filter 会让每次 draw() 之后多跑一遍整块位图的滤镜管线。 */
+export interface GfxPalette {
+  /** 棋盘底色（`clear` 的默认值） */
+  board: string;
+  /** 网格线 / 外框色（`intersections` / `cells` 的默认值） */
+  line: string;
+}
+
+/** 当前配色（模块级一份；core 不碰 DOM，由 ui 层在启动时与切主题时灌入）。 */
+let palette: GfxPalette = { board: '#FAFBFD', line: '#3A4048' };
+
+/** 换一组棋盘配色（只影响之后的绘制；传 null/undefined 不改）。 */
+export function setGfxTheme(p?: Partial<GfxPalette> | null): void {
+  if (p) palette = { ...palette, ...p };
+}
+
+/** 当前棋盘配色（测试 / 调试用；返回副本）。 */
+export function gfxTheme(): GfxPalette {
+  return { ...palette };
+}
+
 /** 绘制辅助集合（与旧 BG.gfx 方法一一对应）。 */
 export interface Gfx {
   setup(canvas: CanvasLike, w: number, h: number): Canvas2D;
@@ -77,7 +100,7 @@ function setup(canvas: CanvasLike, w: number, h: number): Canvas2D {
 }
 
 function clear(ctx: Canvas2D, w: number, h: number, color?: string): void {
-  ctx.fillStyle = color || '#FAFBFD';
+  ctx.fillStyle = color || palette.board;
   ctx.fillRect(0, 0, w, h);
 }
 
@@ -85,7 +108,7 @@ function clear(ctx: Canvas2D, w: number, h: number, color?: string): void {
 function intersections(
   ctx: Canvas2D, x0: number, y0: number, cell: number, cols: number, rows: number, color?: string,
 ): void {
-  ctx.strokeStyle = color || '#3A4048';
+  ctx.strokeStyle = color || palette.line;
   ctx.lineWidth = 1;
   for (let i = 0; i < cols; i++) {
     const x = x0 + i * cell;
@@ -110,7 +133,7 @@ function cells(
       }
     }
   }
-  ctx.strokeStyle = '#3A4048'; ctx.lineWidth = 1;
+  ctx.strokeStyle = palette.line; ctx.lineWidth = 1;
   ctx.strokeRect(x0, y0, cols * size, rows * size);
   for (let i = 1; i < cols; i++) {
     ctx.beginPath(); ctx.moveTo(x0 + i * size, y0); ctx.lineTo(x0 + i * size, y0 + rows * size); ctx.stroke();
