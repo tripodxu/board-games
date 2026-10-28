@@ -19,6 +19,7 @@
     "test:ui": "vitest run --project ui",
     "test:scripts": "vitest run --project scripts",
     "check:docs": "node scripts/check-docs.mjs",
+    "bench:tactics": "node --experimental-strip-types scripts/tactics-bench.ts",
     "db:migrate:local": "wrangler d1 migrations apply jev-qiguan --local",
     "db:migrate:remote": "wrangler d1 migrations apply jev-qiguan --remote",
     "db:export": "wrangler d1 export jev-qiguan --remote --output backups/export.sql",

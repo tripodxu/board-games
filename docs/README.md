@@ -9,6 +9,7 @@
 docs/
 ├── README.md               ← 本文件：索引
 ├── status.md               ← 当前状态 / 已验证 / 已知限制 / 设计例外 / 路线图（改行为必更新）
+├── performance.md          ← 性能基线与优化台账：实测数字、已落地项、P1/P2 待做、验收口径
 ├── architecture.md         ← 架构地图：文件职责、数据流、关键不变量
 ├── engine-interface.md     ← 棋种引擎统一接口契约 + 新棋种接入指南
 ├── jev-api.md              ← Jev API 契约、五渠道 + random 基线、错误重试、成本模型
@@ -93,6 +94,7 @@ docs/
 | 准备/启动官方 API 重跑（v15、v14-plus vs rapfi） | [plans/2026-10-14-official-rerun.md](plans/2026-10-14-official-rerun.md)（含 checklist，待业主确认开跑） |
 | 「卡在 v14/v15」下一步怎么走 | [plans/2026-10-16-v14-v15-stall-next-steps.md](plans/2026-10-16-v14-v15-stall-next-steps.md)（四堵墙诊断 + S0–S5 路线，含输出级随机性实测） |
 | 改 UI / 样式 / 可访问性 | [status.md](status.md)「设计例外」+ [architecture.md](architecture.md) 文件职责表 |
+| 查性能瓶颈 / 改战术层或引擎数据结构 | [performance.md](performance.md)（基线数字 + 待做台账；改前后各跑 `npm run bench:tactics`） |
 | 接手一个进行中的任务 | [agents/handoff.md](agents/handoff.md) + [memory/MEMORY.md](memory/MEMORY.md) 最新 3 条 |
 | 和别的 agent 并行干活 | [agents/parallel-work.md](agents/parallel-work.md) |
 | 回忆「为什么当初这么设计」 | [adr/](adr/README.md) |

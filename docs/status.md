@@ -19,8 +19,8 @@
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |
 | 旧实现 | ✅ 已删除 | 2026-10-01（P8）：`js/**`、`functions/**`、`legacy.html`、`server.js`、`dev-proxy.py`、`css/**`（→ `styles/style.css`）、旧测试三件套 `test/{run-tests,server-tests,rapfi-tests}.js`。对照表见 [architecture.md](architecture.md) §9 |
-| 启动与取数 | ✅ 已并发化 | 2026-10-28：探活不再当首屏闸门（`/api/health` 单独 2s 超时），三块面板取数与探活四路并发；棋盘暗色压光由绘制层换配色实现（去掉 canvas 上的 CSS filter，避免每次重绘多跑一遍滤镜管线） |
-| 设计系统 | ✅ 已令牌化 | 2026-10-28：`styles/style.css` 重构为三层令牌（原始/语义/组件），颜色零字面量逃逸、字阶 `--fs-*` 显式化、滚动条/空态/概率条各一份共享规则；新增跟随系统的暗色主题（纯 CSS 令牌覆写）与跳转链接，功能与 DOM 契约不变 |
+| 性能 | 🚧 P0 已落地 | 2026-10-28 全仓审计后建立 [performance.md](performance.md)：实测基线（客户端 JS 269 KB/gzip 98.2 KB；`computeTactics` 中位 199 ms、最坏 3836 ms，禁手模式最坏 745 s）。**已落地**：探活不再当首屏闸门（`/api/health` 单独 2s 超时，三块面板取数与探活四路并发）；棋盘暗色压光由绘制层换配色实现（去掉 canvas 上的 CSS filter，避免每次重绘多跑一遍滤镜管线）。**待做**：战术层搬 Worker、离屏底图与合帧重绘、引擎盘面改 typed array（根因级，需金样守门）—— 台账与验收口径见该文档 |
+| 设计系统 | ✅ 已令牌化 | 2026-10-28：`styles/style.css` 重构为三层令牌（原始/语义/组件），颜色零字面量逃逸、字阶 `--fs-*` 显式化、滚动条/空态/概率条各一份共享规则；新增跟随系统的暗色主题（纯 CSS 令牌覆写）与跳转链接，功能与 DOM 契约不变；棋盘配色随主题由 `src/ui/board-theme.ts` 灌入 `gfx` |
 
 > **版本口径已统一为单一来源**：`package.json` 的 `version` 与 [wrangler.jsonc](../wrangler.jsonc) 的 `vars.APP_VERSION` 现在都是 `1.0.0`，由 `test/core/version.spec.ts` 逐字钉住；前端写进棋谱的 `codeVersion` 形如 `1.0.0+<git short sha>`（`vite.config.ts` 构建期把 `APP_VERSION` + `BUILD_SHA` 注入 [src/shared/version.ts](../src/shared/version.ts)）。旧「按文件名时间窗归因 + 手工 bump `BG.codeVersion`」已退役。
 

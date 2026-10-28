@@ -11,6 +11,51 @@
 
 ---
 
+## 2026-10-28 · 性能审计与 P0 落地（探活去闸门 + 棋盘压光改绘制层）；基线入 docs/performance.md
+
+- **一句话**：全仓审计（渲染 / 网络 / 计算内存三路并行 + 本地实测）后建 [docs/performance.md](../performance.md)：
+  瓶颈**高度集中在三处**——战术层同步阻塞主线程、首屏单包 + 取数串行瀑布、每手重复全量重绘；
+  不是「到处都慢」。该文件是**台账**：实测基线 + 已落地 + P1/P2 待做 + 验收口径。
+- **实测基线**：客户端 JS 269 KB（gzip 98.2 KB）；`computeTactics` 大众模式中位 **199 ms** /
+  最坏 3836 ms，**禁手模式最坏 744.9 s**（随机中局，偏悲观）；真实语料 VCT 标定
+  平均 444 ms / p90 1647 ms / 最坏 4586 ms。
+- **P0-2 回退我自己引入的 canvas `filter`**（上一轮加的 `--board-filter` 已删，亮/暗两组值都删）：
+  canvas 带 filter ⇒ 每次 `draw()` 后浏览器都要对整块位图再跑一遍滤镜管线，暗色 100% 命中。
+  改法：暗色压光做进**绘制层换颜色**——`src/core/gfx.ts` 新增 `GfxPalette` + `setGfxTheme()`/`gfxTheme()`
+  （`clear` 用 `palette.board`、`intersections`/`cells` 用 `palette.line`），`src/ui/board-theme.ts`（新）
+  读 `prefers-color-scheme` 并订阅 change，`boot.ts` 里 `watchBoardTheme(() => redraw(ctx))`。
+  暗色值 = 浅色值做 `brightness(.92) saturate(.95)` 的等价结果（#FAFBFD→#E6E8EA、#3A4048→#353B42），
+  **只压亮度不换色系**（深色底会让黑子糊掉）。
+- **P0-3 探活不再当首屏闸门**：`client.ts` 加 `CallOpts.timeoutMs`，`health()` 单独 2s
+  （`PROBE_TIMEOUT_MS`，其余仍 8s）；`boot.ts` 把「探活」与三块面板取数**四路并发**
+  （原 `initBackend` → 两路补数 → 三块面板三轮串行）。
+- **新增工具**：`npm run bench:tactics`（`scripts/tactics-bench.ts`，`BENCH_PLY`/`BENCH_RUNS` 可调）。
+  改战术层或引擎数据结构**前后各跑一次**，用数字判断快慢，别凭手感。
+- **新增契约测试 6 例**：`test/ui/board-theme.spec.ts`（4 例）、`test/app/boot-parallel.spec.ts`（2 例：
+  让 `/api/health` 永不 settle，断言三块面板请求照样发出——串行时代根本不会发）。
+- 验证：typecheck 干净、引擎 172 + vitest **846** 全绿、build 绿、browser-smoke 18/18、smoke:live 30/30。
+
+---
+
+## 2026-10-28 · 部署 / 线上冒烟 / 线上产物校验的操作口径
+
+- `git commit --no-gpg-sign` → `git push` → `npm run deploy`（wrangler **已 OAuth 登录**，
+  不设 `CLOUDFLARE_API_TOKEN` 也能直接部署；`wrangler whoami` 可确认）。
+- `npm run smoke:live` **30/30** 通过；冒烟会在线上库写 `smoke-*` 设备数据，**跑完必须执行它给出的
+  3 条 DELETE 清理命令**（每次删约 7 行）。不确定残留时先 `SELECT device_id FROM devices WHERE device_id LIKE 'smoke-%'`。
+- 线上产物校验：抓 `/` 与 `assets/index-*.css` 确认目标改动已上线。**注意 Vite 压缩会去掉空格、
+  并把 `rgb(0 0 0 / 15%)` 压成 `#00000026`** ⇒ 字面匹配要先 `replace(/\s+/g,'')` 并按压缩形式比对。
+
+---
+
+## 2026-10-28 · 测试抖动（不是回归）：tactics-mechanics 的 5s 超时
+
+- `test/scripts/tactics-mechanics.spec.mjs` 的「v14-plus vs v15」用例在**全量并发跑**时会
+  `Test timed out in 5000ms`（单跑 3.2s 通过，复跑全量 840/840 绿）——纯 CPU 争用的超时抖动。
+  **先单跑该文件确认再判定，别急着改代码**。
+
+---
+
 ## 2026-10-28 · 样式层三层令牌化重构（视觉不变、暗色主题新增）；两条 CSS 契约坑
 
 - **一句话**：`styles/style.css`（1536 → ≈1250 行）重构为 L1 原始 / L2 语义 / L3 组件三层令牌
@@ -47,30 +92,7 @@
   （亮 `none` / 暗 `brightness(.92) saturate(.95)`）压高光，主棋盘与回放器同口径。
   **踩坑：`is-cur` 这类「当前项」不能进 `:where()`** —— 基类 `.tv-row`/`.rp-move` 自带
   `background:transparent`，共享规则降到 0 特异度后当前手底色直接消失（已改为显式选择器）。
-- **测试抖动（不是回归）**：`test/scripts/tactics-mechanics.spec.mjs` 的「v14-plus vs v15」用例在
-  全量并发跑时会 `Test timed out in 5000ms`（单跑 3.2s 通过，复跑全量 840/840 绿）——
-  纯 CPU 争用的超时抖动，**先单跑该文件确认再判定，别急着改代码**。
-- **性能第一轮（P0-2 + P0-3，同日）**：
-  - **P0-2 回退我自己引入的 canvas `filter`**：`--board-filter` 已删（亮/暗两组值都删）。
-    原因：canvas 带 filter ⇒ 每次 `draw()` 后浏览器都要对整块位图再跑一遍滤镜管线，暗色 100% 命中。
-    改法：暗色压光做进**绘制层换颜色**——`src/core/gfx.ts` 新增 `GfxPalette` + `setGfxTheme()`/
-    `gfxTheme()`（`clear` 用 `palette.board`、`intersections`/`cells` 用 `palette.line`），
-    `src/ui/board-theme.ts`（新）读 `prefers-color-scheme` 并订阅 change，装配层 `boot.ts`
-    `watchBoardTheme(() => redraw(ctx))`。暗色值 = 浅色值做 `brightness(.92) saturate(.95)` 的等价
-    结果（#FAFBFD→#E6E8EA、#3A4048→#353B42），**只压亮度不换色系**（深色底会让黑子糊掉）。
-  - **P0-3 探活不再当首屏闸门**：`client.ts` 加 `CallOpts.timeoutMs`，`health()` 单独 2s
-    （`PROBE_TIMEOUT_MS`，其余仍 8s）；`boot.ts` 把「探活」与三块面板取数**四路并发**
-    （原来 `initBackend` → 两路补数 → 三块面板三轮串行）。
-  - 新增契约测试两个：`test/ui/board-theme.spec.ts`（4 例：浅色逐字口径/暗色只压暗/绘制层真的读配色/
-    显式传色优先）、`test/app/boot-parallel.spec.ts`（2 例：让 `/api/health` 永不 settle，断言三块面板
-    请求照样发出——串行时代根本不会发）。
-  - 验证：typecheck 干净、引擎 172 + vitest **846** 全绿、build 绿、browser-smoke 18/18。
-- **部署（同日完成）**：`git commit --no-gpg-sign` → `git push` → `npm run deploy`
-  （wrangler **已 OAuth 登录**，不设 CLOUDFLARE_API_TOKEN 也能直接部署；`wrangler whoami` 可确认）。
-  `npm run smoke:live` **30/30** 通过；冒烟会在线上库写 `smoke-*` 设备数据，**跑完必须执行它给出的
-  3 条 DELETE 清理命令**（本次删 7 行）。线上产物校验：抓 `/` 与 `assets/index-*.css` 确认
-  skip-link / 双 theme-color / 三层令牌 / `@media (prefers-color-scheme:dark)` 均已上线
-  （注意 Vite 压缩会去掉空格，字面匹配要先 `replace(/\s+/g,'')`）。
+  （注：本条里的 `--board-filter` 已于同日 P0-2 回退，棋盘压光改由绘制层配色实现，见首条。）
 
 ---
 
