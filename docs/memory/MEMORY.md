@@ -41,6 +41,15 @@
   （`button.fold` 20→24、`.mini-btn`/`.hint-btn`/`.rule-btn` padding 2→3px）；
   ⑤ TS 里写死的布局常量 `barsWrap.style.gridColumn='1 / 3'` 移回 CSS（`.prob-bars`）。
   验证：typecheck 干净、UI 191 + 引擎 172 + vitest 840 全绿、browser-smoke 18/18。
+- **第三轮（暗色主题收尾）**：① 14 个接管层色是**数据色**（不随主题改），但画在暗卡片上的图例色点
+  会糊进底色 ⇒ 不改数据色，改加一枚随主题反转的内描边 `--swatch-ring`（亮底黑 15% / 暗底白 22%）；
+  ② 棋盘是引擎自绘木色、两主题同色，暗色 UI 里它是最亮的一块 ⇒ 加 `--board-filter`
+  （亮 `none` / 暗 `brightness(.92) saturate(.95)`）压高光，主棋盘与回放器同口径。
+  **踩坑：`is-cur` 这类「当前项」不能进 `:where()`** —— 基类 `.tv-row`/`.rp-move` 自带
+  `background:transparent`，共享规则降到 0 特异度后当前手底色直接消失（已改为显式选择器）。
+- **测试抖动（不是回归）**：`test/scripts/tactics-mechanics.spec.mjs` 的「v14-plus vs v15」用例在
+  全量并发跑时会 `Test timed out in 5000ms`（单跑 3.2s 通过，复跑全量 840/840 绿）——
+  纯 CPU 争用的超时抖动，**先单跑该文件确认再判定，别急着改代码**。
 - **部署（同日完成）**：`git commit --no-gpg-sign` → `git push` → `npm run deploy`
   （wrangler **已 OAuth 登录**，不设 CLOUDFLARE_API_TOKEN 也能直接部署；`wrangler whoami` 可确认）。
   `npm run smoke:live` **30/30** 通过；冒烟会在线上库写 `smoke-*` 设备数据，**跑完必须执行它给出的

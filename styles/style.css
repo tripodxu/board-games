@@ -160,6 +160,12 @@
   --bad-bg: #FDF4F2;                       /* 校准失准底 */
   --eval-a: #E8B4A8;                       /* 局势条后手段（上） */
   --eval-b: #DB9A8B;                       /* 局势条后手段（下） */
+  /* 色点描边：14 个接管层色是「数据色」（同义于语义，不随主题改），
+   * 但画在卡片上需要与底色分离——靠这枚随主题反转的内描边，而不是去改数据色本身。 */
+  --swatch-ring: rgb(0 0 0 / 15%);
+  /* 棋盘是引擎自绘的木色，两个主题下都一样；暗色 UI 里它是最亮的一块，
+   * 轻微压亮度让它退进暗背景（不是换色，是压光）。 */
+  --board-filter: none;
 }
 
 /* ========== 暗色主题（跟随系统；只覆写令牌，不动选择器） ========== */
@@ -196,6 +202,9 @@
     --bad-bg: rgb(var(--rgb-zhu) / 12%);
     --eval-a: #B95F4B;
     --eval-b: #A04A38;
+    /* 暗底上的色点改用亮描边：深色的数据色（深绿/紫/棕）才不会糊进卡片 */
+    --swatch-ring: rgb(255 255 255 / 22%);
+    --board-filter: brightness(.92) saturate(.95);
     /* 暗色氛围光换「冷月微光」（投影三元组已换纯黑，aura 不能再用它） */
     --aura-1: radial-gradient(1100px 520px at 78% -8%, rgb(233 237 242 / 5%), transparent 62%);
     --aura-2: radial-gradient(900px 600px at -8% 108%, rgb(var(--rgb-zhu) / 7%), transparent 55%);
@@ -398,7 +407,12 @@ main {
 /* 棋盘 canvas 是引擎写死的定宽（560px），父容器更宽时必须居中——
  * 否则棋盘贴左、右侧留一大块空白，卡片看起来「歪」。
  * 局势条在棋盘左侧占 13px，居中后以「条 + 棋盘」整体为视觉单元，两侧留白对称。 */
-#board { display: block; margin-inline: auto; border-radius: var(--r-md); max-width: 100%; height: auto; border: 1px solid var(--line); }
+#board {
+  display: block; margin-inline: auto;
+  border-radius: var(--r-md); max-width: 100%; height: auto;
+  border: 1px solid var(--line);
+  filter: var(--board-filter);   /* 暗色下压掉木色棋盘的高光，见 L3 令牌注释 */
+}
 canvas { cursor: pointer; }
 #boardWrap { position: relative; flex: 1 1 auto; min-width: 0; }
 
@@ -816,9 +830,13 @@ button.fold svg { transition: transform .18s var(--ease); }
   font-size: var(--fs-md); font-weight: 700; color: var(--ink);
   margin-bottom: 7px;
 }
-.duel-name .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-.duel-name .dot.mo { background: var(--mo); }
-.duel-name .dot.zhu { background: var(--zhu); }
+/* 双方色点（对决卡与实验 A/B 卡共用）：玄墨=先手/黑方，朱砂=后手/白方 */
+:where(.duel-name .dot, .exp-side-name .dot) {
+  width: 9px; height: 9px; border-radius: 50%;
+  display: inline-block; flex: 0 0 auto;
+}
+:where(.duel-name .dot.mo, .exp-side-name .dot.mo) { background: var(--mo); }
+:where(.duel-name .dot.zhu, .exp-side-name .dot.zhu) { background: var(--zhu); }
 .duel-row {
   display: flex; justify-content: space-between;
   font-size: var(--fs-xs); color: var(--ink-mute);
@@ -946,7 +964,14 @@ button.fold svg { transition: transform .18s var(--ease); }
 .tv-row .tv-name { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tv-row .tv-meta { flex: 0 0 auto; font-size: var(--fs-cap); color: var(--ink-mute); }
 .tv-row.used .tv-id { color: var(--zhu); }
-.tv-row.cur { background: var(--zhu-bg-soft); color: var(--ink); font-weight: 700; }
+/* 「当前项」语汇：战术沿革当前档 与 回放器当前手 同一口径（朱砂柔底 + 加重）。
+ * 这里不能用 :where()：基类 `.tv-row` / `.rp-move` 各自带 background:transparent，
+ * 零特异度的共享规则会被它们盖掉（当前手底色就没了）。 */
+.tv-row.cur,
+.rp-move.is-cur,
+.rp-move[aria-current="true"] {
+  background: var(--zhu-bg-soft); color: var(--ink); font-weight: 700;
+}
 .tv-row.cur .tv-id { color: var(--zhu); }
 
 /* 战绩簿联名副行：谁执黑执白、各带哪一版战术（超出列宽省略，hover 看全） */
@@ -1206,9 +1231,7 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
   display: flex; flex-direction: column; gap: 5px;
 }
 .exp-side-name { font-size: var(--fs-sm); font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 5px; }
-.exp-side-name .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
-.exp-side-name .dot.mo { background: var(--mo); }
-.exp-side-name .dot.zhu { background: var(--zhu); }
+/* 色点已并入上方共享的「双方色点」规则 */
 .exp-field { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); color: var(--ink-dim); margin: 0; }
 .exp-field select { flex: 1 1 auto; min-width: 0; }
 /* 底部通栏：局数 + 开始/停止；状态单独一行，避免挤占按钮 */
@@ -1400,7 +1423,10 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 /* 棋盘宿主：canvas 的尺寸由引擎内联写死（560px），窄栏里靠 max-width 收缩。
  * 不写 width:100%——内联 width 优先级更高，那样只会「设了没用」，还会把小盘放大。 */
 .rp-board { margin: 2px 0 var(--sp-4); }
-.rp-board canvas, .rp-board svg, .rp-board img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.rp-board canvas, .rp-board svg, .rp-board img {
+  display: block; max-width: 100%; height: auto; margin: 0 auto;
+  filter: var(--board-filter);   /* 与主棋盘同一口径 */
+}
 
 /* 着法列表：一局最多 225 手，必须自己滚，不能把侧栏顶长 */
 .rp-moves {
@@ -1426,8 +1452,6 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 /* 当前手：朱砂底 + 加粗，与 .tv-row.cur 同一套「当前项」语汇。
  * 模块同时写 class 与 aria-current，两个都认——只按 class 上色的话，
  * 谁把 aria-current 当唯一「当前项」信号（读屏/测试）就会看到状态与颜色不一致。 */
-.rp-move.is-cur,
-.rp-move[aria-current="true"] { background: var(--zhu-bg-soft); color: var(--ink); font-weight: 700; }
 .rp-ply { font-size: var(--fs-cap); color: var(--ink-mute); }
 .rp-side { color: var(--ink-mute); }
 .rp-notation { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -1582,7 +1606,7 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
   border-radius: 50%;
   display: inline-block;
   flex: 0 0 auto;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 15%);
+  box-shadow: inset 0 0 0 1px var(--swatch-ring);
 }
 .tl-chip.is-fire {
   border-color: var(--ink);
