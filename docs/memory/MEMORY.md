@@ -11,6 +11,29 @@
 
 ---
 
+## 2026-10-28 · 样式层三层令牌化重构（视觉不变、暗色主题新增）；两条 CSS 契约坑
+
+- **一句话**：`styles/style.css`（1536 → ≈1250 行）重构为 L1 原始 / L2 语义 / L3 组件三层令牌
+  （参照 design-system 技能的 token 架构）。30+ 处逃逸的颜色字面量（rgba 墨色 ×14、rgba 朱砂 ×11、
+  `#2F7D53` ×4、`#AAB4BF` ×2 等）全部收编成 `var(--*)` 或 `rgb(var(--rgb-*) / α)` 通道三元组；
+  9 档隐式字阶显式化为 18 个 `--fs-*`，另有 `--sp-*` 间距阶、圆角阶、9 条阴影配方。
+- **合并**：三份滚动条主题 → 一份（`border:2px solid transparent` + `background-clip:padding-box`，
+  不再按容器底色抄边框色）；五份空态（feed/ledger/lb/op/cal/chart）→ 一条 `:where()` 共享规则；
+  三处概率条 → 一条共享规则；`.exp-row` / `.exp-actions` 的双定义（后者覆写前者）合并为一处。
+- **新增（纯 CSS，零 JS）**：暗色主题 `@media (prefers-color-scheme: dark)` 只覆写令牌值
+  （`--on-mo` 处理玄墨表面的前景反转；`#toast.err` 改 `--zhu-deep` 保白字 ≥4.5:1）；
+  index.html 加 `.skip-link`（跳主内容）与 `meta theme-color` 双主题。**canvas 引擎色不动**，
+  暗色下棋盘保持木色原貌是有意的。
+- **契约坑①（layout-css.spec）**：它用 `/main\s*\{[^}]*\}/` 抓**第一个** `main {` 块验 grid 契约
+  （`minmax(430px,1fr) clamp(380px,31vw,430px)`）——所以样式表里任何注释或 `#main` 规则
+  都不能先于主规则出现「main {」字样；`scrollbar-gutter: stable` 也不可删。
+- **契约坑②（`:where()` 共享件）**：共享底板（`.panel`/`.rp-panel`/`.lb-panel`/`.op-panel`、
+  概率条、空态）用 `:where()` 把特异度降到 0，同优先级覆写**必须排在共享规则之后**
+  （如 `:where(.rank-row .bar){height:5px}` 在 6px 共享规则后面才生效）。
+- 验证：`typecheck` 干净、`npm test` 172 + 840 全绿、`build` 绿、browser-smoke **18/18**。
+
+---
+
 ## 2026-10-24 · 前端收敛为五子棋单一棋种（页签退役→禁手规则开关；战术沿革折叠）；杀 dev 服务要连 workerd 一起杀
 
 - **一句话**：业主令「只留五子棋一种先，不要缺失功能，但要简洁」。做法是**保留式重构**（月白设计体系、

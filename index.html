@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#F3F5F8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101318" media="(prefers-color-scheme: dark)">
 <title>Jev 棋馆 · 五子棋对弈</title>
 <meta name="description" content="TypeSafe Jev「系统一模型」驱动的五子棋对弈：人机、机机，实时胜率与决策可视化，可选连珠禁手规则。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,6 +16,8 @@
 <link rel="stylesheet" href="/styles/style.css">
 </head>
 <body>
+
+<a class="skip-link" href="#main">跳到主内容</a>
 
 <header>
   <div class="brand">
@@ -32,7 +36,7 @@
   <span class="chip">累计成本 <b id="costChip">$0.00000</b></span>
 </header>
 
-<main>
+<main id="main">
   <!-- 棋盘 -->
   <section class="board-card" aria-label="棋盘">
     <div class="board-head">
