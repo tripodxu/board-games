@@ -496,22 +496,35 @@ export function prependFeed(h: SessionMove, root?: UiRoot | null): void {
 
 /* ---------- 棋谱（逐手记法） ---------- */
 
-/** 旧 `appendLedgerLine(h)`（js/app.js:1785-1793）。 */
-export function appendLedgerLine(h: SessionMove, root?: UiRoot | null): void {
-  const ledger = qs<HTMLElement>(scopeOf(root), '#ledger');
-  if (!ledger) return;
-  if (ledger.querySelector('.ledger-empty, .feed-empty')) clear(ledger);
+/** 一行棋谱 DOM（append 与 rebuild 共用；只构造，不碰容器）。 */
+function ledgerRow(h: SessionMove): HTMLElement {
   const m = metaOf(h);
   const label = m.byAI ? (m.mock ? '演示' : 'Jev') : '玩家';
   const row = el('div', null, [el('span', { class: 'no', text: h.ply + '.' }), h.move?.notation ?? '']);
   if (label !== '玩家') {
     row.appendChild(el('span', { class: label === 'Jev' ? 'tag jev' : 'tag', text: label }));
   }
-  ledger.appendChild(row);
+  return row;
+}
+
+/** 旧 `appendLedgerLine(h)`（js/app.js:1785-1793）。 */
+export function appendLedgerLine(h: SessionMove, root?: UiRoot | null): void {
+  const ledger = qs<HTMLElement>(scopeOf(root), '#ledger');
+  if (!ledger) return;
+  if (ledger.querySelector('.ledger-empty, .feed-empty')) clear(ledger);
+  ledger.appendChild(ledgerRow(h));
   ledger.scrollTop = ledger.scrollHeight;
 }
 
-/** 旧 `rebuildLedger()`（js/app.js:1795-1800）。 */
+/**
+ * 旧 `rebuildLedger()`（js/app.js:1795-1800）：清空后按整份历史重画。
+ *
+ * ⚠️ 2026-10-28 修：此前写成 `appendLedgerLine(h, ledger)`，把 `#ledger` 自己当查询根
+ * 传进去 ⇒ `qs(ledger, '#ledger')` 查的是**后代**、恒为 null ⇒ 清空后一行也填不回来。
+ * 触发面很宽：每局第一手（`loop.playMove` 的 `history.length === 1` 走全量重建）与
+ * 悔棋 / 换局 / 换规则（`loop.ts` 的 `renderLedgerPanel`）都会让棋谱面板变成空白。
+ * 现在改用 `ledgerRow()` 直接建行，并在循环外只写一次 `scrollTop`。
+ */
 export function rebuildLedger(moves: readonly SessionMove[], root?: UiRoot | null): void {
   const ledger = qs<HTMLElement>(scopeOf(root), '#ledger');
   if (!ledger) return;
@@ -520,5 +533,8 @@ export function rebuildLedger(moves: readonly SessionMove[], root?: UiRoot | nul
     ledger.appendChild(el('div', { class: 'ledger-empty', text: '对局开始后，每一手的记法会记在这里。' }));
     return;
   }
-  for (const h of moves) appendLedgerLine(h, ledger);
+  const frag = (ledger.ownerDocument ?? document).createDocumentFragment();
+  for (const h of moves) frag.appendChild(ledgerRow(h));
+  ledger.appendChild(frag);
+  ledger.scrollTop = ledger.scrollHeight;
 }
