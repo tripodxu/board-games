@@ -16,8 +16,8 @@
 
 | 指标 | 实测值 | 来源 |
 |---|---|---|
-| 客户端 JS | 原始 **269 KB** ｜ gzip **98.2 KB** ｜ brotli **82.7 KB** | `dist/client/assets/index-*.js` |
-| CSS | 45.2 KB ｜ gzip 9.4 KB | 同上 |
+| 客户端 JS | 原始 **276 KB** ｜ gzip **101.5 KB**（同一轮审计的初测为 269 KB / 98.2 KB，收口重测略增，**未设 CI 基线**） | `dist/client/assets/index-*.js` |
+| CSS | 46.1 KB ｜ gzip 9.6 KB | 同上 |
 | `index.html` | 34.2 KB（内联 SVG 图标为主） | 同上 |
 | `computeTactics`（大众模式，随机中局 40 手） | 中位 **199 ms** ｜ 平均 565 ms ｜ 最坏 **3836 ms** | `npm run bench:tactics` |
 | `computeTactics`（**禁手模式**，同口径） | 中位 312 ms ｜ 平均 **101.7 s** ｜ 最坏 **744.9 s** | 同上 |
@@ -53,6 +53,18 @@
 - 契约测试：`test/app/boot-parallel.spec.ts`（2 例：让 `/api/health` 永不 settle，
   断言三块面板请求照样发出——串行时代根本不会发）
 
+### P0-4 棋谱面板全量重建是**真 bug**，不是纯性能问题（2026-10-28 收口修复）
+
+- **原因**：`src/ui/panels/cockpit.ts` 的 `rebuildLedger()` 把 `#ledger` 自己当查询根传给
+  `appendLedgerLine()` ⇒ 后者内部 `qs(ledger, '#ledger')` 查的是**后代**、恒为 `null` ⇒
+  **清空后一行也填不回来**。触发面很宽：每局第一手（`loop.playMove` 里 `history.length === 1`
+  走全量重建）、悔棋、换局、切禁手规则（`loop.ts:166 / 513` 的 `renderLedgerPanel`）。
+  症状：棋谱面板第一手后空白（第二手起只从第 2 手开始显示），悔棋/换局后整列清空。
+- **改法**：抽出纯构造 `ledgerRow()`，`append` 与 `rebuild` 共用；重建用 `DocumentFragment`
+  批量 append 并在循环外只写一次 `scrollTop`（顺带消掉「每行一次强制同步布局」）。
+- 契约测试：`test/ui/ledger-panel.spec.ts`（4 例：3 手重建含首手 / 空历史只留空态 / 幂等 /
+  增量追加）。**负向对照**：把 `cockpit.ts` 还原成旧实现后 4 例里 3 例红，修复后全绿。
+
 ## 四、待做台账
 
 ### P1（结构性收益）
@@ -69,7 +81,6 @@
 
 | # | 问题 | 证据 | 改法 |
 |---|---|---|---|
-| 2-1 | **`rebuildLedger` 功能 bug**：把 `ledger` 自身当 root 传入 → `qs(ledger,'#ledger')` 查后代恒为 null → **悔棋/换局后棋谱只清不填** | `src/ui/panels/cockpit.ts:515-524` + `src/ui/dom.ts:181-184` | 传 `root` 而非 `ledger`；顺带 DocumentFragment 批量 append、循环外只写一次 `scrollTop`（修好后立刻会暴露每行一次的强制同步布局） |
 | 2-2 | `/api/stats` 单次回传最多 500 局逐手校准样本 | `src/worker/db/stats.ts:26,142-146`；`src/app/panels.ts:217-242` | 拆端点：轻总览 + 校准直方图服务端算 |
 | 2-3 | 实验历史 localStorage 无上限增长（对照战绩簿有 `RECORDS_KEEP=60`） | `src/ui/panels/experiment-report.ts:796-798,152-168` | 加 `EXP_HISTORY_KEEP`（如 30 轮） |
 | 2-4 | 回放视图把整局每个局面快照全留内存（226 份 15×15 嵌套数组 ≈ 数 MB） | `src/app/panels.ts:409-439` | 存记法序列 + 游标，或只缓存当前 ply ±K 窗口 |
@@ -101,3 +112,13 @@
 | 首屏 | 三块面板数据到达时间 | 原受 8 s 探活闸门支配 → 现已并发 |
 
 改战术层或引擎数据结构前后，各跑一次 `npm run bench:tactics`，用数字判断「快了多少」。
+
+**跑法提醒**：默认口径是 `BENCH_PLY=40`、`BENCH_RUNS=9`，且**禁手那一档的单次调用本身就能到几百秒**
+（见 §二 基线表）——所以默认全量是「泡杯茶」级别，不是秒级检查。日常改动先用小样本看量级与尾部：
+
+```bash
+BENCH_PLY=8 BENCH_RUNS=3 npm run bench:tactics      # 十几秒到几分钟，够看出有没有量级变化
+```
+
+（PowerShell 用 `$env:BENCH_PLY=8; $env:BENCH_RUNS=3; npm run bench:tactics`。）
+**别拿小样本的绝对数当基线**——§二 的数字是默认口径跑的，两者不可直接比。

@@ -15,8 +15,12 @@
 
 ## 1. 项目一句话
 
-原生 DOM + TypeScript 的七棋种对弈站（五子棋 / 五子棋·禁手 / 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
+原生 DOM + TypeScript 的**五子棋对弈站**（大众规则 / 连珠禁手两档，由棋盘头部的「禁手」开关 `#ruleBtn` 切换），
 由 TypeSafe「系统一模型」Jev 走子，另有 Rapfi WASM 本地引擎渠道与离线演示渠道。
+引擎层仍是七种（五子棋两档 + 围棋 9 路 / 象棋 / 国际象棋 / 西洋跳棋 / 中国跳棋），
+**但只有五子棋有 UI 入口**（2026-10-24 起棋种页签退役）：其余六种留在注册表里跑自检，
+归档/统计/排行榜仍按棋种筛选历史数据。**加新棋种仍要过引擎接口与自检**，只是默认不会出现在界面上——
+要露出得同时改 `src/app/modes.ts` 与 `index.html` 的入口，别当成「注册了就能玩」。
 **前端零框架**（无 React/Vue/Svelte，Vite 只做构建与开发服务器），后端是**单个 Cloudflare Worker**
 （[Hono](https://hono.dev/) + D1 + Workers Static Assets），静态资产与 `/api/*` 同源同域，
 部署形态见 [ADR-0010](docs/adr/0010-worker-static-assets-replaces-pages.md)。
@@ -76,6 +80,8 @@
 | 改后端 / API / 持久化 | ADR-0011 + architecture.md §3–§4 | `src/worker/routes/**` + `src/worker/db/**` + `migrations/**`（动契约要同步 `src/core/types.ts` 与 `src/shared/record-map.ts`） |
 | 改数据模型 / 归档字段 | migrations/（`0001_init.sql` + 追加迁移，如 `0002_tactics_timing.sql`）+ architecture.md §4 | `src/shared/record-map.ts` + `src/worker/lib/record-input.ts`（**两处口径必须一致**） |
 | 改样式 / 页面外壳 | architecture.md §2.1 | `index.html` + `styles/style.css` |
+| 动战术层 / 引擎数据结构（先量再改） | **performance.md**（基线 + 待做台账 + 验收口径） | `npm run bench:tactics`（`scripts/tactics-bench.ts`）；改前后各跑一次 |
+| 加/换棋种入口（现在只有五子棋露出） | status.md「棋种」行 + architecture.md §2.3 | `src/app/modes.ts`（`switchGame` / `bindRuleButton`）+ `index.html` |
 | 改部署 / 代理 / 定时任务 | architecture.md §7 + wrangler.jsonc | `.github/workflows/**` + `src/worker/maintenance.ts` |
 | 改测试 | architecture.md §6 + test/parity/README.md | 各 `test/**` 分层（引擎纯 Node / worker 真 D1 / ui+app happy-dom） |
 | 跑对照实验 / 看进度 / 取实验数据 | **remote-experiments.md** | `scripts/experiment-{batch,report,loss-report}.mjs` |
@@ -93,6 +99,7 @@ npm run test:engines            # 只跑纯 Node 层：七引擎 selfTest + 战�
 npm run test:tactics            # 只跑战术层回归（node test/tactics/run.mjs）
 npm run test:new                # vitest 全部 project（worker / core / ui / scripts）；也可细分 test:worker / test:ui / test:scripts
 npm run check:docs              # 文档自检：memory 置顶、md 相对链接可解析、status 时效
+npm run bench:tactics           # 战术层耗时基准（BENCH_PLY / BENCH_RUNS 可调；默认口径含禁手，跑满要几十分钟，先用小样本；基线见 docs/performance.md）
 npm run db:migrate:local        # 本地 D1 应用 migrations/（npm run dev 的 predev 会自动跑）
 npm run import:archive -- --local   # 把 54 局历史归档导入本地 D1（--remote 打线上，慎用）
 npm run db:export               # 线上 D1 全量导出到 backups/export.sql（备份第一步）

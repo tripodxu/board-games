@@ -53,13 +53,13 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | `src/app/**` | 装配层：把 `core` 与会话状态接到 `ui` 上（启动、对局循环、模式切换、面板装配、后端探活与降级） |
 | `src/shared/**` | 前后端共享契约：[record-map.ts](../src/shared/record-map.ts)（旧棋谱字段解析口径）、[version.ts](../src/shared/version.ts)（版本串） |
 | [src/main.ts](../src/main.ts) | 浏览器唯一入口：写 `data-code-version` → `boot()` → 兜住启动期异常（绝不白屏） |
-| [index.html](../index.html) | 页面外壳：棋盘画布、页签容器、三个侧栏页签、唯一一个 `<script type="module">` |
+| [index.html](../index.html) | 页面外壳：棋盘画布、棋盘头部（棋种名 + `#ruleBtn` 禁手开关 + `#hintBtn` 提示开关）、三个侧栏页签、唯一一个 `<script type="module">`。**棋种页签 `#tabs` 已于 2026-10-24 退役**，别再加回来 |
 | [migrations/](../migrations) | [0001_init.sql](../migrations/0001_init.sql)（六张业务表 + 索引）、[0002_tactics_timing.sql](../migrations/0002_tactics_timing.sql)（战术层耗时三列）与 `import/*.sql`（历史 54 局 + 6 轮实验的导入产物） |
 | [test/](../test) | 四层测试：引擎（纯 Node）、core/worker/ui/app（vitest 三个 project）、[fixtures/golden/](../test/fixtures/golden)（冻结金样） |
 | [public/rapfi/](../public/rapfi) | Rapfi 引擎的 wasm 资产（`rapfi-single-simd128.js/.wasm/.data` + `COPYING.txt`/`NOTICE`）。Vite 的 `publicDir` 直出到 `dist/client/rapfi/*` |
 | [styles/style.css](../styles/style.css) | 全站样式（月白/玄墨/朱砂）。唯一一份样式表，由 `index.html:11` 的 `<link rel="stylesheet" href="/styles/style.css">` 引入，经 Vite 打包进 `dist/client/assets/` |
 | [games/](../games) | 旧实现的棋谱归档（54 局）。**冻结只读**，是金样与对账的源数据，不再写入 |
-| [scripts/](../scripts) | 6 个零依赖脚本：文档校验、归档导入、新旧对账、备份校验、线上 HTTP 冒烟、真浏览器冒烟 |
+| [scripts/](../scripts) | 零依赖工具脚本（19 个文件，Node 直跑）：文档校验、归档导入、新旧对账、备份校验、线上 HTTP 冒烟、真浏览器冒烟、对照实验三件套（`experiment-{run,batch,report}`）、战术机制读数与基线（`tactics-mechanics.mjs` / `tactics-bench.ts`） |
 | [.github/workflows/](../.github/workflows) | 三条流水线：`test.yml`（CI）、`deploy.yml`（手动部署）、`backup.yml`（每日 D1 导出） |
 | [data/experiments.json](../data/experiments.json) | 旧实现的实验归档（已导入 D1），历史遗留 |
 | `backups/export.sql`（`npm run db:export` 的产物，不入库） | 一次 D1 导出的快照（用于本地重放/备份校验判别力对照） |
@@ -97,7 +97,13 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | `src/core/record/{export,sync,book}.ts` | 导出契约（`buildGameExport`）、上传队列（去重 + 退避）、本机战绩簿 |
 | `src/core/api/client.ts` | 所有后端调用的唯一出口；无后端时全部返回 `null` 由装配层降级 |
 | `src/ui/panels/*.ts` | 面板模块（驾驶舱、决策流、战绩簿、校准、战术沿革、设置抽屉、回放器、排行榜、开具体验） |
+| `src/ui/board-theme.ts` | 棋盘配色的主题桥：读 `prefers-color-scheme` 并灌 `core/gfx.ts` 的 `GfxPalette`（暗色压一档亮度）。**刻意不用 canvas `filter`**（每次 `draw()` 会多跑一遍滤镜管线），见 [performance.md](performance.md) P0-2 |
 | `src/app/*.ts` | 装配层（`boot` 启动、`loop` 对局循环、`modes` 模式与实验、`panels` 面板装配、`backend` 探活降级、`bindings` DOM 绑定） |
+
+> **入口口径**：`src/core/registry.ts` 仍注册七种引擎（`boot({ gameId })` 也能起任一局），
+> 但**页面只露出五子棋**：`index.html` 的 `#ruleBtn` 在 `gomoku` / `gomoku-pro` 之间切，
+> `src/app/modes.ts` 的 `switchGame()` 是唯一的换引擎入口（`bindRuleButton()` 是它唯一的用户入口）。
+> 其余六种没有 UI 入口，只在 `?test=1` 自检与归档/统计筛选中出现。
 
 ## 3. 请求流
 
@@ -183,7 +189,7 @@ Cloudflare 边缘 —— Worker `jev-qiguan`
 | `npx vitest run --project core` | 纯 node：字段映射、会话、战绩簿、上传队列，以及用 `node:sqlite` 重放 `migrations/**` 的归因用例 | 解析口径与导入脚本不一致。本地没有 `node:sqlite` 时该用例可跳过，CI 用 `REQUIRE_SQLITE=1` 强制硬失败 |
 | `npm run test:tactics` | 战术层的独立回归（`test/tactics/run.mjs`） | 战术层改动未同步该套件 |
 | `npm run smoke:live` | 真线上 HTTP 冒烟 29 项（列表、详情、旧深链、聚合、导出、401/400、去重与写入） | 契约漂移、D1 未绑定、限流误伤 |
-| `npm run smoke:browser` | 真浏览器（CDP + 系统 Chrome）冒烟 **18 项**：页签渲染、棋盘初始绘制、渠道切换、开局后状态栏与像素变化、**对手真的接着走子**、曲线切换、设置抽屉、**归档分页游标追加**、**归档分组口径与筛选**、**设备身份与「只看我的」**（`X-Device-Id` 有合法值 + `?device=me` 被后端认下）、**实验报告分桶表**、**最新棋谱一键回放**、**服务端战报并入**、全程无未捕获异常；`--offline` 下三项在线断言让位给 2 项降级断言（验「无后端时降级为离线演示而不是白屏」，共 13 项）；`--channel rapfi` 另加一项「走子经 Web Worker 会话（未静默回退主线程）」（共 19 项） | SPA 兜底吞掉 API、canvas 未绘制、启动期抛异常、注入点没人接线（Rapfi 那次）、跨层契约漂移（包装体没解包）、**装配层的静默降级**（Rapfi 回退主线程时两条路径都能落子，只有 `data-rapfi-session` 分得出）、**面板状态机的并发**（两个控件连着 `change` 时列表翻倍，靠代次守卫挡）、**设备头没挂上或值域漂了**（后者表现为服务端 400、面板显示「后端不可用」，看着像网络故障） |
+| `npm run smoke:browser` | 真浏览器（CDP + 系统 Chrome）冒烟 **18 项**：侧栏页签渲染、棋盘初始绘制、渠道切换、开局后状态栏与像素变化、**对手真的接着走子**、曲线切换、设置抽屉、**归档分页游标追加**、**归档分组口径与筛选**、**设备身份与「只看我的」**（`X-Device-Id` 有合法值 + `?device=me` 被后端认下）、**实验报告分桶表**、**最新棋谱一键回放**、**服务端战报并入**、全程无未捕获异常；`--offline` 下三项在线断言让位给 2 项降级断言（验「无后端时降级为离线演示而不是白屏」，共 13 项）；`--channel rapfi` 另加一项「走子经 Web Worker 会话（未静默回退主线程）」（共 19 项）。「装配成功」的代理是 `#tacticsListBody .tv-row`（2026-10-24 起 `#tabs` 退役，改看 boot 期 JS 渲染的战术档位行） | SPA 兜底吞掉 API、canvas 未绘制、启动期抛异常、注入点没人接线（Rapfi 那次）、跨层契约漂移（包装体没解包）、**装配层的静默降级**（Rapfi 回退主线程时两条路径都能落子，只有 `data-rapfi-session` 分得出）、**面板状态机的并发**（两个控件连着 `change` 时列表翻倍，靠代次守卫挡）、**设备头没挂上或值域漂了**（后者表现为服务端 400、面板显示「后端不可用」，看着像网络故障） |
 | `npm run verify:parity` | 新旧两套入口的对账（`--base` 旧 / `--candidate` 新），差值必须为 0 | 聚合口径或截断行为出现差异 |
 | `npm run verify:backup` | 备份能否重建出可信的库；定时任务用 `--structural` 档（绝对计数不判失败，但孤儿行、手数与 `move_count` 不符、payload 与派生列漂移、冻结期内对不回 `games/**` 源文件这四类永远硬失败） | 迁移漏行、payload 被改写、冻结期数据被篡改 |
 

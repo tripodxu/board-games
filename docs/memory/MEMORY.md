@@ -11,6 +11,31 @@
 
 ---
 
+## 2026-10-28 · 近五天改动收口：棋谱面板 `rebuildLedger` 真 bug 修复 + 单棋种口径写进一线文档
+
+- **复核结论先说**：2026-10-24 → 10-28 的 12 个提交**没有引入回归**（typecheck 干净、引擎 172 例、
+  vitest 63 文件 / 850 例全绿）；样式三层令牌化用机器比对过**类名契约零丢失**
+  （以 `f73ec3c:styles/style.css` 为基线，旧有新无的类名只剩 1 个正则误报）。
+- **修掉一个真 bug（迁移起就在，不是这五天引入）**：`src/ui/panels/cockpit.ts` 的 `rebuildLedger()`
+  把 `#ledger` 自己当查询根传给 `appendLedgerLine()` ⇒ `qs(ledger, '#ledger')` 查**后代**恒 null ⇒
+  「清空后一行也填不回来」。症状：**每局第一手之后棋谱面板空白**（`loop.playMove` 在
+  `history.length === 1` 时走全量重建），悔棋 / 换局 / 切禁手规则后整列清空。修法：抽 `ledgerRow()`
+  纯构造、重建用 `DocumentFragment` 一次 append、`scrollTop` 循环外只写一次。
+  **契约 `test/ui/ledger-panel.spec.ts` 4 例 + 负向对照（还原旧实现 3 例红）**。
+  教训：`qs(root, sel)` 是 `querySelector` 语义，**root 自己不算命中**——把要查的节点本身当 root 是静默空转。
+- **「功能缺失」的判定口径**：`#tabs` 退役后其余六种棋**没有 UI 入口**是 2026-10-24 的业主决定，
+  不是漏洞；判断「缺没缺」要看三条旁路还在不在——`boot({ gameId })` 能起任一局、`?test=1` 七引擎自检、
+  归档/统计/排行榜按棋种筛历史。三条均在，故记「能力收敛」不记「功能缺失」。
+- **文档对齐（本轮实际改的）**：`README.md` 标题与首段、`AGENTS.md` §1/§3/§4（加 performance.md 阅读路径与
+  `bench:tactics` 命令）、`docs/architecture.md`（外壳去掉「页签容器」、补 `board-theme.ts` 与「入口口径」
+  引用块、scripts 数量与 smoke 描述）、`docs/performance.md`（P2-1 提为已落地 P0-4、补基准跑法提醒）、
+  `docs/status.md`（新增本轮「已验证」条目、验收命令表刷新为 172 / 63 文件 / 850 例、补 bench 行）。
+- **`bench:tactics` 的实际手感**（写进文档也写在这里）：默认 `BENCH_PLY=40` × `BENCH_RUNS=9` **含禁手档**，
+  单次调用就能到几百秒 ⇒ 全量是「泡茶级」耗时。日常先用 `BENCH_PLY=8 BENCH_RUNS=3` 看量级，
+  **但小样本的绝对数不能与 performance.md 的基线直接比**。
+
+---
+
 ## 2026-10-28 · 性能审计与 P0 落地（探活去闸门 + 棋盘压光改绘制层）；基线入 docs/performance.md
 
 - **一句话**：全仓审计（渲染 / 网络 / 计算内存三路并行 + 本地实测）后建 [docs/performance.md](../performance.md)：

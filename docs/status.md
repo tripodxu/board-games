@@ -289,6 +289,28 @@
 
 ## 已验证（验收证据）
 
+- **近五天改动收口（2026-10-24 → 10-28 复核）：样式令牌化/暗色主题、探活去闸门、棋盘压光改绘制层、
+  性能基线入档；另修掉一个从迁移起就存在的真 bug**。
+  **① 复核范围**：`da8eb21`（单棋种收敛）→ `4d09a5b`/`9623c3a`/`578ba53`（样式三层令牌化 + 暗色 + 组件化）
+  → `ed94d48`（探活去闸门 + `GfxPalette`）→ `366c4e6`（`docs/performance.md` + `bench:tactics`）。
+  逐条比对「改了什么 → 可能坏在哪」，无未提交改动（`git status` 干净，与 `origin/main` 同步）。
+  **② 回归判定**：`npm run typecheck` 干净；`npm run test:engines` **172 例**全绿；`npm test` vitest
+  **63 文件 / 850 例**全绿；`npm run bench:tactics` 小样本可跑通（`BENCH_PLY=8 BENCH_RUNS=2`）。
+  样式层做过一次机器比对：以 `f73ec3c:styles/style.css` 为基线，**旧有新无的类名只有 1 个误报**、
+  「源码用到但 CSS 没定义」的类名均为迁移前遗留（`gear-txt` / `tl-title` / `crosshair`），
+  **没有令牌化过程中被吃掉的契约**。
+  **③ 功能缺失判定**：`#tabs` 退役后其余六种棋确实**没有 UI 入口**（`boot({ gameId })` 仍能起任一局，
+  `switchGame()` 是唯一换引擎入口）——这是 2026-10-24 的**业主决定**，不是遗漏；归档/统计/排行榜按棋种筛选、
+  `?test=1` 七引擎自检、引擎注册表均不受影响。已知能力缺口只有一条且已量化：禁手档 `computeTactics`
+  尾部极长（[performance.md](performance.md) 1-4），属既有问题、非本轮引入。
+  **④ 修掉的真 bug**：`rebuildLedger()` 把 `#ledger` 当 root 传给 `appendLedgerLine()` ⇒ 查后代恒为 null ⇒
+  **每局第一手之后棋谱面板空白、悔棋/换局后整列清空**（`cockpit.ts:515-524`，来自 2026-10-01 迁移提交 `89d7e44`）。
+  改法见 [performance.md](performance.md) P0-4；新契约 `test/ui/ledger-panel.spec.ts` 4 例，
+  **负向对照**（还原旧实现）3 例红 → 修复后全绿。
+  **⑤ 文档对齐**：`AGENTS.md`/`README.md` 的「七棋种」口径改为「前端只露五子棋、引擎层七种」；
+  `docs/architecture.md` 的外壳描述去掉页签容器、补 `board-theme.ts` 与「入口口径」；
+  `docs/performance.md` 把 P2-1 提为已落地 P0-4 并补基准跑法；本文件补 `bench:tactics` 行、刷新用例数。
+
 - **前端收敛为五子棋单一棋种 + 全量打磨（2026-10-24，业主令「只留五子棋一种先…不要缺失功能，但要简洁一些」）＝ 功能零缺失，首屏减负**。
   **① 棋种面收敛**：七棋种页签（`#tabs`）退役，五子棋·禁手变体收进棋盘头部的「禁手」规则开关
   （`#ruleBtn`，`bindRuleButton()`/`syncRuleButton()` 接管旧 `buildTabs` 的确认闸门——已下 ≥6 手切规则同旧切棋种一样要确认）；
@@ -1299,7 +1321,7 @@
 
 ## 验收命令表
 
-命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测引擎套件 **153 个用例** + vitest **52 个测试文件 / 741 个用例**（含 `scripts` project：`test/scripts/**` 15 文件 / 366 例））。
+命令行里的脚本全部来自 [package.json](../package.json)（`npm test` = 引擎套件 + vitest 四个 project，**不含 `test:tactics`**，要单独跑；实测 2026-10-28 口径：引擎套件 **172 个用例** + vitest **63 个测试文件 / 850 个用例**，其中 `ui` project 含 `ledger-panel` 与 `board-theme` 两组新契约）。
 
 | 命令 | 验什么 | 什么时候跑 |
 | --- | --- | --- |
@@ -1311,6 +1333,7 @@
 | `npm run test:scripts` | 远端批量实验设施（`test/scripts/**`：spec 解析、编排计划、Elo 与续跑判定纯函数） | 改 `scripts/**` 后 |
 | `npx vitest run --project core` | 纯 Node：字段映射、会话、战绩簿、上传队列、迁移重放归因、版本双源一致性 | 改 `src/core/**`、`src/shared/**` 后 |
 | `npm run typecheck` | TypeScript 全量类型检查（无输出） | 提交前 |
+| `npm run bench:tactics` | 战术层耗时基准（`scripts/tactics-bench.ts`；`BENCH_PLY` / `BENCH_RUNS` 可调） | 改战术层 / 引擎数据结构前后各一次；**默认口径含禁手，单次就能到几百秒，先用小样本**（基线见 [performance.md](performance.md)） |
 | `npm run build` | Vite 生产构建（静态资产 + Worker 产物） | 部署前 / 排查产物问题 |
 | `npm run dev` | Vite + 本地 Worker + 本地 D1（`predev` 先迁移本地库，但**不导数据**） | 日常开发；本地库要数据需再跑 `import:archive --local` |
 | `npm run db:migrate:local` / `db:migrate:remote` | D1 迁移（本地 / 远程） | 新增 `migrations/*.sql` 后 |
