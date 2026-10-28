@@ -31,6 +31,12 @@
   概率条、空态）用 `:where()` 把特异度降到 0，同优先级覆写**必须排在共享规则之后**
   （如 `:where(.rank-row .bar){height:5px}` 在 6px 共享规则后面才生效）。
 - 验证：`typecheck` 干净、`npm test` 172 + 840 全绿、`build` 绿、browser-smoke **18/18**。
+- **部署（同日完成）**：`git commit --no-gpg-sign` → `git push` → `npm run deploy`
+  （wrangler **已 OAuth 登录**，不设 CLOUDFLARE_API_TOKEN 也能直接部署；`wrangler whoami` 可确认）。
+  `npm run smoke:live` **30/30** 通过；冒烟会在线上库写 `smoke-*` 设备数据，**跑完必须执行它给出的
+  3 条 DELETE 清理命令**（本次删 7 行）。线上产物校验：抓 `/` 与 `assets/index-*.css` 确认
+  skip-link / 双 theme-color / 三层令牌 / `@media (prefers-color-scheme:dark)` 均已上线
+  （注意 Vite 压缩会去掉空格，字面匹配要先 `replace(/\s+/g,'')`）。
 
 ---
 
