@@ -31,14 +31,15 @@
   不救网关腿）+ 路由出站头（`Authorization: Bearer <服务端 key>`、`X-Jev-Upstream: builtin`，
   env 覆盖走 `buildApp().fetch(request, {...env, JEV_BUILTIN_API_KEY})` 不依赖池级 env）；core 侧
   新增 `builtin-systemone.spec.ts` 钉子 + session.spec 免 key 不降级断言；UI 侧显隐矩阵用例。
-- **部署事故（待业主处理）**：本次 `npm run deploy` 中 worker 本体与自定义域**部署成功**、线上冒烟
+- **部署事故（业主 2026-11-01 拍板：暂不恢复 cron，先记录）**：本次 `npm run deploy` 中 worker 本体与自定义域**部署成功**、线上冒烟
   通过，但 **cron 触发器那步把 `jev-qiguan` 的 `17 3 * * *` 清掉了**——Cloudflare 返回 10072
   「账号已达 Free 版 5 个 cron 上限」，而账号下所有 worker 的 schedules API 实际都查出来是**空**
   （含本 worker）⇒ 平台侧账号级计数与真实状态不一致（疑似删除过的 worker 或传播延迟占着计数）。
   `wrangler triggers deploy` 与直打 API PUT 均被 10072 拒。**影响**：每日维护（stats_cache 刷新、
   rate_limits 清理，`src/worker/maintenance.ts`）不再自动跑，站点功能不受影响，rate_limits 表会
-  慢慢累积。**恢复路径**：Dashboard → Workers & Pages → jev-qiguan → Triggers/Cron Triggers 手动
-  加回 `17 3 * * *`（若同样被拒则等平台计数收敛后重跑 `npx wrangler triggers deploy`，或升级付费）。
+  慢慢累积。**恢复路径**（暂不执行，业主定）：Dashboard → Workers & Pages → jev-qiguan → Triggers/Cron Triggers 手动
+  加回 `17 3 * * *`（若同样被拒则等平台计数收敛后重跑 `npx wrangler triggers deploy`，或升级付费）；
+  恢复前影响仅限维护任务（`src/worker/maintenance.ts` 不再自动跑），对弈与归档上报均不受影响。
 
 ---
 
