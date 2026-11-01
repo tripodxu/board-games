@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CHANNELS, OPENCODE_MODEL, OPENCODE_UPSTREAM_URL } from '../../src/core/jev/client.ts';
-import { DEFAULT_SETTINGS } from '../../src/core/persist.ts';
+import { DEFAULT_SETTINGS, effectiveChannelOf } from '../../src/core/persist.ts';
 
 interface Fixture {
   capturedAt: string;
@@ -34,8 +34,11 @@ describe('OpenCode Zen 渠道（免费 Jev 托管点 · 默认渠道）', () => 
     expect(OPENCODE_MODEL).toBe('jev-1.13-free');
   });
 
-  it('默认渠道 = opencode 免费档（2026-10-07 业主定：零配置可玩）', () => {
-    expect(DEFAULT_SETTINGS.channel).toBe('opencode');
+  it('默认渠道已是 builtin（2026-11-01 业主定，ADR-0026）；opencode 是前任默认、继续免 key 可用', () => {
+    expect(DEFAULT_SETTINGS.channel).toBe('builtin');
+    /* opencode 的 key 本就是可选的（匿名 = 免费档）——缺 key 不是降级理由 */
+    const base = { ...DEFAULT_SETTINGS, endpoints: {} };
+    expect(effectiveChannelOf(base, 'opencode')).toBe('opencode');
   });
 
   it('夹具应答仍是系统一协议形状（answers.{type,noul} + usage + cost）', () => {

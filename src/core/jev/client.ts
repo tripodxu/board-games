@@ -79,6 +79,14 @@ export const CHANNELS: Record<string, ChannelConfig> = {
    * （实测空 key 401 `{"error":"invalid key"}`），所以 `keyName` 非空 ⇒ 缺 key 直接在客户端报错。
    */
   jevrouter: { endpoint: JEV_ROUTER_RELAY_PATH, model: JEV_ROUTER_MODEL, keyName: 'jevrouter' },
+  /**
+   * 内置免费渠道（ADR-0026，2026-11-01 业主定）：**访客无需填 key**——浏览器发同源中转，
+   * Worker 用服务端 secret（`JEV_BUILTIN_API_KEY`）代发出站到自建网关。与 `jevrouter`
+   * 共用同一个 model 哨兵（Worker 靠「匿名 + secret 在配」认出这条腿），所以
+   * `model` 必须与 `CHANNELS.jevrouter.model` 同值；`keyName: null` ⇒ 无 key 输入框。
+   * 仅浏览器面可用：Node/实验面拿不到 Worker secret（不进实验对比面，ADR-0025 纪律）。
+   */
+  builtin: { endpoint: JEV_ROUTER_RELAY_PATH, model: JEV_ROUTER_MODEL, keyName: null },
   proxy: { endpoint: 'api/jev', model: 'jev-latest', keyName: null },
 };
 
@@ -260,6 +268,19 @@ function attemptsFor(channel: string, opts: DecideOpts): ProviderAttempt[] {
     const url = customEndpoint || (inBrowser ? JEV_ROUTER_RELAY_PATH : JEV_ROUTER_UPSTREAM_URL);
     return [{
       provider: syntheticProvider(channel, PROVIDER_PRIMARY, '自建 jev-router', url, cfg.model),
+      apiKey, channel, custom: !!customEndpoint,
+    }];
+  }
+  if (channel === 'builtin') {
+    /* 内置免费渠道（ADR-0026）：key 由 Worker 持有（服务端 secret），客户端匿名打同源中转。
+     * 仅浏览器面可用——Node/实验面没有同源 Worker、也拿不到服务端 secret，明确报错比
+     * 「fetch 相对路径失败」可读得多；也不进实验对比面（ADR-0025 纪律）。 */
+    if (typeof location === 'undefined') {
+      throw new Error('内置免费渠道仅浏览器面可用（key 由 Worker 持有）：Node/实验面请改用 official 或 jevrouter');
+    }
+    const url = customEndpoint || cfg.endpoint;
+    return [{
+      provider: syntheticProvider(channel, PROVIDER_PRIMARY, '内置免费', url, cfg.model),
       apiKey, channel, custom: !!customEndpoint,
     }];
   }

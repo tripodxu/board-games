@@ -743,3 +743,103 @@ describe('自建 jev-router 网关（model = jev-1.13）', () => {
     }
   });
 });
+
+/* 内置免费渠道（ADR-0026）：同一条网关腿（model = jev-1.13），分叉只在 key 来源——
+ * 访客没带自己的 key 且 Worker 配了服务端 secret（JEV_BUILTIN_API_KEY）时由 Worker
+ * 代发出站。secret 不进 wrangler.jsonc，这里用「覆盖 env 走 buildApp()」注入，
+ * 不依赖 SELF 的池级 env。 */
+describe('内置免费渠道（服务端 secret 代发 · ADR-0026）', () => {
+  const okBody = { state: { turn: 1 }, questions: { move: {} }, model: 'jev-1.13' };
+
+  async function postJevWithEnv(payload: unknown, envOverride: Record<string, string | undefined>): Promise<Response> {
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    };
+    return await buildApp().fetch(new Request(JEV_URL, init), { ...env, ...envOverride } as typeof env);
+  }
+
+  it('parseJevRequest：无客户端 key + secret ⇒ keySource=builtin；客户端 key 优先；无 secret 仍 401', () => {
+    const anon = parseJevRequest({ ...okBody }, { headerKey: null, builtinKey: 'jv-server-key' });
+    expect(anon.ok).toBe(true);
+    if (anon.ok) {
+      expect(anon.value.apiKey).toBe('jv-server-key');
+      expect(anon.value.keySource).toBe('builtin');
+      /* 出站腿还是网关（URL/分流不变），只有回执头由路由层改写成 builtin */
+      expect(anon.value.upstreamId).toBe('jevrouter');
+      expect(anon.value.upstreamUrl).toContain('jev.logicc.top');
+    }
+
+    /* 访客自己的 key 优先于内置 secret（BYOK 不被覆盖） */
+    const withBody = parseJevRequest({ ...okBody, apiKey: 'jv-user' }, { headerKey: null, builtinKey: 'jv-server-key' });
+    expect(withBody.ok).toBe(true);
+    if (withBody.ok) {
+      expect(withBody.value.apiKey).toBe('jv-user');
+      expect(withBody.value.keySource).toBe('body');
+    }
+    const withHeader = parseJevRequest({ ...okBody }, { headerKey: 'jv-header', builtinKey: 'jv-server-key' });
+    expect(withHeader.ok).toBe(true);
+    if (withHeader.ok) expect(withHeader.value.keySource).toBe('header');
+
+    /* TYPESAFE_API_KEY 是官方上游的兜底凭据，**不发给网关**：envKey 有值也不救网关腿 */
+    const envOnly = parseJevRequest({ ...okBody }, { headerKey: null, envKey: 'sc-typesafe-key' });
+    expect(!envOnly.ok && envOnly.code === 'unauthorized').toBe(true);
+
+    /* 没配 secret：匿名照旧 401（ADR-0024 的 BYOK 语义不因本渠道存在而松动） */
+    const noSecret = parseJevRequest({ ...okBody }, { headerKey: null });
+    expect(!noSecret.ok && noSecret.code === 'unauthorized').toBe(true);
+
+    /* builtinKey 只作用于网关腿：opencode / 官方 model 不吃它 */
+    const oc = parseJevRequest({ ...okBody, model: 'jev-1.13-free' }, { headerKey: null, builtinKey: 'jv-server-key' });
+    expect(oc.ok).toBe(true);
+    if (oc.ok) expect(oc.value.keySource).toBe('anonymous');
+    const official = parseJevRequest({ state: {}, questions: { move: {} } }, { headerKey: null, builtinKey: 'jv-server-key' });
+    expect(!official.ok && official.code === 'unauthorized').toBe(true);
+  });
+
+  it('POST /api/jev：匿名 + secret ⇒ 出站 Bearer=服务端 key + 常规 UA，回执 X-Jev-Upstream: builtin', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    vi.stubGlobal('fetch', (async (url: unknown, init?: RequestInit) => {
+      const u = String(url);
+      calls.push({ url: u, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+      if (u.includes('jev.logicc.top')) {
+        return new Response(JSON.stringify({
+          model: 'jev-1.13',
+          answers: { move: { probabilities: { H8: 1 } }, confidence: 0.9 },
+          usage: { input_tokens: 10 }, cost: '0',
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('not found', { status: 404 });
+    }) as typeof fetch);
+    try {
+      const res = await postJevWithEnv(okBody, { JEV_BUILTIN_API_KEY: 'jv-server-key' });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('x-jev-upstream')).toBe('builtin');
+      const call = calls.find((c) => c.url.includes('jev.logicc.top'));
+      expect(call).toBeDefined();
+      /* 服务端 key 出站（绝不回显给客户端），UA 是过 logicc.top 浏览器完整性检查的刚需 */
+      expect(call?.headers.authorization).toBe('Bearer jv-server-key');
+      expect(call?.headers['user-agent']).toBeTruthy();
+      const body = (await res.json()) as { model?: string };
+      expect(body.model).toBe('jev-1.13');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('POST /api/jev：匿名 + 无 secret ⇒ 401 且不出站（吊销 = 删 secret）', async () => {
+    let fetched = false;
+    vi.stubGlobal('fetch', (async () => {
+      fetched = true;
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch);
+    try {
+      const res = await postJevWithEnv(okBody, {});
+      expect(res.status).toBe(401);
+      expect(fetched).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

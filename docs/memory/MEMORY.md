@@ -11,6 +11,29 @@
 
 ---
 
+## 2026-11-01 · 内置免费渠道 `builtin` 上线（Worker 持钥）+ 顺手修掉 effectiveChannelOf 降级回归
+
+- **业主拍板两件事**：① 新增内置免费渠道 `builtin`——`jev.logicc.top` 网关的 `jv-` key 以
+  `wrangler secret put JEV_BUILTIN_API_KEY` 存放（不明文进仓库/前端/日志），访客零配置免 key
+  对弈；② 默认渠道从 `opencode` 切到 `builtin`。这**显式推翻了 ADR-0024「不做服务端共享 key」**
+  的决策——新 ADR-[0026](../adr/0026-builtin-free-channel.md) 记录逆转与缓解（按 IP 限流沿用 `jev` 桶、
+  回执头 `X-Jev-Upstream: builtin` 可归因、删 secret 即吊销、不进实验面）。
+- **实现取的巧**：`builtin` 与 `jevrouter` **共用 model 哨兵 `jev-1.13` 与网关 URL**，网关收到的
+  请求逐字相同；Worker 侧唯一分叉是 key 来源（header/body > 服务端 secret > 401）。特意让
+  `TYPESAFE_API_KEY` **不参与网关腿**——否则生产配了官方兜底 key 的话，匿名请求会先抓走它
+  发给网关吃 401，内置渠道在生产上直接失灵（这个坑只有把 env 兜底从网关腿排除才躲得开）。
+- **顺手修掉一个 2026-10-07 起的真回归**：`effectiveChannelOf` 对 `opencode` 读 `apiKey` 判空 ⇒
+  默认渠道（key 实存 `orKey`）零配置必然静默降级 mock——**新访客一直在玩假 AI**，与
+  DEFAULT_SETTINGS 注释「零配置可玩」相悖。修法：免 key 渠道（`opencode`/`opencode_local`/`builtin`）
+  直接放行，`jevrouter` 改读 `orKey`（与 `loop.ts:289` 选取口径对齐）。教训：**改默认渠道时，
+  「渠道可用性回落」函数里按渠道名写死的 key 字段映射是第二事实源，必须同步**。
+- **测试**：worker 侧钉 parse 三态（header/body 优先、secret 兜底、无 secret 401、TYPESAFE env
+  不救网关腿）+ 路由出站头（`Authorization: Bearer <服务端 key>`、`X-Jev-Upstream: builtin`，
+  env 覆盖走 `buildApp().fetch(request, {...env, JEV_BUILTIN_API_KEY})` 不依赖池级 env）；core 侧
+  新增 `builtin-systemone.spec.ts` 钉子 + session.spec 免 key 不降级断言；UI 侧显隐矩阵用例。
+
+---
+
 ## 2026-10-28 · 近五天改动收口：棋谱面板 `rebuildLedger` 真 bug 修复 + 单棋种口径写进一线文档
 
 - **复核结论先说**：2026-10-24 → 10-28 的 12 个提交**没有引入回归**（typecheck 干净、引擎 172 例、

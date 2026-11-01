@@ -129,6 +129,20 @@ describe('renderSettings —— 控件回填', () => {
     expect(need(body.querySelector('#modeHint')).textContent).toContain('你');
   });
 
+  /* 内置免费渠道（ADR-0026）：服务端持钥 ⇒ 两个 key 行都不显示，端点/战术/探测行照常。 */
+  it('builtin 渠道：两个 key 行隐藏，端点/战术/探测行显示，提示说明「无需 key」', () => {
+    const body = mount(DRAWER_HTML);
+    renderSettings(document, propsOf({ channel: 'builtin' }), handlersOf(seen()));
+    expect(need(body.querySelector('#apiKeyLabel')).classList.contains('hidden')).toBe(true);
+    expect(need(body.querySelector('#orKeyLabel')).classList.contains('hidden')).toBe(true);
+    expect(need(body.querySelector('#endpointLabel')).classList.contains('hidden')).toBe(false);
+    expect(need(body.querySelector('#tacticsVersionLabel')).classList.contains('hidden')).toBe(false);
+    expect(need(body.querySelector('#probeRow')).classList.contains('hidden')).toBe(false);
+    /* #modeHint 由 renderChannelHint 单独写（renderSettings 不碰它），故显式调一次。 */
+    renderChannelHint('builtin');
+    expect(need(body.querySelector('#modeHint')).textContent).toContain('无需');
+  });
+
   it('探测输出与状态类由 props 回填', () => {
     const body = mount(DRAWER_HTML);
     renderSettings(document, propsOf({ channel: 'proxy' }, { probeText: '连接正常 · 812ms', probeState: 'ok' }), handlersOf(seen()));

@@ -24,6 +24,13 @@ export interface Env {
    */
   COMMANDCODE_API_KEY?: string;
   /**
+   * 内置免费渠道（`builtin`，ADR-0026）的服务端 jv- key：访客匿名请求 model `jev-1.13`
+   * 且未带自己的 key 时，Worker 用它代发出站（`Authorization: Bearer`）。**默认不配**——
+   * 没配时匿名请求维持 401（与 ADR-0024 的 BYOK 语义一致），删掉 secret 即吊销该渠道。
+   * 配置方式：`wrangler secret put JEV_BUILTIN_API_KEY`。永不记日志、不进 URL、不入库、不回显。
+   */
+  JEV_BUILTIN_API_KEY?: string;
+  /**
    * 是否让 `/api/jev` **自动**启用兜底切换（C2 / D-B2）。合法值 `"on"`；缺省/其它值 = 关。
    *
    * 关着也仍可用兜底：客户端显式带 `X-Jev-Provider: backup` 时（切换已发生后，局内粘滞）只用兜底。

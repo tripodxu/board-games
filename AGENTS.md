@@ -156,8 +156,10 @@ mtime 最新的库时可能落到旧的那份）。`vite dev` 与 `wrangler d1 e
   `src/shared/version.ts`，Node 直载时回落 `dev`/`nogit`），记在每局 meta 里做版本归因；
   后者是战术档版本号（`src/core/tactics-versions.ts` 的闸门 + 每手 `ai.tv`），
   **改动战术层就要同步版本表**，否则历史棋谱的战术归因会对不上。
-- **渠道与降级**：`src/core/jev/client.ts` 的 `CHANNELS` = `official`（TypeSafe 官方）/ `openrouter`
-  / `proxy`（同源 `api/jev` BYOK 转发，key 只在请求头里过一手）/ `opencode`（OpenCode Zen 免费档，默认渠道）
+- **渠道与降级**：`src/core/jev/client.ts` 的 `CHANNELS` = `builtin`（**内置免费，默认渠道**：访客免 key，
+  Worker 持 `JEV_BUILTIN_API_KEY` secret 代发到自建网关，见 [ADR-0026](docs/adr/0026-builtin-free-channel.md)）
+  / `official`（TypeSafe 官方）/ `openrouter`
+  / `proxy`（同源 `api/jev` BYOK 转发，key 只在请求头里过一手）/ `opencode`（OpenCode Zen 免费档）
   / `opencode_local` / `jevrouter`（自建网关，多源路由 + 出口轮换，**强制自带 jv- key**，
   见 [ADR-0024](docs/adr/0024-jevrouter-gateway-channel.md)）；另有 `rapfi`（WASM 本地引擎）、
   `mock`（离线演示）、`random`（基线，刻意走战术层）。**鉴权头按解析后的端点选、不按渠道名选**

@@ -48,6 +48,7 @@ export type ProbeState = 'pending' | 'ok' | 'fail';
 
 /** 每个渠道的 `#modeHint` 文案（js/app.js:122-128 逐字）。 */
 export const CHANNEL_HINTS: Record<string, string> = {
+  builtin: '内置免费渠道：无需填任何 key——Worker 用服务端密钥把请求转发到自建 jev-router 网关（ADR-0026）。匿名按 IP 限流（约 60 次/分）；仅浏览器可用。上游走网关免费腿，模型风格与官方略有差异。',
   proxy: '推荐。代理只做同源转发（绕开浏览器跨域）：本地用 npm run dev 起 Worker（Vite + Worker + 本地 D1 一体），线上由 jevqipan.logicc.top 提供同源 /api/jev。你的 key 经请求头透传，服务端不存。',
   official: '实测官方 API 有来源白名单（仅 typesafe.ai 自有域可用），浏览器直连必被拦。官方 key 请改走「同源代理」：本地 npm run dev 或线上站点里填 key，效果等同直连。',
   openrouter: '唯一可浏览器直连的渠道（OpenRouter 允许跨域），但需要的是 OpenRouter key（openrouter.ai 申请），不是 TypeSafe key。',
@@ -94,7 +95,7 @@ export function channelVisibility(channel: string): ChannelVisibility {
     orKeyLabel: channel === 'openrouter' || channel === 'opencode' || channel === 'jevrouter',
     orKeyLabelText: orKeyLabelText(channel),
     endpointLabel: channel !== 'mock' && channel !== 'rapfi',
-    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'opencode_local' || channel === 'jevrouter' || channel === 'official' || channel === 'random',
+    tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'opencode_local' || channel === 'jevrouter' || channel === 'builtin' || channel === 'official' || channel === 'random',
     probeRow: channel !== 'mock',
   };
 }

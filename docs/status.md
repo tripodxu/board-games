@@ -1,6 +1,6 @@
 # 项目状态
 
-> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-10-28。
+> **每次行为变更后更新本节**（不写流水账）。最后更新：2026-11-01。
 
 ## 当前状态
 
@@ -14,7 +14,7 @@
 | 定时任务 | ✅ 已挂并已核验 | Cron `17 3 * * *`（UTC）；首次真实执行 `2026-10-02T03:17:56Z`，`stats_cache` 的 `daily:2026-10-02` 行报 `rateLimitsDeleted: 139 / games: 82 / moves: 7110 / experiments: 11` |
 | 棋种 | ✅ 七种（引擎层） | 五子棋、五子棋·禁手、围棋（9 路）、象棋、国际象棋、西洋跳棋、中国跳棋；引擎在 `src/core/engines/`，注册顺序见 [registry.ts](../src/core/registry.ts)。**2026-10-24 起前端只呈现五子棋**（禁手变体收进棋盘头部的「禁手」规则开关，其余六种仍在注册表跑自检、归档面板仍可按棋种筛历史数据） |
 | 实验设施 | ✅ 双路径 | 浏览器口径 `scripts/experiment-run.mjs`（CDP 真浏览器）；**SSH 远端批量口径 `scripts/experiment-batch.mjs`**（纯 Node 对弈回路 + 空闲主机 nohup worker + 文件 checkpoint 断点续跑 + Elo 子命令，[ADR-0019](adr/0019-remote-batch-experiments.md)）；**离线运行面缺省直连上游 + 本地 JSONL + 对象桶留档，不碰业主 Worker 与 D1**（[ADR-0021](adr/0021-standalone-experiment-plane.md)） |
-| 渠道 | ✅ 九个选项 | `official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`jevrouter`（自建网关，多源路由 + 出口轮换，**强制 BYOK**，[ADR-0024](adr/0024-jevrouter-gateway-channel.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
+| 渠道 | ✅ 十个选项 | `builtin`（**内置免费，2026-11-01 起为默认**：无需填 key，Worker 持 secret 代发到自建网关，[ADR-0026](adr/0026-builtin-free-channel.md)）、`official`、`openrouter`、`opencode`（同源转发免费档）、`opencode_local`（本机中转走用户 IP，见 [docs/local-relay.md](local-relay.md)）、`jevrouter`（自建网关，多源路由 + 出口轮换，BYOK，[ADR-0024](adr/0024-jevrouter-gateway-channel.md)）、`proxy`（同源 `/api/jev`）、`rapfi`、`mock`（离线演示）、`random`；定义见 `src/core/jev/client.ts` |
 | 面板 | ✅ 已就绪 | 驾驶舱 / 决策流 / 战绩簿 / 校准实验室 / 战术沿革 / 设置抽屉 / 归档面板 / 回放器 / 排行榜 / 开具体验全部接线（`src/app/panels.ts` 的 `renderDataPanels` + `loadLeaderboardPanel` / `loadOpeningsPanel`，回放器由归档面板逐手驱动，归档面板首屏 50 份 + 「加载更多」按 keyset 游标追加，**2026-10-12 起可按 `code_version` 或战术版本分组并筛选棋种/标签/时间窗，并可勾「只看我的」（服务端 `?device=me`，身份是客户端自持的 `X-Device-Id`）**——筛选全部走服务端查询参数，见「已验证」首条）；**战术模式提示**（2026-10-07）：设置抽屉开关 `hints`（默认关）+ 棋盘头部一键开关 `#hintBtn`（同一设置、`aria-pressed` 可视、非五子棋禁用），开启后五子棋棋盘上把接管链各层的待选点按层着色（我方点实心圆 / 对手杀点圆环 / 接管层白描边），棋盘顶部图例条列「层名 ×计数 + 接管徽标」，提示按行棋方配置档计算——切登记表中任一档（`v0-off` … `v14-plus`）即所见即该档的模式识别能力（`src/core/tactics-hints.ts` 纯计算 + gomoku draw 消费 `ui.tacticMarks`） |
 | 棋谱上传 | ✅ 已上线 | 终局后进上传队列（本地去重 + 退避重试），`POST /api/games` 落 D1；重复提交返回 `dedup: true` 且写 0 手 |
 | 账号体系 | ⛔ 不做 | 匿名 `X-Device-Id`，无登录（ADR-0013） |

@@ -45,6 +45,7 @@ export const THINK_OPTS: readonly Opt[] = [
 /** 抽屉「双方覆盖」的渠道选项（旧 `SIDE_CHANS`，js/app.js:933）。 */
 export const SIDE_CHANS: readonly Opt[] = [
   ['', '跟随全局'],
+  ['builtin', 'Jev·内置免费'],
   ['proxy', 'Jev 模型'],
   ['openrouter', 'Jev·OpenRouter'],
   ['official', 'Jev·官方'],
@@ -56,6 +57,7 @@ export const SIDE_CHANS: readonly Opt[] = [
 /** 机器对手面板的渠道选项（旧 `FOE_CHANS`，js/app.js:934）。 */
 export const FOE_CHANS: readonly Opt[] = [
   ['', '跟随全局'],
+  ['builtin', 'Jev · 内置免费（无需 key）'],
   ['proxy', 'Jev 模型（代理）'],
   ['openrouter', 'Jev · OpenRouter'],
   ['opencode', 'Jev · OpenCode（免费）'],
@@ -82,7 +84,8 @@ export const EXP_CHANS: readonly Opt[] = [
 
 /** 抽屉「接入渠道」选项（index.html:440-446 静态文案）。 */
 export const DRAWER_CHANNEL_OPTS: readonly Opt[] = [
-  ['proxy', '同源代理 /api/jev（推荐 · 转发你自己的 key）'],
+  ['builtin', '内置免费（默认 · 无需 key · Worker 转发自建网关）'],
+  ['proxy', '同源代理 /api/jev（转发你自己的 key）'],
   ['openrouter', 'OpenRouter（浏览器直连）'],
   ['opencode', 'OpenCode Zen（免费 · 浏览器直连）'],
   ['opencode_local', 'OpenCode 本地中转（你的 IP · 需先跑 local-relay.mjs）'],
@@ -116,6 +119,7 @@ export const CHANNEL_NAMES: Record<string, string> = {
   opencode: 'OpenCode（免费）',
   opencode_local: 'OpenCode 本地中转',
   jevrouter: '自建 jev-router 网关',
+  builtin: '内置免费',
   proxy: '同源代理',
   mock: '离线演示',
   rapfi: 'Rapfi 本地',
@@ -127,13 +131,14 @@ export const CHAN_LABEL: Record<string, string> = {
   openrouter: 'Jev(OpenRouter)',
   official: 'Jev(官方)',
   jevrouter: 'Jev(自建网关)',
+  builtin: 'Jev(内置免费)',
   random: '纯随机',
   mock: '离线演示',
   rapfi: 'Rapfi',
 };
 
 /** 实验战报里算「Jev 渠道胜」的白名单（旧 `JEV_CHANS`，js/app.js:1245）。 */
-export const JEV_CHANNELS: readonly string[] = ['proxy', 'openrouter', 'official', 'jevrouter'];
+export const JEV_CHANNELS: readonly string[] = ['proxy', 'openrouter', 'official', 'jevrouter', 'builtin'];
 
 /** 战术档位选项：`<option value=v.id>v.id + ' ' + v.name</option>`（旧 `fillTacticsSelect`）。 */
 export function tacticsOptions(versions: readonly TacticsVersion[]): Opt[] {

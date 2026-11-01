@@ -27,7 +27,19 @@ export default defineConfig(async () => {
               // 单 worker 实例：D1 是共享状态，测试用例自行清理，避免并行写冲突
               singleWorker: true,
               // 迁移文件以绑定形式注入，setup.ts 里 applyD1Migrations 落库
-              miniflare: { bindings: { TEST_MIGRATIONS: migrations } },
+              miniflare: {
+                bindings: {
+                  TEST_MIGRATIONS: migrations,
+                  /* 测试池刻意与本机 `.dev.vars` 解耦：wrangler 读配置时会把 .dev.vars 的
+                   * secret 并进 bindings，谁本机配了 key 谁的测试就变绿/变红（本地绿 CI 红）。
+                   * 这三个 secret 在这里显式置空串（mergeWorkerOptions 逐键覆盖、用户侧赢；
+                   * 空串在 parse/兜底逻辑里与「未配」等价）；需要 secret 的用例在测试里用
+                   * `buildApp().fetch(req, {...env, …})` 显式注入（jev.spec.ts 内置免费渠道 describe）。 */
+                  TYPESAFE_API_KEY: '',
+                  COMMANDCODE_API_KEY: '',
+                  JEV_BUILTIN_API_KEY: '',
+                },
+              },
             }),
           ],
           test: {

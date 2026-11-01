@@ -51,7 +51,8 @@ UI 占位符与真实请求共用它（`presetEndpoint(channel)`）。
 | `official` | `https://api.typesafe.ai/v1/systemone` | `jev-latest` | 浏览器 localStorage | **官方 API 有 CORS 来源白名单（2026-09-29 实测：仅 typesafe.ai 自有域名放行，任意第三方 Origin 一律 400 "Disallowed CORS origin"，文档未开放配置）。浏览器直连不可行，浏览器侧走官方 key 的唯一路径是同源代理** |
 | `openrouter` | `https://openrouter.ai/api/v1/systemone` | `typesafe/jev-1.13` | 浏览器 localStorage | 与官方同构，允许 CORS，唯一可浏览器直连的渠道（需 OpenRouter key，非 TypeSafe key）；额外发 `HTTP-Referer` 头 |
 | `proxy` | 同源 `api/jev` | `jev-latest` | 请求头 `X-Api-Key` 透传（BYOK）；服务端 env `TYPESAFE_API_KEY` 仅作站长兜底 | **本仓库的 Cloudflare Worker**（`src/worker/routes/jev.ts`）：只做转发与限流，不落 key，详见 §3 |
-| `jevrouter` | 浏览器：同源 `api/jev`；Node/实验面：`https://jev.logicc.top/v1/systemone` | `jev-1.13` | 请求头 `X-Api-Key` 透传（浏览器）/ `Authorization: Bearer`（直连）；**服务端不留任何 key** | **自建 jev-router 网关**（ADR-0024）：按腿分流到多个上游、失败自动换腿重试、出口 IP 轮换——用来绕开 OpenCode 免费档「限流按出口 IP 计、经 Worker 中转全站共享同一池」那堵墙。`jv-` 开头的 key **强制必填**（实测匿名 ⇒ 401 `invalid key`），BYOK：用户自己准备，服务端不代持 |
+| `jevrouter` | 浏览器：同源 `api/jev`；Node/实验面：`https://jev.logicc.top/v1/systemone` | `jev-1.13` | 请求头 `X-Api-Key` 透传（浏览器）/ `Authorization: Bearer`（直连）；BYOK：服务端不代持用户 key | **自建 jev-router 网关**（ADR-0024）：按腿分流到多个上游、失败自动换腿重试、出口 IP 轮换——用来绕开 OpenCode 免费档「限流按出口 IP 计、经 Worker 中转全站共享同一池」那堵墙。`jv-` 开头的 key **强制必填**（实测匿名 ⇒ 401 `invalid key`），用户自己准备 |
+| `builtin` | 同源 `api/jev`（仅浏览器面；Node/实验面不可用——拿不到服务端 secret） | `jev-1.13`（与 `jevrouter` 同一 model 哨兵） | **无需用户 key**：Worker 用服务端 secret `JEV_BUILTIN_API_KEY` 代发出站（ADR-0026） | **内置免费渠道**（2026-11-01 业主定，**推翻 ADR-0024「不做服务端共享 key」的决策**）：访客零配置可玩，与 `jevrouter` 走同一个网关、同一批免费腿；「匿名 + secret 在配」即这条腿的判据，**删 secret 即吊销**。匿名按 IP 限流（`jev` 桶）；不进实验对比面（ADR-0025 纪律：网关免费腿 ≠ 官方） |
 | `rapfi` | 本地（浏览器内 WASM） | Rapfi tag 250615 | 无 | **本地搜索引擎对手**（非 prompt 型）：Gomocup 协议，首次选用懒加载约 10–40MB 模型，之后纯本地走子；仅支持 `gomoku`（大众无禁手），`gomoku-pro` 会拒绝；单线程同步搜索期间阻塞 UI 约 3s（ADR-0006）；「测试连接」= 触发懒加载 |
 | `mock` | 本地 | — | 无 | `src/core/jev/mock.ts` 离线演示，概率为合成值 |
 | `random` | 本地 | `random-baseline` | 无 | **纯随机基线，仅对比实验面板可选**（设置面板渠道下拉不含它）：均匀概率、零启发式、成本 0，但照样走完整战术管线——「随机+战术 vs Jev+战术」的唯一变量是概率分布质量。自由手真随机均匀采样（不经 topK，否则 topK=1 会坍缩成顺序走子） |
@@ -63,8 +64,9 @@ Worker 的 `parseJevRequest` **只读 `X-Api-Key` / env / body，从不读 `Auth
 与「key 是否必填」（`KEY_REQUIRED_CHANNELS`）是两个字段：`opencode` 要输入框但 key 可选（匿名即免费档），
 `jevrouter` 两者都是。
 
-默认渠道（`src/core/persist.ts` 的 `loadSettings()`）：`opencode`（零配置可玩，2026-10-07 起）。渠道可用性回落由
-`effectiveChannelOf(settings, channel, opts?)` 决定——未填 key 时自动回落 `mock`，
+默认渠道（`src/core/persist.ts` 的 `loadSettings()`）：`builtin`（零配置免 key 可玩，2026-11-01 起；前一任默认 `opencode`，2026-10-07 起）。渠道可用性回落由
+`effectiveChannelOf(settings, channel, opts?)` 决定——免 key 渠道（`builtin`/`opencode`/`opencode_local`）不因缺 key 回落，
+官方/OpenRouter/jevrouter 未填 key 时自动回落 `mock`，
 保证无 key 完整体验；`rapfi` 是本地引擎，直接返回 `rapfi`（无需 key、无远程探测，
 「测试连接」改为触发懒加载）。`effectiveChannelOf` 还有一个历史遗留的 `{ isFile: true }` 选项
 （跳过代理渠道），但 `file://` 双击即玩已随旧实现退役，Vite 产物必须经 HTTP 提供
