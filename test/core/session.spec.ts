@@ -238,6 +238,21 @@ describe('persist：设置读写（旧 loadSettings / saveSettings 的纯逻辑�
     expect(effectiveChannelOf(base, '')).toBe('mock');
   });
 
+  it('effectiveChannelOf：免 key 渠道不因缺 key 降级；jevrouter 的 key 存 orKey', () => {
+    const base: Settings = { ...DEFAULT_SETTINGS, endpoints: {} };
+    /* 2026-11-01 修复：此前 opencode（默认渠道）被这里静默降成 mock——它读的是 apiKey
+     * 而 opencode 的 key 存 orKey，零配置访客一直在玩假 AI。opencode_local/builtin 同理免 key。 */
+    expect(effectiveChannelOf(base, 'opencode')).toBe('opencode');
+    expect(effectiveChannelOf(base, 'opencode_local')).toBe('opencode_local');
+    expect(effectiveChannelOf(base, 'builtin')).toBe('builtin');
+    /* file:// 下 builtin 与 proxy 同病：同源中转不可达 → 演示 */
+    expect(effectiveChannelOf(base, 'builtin', { isFile: true })).toBe('mock');
+    /* jevrouter 要 key 且存 orKey（与 loop.ts 的选取口径一致）：只填 apiKey 不算数 */
+    expect(effectiveChannelOf(base, 'jevrouter')).toBe('mock');
+    expect(effectiveChannelOf({ ...base, apiKey: 'k' }, 'jevrouter')).toBe('mock');
+    expect(effectiveChannelOf({ ...base, orKey: 'jv-k' }, 'jevrouter')).toBe('jevrouter');
+  });
+
   it('effSide：单边覆盖优先、空值回落全局、tactics 未知档归一成当前档', () => {
     const s: Settings = {
       ...DEFAULT_SETTINGS,

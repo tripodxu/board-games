@@ -168,7 +168,8 @@ export function stashEndpoint(settings: Settings, channel: string | null | undef
 /** 渠道可用性回落（旧 `effectiveChannelOf()`，js/app.js:142-157）。
  *
  *  顺序即语义：mock/rapfi 原样；`file://` 下同源代理不可用 → 演示；
- *  配了自定义端点视为可用；proxy 是同源默认；官方/OpenRouter 没填 key → 演示。
+ *  配了自定义端点视为可用；proxy 是同源默认；免 key 渠道不因缺 key 降级；
+ *  官方/OpenRouter/jevrouter 没填 key → 演示。
  *  旧实现直接读 `location.protocol`，这里注入 `isFile`（Node 侧恒 false）。
  */
 export function effectiveChannelOf(
@@ -180,10 +181,16 @@ export function effectiveChannelOf(
   const isFile = !!(opts && opts.isFile);
   if (ch === 'mock') return 'mock';
   if (ch === 'rapfi') return 'rapfi';
-  if (ch === 'proxy' && isFile) return 'mock';
+  /* file:// 下同源中转不可达（ADR-0010 D8 已放弃 file:// 双击即玩，这里只兜旧形态） */
+  if ((ch === 'proxy' || ch === 'builtin') && isFile) return 'mock';
   if (settings.endpoints && settings.endpoints[ch]) return ch;
   if (ch === 'proxy') return 'proxy';
-  const key = ch === 'openrouter' ? settings.orKey : settings.apiKey;
+  /* 免 key 渠道：key 可选或根本没有输入框，缺 key 不是降级理由。
+   * （2026-11-01 修复：opencode 自成为默认渠道起就被这里静默降级成 mock——
+   *  它读的是 apiKey 而 opencode 的 key 存 orKey，零配置访客一直在玩假 AI。） */
+  if (ch === 'opencode' || ch === 'opencode_local' || ch === 'builtin') return ch;
+  /* key 存放字段与 loop.ts 的选取口径一致：openrouter / opencode / jevrouter 存 orKey */
+  const key = ch === 'openrouter' || ch === 'jevrouter' ? settings.orKey : settings.apiKey;
   if (!key) return 'mock';
   return ch;
 }
