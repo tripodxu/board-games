@@ -41,6 +41,7 @@ backups/
 .cursor/
 .agent/
 .zcode/
+.dsh-prompt-setting/
 .github/copilot-instructions.local.md
 AGENTS.local.md
 CLAUDE.local.md
