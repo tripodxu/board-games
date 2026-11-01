@@ -1,0 +1,11 @@
+# 本地开发密钥样例（复制为 .dev.vars，真实值不入仓库；.gitignore 已忽略 .dev.vars*）。
+# 每行一个 KEY=value；`npm run dev` 会把它们注入本地 workerd，形态与线上 `wrangler secret put` 一致。
+
+# 站长兜底 key（官方上游，ADR-0003；可选）
+#TYPESAFE_API_KEY=
+
+# 兜底提供方 key（commandcode，ADR-0022；可选）
+#COMMANDCODE_API_KEY=
+
+# 内置免费渠道（builtin，ADR-0026；可选——不配时匿名请求 401，渠道退回 BYOK 语义）
+#JEV_BUILTIN_API_KEY=jv-xxxxxxxx
