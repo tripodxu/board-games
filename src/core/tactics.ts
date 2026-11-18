@@ -194,19 +194,27 @@ export function mechOf(versionId?: string | null): Record<string, boolean> {
  * 2-ply / 3-ply 事实推算
  * ------------------------------------------------------------------ */
 
-/** 数 st2 中 sideId 的一步致胜点，到 limit 即停（2-ply 内层省时间用）。 */
-function countWinningPoints(engine: Engine, st2: unknown, sideId: string, limit: number): number {
-  let cnt = 0;
+/** 找出 st2 中 sideId 的一步致胜点记法列表（到 limit 即停；优先走引擎 winningPoints 快路径）。 */
+function findWinningPoints(engine: Engine, st2: unknown, sideId: string, limit = 999): string[] {
+  if (typeof engine.winningPoints === 'function') {
+    try { return engine.winningPoints(st2, sideId, limit); } catch (_) { /* 退回通用路径 */ }
+  }
+  const wins: string[] = [];
   const s = flipTurn(st2, sideId);
   let legal: Move[];
-  try { legal = engine.getLegalMoves(s); } catch (_) { return 0; }
+  try { legal = engine.getLegalMoves(s); } catch (_) { return wins; }
   for (const m of legal) {
     let g;
     try { g = engine.getStatus(engine.applyMove(s, m)); } catch (_) { continue; }
-    if (g.over && g.winner === sideId) cnt++;
-    if (cnt >= limit) break;
+    if (g.over && g.winner === sideId) wins.push(String(m.notation));
+    if (wins.length >= limit) break;
   }
-  return cnt;
+  return wins;
+}
+
+/** 数 st2 中 sideId 的一步致胜点，到 limit 即停（2-ply 内层省时间用）。 */
+function countWinningPoints(engine: Engine, st2: unknown, sideId: string, limit: number): number {
+  return findWinningPoints(engine, st2, sideId, limit).length;
 }
 
 /** 造杀点：走这里之后自己有两个致胜点（对手只能挡一个）。
@@ -263,15 +271,7 @@ function allowsSustainedAttack(engine: Engine, st: unknown, p: string, oppId: st
     let s3;
     try { s3 = engine.applyMove(flipTurn(s2, oppId), mq); } catch (_) { continue; }
     /* 黑方这一步之后有几个致胜点？≥2 说明攻击节奏还在 */
-    const wins: string[] = [];
-    let legal3: Move[];
-    try { legal3 = engine.getLegalMoves(flipTurn(s3, oppId)); } catch (_) { continue; }
-    for (const m of legal3) {
-      let g;
-      try { g = engine.getStatus(engine.applyMove(flipTurn(s3, oppId), m)); } catch (_) { continue; }
-      if (g.over && g.winner === oppId) wins.push(String(m.notation));
-      if (wins.length >= 2) break;
-    }
+    const wins = findWinningPoints(engine, s3, oppId, 2);
     if (wins.length === 0) continue;
     if (wins.length >= 2) return true;
     checked++;
@@ -307,23 +307,31 @@ export function computeTactics(engine: Engine, st: unknown, legal: Move[], cands
   const side = sm.turn;
   const win: string[] = [];
   if (M.win) {
-    for (const m of legal) {
-      let g;
-      try { g = engine.getStatus(engine.applyMove(st, m)); } catch (_) { continue; }
-      if (g.over && g.winner === side) win.push(m.notation);
+    if (typeof engine.winningPoints === 'function') {
+      try { win.push(...engine.winningPoints(st, side)); } catch (_) { /* 忽略 */ }
+    } else {
+      for (const m of legal) {
+        let g;
+        try { g = engine.getStatus(engine.applyMove(st, m)); } catch (_) { continue; }
+        if (g.over && g.winner === side) win.push(m.notation);
+      }
     }
   }
   /* 必挡点：把 turn 掰到对手那边看他能不能一手赢 */
   const block: string[] = [];
   const oppSide = engine.sides && engine.sides.find((s) => s.id !== side);
   if (oppSide && M.block) {
-    const stOpp = flipTurn(st, oppSide.id);
-    let legalOpp: Move[];
-    try { legalOpp = engine.getLegalMoves(stOpp); } catch (_) { legalOpp = []; }
-    for (const m of legalOpp) {
-      let g;
-      try { g = engine.getStatus(engine.applyMove(stOpp, m)); } catch (_) { continue; }
-      if (g.over && g.winner === oppSide.id) block.push(m.notation);
+    if (typeof engine.winningPoints === 'function') {
+      try { block.push(...engine.winningPoints(st, oppSide.id)); } catch (_) { /* 忽略 */ }
+    } else {
+      const stOpp = flipTurn(st, oppSide.id);
+      let legalOpp: Move[];
+      try { legalOpp = engine.getLegalMoves(stOpp); } catch (_) { legalOpp = []; }
+      for (const m of legalOpp) {
+        let g;
+        try { g = engine.getStatus(engine.applyMove(stOpp, m)); } catch (_) { continue; }
+        if (g.over && g.winner === oppSide.id) block.push(m.notation);
+      }
     }
   }
   const res: TacticsReport = {

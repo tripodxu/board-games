@@ -264,6 +264,15 @@ export interface Engine<S = any> {
    */
   pressureCut?(st: S, sideId: string, opts?: PressureCutOptions): PressureCutResult;
 
+  /**
+   * 一步致胜点快路径（可选）：找出 sideId 在当前局面 st 下落子即成胜的点（按行优先记法顺序）。
+   * 给出 limit 时凑够 limit 个即早退（2-ply/3-ply 扫描只关心 ≥1 或 ≥2）。
+   * 为什么需要：通用路径要 `getLegalMoves`（禁手黑方对全盘 ~185 空点逐个跑递归 `isForbiddenPoint`）
+   * 再对每手做 `applyMove + getStatus`；引擎内直接在盘面回溯先筛五连（几乎全盘不命中），
+   * 仅对成五点验一次精确五连，语义逐字等价且把禁手模式从 O(N^4) 压回毫秒级。
+   */
+  winningPoints?(st: S, sideId: string, limit?: number): string[];
+
   /** 引擎私有方法（如 gomoku 的 candidates / serialize 用到的辅助）。 */
   [k: string]: unknown;
 }

@@ -62,6 +62,22 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     };
   }
 
+  /** 轻量盘面复制（15 行 slice，免走 JSON 往返）。 */
+  function cloneBoard(board: Board): Board {
+    return board.map((row) => row.slice());
+  }
+
+  /** 轻量状态复制（keep 全部 JSON 字段形状不变）。 */
+  function cloneState(st: GomokuState): GomokuState {
+    return {
+      board: cloneBoard(st.board),
+      turn: st.turn,
+      moveNum: st.moveNum,
+      last: st.last ? { ...st.last } : null,
+      result: st.result ? { ...st.result } : null,
+    };
+  }
+
   function lineLen(st: GomokuState, r: number, c: number, dr: number, dc: number): number {
     const p = st.board[r]![c];
     let n = 1;
@@ -270,11 +286,13 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       for (const key of cand) {
         if (++nodes > nodeLimit) break;
         const r = (key / 15) | 0, c = key % 15;
-        if (forbidden && A === 1 && isForbiddenPoint(board, r, c)) continue;
         board[r]![c] = A;
         const wins = winsAfter(r, c, A);
         board[r]![c] = 0;
-        if (wins.length > 0) out.push({ r, c, wins });
+        if (wins.length > 0) {
+          if (forbidden && A === 1 && isForbiddenPoint(board, r, c)) continue;
+          out.push({ r, c, wins });
+        }
       }
       out.sort((a, b) => b.wins.length - a.wins.length);
       return out.slice(0, movesMax);
@@ -393,7 +411,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   }
   function live3Makers(st: GomokuState, sideId: string, opts?: Live3Options): string[] {
     const p = num(sideId);
-    const board = clone(st.board);
+    const board = cloneBoard(st.board);
     const cands = nearEmpties(board);
     const before = opts?.fresh ? l2Set(board, p, cands) : undefined;
     const out: string[] = [];
@@ -410,15 +428,15 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
    */
   function live3Deny(st: GomokuState, sideId: string, candNotations: string[], opts?: Live3Options): Live3Deny {
     const me = num(sideId), opp = me === 1 ? 2 : 1;
-    const board = clone(st.board);
+    const board = cloneBoard(st.board);
     const cands = nearEmpties(board);
     const fresh = opts?.fresh === true;
     const evalMax = opts?.evalMax && opts.evalMax > 0 ? opts.evalMax : LIVE3_DENY_EVAL_MAX;
-    const before = live3Count(board, opp, cands, 999, fresh);
-    if (before === 0) return { before: 0, after: 0, best: [] };
     const oppMakers: string[] = [];
     const oppBefore = fresh ? l2Set(board, opp, cands) : undefined;
     for (const [r, c] of cands) if (live3After(board, opp, r, c, cands, oppBefore)) oppMakers.push(notation(r, c));
+    const before = oppMakers.length;
+    if (before === 0) return { before: 0, after: 0, best: [] };
     const order: string[] = [];
     const seen: Record<string, true> = {};
     for (const n of oppMakers.concat(candNotations)) {
@@ -509,12 +527,12 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     }
     return out;
   }
-  /** p 方是否有一手成五的点（只看邻域空点；成五点必与己子相邻）。 */
+  /** p 方是否有一手成五的点（只看邻域空点；精确五连本就不是禁手，故先查五连，省掉全邻域递归禁手判定）。 */
   function hasFivePoint(board: Board, p: number): boolean {
+    const checkExact = forbidden && p === 1;
     for (const [r, c] of nearEmpties(board)) {
-      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
       board[r]![c] = p;
-      const five = isFiveAt(board, r, c, p);
+      const five = checkExact ? exactFiveAt(board, r, c) : isFiveAt(board, r, c, p);
       board[r]![c] = 0;
       if (five) return true;
     }
@@ -522,23 +540,25 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   }
   /** p 方一手成五的落点（无则 null）。 */
   function fivePointOf(board: Board, p: number): number[] | null {
+    const checkExact = forbidden && p === 1;
     for (const [r, c] of nearEmpties(board)) {
-      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
       board[r]![c] = p;
-      const five = isFiveAt(board, r, c, p);
+      const five = checkExact ? exactFiveAt(board, r, c) : isFiveAt(board, r, c, p);
       board[r]![c] = 0;
       if (five) return [r, c];
     }
     return null;
   }
-  /** p 方是否有「造冲四」的着法（活三逼迫前必须确认对手没有反先的四）。 */
+  /** p 方是否有「造冲四」的着法（活三逼迫前必须确认对手没有反先的四；先判是否有致胜点，命中再验黑方禁手）。 */
   function hasFourMove(board: Board, p: number): boolean {
     for (const [r, c] of nearEmpties(board)) {
-      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
       board[r]![c] = p;
       const wins = winPointsAfter(board, p, r, c, 1);
       board[r]![c] = 0;
-      if (wins.length > 0) return true;
+      if (wins.length > 0) {
+        if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+        return true;
+      }
     }
     return false;
   }
@@ -554,11 +574,13 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
         const key = qr * N + qc;
         if (seen[key]) continue;
         seen[key] = true;
-        if (forbidden && p === 1 && isForbiddenPoint(board, qr, qc)) continue;
         board[qr]![qc] = p;
         const n = fiveCompletions(board, p, qr, qc);
         board[qr]![qc] = 0;
-        if (n >= 2) out.push(key);
+        if (n >= 2) {
+          if (forbidden && p === 1 && isForbiddenPoint(board, qr, qc)) continue;
+          out.push(key);
+        }
       }
     }
     return out;
@@ -580,18 +602,23 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     return out;
   }
   interface VctMove { r: number; c: number; wins: number[][]; live: number[] }
-  /** 攻击方候选：冲四（wins 非空）与造活三（live = 新造出的必胜点，≥2 个）。四在前。 */
+  /** 攻击方候选：冲四（wins 非空）与造活三（live = 新造出的必胜点，≥2 个）。四在前。
+   *  禁手黑方先算 wins/live（只落有威胁的点才验一次禁手，省掉全邻域 80%+ 空点的递归禁手检查）。 */
   function vctMoves(board: Board, p: number, movesMax: number): VctMove[] {
     const out: VctMove[] = [];
     for (const [r, c] of nearEmpties(board)) {
-      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
       board[r]![c] = p;
       const wins = winPointsAfter(board, p, r, c, 2);
       board[r]![c] = 0;
-      if (wins.length > 0) out.push({ r, c, wins, live: [] });
-      else {
+      if (wins.length > 0) {
+        if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+        out.push({ r, c, wins, live: [] });
+      } else {
         const live = newThreats(board, p, r, c);
-        if (live.length >= 2) out.push({ r, c, wins: [], live });
+        if (live.length >= 2) {
+          if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+          out.push({ r, c, wins: [], live });
+        }
       }
     }
     out.sort((a, b) => (b.wins.length - a.wins.length) || (b.live.length - a.live.length));
@@ -610,8 +637,6 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
       if (seen[key]) return;
       seen[key] = true;
       if (board[qr]![qc] !== 0) return;
-      /* 黑方禁手点堵不住（走不得）→ 不算应手，攻方照赢 */
-      if (forbidden && opp === 1 && isForbiddenPoint(board, qr, qc)) return;
       board[qr]![qc] = opp;
       let alive = false;
       for (const k of S) {
@@ -623,7 +648,11 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
         if (n >= 2) { alive = true; break; }
       }
       board[qr]![qc] = 0;
-      if (!alive) out.push(key);
+      if (!alive) {
+        /* 只有当该点真能拆掉 S 里全部必胜点时，才验黑方是否禁手（省掉全盘 180+ 个无关空点的递归禁手检查） */
+        if (forbidden && opp === 1 && isForbiddenPoint(board, qr, qc)) return;
+        out.push(key);
+      }
     };
     for (const k of S) tryCell((k / N) | 0, k % N);
     for (const [qr, qc] of cands) tryCell(qr, qc);
@@ -632,7 +661,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   function vctWin(st: GomokuState, attackerId: string, maxPlies?: number, opts?: VctOptions): VcfResult {
     const A = attackerId === 'black' ? 1 : 2;
     const D = A === 1 ? 2 : 1;
-    const board = clone(st.board);
+    const board = cloneBoard(st.board);
     const nodeLimit = opts?.nodeLimit && opts.nodeLimit > 0 ? opts.nodeLimit : VCT_NODE_LIMIT;
     const movesMax = opts?.movesMax && opts.movesMax > 0 ? opts.movesMax : VCT_MOVES_MAX;
     const defusersMax = opts?.defusersMax && opts.defusersMax > 0 ? opts.defusersMax : VCT_DEFUSERS_MAX;
@@ -705,11 +734,14 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   function fourMakeCount(board: Board, p: number, limit: number): number {
     let cnt = 0;
     for (const [r, c] of nearEmpties(board)) {
-      if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
       board[r]![c] = p;
       const wins = winPointsAfter(board, p, r, c, 1).length;
       board[r]![c] = 0;
-      if (wins > 0) { cnt++; if (cnt >= limit) break; }
+      if (wins > 0) {
+        if (forbidden && p === 1 && isForbiddenPoint(board, r, c)) continue;
+        cnt++;
+        if (cnt >= limit) break;
+      }
     }
     return cnt;
   }
@@ -720,7 +752,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   }
   function vctDefense(st: GomokuState, defenderId: string, maxPlies?: number, opts?: VctDefenseOptions): VctDefenseResult {
     const D = num(defenderId), A = D === 1 ? 2 : 1;
-    const board = clone(st.board);
+    const board = cloneBoard(st.board);
     const plies = Math.max(1, Math.min(15, maxPlies! | 0 || 9));
     const oppId = D === 1 ? 'white' : 'black';
     /* P1 预算（缺省 = 历史常量）：复验深度 / 凑够几个点收工 / 并列排序的压力早退阈值 */
@@ -806,7 +838,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   /** p 方在 st 局面下的「做四手数」（车氏邻域内落子即成冲四的空点数）。默认不早退：
    * 闸门要精确比较两侧数量，早退会让两侧同时触顶而误判为「不落后」。 */
   function fourPressure(st: GomokuState, sideId: string, limit?: number): number {
-    return fourMakeCount(clone(st.board), num(sideId), limit && limit > 0 ? limit : 99);
+    return fourMakeCount(cloneBoard(st.board), num(sideId), limit && limit > 0 ? limit : 99);
   }
 
   const PRESSURE_CUT_MAX = 120;
@@ -819,17 +851,19 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
    *  而「贴着对手做四点削」既便宜又准（对手的做四点就是他那张网的节点）。 */
   function pressureCut(st: GomokuState, sideId: string, opts?: PressureCutOptions): PressureCutResult {
     const D = num(sideId), A = D === 1 ? 2 : 1;
-    const board = clone(st.board);
+    const board = cloneBoard(st.board);
     const beforeYou = fourMakeCount(board, D, 99);
     const beforeOpponent = fourMakeCount(board, A, 99);
     /* 对手的做四点（一次扫描，供候选排序用） */
     const oppPts: number[][] = [];
     for (const [r, c] of nearEmpties(board)) {
-      if (forbidden && A === 1 && isForbiddenPoint(board, r, c)) continue;
       board[r]![c] = A;
       const wins = winPointsAfter(board, A, r!, c!, 1).length;
       board[r]![c] = 0;
-      if (wins > 0) oppPts.push([r!, c!]);
+      if (wins > 0) {
+        if (forbidden && A === 1 && isForbiddenPoint(board, r!, c!)) continue;
+        oppPts.push([r!, c!]);
+      }
     }
     const distToOpp = (r: number, c: number): number => {
       let d = 99;
@@ -932,13 +966,41 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
 
   function applyMove(st: GomokuState, move: Move): GomokuState {
     const mv = move as GomokuMove;
-    const s = clone(st);
+    const s = cloneState(st);
     const p = num(st.turn);
     s.board[mv.r]![mv.c] = p;
     s.moveNum++;
     s.last = { notation: move.notation, r: mv.r, c: mv.c, side: st.turn };
     s.turn = st.turn === 'black' ? 'white' : 'black';
     return s;
+  }
+
+  /**
+   * 找出 sideId 在盘面 st 下的一步致胜点（行优先顺序，与遍历 getLegalMoves 完全同序）。
+   * 关键优化：禁手黑方只有「精确五连」才算赢（且精确五连在 forbidKind 里优先级最高、必非禁手），
+   * 故无需在枚举前对全盘空点跑昂贵的 isForbiddenPoint，直接原盘试子查 exactFiveAt / isFiveAt 即可！
+   */
+  function winningPoints(st: GomokuState, sideId: string, limit?: number): string[] {
+    if (st.result?.over) return [];
+    const out: string[] = [];
+    const cap = limit && limit > 0 ? limit : 999;
+    const p = num(sideId);
+    const board = st.board;
+    const checkExact = forbidden && p === 1;
+    for (let r = 0; r < N; r++) {
+      const row = board[r]!;
+      for (let c = 0; c < N; c++) {
+        if (row[c] !== 0) continue;
+        row[c] = p;
+        const win = checkExact ? exactFiveAt(board, r, c) : isFiveAt(board, r, c, p);
+        row[c] = 0;
+        if (win) {
+          out.push(notation(r, c));
+          if (out.length >= cap) return out;
+        }
+      }
+    }
+    return out;
   }
 
   function getStatus(st: GomokuState): GameStatus {
@@ -1058,31 +1120,32 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
   }
   function labelPoint(st: GomokuState, r: number, c: number, me: number): string {
     const opp = me === 1 ? 2 : 1;
-    const mine = clone(st.board); mine[r]![c] = me;
+    const board = cloneBoard(st.board);
+    board[r]![c] = me;
     const parts: string[] = [];
-    const winsNow = (forbidden && me === 1) ? exactFiveAt(mine, r, c) : isFiveAt(mine, r, c, me);
+    const winsNow = (forbidden && me === 1) ? exactFiveAt(board, r, c) : isFiveAt(board, r, c, me);
     if (winsNow) return 'win';
-    const myComps = fiveCompletions(mine, me, r, c);
+    const myComps = fiveCompletions(board, me, r, c);
     if (myComps >= 2) parts.push('you:open4');
     else if (myComps === 1) parts.push('you:four');
-    else if (DIRS4.some(([dr, dc]) => liveThreeDir(mine, r, c, me, dr!, dc!))) parts.push('you:live3');
-    const theirs = clone(st.board); theirs[r]![c] = opp;
+    else if (DIRS4.some(([dr, dc]) => liveThreeDir(board, r, c, me, dr!, dc!))) parts.push('you:live3');
+    board[r]![c] = opp;
     if (forbidden && opp === 1) {
       /* 对手是黑：精确五连才需 block；禁手点黑走不得，直接跳过 deny */
-      if (exactFiveAt(theirs, r, c)) parts.push('block:five');
-      else if (!forbidKind(theirs, r, c)) {
-        const opComps = fiveCompletions(theirs, opp, r, c);
+      if (exactFiveAt(board, r, c)) parts.push('block:five');
+      else if (!forbidKind(board, r, c)) {
+        const opComps = fiveCompletions(board, opp, r, c);
         if (opComps >= 2) parts.push('deny:open4');
         else if (opComps === 1) parts.push('deny:four');
-        else if (DIRS4.some(([dr, dc]) => liveThreeDir(theirs, r, c, opp, dr!, dc!))) parts.push('deny:live3');
+        else if (DIRS4.some(([dr, dc]) => liveThreeDir(board, r, c, opp, dr!, dc!))) parts.push('deny:live3');
       }
     } else {
-      if (isFiveAt(theirs, r, c, opp)) parts.push('block:five');
+      if (isFiveAt(board, r, c, opp)) parts.push('block:five');
       else {
-        const opComps = fiveCompletions(theirs, opp, r, c);
+        const opComps = fiveCompletions(board, opp, r, c);
         if (opComps >= 2) parts.push('deny:open4');
         else if (opComps === 1) parts.push('deny:four');
-        else if (DIRS4.some(([dr, dc]) => liveThreeDir(theirs, r, c, opp, dr!, dc!))) parts.push('deny:live3');
+        else if (DIRS4.some(([dr, dc]) => liveThreeDir(board, r, c, opp, dr!, dc!))) parts.push('deny:live3');
       }
     }
     return parts.join('+');
@@ -1230,14 +1293,13 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
 
   /* ---------- mock 启发式 ---------- */
   function wouldWin(st: GomokuState, m: GomokuMove, side: string): boolean {
-    const s = clone(st);
-    s.board[m.r]![m.c] = num(side);
-    if (forbidden && side === 'black') {
-      /* 黑方精确五连才算赢；长连/禁手不算（也不会被走出） */
-      return exactFiveAt(s.board, m.r, m.c);
-    }
-    const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
-    return dirs.some(([dr, dc]) => lineLen(s, m.r, m.c, dr!, dc!) >= 5);
+    const p = num(side);
+    st.board[m.r]![m.c] = p;
+    const win = (forbidden && side === 'black')
+      ? exactFiveAt(st.board, m.r, m.c)
+      : DIRS4.some(([dr, dc]) => lineLen(st, m.r, m.c, dr!, dc!) >= 5);
+    st.board[m.r]![m.c] = 0;
+    return win;
   }
 
   function mockPick(st: GomokuState, moves: Move[], side?: string, _cfg?: PickConfig): Move | null {
@@ -1338,6 +1400,7 @@ export function createGomoku(id: string, name: string, forbidden: boolean): Engi
     /* v13：做四手数 + 削点搜索（压力闸门：对手压过我们时先削点，见 jev-client 的 pressureGate） */
     fourPressure,
     pressureCut,
+    winningPoints,
     newGame, getLegalMoves, applyMove, getStatus, moveFromNotation,
     serializeForJev, draw, humanClick, mockPick, selfTest,
   } as Engine<GomokuState>;
