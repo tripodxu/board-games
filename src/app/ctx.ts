@@ -124,6 +124,27 @@ export interface AppCtx {
   openingsGame: string;
   /** 开局库：行数上限（ui/panels/openings.ts 的 LIMIT_OPTIONS 之一） */
   openingsLimit: number;
+  /** 棋谱归档分页列表状态 */
+  archive: ArchiveState;
+  /** 回放视图与画布缓存 */
+  replayView: ReplayViewState | null;
+  /** 回放滑杆 rAF 合帧句柄 */
+  replayRaf: number;
+}
+
+export interface ArchiveState {
+  rows: Record<string, unknown>[];
+  cursor: string | null;
+  loading: boolean;
+  gen: number;
+}
+
+export interface ReplayViewState {
+  uid: string | null;
+  gameId: string;
+  states: unknown[];
+  canvas: HTMLCanvasElement | null;
+  renderer: BoardRenderer | null;
 }
 
 export interface CreateCtxOpts {
@@ -168,6 +189,9 @@ export function createCtx(opts: CreateCtxOpts): AppCtx {
     replayerPly: 0,
     openingsGame: opts.engine.id,
     openingsLimit: OPENINGS_LIMIT_DEFAULT,
+    archive: { rows: [], cursor: null, loading: false, gen: 0 },
+    replayView: null,
+    replayRaf: 0,
   };
 }
 

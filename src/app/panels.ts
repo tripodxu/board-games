@@ -45,17 +45,18 @@ import {
 import { createBoardRenderer } from '../ui/board-render.ts';
 import { applyFolded } from '../ui/panels/collapse.ts';
 import type { UiState } from '../core/types.ts';
-import { renderCalibrationChartInto } from '../ui/charts.ts';
+import { renderCalibrationView } from '../ui/panels/calibration.ts';
+import { renderTacticsStripView } from '../ui/panels/tactics-strip.ts';
 import { loadRecords } from '../core/record/book.ts';
 import { getGame } from '../core/registry.ts';
 import { VERSIONS, CURRENT, resolve } from '../core/tactics-versions.ts';
 import { calibration } from '../core/view/calibration.ts';
 import type { Metrics } from '../core/view/calibration.ts';
-import { clear, byId, el, setHidden, setText } from '../ui/dom.ts';
+import { byId, el, setHidden, setText } from '../ui/dom.ts';
 import { effFor, effBySideId } from './ctx.ts';
 import type { TacticHint } from '../core/tactics-hints.ts';
 import { runTacticHintsAsync } from './tactics-client.ts';
-import type { AppCtx } from './ctx.ts';
+import type { AppCtx, ReplayViewState } from './ctx.ts';
 import type { SessionMove } from '../core/session.ts';
 
 /* ---------- props 装配 ---------- */
@@ -196,11 +197,6 @@ export function renderRecordsPanel(ctx: AppCtx): void {
 
 /* ---------- 校准实验室（旧 js/app.js:1626-1729） ---------- */
 
-/** 两位百分比（旧 `PCT`）。 */
-function pctText(v: number | null | undefined, digits = 0): string {
-  return typeof v === 'number' ? (v * 100).toFixed(digits) + '%' : '–';
-}
-
 interface MergedCalibration {
   samples: { p: number; y: number }[];
   games: number;
@@ -248,77 +244,19 @@ export function renderCalibrationPanel(ctx: AppCtx): void {
   if (!box) return;
   const stats = ctx.backend.stats as { cal?: { records?: unknown } } | null;
   const agg = mergeCalibration(ctx, stats && stats.cal ? stats.cal.records : null);
-  const m = agg.metrics;
-  setText(
-    byId('calCount'),
-    agg.games
-      ? agg.games + ' 局 / ' + agg.samples.length + ' 手' + (agg.serverGames ? '（含服务端 ' + agg.serverGames + ' 局）' : '')
-      : '',
-  );
-
-  if (!m) {
-    const why = agg.skippedDemo
-      ? '已有 ' + agg.skippedDemo + ' 局离线演示。演示的胜率是本地合成的，拿它量校准没有意义——请接入真实 Jev 渠道后再看。'
-      : '还没有真实渠道的对局记录。接入 Jev（官方 / OpenRouter / 同源代理）下几局，这里会把「Jev 说的胜率」和「实际胜负」摆在一起量。';
-    // 自绘 SVG：一条「完美校准」的对角参考线 + 一个偏离它的落点，画的就是「失准」本身
-    box.innerHTML =
-      '<div class="cal-empty">' +
-      '<svg class="glyph" width="88" height="52" viewBox="0 0 88 52" aria-hidden="true" fill="none">' +
-      '<path class="g-ref" d="M8 44 L80 8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>' +
-      '<circle cx="58" cy="12" r="3.2" fill="currentColor"/>' +
-      '<line x1="8" y1="6" x2="8" y2="44" stroke="currentColor" stroke-width="1" opacity=".45"/>' +
-      '<line x1="8" y1="44" x2="82" y2="44" stroke="currentColor" stroke-width="1" opacity=".45"/>' +
-      '</svg>' + why + '</div>';
-    return;
-  }
-
-  const skill = m.skill;
-  const skillTxt = skill === null ? '–' : (skill > 0 ? '+' : '') + (skill * 100).toFixed(0);
-  const skillNote =
-    skill === null ? '基准率退化，无法比较'
-      : skill > 0.5 ? '明显有信息量'
-        : skill > 0 ? '略强于「恒猜平均胜率」'
-          : skill > -0.5 ? '基本没有信息量'
-            : '比「恒猜平均胜率」还差';
-  const hero =
-    '<div class="cal-hero' + (skill !== null && skill < 0 ? ' bad' : '') + '">' +
-    '<div class="cal-hero-v mono">' + skillTxt + '</div>' +
-    '<div class="cal-hero-k">技巧分</div>' +
-    '<div class="cal-hero-note">' + skillNote + '</div></div>';
-
-  const tiles =
-    '<div class="cal-tiles">' +
-    '<div class="ct"><b class="mono">' + pctText(m.ece, 1) + '</b><span>校准误差</span></div>' +
-    '<div class="ct"><b class="mono">' + m.brier.toFixed(3) + '</b><span>Brier 分</span></div>' +
-    '<div class="ct"><b class="mono">' + pctText(m.sharpness) + '</b><span>平均预测</span></div>' +
-    '<div class="ct"><b class="mono">' + pctText(m.baseRate) + '</b><span>实际胜率</span></div>' +
-    '</div>';
-
-  const over = m.overconfidence;
-  const verdict = Math.abs(over) < 0.05
-    ? '平均预测与实际胜率基本吻合，Jev 既不狂妄也不怯懦。'
-    : over > 0
-      ? 'Jev 平均比现实乐观 ' + Math.round(over * 100) + ' 个百分点——说七成的时候常兑现不到七成。'
-      : 'Jev 平均比现实保守 ' + Math.round(-over * 100) + ' 个百分点——它比实际更不敢下注。';
-
-  box.innerHTML = hero + tiles +
-    '<div id="calChart" class="cal-chart"></div>' +
-    '<div class="cal-verdict' + (over > 0.05 ? ' warn' : '') + '">' + verdict + '</div>' +
-    '<div class="cal-caveat">样本按「局」强相关：同一局内各手共享同一真实胜负，' +
-    '有效样本量更接近 ' + agg.games + ' 局而非 ' + agg.samples.length + ' 手。' +
-    (agg.serverGames ? '其中 ' + agg.serverGames + ' 局来自服务端归档，换设备、清缓存都不丢。' : '') +
-    (agg.draws ? '另有 ' + agg.draws + ' 局和棋无二元真值，未计入。' : '') + '</div>';
-
-  const chart = byId<HTMLElement>('calChart');
-  if (chart) renderCalibrationChartInto(chart, calibration.reliability(agg.samples, 10), {});
+  renderCalibrationView({
+    root: box,
+    countEl: byId('calCount'),
+    games: agg.games,
+    serverGames: agg.serverGames,
+    draws: agg.draws,
+    skippedDemo: agg.skippedDemo,
+    samples: agg.samples,
+    metrics: agg.metrics,
+  });
 }
 
 /* ---------- 战术沿革条（旧 js/app.js:1094-1136） ---------- */
-
-function gamesText(v: { games?: number; gamesVerified?: number }): string {
-  if (!v.games && !v.gamesVerified) return '—';
-  return '窗口 ' + v.games + ' · 实证 ' + v.gamesVerified;
-}
 
 /**
  * 旧 `renderTacticsStrip()`：10 档登记表原样竖列，点击设为全局默认档位。
@@ -327,30 +265,18 @@ function gamesText(v: { games?: number; gamesVerified?: number }): string {
 export function renderTacticsStrip(ctx: AppCtx, onPick: (id: string) => void): void {
   const box = byId<HTMLElement>('tacticsListBody');
   if (!box) return;
-  clear(box);
   const inUse = [effFor(ctx, ctx.engine.sides[0].id).tactics, effFor(ctx, ctx.engine.sides[1].id).tactics];
-  for (const v of VERSIONS) {
-    const cur = ctx.settings.tacticsVersion === v.id;
-    const used = inUse.indexOf(v.id) >= 0;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'tv-row' + (cur ? ' cur' : '') + (used ? ' used' : '');
-    row.dataset.ver = v.id;
-    row.title = v.name + '（' + v.commit + '，' + v.commitAt + '）'
-      + (v.games || v.gamesVerified ? '归档 窗口 ' + v.games + ' 局 / 实证 ' + v.gamesVerified + ' 局' : '暂无归档棋谱')
-      + '\n' + v.note;
-    row.insertAdjacentHTML('beforeend',
-      '<span class="tv-id">' + v.id.replace(/^v(\d+).*/, (_m, n: string) => 'v' + n)
-      + (v.id === CURRENT ? '·今' : '') + '</span>'
-      + '<span class="tv-name">' + v.name + '</span>'
-      + '<span class="tv-meta">' + gamesText(v)
-      + (cur ? ' · 当前' : (used ? ' · 在用' : '')) + '</span>');
-    row.addEventListener('click', () => {
-      ctx.settings.tacticsVersion = resolve(v.id).id;
-      onPick(v.id);
-    });
-    box.appendChild(row);
-  }
+  renderTacticsStripView({
+    root: box,
+    versions: VERSIONS,
+    currentVersion: ctx.settings.tacticsVersion,
+    latestId: CURRENT,
+    inUseIds: inUse,
+    onPick: (id) => {
+      ctx.settings.tacticsVersion = resolve(id).id;
+      onPick(id);
+    },
+  });
 }
 
 /* ---------- 整屏重画 ---------- */
@@ -407,16 +333,6 @@ export function replayerMovesOf(payload: unknown): ReplayerMove[] {
  *  - 滑杆/键盘的 ply 变化在装配层用 rAF 合帧（见 renderReplayerPanel），一次拖动只渲染最后一格。
  * 没有 2D 上下文（happy-dom / 老浏览器）时静默留空，不抛异常、不阻塞面板其余部分。
  */
-interface ReplayView {
-  uid: string | null;
-  gameId: string;
-  states: unknown[];
-  canvas: HTMLCanvasElement | null;
-  renderer: ReturnType<typeof createBoardRenderer> | null;
-}
-
-let REPLAY: ReplayView | null = null;
-
 /** 回放棋谱对应的引擎：优先按 payload 声明的 gameId 从注册表取（历史归档含围棋/象棋等六种棋），缺省回落当前引擎。 */
 function replayEngineOf(ctx: AppCtx): AppCtx['engine'] {
   const info = replayerInfoOf(ctx.replayerPayload, { gameUid: ctx.replayerUid });
@@ -424,16 +340,16 @@ function replayEngineOf(ctx: AppCtx): AppCtx['engine'] {
 }
 
 /** 按 uid + 棋种取（或重置）回放视图缓存：换棋谱或换棋种即重建快照数组。 */
-function replayViewOf(ctx: AppCtx, engine: AppCtx['engine']): ReplayView {
+function replayViewOf(ctx: AppCtx, engine: AppCtx['engine']): ReplayViewState {
   const uid = ctx.replayerUid;
-  if (!REPLAY || REPLAY.uid !== uid || REPLAY.gameId !== engine.id) {
-    REPLAY = { uid, gameId: engine.id, states: [], canvas: null, renderer: null };
+  if (!ctx.replayView || ctx.replayView.uid !== uid || ctx.replayView.gameId !== engine.id) {
+    ctx.replayView = { uid, gameId: engine.id, states: [], canvas: null, renderer: null };
   }
-  return REPLAY;
+  return ctx.replayView;
 }
 
 /** 局面快照增量推进：保证 `states[p]` = 应用前 p 手之后的局面（非法着法处冻结，与旧重放语义一致）。 */
-function replayStatesOf(engine: AppCtx['engine'], moves: ReplayerMove[], view: ReplayView): unknown[] {
+function replayStatesOf(engine: AppCtx['engine'], moves: ReplayerMove[], view: ReplayViewState): unknown[] {
   const states = view.states;
   if (states.length === 0) states.push(engine.newGame() as unknown);
   for (let i = states.length; i <= moves.length; i += 1) {
@@ -474,9 +390,6 @@ function drawReplayPosition(ctx: AppCtx, host: HTMLElement, moves: ReplayerMove[
   }
 }
 
-/** 滑杆/键盘合帧用的 rAF 句柄：一次拖动只渲染最后一格（F2）。 */
-let REPLAY_RAF = 0;
-
 /** 重画回放器（payload 为空时面板显示「未知」+ 0/0，不抛异常）。 */
 export function renderReplayerPanel(ctx: AppCtx): void {
   const root = byId<HTMLElement>('replayerPanel');
@@ -495,12 +408,12 @@ export function renderReplayerPanel(ctx: AppCtx): void {
       onPlyChange: (ply) => {
         ctx.replayerPly = ply;
         /* rAF 合帧：滑杆每格都触发 oninput，逐帧只渲染最终值（老浏览器退回 16ms 定时器）。 */
-        if (REPLAY_RAF) return;
+        if (ctx.replayRaf) return;
         const schedule = typeof requestAnimationFrame === 'function'
           ? requestAnimationFrame
           : (cb: () => void) => setTimeout(cb, 16) as unknown as number;
-        REPLAY_RAF = schedule(() => {
-          REPLAY_RAF = 0;
+        ctx.replayRaf = schedule(() => {
+          ctx.replayRaf = 0;
           renderReplayerPanel(ctx);
         });
       },

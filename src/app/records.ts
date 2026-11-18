@@ -28,10 +28,11 @@
 import { listGames, gameUrl, type Query } from '../core/api/client.ts';
 import { getGame, ids as gameIds } from '../core/registry.ts';
 import { VERSIONS, tryResolve } from '../core/tactics-versions.ts';
-import { byId, el, setText, clear } from '../ui/dom.ts';
+import { byId, el, setText } from '../ui/dom.ts';
+import { renderArchiveView } from '../ui/panels/archive.ts';
 import { renderLatestGames, type LatestGameRow } from '../ui/panels/experiment-report.ts';
 import { sideAttribution } from '../ui/panels/options.ts';
-import type { AppCtx } from './ctx.ts';
+import type { AppCtx, ArchiveState } from './ctx.ts';
 import { openReplayer } from './panels.ts';
 
 /** 归档行（`GET /api/games` 的 `listItem()`，见 src/worker/routes/games.ts:56-63）。 */
@@ -103,16 +104,11 @@ export interface ArchiveFilters {
 /** 默认口径：战术版本 + 无筛选（与旧行为逐字一致，冒烟里的「54 份 · 按战术版本分组」靠它）。 */
 export const archiveFilters: ArchiveFilters = { game: '', tag: '', since: '', mine: false, group: 'tactics' };
 
-/** 一页一页往里加的累积列表 + 服务端给的 keyset 游标。 */
-let archiveRows: ArchiveRow[] = [];
-let archiveCursor: string | null = null;
-let archiveLoading = false;
-/**
- * 「重读第一页」的代次。换筛选/换分组时两个控件可能连着各发一个 `change`，
- * 于是两次重读并发：都先清空再各推进一页 ⇒ 列表翻倍（冒烟实测 50 → 100 份）。
- * 规则改成：每次重读递增代次，回来的响应代次不是最新就整页丢弃（不并入、不改画、不动 loading）。
- */
-let archiveGen = 0;
+/** 取（或兜底初始化）归档状态：挂在 `AppCtx` 上避免跨测试/多实例串页。 */
+function archiveOf(ctx: AppCtx): ArchiveState {
+  if (!ctx.archive) ctx.archive = { rows: [], cursor: null, loading: false, gen: 0 };
+  return ctx.archive;
+}
 
 /** 时间窗（天）→ `since` 的 UTC 日。`day` 列本身就是 `toISOString().slice(0,10)` 派生的，口径必须一致。 */
 export function archiveSinceDay(days: string, nowMs: number = Date.now()): string {
@@ -122,9 +118,9 @@ export function archiveSinceDay(days: string, nowMs: number = Date.now()): strin
 }
 
 /** 当前状态 → 查询参数。**插入序即 `qs()` 的拼串序**（测试按 `?limit=50&game=…` 逐字断言）。 */
-function archiveQuery(): Query {
+function archiveQuery(arc: ArchiveState): Query {
   const q: Query = { limit: ARCHIVE_PAGE_SIZE };
-  if (archiveCursor) q.cursor = archiveCursor;
+  if (arc.cursor) q.cursor = arc.cursor;
   if (archiveFilters.game) q.game = archiveFilters.game;
   if (archiveFilters.tag) q.tag = archiveFilters.tag;
   const since = archiveSinceDay(archiveFilters.since);
@@ -236,40 +232,43 @@ export function applyArchiveFilters(ctx: AppCtx, patch: Partial<ArchiveFilters>)
 export async function loadGameArchive(ctx: AppCtx): Promise<void> {
   const box = byId<HTMLElement>('archiveBody');
   if (!box) return;
-  const gen = ++archiveGen;
-  archiveRows = [];
-  archiveCursor = null;
+  const arc = archiveOf(ctx);
+  const gen = ++arc.gen;
+  arc.rows = [];
+  arc.cursor = null;
   box.replaceChildren(el('div', { class: 'hint' }, '读取中…'));
   await fetchArchivePage(ctx, true, gen);
 }
 
 /** 「加载更多」：按上一页给的游标再取一页，追加后重画（分组是重画的，所以新旧局会并到同一组）。 */
 export async function loadMoreArchive(ctx: AppCtx): Promise<void> {
-  if (archiveLoading || !archiveCursor) return;
+  const arc = archiveOf(ctx);
+  if (arc.loading || !arc.cursor) return;
   const btn = byId<HTMLElement>('archiveMoreBtn') as (HTMLElement & { disabled?: boolean }) | null;
   if (btn) {
     btn.textContent = '读取中…';
     btn.setAttribute('disabled', '');
   }
-  await fetchArchivePage(ctx, false, archiveGen);
+  await fetchArchivePage(ctx, false, arc.gen);
 }
 
-/** 取一页并入 `archiveRows`。`first` 决定失败时的降级文案（首屏给提示，追加失败只提示不改列表），`gen` 用来丢弃过期响应。 */
+/** 取一页并入 `ctx.archive.rows`。`first` 决定失败时的降级文案（首屏给提示，追加失败只提示不改列表），`gen` 用来丢弃过期响应。 */
 async function fetchArchivePage(ctx: AppCtx, first: boolean, gen: number): Promise<void> {
   const box = byId<HTMLElement>('archiveBody');
   if (!box) return;
-  archiveLoading = true;
+  const arc = archiveOf(ctx);
+  arc.loading = true;
 
   let list: Awaited<ReturnType<typeof listGames>> = null;
   try {
-    list = await listGames(archiveQuery());
+    list = await listGames(archiveQuery(arc));
   } catch (_) {
     list = null;
   }
 
   /* 过期响应：新一代重读已经把列表清空重画了，这一份既不许并入也不许改 loading（新的那次还在跑）。 */
-  if (gen !== archiveGen) return;
-  archiveLoading = false;
+  if (gen !== arc.gen) return;
+  arc.loading = false;
 
   if (!list || !Array.isArray(list.games)) {
     if (first) {
@@ -277,7 +276,7 @@ async function fetchArchivePage(ctx: AppCtx, first: boolean, gen: number): Promi
         '棋谱归档需要同源后端（npm run dev 会同时起 Vite + Worker + 本地 D1）。离线时只能看本机「战绩簿」。'));
       setText(byId('archiveNote'), '后端不可用');
     } else {
-      setText(byId('archiveNote'), '读取下一页失败，已保留前 ' + archiveRows.length + ' 份');
+      setText(byId('archiveNote'), '读取下一页失败，已保留前 ' + arc.rows.length + ' 份');
       /* 失败要能把按钮还回来（否则停在「读取中… disabled」，只能刷新整页重试） */
       const btn = byId<HTMLElement>('archiveMoreBtn');
       if (btn) {
@@ -289,9 +288,9 @@ async function fetchArchivePage(ctx: AppCtx, first: boolean, gen: number): Promi
   }
 
   for (const raw of list.games as ArchiveRow[]) {
-    if (raw && typeof raw === 'object') archiveRows.push(raw);
+    if (raw && typeof raw === 'object') arc.rows.push(raw);
   }
-  archiveCursor = list.nextCursor ? String(list.nextCursor) : null;
+  arc.cursor = list.nextCursor ? String(list.nextCursor) : null;
   renderArchive(ctx, box);
 }
 
@@ -328,8 +327,10 @@ function byNewest(a: ArchiveRow, b: ArchiveRow): number {
 
 /** 按当前口径分组重画（第一页与「加载更多」共用）。 */
 function renderArchive(ctx: AppCtx, box: HTMLElement): void {
+  const arc = archiveOf(ctx);
+  const rows = arc.rows as ArchiveRow[];
   const groups = new Map<string, ArchiveRow[]>();
-  for (const raw of archiveRows) {
+  for (const raw of rows) {
     const key = groupKeyOf(raw);
     if (!groups.has(key)) groups.set(key, []);
     (groups.get(key) as ArchiveRow[]).push(raw);
@@ -356,64 +357,34 @@ function renderArchive(ctx: AppCtx, box: HTMLElement): void {
   }
 
   const active = filterSummary();
-  if (!keys.length) {
-    box.replaceChildren(el('div', { class: 'hint' }, active
-      ? '当前筛选（' + active + '）下没有棋谱。换个条件或点「刷新」重来。'
-      : '后端还没有归档棋谱。跑完一局（勾了「棋谱同步」）就会出现在这里。'));
-    setText(byId('archiveNote'), '0 份 · ' + (active ? '筛选：' + active : groupLabel()));
-    return;
-  }
+  const emptyText = active
+    ? '当前筛选（' + active + '）下没有棋谱。换个条件或点「刷新」重来。'
+    : '后端还没有归档棋谱。跑完一局（勾了「棋谱同步」）就会出现在这里。';
+  const noteText = keys.length
+    ? rows.length + ' 份 · ' + groupLabel()
+      + (active ? ' · 筛选：' + active : '')
+      + (arc.cursor ? ' · 还有更多' : '')
+    : '0 份 · ' + (active ? '筛选：' + active : groupLabel());
 
-  const frag = document.createDocumentFragment();
-  for (const key of keys) {
-    const items = (groups.get(key) as ArchiveRow[]).slice().sort(byNewest);
-    frag.appendChild(el('div', { class: 'arc-group' }, [
-      el('div', { class: 'arc-head' }, [groupHead(key), el('span', { class: 'arc-count' }, items.length + ' 局')]),
-      ...items.map((g) => el('div', { class: 'arc-row' }, [
-        el('span', { class: 'arc-when' }, archiveWhen(g)),
-        el('span', { class: 'arc-game' }, archiveGameName(g)),
-        el('a', {
-          class: 'arc-open',
-          href: gameUrl(g.path),
-          target: '_blank',
-          rel: 'noreferrer',
-        }, '棋谱'),
-        /* 新架构专有：行里有 `game_uid` 时可以直接在「棋谱回放」面板里逐手重放 */
-        g.gameUid
-          ? el('button', {
-            class: 'arc-replay mini-btn',
-            type: 'button',
-            title: '载入上方「棋谱回放」面板逐手重放',
-            text: '回放',
-            onclick: () => {
-              void openReplayer(ctx, String(g.gameUid));
-            },
-          })
-          : null,
-      ])),
-    ]));
-  }
-
-  /* 还有下一页时给一个「加载更多」（服务端 keyset 游标；返回 null 就没有了） */
-  if (archiveCursor) {
-    frag.appendChild(el('button', {
-      id: 'archiveMoreBtn',
-      class: 'arc-more mini-btn',
-      type: 'button',
-      title: '按游标取下一页（keyset 分页）',
-      text: '加载更多',
-      onclick: () => {
-        void loadMoreArchive(ctx);
-      },
-    }));
-  }
-
-  clear(box);
-  box.appendChild(frag);
-  /* note 的三段拼法与旧实现逐字一致（`N 份 · 分组口径` + 有无更多），筛选只在生效时插一段 */
-  setText(byId('archiveNote'), archiveRows.length + ' 份 · ' + groupLabel()
-    + (active ? ' · 筛选：' + active : '')
-    + (archiveCursor ? ' · 还有更多' : ''));
+  renderArchiveView({
+    root: box,
+    noteEl: byId('archiveNote'),
+    groups: keys.map((key) => ({
+      head: groupHead(key),
+      items: (groups.get(key) as ArchiveRow[]).slice().sort(byNewest).map((g) => ({
+        when: archiveWhen(g),
+        gameName: archiveGameName(g),
+        href: gameUrl(g.path),
+        gameUid: g.gameUid ? String(g.gameUid) : null,
+      })),
+    })),
+    totalRows: rows.length,
+    hasMore: Boolean(arc.cursor),
+    emptyText,
+    noteText,
+    onLoadMore: () => { void loadMoreArchive(ctx); },
+    onReplay: (gameUid) => { void openReplayer(ctx, gameUid); },
+  });
 }
 
 /* ---------- 「最新棋谱」：实验报告面板顶部的归档最新对局 ----------
