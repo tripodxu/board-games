@@ -61,10 +61,11 @@ export interface CallOpts {
   timeoutMs?: number;
 }
 
-/** 单次请求：无 fetch / 超时 / 非 2xx / 非 JSON / 任何异常 → null。 */
-export async function call<T = unknown>(path: string, opts?: CallOpts): Promise<T | null> {
+/** 同 URL 并发 GET 请求去重表（防止面板/启动阶段重复打同一只读接口）。 */
+const inflightGets = new Map<string, Promise<unknown>>();
+
+async function executeCall<T = unknown>(url: string, opts?: CallOpts): Promise<T | null> {
   try {
-    if (typeof fetch !== 'function') return null;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), (opts && opts.timeoutMs) || TIMEOUT_MS);
     try {
@@ -75,7 +76,7 @@ export async function call<T = unknown>(path: string, opts?: CallOpts): Promise<
       }
       const headers = headersFor(opts);
       if (headers) init.headers = headers;
-      const r = await fetch(path + qs(opts && opts.query), init);
+      const r = await fetch(url, init);
       if (!r.ok) return null;
       return await r.json() as T;
     } finally {
@@ -84,6 +85,23 @@ export async function call<T = unknown>(path: string, opts?: CallOpts): Promise<
   } catch (_) {
     return null;
   }
+}
+
+/** 单次请求：无 fetch / 超时 / 非 2xx / 非 JSON / 任何异常 → null；并发相同 GET 共享在途 Promise。 */
+export async function call<T = unknown>(path: string, opts?: CallOpts): Promise<T | null> {
+  if (typeof fetch !== 'function') return null;
+  const url = path + qs(opts && opts.query);
+  const method = opts && opts.method ? opts.method.toUpperCase() : 'GET';
+  if (method === 'GET') {
+    const pending = inflightGets.get(url);
+    if (pending) return pending as Promise<T | null>;
+    const req = executeCall<T>(url, opts).finally(() => {
+      inflightGets.delete(url);
+    });
+    inflightGets.set(url, req);
+    return req;
+  }
+  return executeCall<T>(url, opts);
 }
 
 /** POST JSON（无后端同样返回 null）。 */

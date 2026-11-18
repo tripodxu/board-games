@@ -13,18 +13,23 @@ import { byId } from '../ui/dom.ts';
 import { effFor, sideNameOf } from './ctx.ts';
 import type { AppCtx } from './ctx.ts';
 
-/** 旧 `startThinkClock(side)`：每 100ms 把 `#turnBadge` 改写成带秒数的思考中提示。 */
+/** 旧 `startThinkClock(side)`：每 200ms 更新 `#turnBadge` 思考秒数，后台标签页或文本未变时跳过 DOM 写。 */
 export function startThinkClock(ctx: AppCtx, sideId: string): void {
   stopThinkClock(ctx);
   ctx.thinkStart = Date.now();
   const badge = byId<HTMLElement>('turnBadge');
   if (!badge) return;
   const head = sideNameOf(ctx, sideId) + ' ' + sideLabel(effFor(ctx, sideId));
-  const tick = (): void => {
-    badge.textContent = head + ' · 思考中 ' + ((Date.now() - ctx.thinkStart) / 1000).toFixed(1) + 's';
+  let lastText = '';
+  const tick = (force = false): void => {
+    if (!force && typeof document !== 'undefined' && document.hidden) return;
+    const text = head + ' · 思考中 ' + ((Date.now() - ctx.thinkStart) / 1000).toFixed(1) + 's';
+    if (text === lastText) return;
+    lastText = text;
+    badge.textContent = text;
   };
-  tick();
-  ctx.thinkTimer = setInterval(tick, 100);
+  tick(true);
+  ctx.thinkTimer = setInterval(() => tick(false), 200);
 }
 
 /** 旧 `stopThinkClock()`。 */

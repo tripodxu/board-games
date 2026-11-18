@@ -32,10 +32,32 @@ export default defineConfig({
     __BUILD_SHA__: JSON.stringify(gitSha()),
   },
   build: {
+    // 面向现代浏览器与 workerd 的 ES2022 产物，减少语法降级体积
+    target: 'es2022',
     // Worker 环境下不需要 sourcemap 的体积开销（排障用 observability 日志）
     sourcemap: false,
-    // rapfi/ 有 9.57 MB 的 .data，属静态资产（public/），不计入 chunk 警告阈值
-    chunkSizeWarningLimit: 2048,
+    // 启用合理 JS chunk 体积告警阈值（public/rapfi/ 静态资源不计入 Rollup chunk）
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // 将已退役但保留注册自检的非五子棋引擎与历史版本表拆出，避免阻滞主包增量缓存
+        manualChunks(id) {
+          if (
+            id.includes('/src/core/engines/go.ts') ||
+            id.includes('/src/core/engines/xiangqi.ts') ||
+            id.includes('/src/core/engines/chess.ts') ||
+            id.includes('/src/core/engines/checkers.ts') ||
+            id.includes('/src/core/engines/chinese-checkers.ts')
+          ) {
+            return 'engines-retired';
+          }
+          if (id.includes('/src/core/tactics-versions.ts')) {
+            return 'tactics-versions';
+          }
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port: 8787,

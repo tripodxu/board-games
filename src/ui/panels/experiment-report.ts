@@ -792,11 +792,14 @@ export function newEntryFromRun(state: ExperimentState, date: string = new Date(
   };
 }
 
+/** 本地实验历史上限（与战绩簿 `RECORDS_MAX = 60` 同口径，防 localStorage 无限膨胀）。 */
+export const EXP_HISTORY_MAX = 60;
+
 /** 旧 `recordExperiment()` 的入档段（js/app.js:1320-1323）：同 tag 已存在则不重复插。 */
 export function recordExperiment(store: ExpHistoryStore, entry: ExperimentEntry): ExperimentEntry {
   const list = store.list();
   if (!list.some((e) => e.tag === entry.tag)) list.unshift(entry);
-  store.save(list);
+  store.save(list.slice(0, EXP_HISTORY_MAX));
   return entry;
 }
 

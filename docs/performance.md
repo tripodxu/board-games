@@ -29,6 +29,20 @@
 
 ## 三、已落地
 
+### 2026-11-18 全仓审计与 6 步重构优化
+
+- **引擎与战术零漂移提速**（`src/core/engines/gomoku.ts`、`src/core/tactics.ts`）：
+  - 新增 `Engine.winningPoints?` 棋盘级成五点快速扫描接口，避免重复构造全部合法着法再逐点试走；
+  - `gomoku` 内部用 `cloneBoard`/`cloneState` 轻量数组拷贝替代 `JSON.parse(JSON.stringify)`，并在 `vcfWin`/`hasFivePoint`/`vctMoves` 等热路径中将 `isForbiddenPoint` 延后到实际成五/四/活三后校验；
+  - 20 手 5 轮基准（`BENCH_PLY=20 BENCH_RUNS=5 npm run bench:tactics`）：`gomoku` 中位 `1309 ms`、`gomoku-pro` 中位 `20437 ms`、`serializeForJev` `52.3 ms`，172 项引擎/战术/金样差分零漂移通过。
+- **战术计算 Web Worker 化**（`src/app/tactics-worker.ts`、`src/app/tactics-client.ts`）：
+  - `computeTactics`（`deepTactics` 引擎）与 `computeTacticHints` 迁入独立 Worker 线程，主线程保持响应；Worker 不可用或出错时透明回退主线程。
+- **前端架构收敛、交互节流与构建优化**：
+  - `usesOrKey` / `apiKeyForChannel` 统一渠道密钥映射，补齐 `TACTIC_TAGS` 全部 14 层标签与跨棋种回放；
+  - 归档/回放模块级状态收敛进 `AppCtx`，抽离 `calibration`/`tactics-strip`/`archive` 纯视图（消除 `innerHTML`/`insertAdjacentHTML`）；
+  - `styles/style.css` 拆分为 `tokens.css` / `layout.css` / `board.css` / `panels.css`，精简 `index.html` 冗余静态 `<option>`，补齐设置抽屉焦点与 `aria-hidden` 管理；
+  - `charts.ts` 趋势图 hover 增加 `BoundingClientRect` 缓存与 `requestAnimationFrame` 节流；`clock.ts` 降至 200ms 且后台标签页跳过 DOM 写；`api/client.ts` 增加并发 GET 请求去重；`experiment-report.ts` 增加 `EXP_HISTORY_MAX = 60` 上限；`vite.config.ts` 启用 `es2022` 目标、`600 kB` chunk 告警与退役引擎/版本表分包。
+
 ### P0-2 回退 canvas 上的 CSS `filter`（2026-10-28）
 
 - **原因**：canvas 带 `filter` 时，浏览器无法把位图直接送上屏，每次 `draw()` 之后都要对整块

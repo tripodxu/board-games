@@ -11,6 +11,14 @@
 
 ---
 
+## 2026-11-18 · 全仓审计、引擎/战术零漂移提速与前端模块化重构
+
+- **一致性修复**：`src/core/persist.ts` 抽出 `usesOrKey` / `apiKeyForChannel` 单一事实源（消除 `settings`/`modes`/`loop` 多处渠道密钥判断分叉）；`src/ui/panels/options.ts` 补齐 `opencode`/`opencode_local`/`jevrouter` 双方覆盖选项；`src/ui/panels/cockpit.ts` 补齐 `TAKEOVER_ORDER` 全部 14 层标签；`src/app/panels.ts` 回放器按 `registry.getGame()` 动态取引擎，支持跨棋种历史归档回放。
+- **零漂移提速与 Worker 化**：`gomoku.ts` 用轻量盘面拷贝 + 延迟禁手判定 + `winningPoints` 快速扫描消除热路径开销；`tactics-worker.ts` / `tactics-client.ts` 将深层战术与提示移至 Web Worker 并支持自动回退；172 项引擎与金样差分测试 100% 一致。
+- **前端工程收敛**：归档与回放状态收敛进 `AppCtx`，抽离 `calibration`/`tactics-strip`/`archive` 纯视图消除 HTML 字符串拼接；`index.html` 精简冗余静态 `<option>`（保留全部 `REQUIRED_IDS`）；`styles/style.css` 按层拆分为 `tokens`/`layout`/`board`/`panels`；补齐抽屉焦点与 `aria-hidden`、趋势图 rAF 节流、并发 GET 去重与 Vite `manualChunks` 分包。
+
+---
+
 ## 2026-11-01 · 内置免费渠道 `builtin` 上线（Worker 持钥）+ 顺手修掉 effectiveChannelOf 降级回归
 
 - **业主拍板两件事**：① 新增内置免费渠道 `builtin`——`jev.logicc.top` 网关的 `jv-` key 以

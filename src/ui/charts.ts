@@ -213,9 +213,15 @@ export function renderTrendChart(
   }
   const tip = tooltip;
 
+  let cachedBoxRect: DOMRect | null = null;
+  let cachedSvgRect: DOMRect | null = null;
+  let rafId = 0;
+  let pendingClientX = 0;
+
   const showAt = (idx: number, clientX?: number): void => {
+    const p = points[idx];
+    if (!p) return;
     hoverIdx = idx;
-    const p = points[idx]!;
     cross.setAttribute('visibility', 'visible');
     const px = pts[idx]![0];
     const py = pts[idx]![1];
@@ -233,23 +239,43 @@ export function renderTrendChart(
       el('b', { class: 'mono', text: mode.fmt(p.value) }),
       p.detail ? [el('br'), el('span', { text: p.detail })] : null,
     ]);
-    const rect = container.getBoundingClientRect();
+    const rect = cachedBoxRect ?? (cachedBoxRect = container.getBoundingClientRect());
     const left = Math.min(Math.max((clientX || (px / W) * rect.width) - rect.left - 55, 4), rect.width - 150);
     tip.style.left = left + 'px';
     tip.style.top = Math.max(2, (py / H) * rect.height - 64) + 'px';
   };
   const hide = (): void => {
+    if (rafId && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    cachedBoxRect = null;
+    cachedSvgRect = null;
     hoverIdx = -1;
     cross.setAttribute('visibility', 'hidden');
     tip.style.display = 'none';
   };
 
-  svg.addEventListener('mousemove', (e) => {
-    const rect = svg.getBoundingClientRect();
-    const mx = ((e.clientX - rect.left) / rect.width) * W;
+  const handleMove = (clientX: number): void => {
+    const rect = cachedSvgRect ?? (cachedSvgRect = svg.getBoundingClientRect());
+    if (!rect.width) return;
+    const mx = ((clientX - rect.left) / rect.width) * W;
     let idx = points.length === 1 ? 0 : Math.round(((mx - L) / iw) * (points.length - 1));
     idx = Math.max(0, Math.min(points.length - 1, idx));
-    showAt(idx, e.clientX);
+    showAt(idx, clientX);
+  };
+
+  svg.addEventListener('mousemove', (e) => {
+    pendingClientX = e.clientX;
+    if (typeof requestAnimationFrame !== 'function') {
+      handleMove(pendingClientX);
+      return;
+    }
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      handleMove(pendingClientX);
+    });
   });
   svg.addEventListener('mouseleave', hide);
   svg.addEventListener('keydown', (e) => {
