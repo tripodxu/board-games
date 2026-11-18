@@ -8,8 +8,10 @@
  * 重复 render 是否叠节点/叠监听），不做源码字符串匹配。
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, type Settings, type SideConfig } from '../../src/core/persist.ts';
+import { DEFAULT_SETTINGS, usesOrKey, type Settings, type SideConfig } from '../../src/core/persist.ts';
+import { TAKEOVER_ORDER } from '../../src/core/takeover.ts';
 import { CURRENT, VERSIONS } from '../../src/core/tactics-versions.ts';
+import { TACTIC_TAGS, feedCard } from '../../src/ui/panels/cockpit.ts';
 import {
   closeSettingsDrawer,
   isDrawerOpen,
@@ -282,5 +284,39 @@ describe('抽屉开合与就地更新', () => {
     expect(() => renderSettings(document, propsOf(), handlersOf(seen()))).not.toThrow();
     expect(document.querySelector('#channel')).toBeNull();
     expect(document.querySelector('#sideCfgBlack')).toBeNull();
+  });
+
+  it('usesOrKey 覆盖 openrouter/opencode/jevrouter，且双方覆盖下拉包含全部现役渠道', () => {
+    expect(usesOrKey('openrouter')).toBe(true);
+    expect(usesOrKey('opencode')).toBe(true);
+    expect(usesOrKey('jevrouter')).toBe(true);
+    expect(usesOrKey('proxy')).toBe(false);
+    expect(usesOrKey('official')).toBe(false);
+    expect(usesOrKey('builtin')).toBe(false);
+
+    const body = mount(DRAWER_HTML);
+    renderSettings(
+      document,
+      propsOf({}, { white: { channel: 'jevrouter', tactics: CURRENT, rapfiThinkMs: 0 } }),
+      handlersOf(seen()),
+    );
+    expect(need(body.querySelector<SelectEl>('#whiteChannel')).value).toBe('jevrouter');
+    renderChannelHint('opencode', body);
+    expect(need(body.querySelector('#modeHint')).textContent).toContain('OpenCode');
+    renderChannelHint('opencode_local', body);
+    expect(need(body.querySelector('#modeHint')).textContent).toContain('local-relay.mjs');
+  });
+
+  it('决策流 TACTIC_TAGS 覆盖全部 14 层接管标签', () => {
+    for (const layer of TAKEOVER_ORDER) {
+      expect(TACTIC_TAGS[layer], `缺接管层标签：${layer}`).toMatch(/^保险·/);
+      const card = feedCard({
+        ply: 5,
+        side: 'black',
+        move: { notation: 'H8', desc: null },
+        meta: { byAI: true, sideName: '黑方', tactics: layer },
+      }, false);
+      expect(card.querySelector('.who')?.textContent).toContain(TACTIC_TAGS[layer]!);
+    }
   });
 });

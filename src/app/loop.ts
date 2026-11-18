@@ -26,7 +26,7 @@ import type { Experience } from '../core/tactics.ts';
 import { sideLabel } from '../core/view/duel.ts';
 import { machinePairText } from '../ui/panels/options.ts';
 import { clone } from '../core/clone.ts';
-import { isValidMode, effectiveChannelOf } from '../core/persist.ts';
+import { apiKeyForChannel, isValidMode, effectiveChannelOf } from '../core/persist.ts';
 import { byId, setText } from '../ui/dom.ts';
 import type { SelectEl } from '../ui/dom.ts';
 import { aiDelayMs, cancelAIStep, scheduleAIStep, startThinkClock, stopThinkClock } from './clock.ts';
@@ -285,8 +285,8 @@ export async function scheduleDecision(ctx: AppCtx): Promise<void> {
 
   const eff = effFor(ctx, side);
   const cfg = ctx.settings;
-  /* 渠道各自的 key 存不同字段：openrouter / opencode / jevrouter 用 orKey，其余走 apiKey。 */
-  const apiKey = eff.channel === 'openrouter' || eff.channel === 'opencode' || eff.channel === 'jevrouter' ? cfg.orKey : cfg.apiKey;
+  /* 渠道各自的 key 存不同字段：由 persist.apiKeyForChannel 单一事实源解析。 */
+  const apiKey = apiKeyForChannel(cfg, eff.channel);
   const endpoint = (cfg.endpoints && cfg.endpoints[eff.channel]) || '';
 
   try {

@@ -25,7 +25,7 @@
  * 这样 loop → modes 单向依赖，避免模块环。
  */
 import { VERSIONS, resolve, tryResolve } from '../core/tactics-versions.ts';
-import { effectiveChannelOf, isValidMode, stashEndpoint } from '../core/persist.ts';
+import { effectiveChannelOf, isValidMode, stashEndpoint, usesOrKey } from '../core/persist.ts';
 import type { AppMode, SideConfig } from '../core/persist.ts';
 import { getGame } from '../core/registry.ts';
 import { probe as jevProbe, presetEndpoint } from '../core/jev/index.ts';
@@ -187,7 +187,7 @@ export async function runProbe(ctx: AppCtx): Promise<void> {
     const node = byId<HTMLInputElement>(id);
     return node ? node.value.trim() : '';
   };
-  const apiKey = ch === 'openrouter' ? readValue('orKey') : readValue('apiKey');
+  const apiKey = usesOrKey(ch) ? readValue('orKey') : readValue('apiKey');
   const endpoint = readValue('endpoint');
   try {
     const r = await jevProbe({ channel: ch, apiKey, endpoint });

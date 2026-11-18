@@ -190,10 +190,23 @@ export function effectiveChannelOf(
    * （2026-11-01 修复：opencode 自成为默认渠道起就被这里静默降级成 mock——
    *  它读的是 apiKey 而 opencode 的 key 存 orKey，零配置访客一直在玩假 AI。） */
   if (ch === 'opencode' || ch === 'opencode_local' || ch === 'builtin') return ch;
-  /* key 存放字段与 loop.ts 的选取口径一致：openrouter / opencode / jevrouter 存 orKey */
-  const key = ch === 'openrouter' || ch === 'jevrouter' ? settings.orKey : settings.apiKey;
+  /* key 存放字段与 loop.ts / modes.ts / settings.ts 共用唯一事实源 usesOrKey() */
+  const key = apiKeyForChannel(settings, ch);
   if (!key) return 'mock';
   return ch;
+}
+
+/** 该渠道的密钥是否存放在 `Settings.orKey`（OpenRouter / OpenCode / 自建网关共用该槽位）。 */
+export function usesOrKey(channel: string | null | undefined): boolean {
+  return channel === 'openrouter' || channel === 'opencode' || channel === 'jevrouter';
+}
+
+/** 按渠道取出对应的密钥字段（单一事实源，防止走子、探活、降级三处写死漂移）。 */
+export function apiKeyForChannel(
+  settings: Pick<Settings, 'apiKey' | 'orKey'>,
+  channel: string | null | undefined,
+): string {
+  return usesOrKey(channel) ? settings.orKey : settings.apiKey;
 }
 
 /** 单边最终配置（旧 `effSide()`，js/app.js:82-89）：sideConfig 覆盖优先，空值回落全局。 */

@@ -19,10 +19,28 @@ export type { SideConfig };
 export type SideInput = Partial<SideConfig> & { human?: boolean };
 
 export const CH_SHORT: Record<string, string> = {
-  proxy: 'Jev', openrouter: 'Jev', official: 'Jev', mock: '演示', rapfi: 'Rapfi', random: '随机',
+  builtin: 'Jev',
+  proxy: 'Jev',
+  openrouter: 'Jev',
+  opencode: 'Jev',
+  opencode_local: 'Jev',
+  jevrouter: 'Jev',
+  official: 'Jev',
+  mock: '演示',
+  rapfi: 'Rapfi',
+  random: '随机',
 };
 export const CH_EN: Record<string, string> = {
-  proxy: 'jev', openrouter: 'jev', official: 'jev', mock: 'mock', rapfi: 'rapfi', random: 'ran',
+  builtin: 'jev',
+  proxy: 'jev',
+  openrouter: 'jev',
+  opencode: 'jev',
+  opencode_local: 'jev',
+  jevrouter: 'jev',
+  official: 'jev',
+  mock: 'mock',
+  rapfi: 'rapfi',
+  random: 'ran',
 };
 
 /** 战术档 id → 短版本号（v3-make2 → v3）。
@@ -112,6 +130,9 @@ export function selfTest(): void {
   U(sideLabel({ human: true }) === '我', 'human 展示名应为 我');
   U(sideLabel({ channel: 'mock' }) === '演示', 'mock 展示名应为 演示');
   U(sideLabel({ channel: 'proxy' }) === V, 'proxy 展示名应为 ' + V);
+  U(sideLabel({ channel: 'builtin' }) === V, 'builtin 展示名应为 ' + V);
+  U(sideLabel({ channel: 'jevrouter' }) === V, 'jevrouter 展示名应为 ' + V);
+  U(sideLabel({ channel: 'opencode' }) === V, 'opencode 展示名应为 ' + V);
   U(sideLabel({ channel: 'random', tactics: 'v4-parry3' }) === '随机·v4', 'random 展示名应带版本号');
   U(sideLabel({ channel: 'rapfi', rapfiThinkMs: 3000 }) === 'Rapfi(3s)', 'rapfi 3s 展示名不对');
   U(sideLabel({ channel: 'rapfi', rapfiThinkMs: 500 }) === 'Rapfi(0.5s)', 'rapfi 0.5s 展示名不对');

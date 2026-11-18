@@ -37,11 +37,14 @@ function sample(label: string, engine: any, ply: number, runs: number): void {
     legalCount += (legal && legal.length) || 0;
 
     let t0 = performance.now();
-    const ser = engine.serializeForJev(st, {} as any);
+    const ser = engine.serializeForJev(st, String(st.turn || 'black'));
     serCost += performance.now() - t0;
 
+    const cands: string[] = Array.isArray(ser?.options)
+      ? ser.options
+      : legal.slice(0, 64).map((m: { notation: string }) => m.notation);
     t0 = performance.now();
-    computeTactics(engine, st, legal, (ser?.candidates ?? legal.slice(0, 64)) as any, 'v15');
+    computeTactics(engine, st, legal, cands, 'v15');
     costs.push(performance.now() - t0);
   }
 

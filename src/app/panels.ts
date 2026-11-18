@@ -47,6 +47,7 @@ import { applyFolded } from '../ui/panels/collapse.ts';
 import type { UiState } from '../core/types.ts';
 import { renderCalibrationChartInto } from '../ui/charts.ts';
 import { loadRecords } from '../core/record/book.ts';
+import { getGame } from '../core/registry.ts';
 import { VERSIONS, CURRENT, resolve } from '../core/tactics-versions.ts';
 import { calibration } from '../core/view/calibration.ts';
 import type { Metrics } from '../core/view/calibration.ts';
@@ -408,6 +409,7 @@ export function replayerMovesOf(payload: unknown): ReplayerMove[] {
  */
 interface ReplayView {
   uid: string | null;
+  gameId: string;
   states: unknown[];
   canvas: HTMLCanvasElement | null;
   renderer: ReturnType<typeof createBoardRenderer> | null;
@@ -415,18 +417,23 @@ interface ReplayView {
 
 let REPLAY: ReplayView | null = null;
 
-/** 按 uid 取（或重置）回放视图缓存：换棋谱即重建快照数组。 */
-function replayViewOf(ctx: AppCtx): ReplayView {
+/** 回放棋谱对应的引擎：优先按 payload 声明的 gameId 从注册表取（历史归档含围棋/象棋等六种棋），缺省回落当前引擎。 */
+function replayEngineOf(ctx: AppCtx): AppCtx['engine'] {
+  const info = replayerInfoOf(ctx.replayerPayload, { gameUid: ctx.replayerUid });
+  return (info.game ? getGame(info.game) : undefined) ?? ctx.engine;
+}
+
+/** 按 uid + 棋种取（或重置）回放视图缓存：换棋谱或换棋种即重建快照数组。 */
+function replayViewOf(ctx: AppCtx, engine: AppCtx['engine']): ReplayView {
   const uid = ctx.replayerUid;
-  if (!REPLAY || REPLAY.uid !== uid) {
-    REPLAY = { uid, states: [], canvas: null, renderer: null };
+  if (!REPLAY || REPLAY.uid !== uid || REPLAY.gameId !== engine.id) {
+    REPLAY = { uid, gameId: engine.id, states: [], canvas: null, renderer: null };
   }
   return REPLAY;
 }
 
 /** 局面快照增量推进：保证 `states[p]` = 应用前 p 手之后的局面（非法着法处冻结，与旧重放语义一致）。 */
-function replayStatesOf(ctx: AppCtx, moves: ReplayerMove[], view: ReplayView): unknown[] {
-  const engine = ctx.engine;
+function replayStatesOf(engine: AppCtx['engine'], moves: ReplayerMove[], view: ReplayView): unknown[] {
   const states = view.states;
   if (states.length === 0) states.push(engine.newGame() as unknown);
   for (let i = states.length; i <= moves.length; i += 1) {
@@ -439,11 +446,11 @@ function replayStatesOf(ctx: AppCtx, moves: ReplayerMove[], view: ReplayView): u
 }
 
 function drawReplayPosition(ctx: AppCtx, host: HTMLElement, moves: ReplayerMove[], ply: number): void {
-  const engine = ctx.engine;
+  const engine = replayEngineOf(ctx);
   if (typeof engine.draw !== 'function') return;
   try {
-    const view = replayViewOf(ctx);
-    const states = replayStatesOf(ctx, moves, view);
+    const view = replayViewOf(ctx, engine);
+    const states = replayStatesOf(engine, moves, view);
     const st = states[Math.min(ply, states.length - 1)] as unknown;
     const meta = engine.meta;
     const w = meta && Number.isFinite(meta.w) ? meta.w : 0;

@@ -87,14 +87,22 @@ export type EngineLightState = 'idle' | 'running' | 'thinking';
 /** 决策流最多保留的卡片数（旧 `FEED_MAX`，js/app.js:1760 一带）。 */
 export const FEED_MAX = 40;
 
-/** 战术保险标记 → 卡片文案（js/app.js:1750-1757 逐字）。 */
-const TACTIC_TAGS: Record<string, string> = {
+/** 战术保险标记 → 卡片文案（覆盖 TAKEOVER_ORDER 全部 14 层，保留前 6 层旧字面量兼容）。 */
+export const TACTIC_TAGS: Record<string, string> = {
   win: '保险·致胜',
   block: '保险·拦截',
   open4: '保险·活四',
   threat: '保险·造杀',
+  vcfAttack: '保险·冲四链',
+  vctAttack: '保险·连续威胁',
+  vcfDefense: '保险·破冲四链',
+  vctDefense: '保险·拆威胁链',
+  pressureGate: '保险·压力削点',
+  live3Attack: '保险·活三抢攻',
+  live3Defense: '保险·拆活三',
   parry: '保险·拆杀',
   parry3: '保险·预挡',
+  parry4: '保险·冲四预挡',
 };
 
 function scopeOf(root?: UiRoot | null): UiRoot {

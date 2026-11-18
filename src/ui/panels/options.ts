@@ -42,12 +42,15 @@ export const THINK_OPTS: readonly Opt[] = [
   ['10000', '10s'],
 ];
 
-/** 抽屉「双方覆盖」的渠道选项（旧 `SIDE_CHANS`，js/app.js:933）。 */
+/** 抽屉「双方覆盖」的渠道选项（与 FOE_CHANS 对齐全部现役渠道，避免共享 sideConfig.white 时回落丢失）。 */
 export const SIDE_CHANS: readonly Opt[] = [
   ['', '跟随全局'],
   ['builtin', 'Jev·内置免费'],
   ['proxy', 'Jev 模型'],
   ['openrouter', 'Jev·OpenRouter'],
+  ['opencode', 'Jev·OpenCode'],
+  ['opencode_local', 'Jev·本地中转'],
+  ['jevrouter', 'Jev·自建网关'],
   ['official', 'Jev·官方'],
   ['rapfi', 'Rapfi 引擎'],
   ['random', '随机+战术'],
@@ -129,6 +132,8 @@ export const CHANNEL_NAMES: Record<string, string> = {
 export const CHAN_LABEL: Record<string, string> = {
   proxy: 'Jev(代理)',
   openrouter: 'Jev(OpenRouter)',
+  opencode: 'Jev(OpenCode)',
+  opencode_local: 'Jev(本地中转)',
   official: 'Jev(官方)',
   jevrouter: 'Jev(自建网关)',
   builtin: 'Jev(内置免费)',
@@ -138,7 +143,9 @@ export const CHAN_LABEL: Record<string, string> = {
 };
 
 /** 实验战报里算「Jev 渠道胜」的白名单（旧 `JEV_CHANS`，js/app.js:1245）。 */
-export const JEV_CHANNELS: readonly string[] = ['proxy', 'openrouter', 'official', 'jevrouter', 'builtin'];
+export const JEV_CHANNELS: readonly string[] = [
+  'proxy', 'openrouter', 'opencode', 'opencode_local', 'official', 'jevrouter', 'builtin',
+];
 
 /** 战术档位选项：`<option value=v.id>v.id + ' ' + v.name</option>`（旧 `fillTacticsSelect`）。 */
 export function tacticsOptions(versions: readonly TacticsVersion[]): Opt[] {
