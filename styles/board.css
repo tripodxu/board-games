@@ -34,29 +34,26 @@
 
 .board-row { display: flex; gap: var(--sp-5); }
 
-/* 局势条：玄墨=先手，朱砂=后手 */
+/* 局势条：极窄精密液位计（玄墨=先手，朱砂=后手） */
 .eval-bar {
-  width: 13px;
-  border-radius: var(--r-sm);
+  width: 6px;
+  border-radius: var(--r-pill);
   overflow: hidden;
   position: relative;
-  background: linear-gradient(180deg, var(--eval-a), var(--eval-b));
-  border: 1px solid var(--line-strong);
+  background: var(--eval-b);
   flex: 0 0 auto;
 }
 .eval-fill {
   position: absolute; left: 0; right: 0; bottom: 0;
   height: 100%;
-  background: linear-gradient(180deg, var(--mo-hi), var(--mo-deep));
-  /* 用 scaleY 而非 height：缩放走合成层，0.7s 过渡期间不触发逐帧重排。
-   * 数值由 JS 写 transform（0~0.96）。 */
+  background: var(--mo);
   transform-origin: bottom;
   transform: scaleY(.5);
   transition: transform var(--dur-slow) var(--ease);
 }
 .eval-mid {
   position: absolute; left: 0; right: 0; top: 50%;
-  height: 0; border-top: 1px dashed rgb(var(--rgb-white) / 75%);
+  height: 0; border-top: 1px solid rgb(var(--rgb-white) / 55%);
 }
 
 /* 棋盘 canvas 是引擎写死的定宽（560px），父容器更宽时必须居中——
@@ -109,13 +106,13 @@ button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow:
 
 button.primary {
   color: var(--on-mo);
-  font-weight: 700;
-  background: linear-gradient(160deg, var(--mo-hi), var(--mo-deep));
-  border-color: var(--mo-deep);
+  font-weight: 600;
+  background: var(--mo);
+  border-color: var(--mo);
 }
-button.primary:hover { filter: brightness(1.18); }
+button.primary:hover { background: var(--mo-hi); border-color: var(--mo-hi); }
 
-#retryBtn { color: var(--zhu); border-color: var(--zhu-border-retry); font-weight: 700; }
+#retryBtn { color: var(--zhu); border-color: var(--zhu-border-retry); font-weight: 600; }
 #retryBtn:hover { border-color: var(--zhu); background: var(--zhu-bg-hover); }
 
 label { font-size: var(--fs-md); color: var(--ink-mute); display: block; }
@@ -127,7 +124,7 @@ select, input {
   background: var(--bg1);
   border: 1px solid var(--line-ctl);
   border-radius: var(--r-ctl);
-  padding: 7px var(--sp-4);
+  padding: 5px var(--sp-3);
   transition: border-color var(--dur-med), box-shadow var(--dur-med);
 }
 select:hover, input:hover { border-color: var(--mo); }

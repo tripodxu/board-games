@@ -1,4 +1,4 @@
-/* ---------- 面板卡片语汇（.panel 与 P7 三面板共用一套底板） ---------- */
+/* ---------- 面板卡片语汇（一体化工作台内部用发丝线分段；独立面板保留底板） ---------- */
 :where(.panel, .rp-panel, .lb-panel, .op-panel) {
   background: var(--bg1);
   border: 1px solid var(--line);
@@ -6,15 +6,26 @@
   padding: var(--pad-panel);
   box-shadow: var(--sh-panel);
 }
+.side-pane > :where(.panel, .rp-panel, .lb-panel, .op-panel) {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  padding: var(--sp-5) var(--sp-6);
+}
+.side-pane > :where(.panel, .rp-panel, .lb-panel, .op-panel):last-child {
+  border-bottom: none;
+}
 
 .panel-title {
-  display: flex; align-items: baseline; gap: var(--sp-4); flex-wrap: wrap;
+  display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap;
   margin-bottom: var(--sp-3);
 }
 .panel-title h2 {
-  font-family: var(--font-display);
-  font-weight: 400; font-size: var(--fs-title); letter-spacing: 1.2px;
-  line-height: 1.25;
+  font-family: var(--font-body);
+  font-weight: 600; font-size: var(--fs-lead); letter-spacing: 0;
+  line-height: 1.3;
 }
 .panel-title .note { font-size: var(--fs-xs); color: var(--ink-mute); }
 .panel-title .spacer { flex: 1; }
@@ -51,11 +62,14 @@ button.fold svg { transition: transform .18s var(--ease); }
   .panel:not(.folded) > .panel-body { animation: none; }
 }
 
-/* ---------- 共享件：状态读数块（块中块的统一表面） ---------- */
+/* ---------- 共享件：状态读数块（去盒子化，只保留极简排版，必要处用分割线） ---------- */
 :where(.em, .rs, .ct, .duel-col, .latest-bigs .big) {
-  background: var(--bg2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+:where(.em + .em, .rs + .rs, .ct + .ct, .latest-bigs .big + .big) {
+  border-left: 1px solid var(--line);
 }
 /* 共享件：块内「键值读数」的字阶（k 小字 + b/v 数据字） */
 :where(.em .k, .rs span, .ct span) { font-size: var(--fs-xs); color: var(--ink-mute); }
@@ -94,8 +108,8 @@ button.fold svg { transition: transform .18s var(--ease); }
   transform-origin: left; transform: scaleX(0);
   transition: transform .6s var(--ease);
 }
-/* 候选榜行高只留 5px 给条 */
-:where(.rank-row .bar) { height: 5px; }
+/* 候选榜行高只留 3px 给条，克制简洁 */
+:where(.rank-row .bar) { height: 3px; }
 /* 胜率条是「已发生的事实」不是候选概率，一律玄墨实心（无中性态） */
 :where(.lb-bar i, .op-bar i, .exp-bar i, .exp-agg-bar i) { background: var(--mo); }
 :where(.latest-head .conf i) { background: linear-gradient(90deg, var(--mo-hi), var(--mo)); transition-duration: var(--dur-slow); }
@@ -119,10 +133,10 @@ button.fold svg { transition: transform .18s var(--ease); }
 .trend-root { position: relative; width: 100%; }
 .trend-svg { display: block; width: 100%; height: auto; }
 
-.grid { stroke: var(--line); stroke-width: 1; }
-.grid-mid { stroke: var(--line-strong); stroke-dasharray: 3 4; }
+.grid { stroke: var(--line); stroke-width: 1; opacity: .45; }
+.grid-mid { stroke: var(--line-strong); stroke-dasharray: 3 4; opacity: .8; }
 .tick-label { fill: var(--ink-mute); font-family: var(--font-mono); font-size: var(--fs-xs); }
-.trend-line { stroke: var(--mo); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.trend-line { stroke: var(--mo); stroke-width: 1.75; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .dot-last { fill: var(--mo); }
 
 /* —— 本项目唯一被编排的动效时刻：「落子」 ——
@@ -193,27 +207,13 @@ button.fold svg { transition: transform .18s var(--ease); }
 
 /* ---------- Jev 引擎面板 ---------- */
 
-.engine-panel { position: relative; overflow: hidden; }
-.engine-panel::after {
-  content: "";
-  position: absolute; right: -30px; top: -30px;
-  width: 130px; height: 130px;
-  background: radial-gradient(circle, var(--zhu-glow), transparent 68%);
-  pointer-events: none;
-}
+.engine-panel { position: relative; padding: var(--sp-4) var(--sp-5); }
 
-.engine-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
-.engine-id { display: flex; align-items: center; gap: 11px; }
+.engine-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.engine-id { display: flex; align-items: center; gap: var(--sp-3); }
 
-.seal {
-  width: 40px; height: 40px;
-  display: grid; place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--fs-seal); color: #FFF;
-  border-radius: var(--r-lg);
-  background: linear-gradient(155deg, var(--zhu-hi), var(--zhu-deep));
-  box-shadow: var(--sh-seal);
-}
+/* 右栏不再重复盖第二枚「弈」字印章，只留左上角品牌一处视觉锚点 */
+.seal { display: none; }
 
 .engine-name { font-family: var(--font-mono); font-weight: 600; font-size: var(--fs-name); letter-spacing: .04em; }
 .engine-name .model { color: var(--ink-mute); font-weight: 400; font-size: var(--fs-xs); margin-left: 5px; }
@@ -238,12 +238,15 @@ button.fold svg { transition: transform .18s var(--ease); }
 .status-light.running i { background: var(--mo); }
 
 .engine-metrics {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px;
-  margin-top: var(--sp-5);
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
 }
-.em { padding: 7px var(--sp-4) var(--sp-2); }
+.em { padding: 0 var(--sp-3); }
+.em:first-child { padding-left: 0; }
 .em .v { display: block; font-family: var(--font-mono); font-size: var(--fs-compact); font-weight: 600; color: var(--mo); line-height: 1.3; }
-.em .k { letter-spacing: .04em; }
+.em .k { letter-spacing: .02em; }
 
 .spark-wrap { margin-top: 11px; }
 .spark-label {
@@ -281,7 +284,7 @@ button.fold svg { transition: transform .18s var(--ease); }
   color: var(--ink-mute);
   letter-spacing: 1px;
 }
-.duel-col { padding: var(--sp-4) var(--sp-5); }
+.duel-col { padding: var(--sp-1) var(--sp-2); }
 .duel-name {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
   font-size: var(--fs-md); font-weight: 700; color: var(--ink);
@@ -331,7 +334,7 @@ button.fold svg { transition: transform .18s var(--ease); }
   display: grid; grid-template-columns: 16px 52px 1fr 46px;
   align-items: center; gap: var(--sp-3);
   padding: var(--sp-1) 0;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   font-size: var(--fs-xs);
 }
 .rank-row .no { color: var(--ink-mute); font-size: var(--fs-xs); }
@@ -341,13 +344,12 @@ button.fold svg { transition: transform .18s var(--ease); }
 .rank-row.is-chosen .no { color: var(--zhu); font-weight: 700; }
 .rank-rest {
   padding: 5px 0 1px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   font-size: var(--fs-xs); color: var(--ink-mute);
   text-align: center;
 }
 
 /* ---------- 固定槽位（面板高度恒定，不随每步候选数/指标数跳动） ---------- */
-.latest-bigs .big.is-empty { border-style: dashed; }
 .latest-bigs .big.is-empty b { color: var(--ink-mute); }
 .rank-row.is-empty .no,
 .rank-row.is-empty .k,
@@ -378,7 +380,7 @@ button.fold svg { transition: transform .18s var(--ease); }
   display: grid; grid-template-columns: 86px 1fr 38px 74px 44px 52px 56px;
   align-items: center; gap: 5px;
   padding: 5px 2px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   font-size: var(--fs-xs); color: var(--ink-dim);
 }
 /* .rec-row.rec-head 的粘性表头属性已并入上方共享的「粘性表头语汇」 */
@@ -588,11 +590,30 @@ button.fold svg { transition: transform .18s var(--ease); }
 
 /* ---------- 设置 ---------- */
 
+/* ---------- 侧栏内联表单行（节省 50% 垂直空间） ---------- */
+#body-play > label:not(.check-row),
+#body-foe > label:not(.check-row),
+.settings-body > label:not(.check-row) {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-2) 0 0;
+}
+#body-play > label:first-child,
+#body-foe > label:first-child { margin-top: 0; }
+#body-play > label select,
+#body-play > label input,
+#body-foe > label select,
+#body-foe > label input,
+.settings-body > label:not(.check-row) select,
+.settings-body > label:not(.check-row) input { margin-top: 0; }
+
 details.settings { border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--bg1); }
 details.settings summary {
   cursor: pointer; list-style: none;
-  padding: 11px var(--sp-7);
-  font-family: var(--font-display); font-size: var(--fs-lead); letter-spacing: 2px;
+  padding: 10px var(--sp-6);
+  font-family: var(--font-body); font-weight: 600; font-size: var(--fs-ui); letter-spacing: 0;
   color: var(--ink-dim);
   display: flex; align-items: center; gap: var(--sp-3);
 }
@@ -611,14 +632,13 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 }
 
 /* ---------- 全局设置抽屉 ---------- */
-/* 齿轮钮与 .chip 同一竖排metrics（同字号、同内边距），页头两种胶囊高度一致 */
 .gear-btn {
-  display: inline-flex; align-items: center; gap: var(--sp-2);
+  display: inline-flex; align-items: center; gap: var(--sp-1);
   border: 1px solid var(--line-strong); border-radius: var(--r-pill);
-  background: var(--chip-bg); color: var(--ink-dim);
-  font: inherit; font-size: var(--fs-sm); padding: var(--sp-1) var(--sp-5); cursor: pointer;
+  background: var(--bg1); color: var(--ink-dim);
+  font: inherit; font-size: var(--fs-sm); padding: 3px var(--sp-4); cursor: pointer;
 }
-.gear-btn:hover { color: var(--zhu); border-color: var(--zhu-border); }
+.gear-btn:hover { color: var(--ink); border-color: var(--mo); box-shadow: none; }
 .drawer-mask { position: fixed; inset: 0; background: var(--mask-bg); z-index: 40; }
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
@@ -627,11 +647,11 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
   box-shadow: var(--sh-drawer);
   display: flex; flex-direction: column;
 }
-.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-6) var(--sp-7) var(--sp-4); border-bottom: 1px solid var(--line); }
-.drawer-head h2 { font-family: var(--font-display); font-size: var(--fs-head); letter-spacing: 2px; margin: 0; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-5) var(--sp-7); border-bottom: 1px solid var(--line); }
+.drawer-head h2 { font-family: var(--font-body); font-weight: 600; font-size: var(--fs-head); letter-spacing: 0; margin: 0; }
 .drawer-body { overflow-y: auto; padding: var(--sp-6) var(--sp-7) 28px; }
-/* 抽屉里的表单沿用侧栏设置块的手感（label 竖排 + 下拉通栏） */
-.drawer-body label { display: block; margin: var(--sp-4) 0 0; font-size: var(--fs-md); color: var(--ink-dim); line-height: 1.7; }
+/* 抽屉内采用整齐的内联表单排版 */
+.drawer-body label { display: block; margin: var(--sp-3) 0 0; font-size: var(--fs-md); color: var(--ink-dim); line-height: 1.6; }
 .drawer-body label select, .drawer-body label input[type="text"], .drawer-body label input[type="password"] { width: 100%; margin-top: 3px; }
 .drawer-body label.check-row { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
 .drawer-body label.check-row input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--mo); }
@@ -661,9 +681,9 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 
 /* ---------- 对比实验面板 ---------- */
 .exp-panel {
-  margin-top: var(--sp-5); padding: var(--sp-4) var(--sp-5);
-  border: 1px dashed var(--line-ctl); border-radius: var(--r-ctl);
-  background: var(--ink-tint);
+  margin-top: var(--sp-4); padding: var(--sp-4);
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--bg2);
 }
 .exp-title { font-size: var(--fs-md); font-weight: 700; color: var(--ink); margin-bottom: var(--sp-2); display: flex; align-items: center; gap: var(--sp-2); }
 .exp-glyph { flex: 0 0 auto; color: var(--zhu); }
@@ -780,7 +800,7 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 .rp-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-3); }
 .rp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-5); min-width: 0; }
 /* 标题与 .panel-title h2 同一档展示字：回放器本身就是一个面板，标题不该比面板标题更重 */
-.rp-title { font-family: var(--font-display); font-size: var(--fs-title); letter-spacing: 1.2px; line-height: 1.25; color: var(--ink); }
+.rp-title { font-family: var(--font-body); font-weight: 600; font-size: var(--fs-lead); letter-spacing: 0; line-height: 1.3; color: var(--ink); }
 .rp-meta-item { display: inline-flex; align-items: baseline; gap: var(--sp-1); font-size: var(--fs-xs); }
 .rp-k { font-style: normal; color: var(--ink-mute); }
 .rp-v { font-weight: 600; color: var(--ink-dim); }
@@ -858,7 +878,7 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
 :where(.lb-row, .op-row) {
   display: grid; align-items: center;
   padding: 5px var(--sp-2);
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   border-radius: var(--r-md);
   font-size: var(--fs-sm); color: var(--ink-dim);
   cursor: pointer;
@@ -920,7 +940,7 @@ details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); 
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
   align-items: center; gap: 2px var(--sp-3);
   padding: 5px var(--sp-2);
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   border-radius: var(--r-md);
   font-size: var(--fs-sm); color: var(--ink-dim);
 }

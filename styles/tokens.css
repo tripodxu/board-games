@@ -13,77 +13,69 @@
 
 /* ========== L1 原始层 ========== */
 :root {
-  /* 月白基底（冷银，非纯白） */
-  --bg0: #F3F5F8;
+  /* 月白基底（纯净宣纸冷灰） */
+  --bg0: #F5F6F8;
   --bg1: #FFFFFF;
-  --bg2: #F8FAFC;
-  --bg3: #EEF2F6;
-  /* 墨色文字
-   * --ink-mute 承载 9~11px 的小字，必须 ≥4.5:1。原 #7C8590 在四档底色上只有
-   * 3.32~3.74:1（全档不合格）；#656E79 最低 4.60:1，是扫描出的达标集里最接近
-   * 原有观感的一档。WCAG 相对亮度公式核算，非目测。 */
-  --ink: #171B21;
-  --ink-dim: #49525D;
-  --ink-mute: #656E79;
-  /* 发丝线（装饰性分隔线，刻意保持低对比——这是「月白」体系的组成部分） */
-  --line: #E3E8EE;
-  --line-strong: #CBD3DC;
-  /* 功能性控件边界：输入框/下拉的填充与面板同为 --bg1，边框是唯一的识别线索，
-   * 故按 WCAG 1.4.11 执行 ≥3:1（#CBD3DC 只有 1.51:1）。取达标集里最浅的 #828FA3，
-   * 在最亮底色上仍有 3.13:1。不要拿它去加深装饰性发丝线。 */
-  --line-ctl: #828FA3;
+  --bg2: #F8F9FB;
+  --bg3: #ECEFF3;
+  /* 墨色文字 */
+  --ink: #14171C;
+  --ink-dim: #464E59;
+  --ink-mute: #666F7B;
+  /* 发丝线 */
+  --line: #E6E9EF;
+  --line-strong: #D0D6E0;
+  /* 功能性控件边界（≥3:1） */
+  --line-ctl: #8A94A6;
   /* 玄墨（主交互 / 先手方） */
-  --mo: #1F242C;
-  --mo-hi: #2E3540;
+  --mo: #181C22;
+  --mo-hi: #2B313B;
   --mo-deep: #0E1116;
-  /* 朱砂（印章红点睛 / 后手方）
-   * --zhu-hi 是 .brand-mark / .seal / button.primary 渐变的上端，上面压白字。
-   * 原值 #D95840 白字只有 3.87:1（未达 AA 的 4.5:1）；#C94C36 为 4.59:1，
-   * 是达标集里离原观感最近的一档。 */
-  --zhu: #C2402A;
-  --zhu-hi: #C94C36;
-  --zhu-deep: #9C3220;
+  /* 朱砂（印章红点睛 / 后手方） */
+  --zhu: #BF3B26;
+  --zhu-hi: #BF3B26;
+  --zhu-deep: #9A2E1D;
   /* 成功绿（连接/校验通过态） */
-  --ok: #2F7D53;
-  /* 主色上的前景（玄墨/朱砂表面压的字） */
+  --ok: #287A4E;
+  /* 主色上的前景 */
   --on-mo: #FFFFFF;
   --on-zhu: #FFFFFF;
 
-  /* 通道三元组：供 rgb(var(--rgb-*) / α) 取色，暗色主题只换三元组 */
-  --rgb-ink: 23 27 33;      /* 墨色（选区、十字线、淡底） */
-  --rgb-zhu: 194 64 42;     /* 朱砂（柔底、描边、光晕） */
-  --rgb-shadow: 23 27 33;   /* 投影色（暗色下换纯黑） */
-  --rgb-white: 255 255 255; /* 高光（印章内发光、虚线） */
+  /* 通道三元组 */
+  --rgb-ink: 20 23 28;
+  --rgb-zhu: 191 59 38;
+  --rgb-shadow: 20 23 28;
+  --rgb-white: 255 255 255;
 
-  /* 字阶：全站字号只许取这张表（原 9 档隐式字阶的显式化） */
-  --fs-micro: 10px;    /* 战术 meta、回放 ply */
-  --fs-cap: 10.5px;    /* 表头计数、归档时间 */
-  --fs-xs: 11px;       /* 辅助说明、图表刻度 */
-  --fs-sm: 11.5px;     /* 芯片、表格行 */
-  --fs-md: 12px;       /* 表单 label、报告正文 */
-  --fs-read: 12.5px;   /* 空态、抽屉小节 */
-  --fs-ui: 13px;       /* 控件、按钮 */
-  --fs-compact: 13.5px;/* 状态条、指标值 */
-  --fs-body: 14px;     /* 页面基准 */
-  --fs-lead: 14.5px;   /* 侧栏页签、折叠小节标题、最新指标大字 */
-  --fs-mv: 15px;       /* 决策流着法 */
-  --fs-name: 15.5px;   /* 引擎名 */
-  --fs-head: 16px;     /* 抽屉标题 */
-  --fs-title: 17.5px;  /* 面板标题 */
-  --fs-game: 19px;     /* 棋种名 / 最新着法 */
-  --fs-seal: 20px;     /* 印章字 */
-  --fs-mark: 22px;     /* 品牌印章字 */
-  --fs-brand: 27px;    /* 品牌标题 */
-  --fs-hero: 32px;     /* 校准主数字 */
+  /* 字阶：收敛至 7 档标准层级（向后兼容既有变量名） */
+  --fs-micro: 11px;
+  --fs-cap: 11px;
+  --fs-xs: 11px;
+  --fs-sm: 11px;
+  --fs-md: 12px;
+  --fs-read: 12px;
+  --fs-ui: 13px;
+  --fs-compact: 13px;
+  --fs-body: 13px;
+  --fs-lead: 14px;
+  --fs-mv: 14px;
+  --fs-name: 14px;
+  --fs-head: 16px;
+  --fs-title: 16px;
+  --fs-game: 16px;
+  --fs-seal: 22px;
+  --fs-mark: 18px;
+  --fs-brand: 22px;
+  --fs-hero: 28px;
 
-  /* 圆角阶 */
-  --r-xs: 6px;
-  --r-sm: 7px;
+  /* 圆角阶：收敛至 3 档（4px / 8px / 999px） */
+  --r-xs: 4px;
+  --r-sm: 4px;
   --r-md: 8px;
-  --r-ctl: 9px;
-  --r-lg: 10px;
-  --r-seal: 11px;
-  --r-panel: 14px;
+  --r-ctl: 8px;
+  --r-lg: 8px;
+  --r-seal: 6px;
+  --r-panel: 8px;
   --r-pill: 999px;
 
   /* 间距阶（结构性留白取这张表；组件内部微调允许半档） */
@@ -131,21 +123,21 @@
   --ink-cross: rgb(var(--rgb-ink) / 35%);   /* 图表十字线 */
   --selection: rgb(var(--rgb-ink) / 14%);
 
-  /* 阴影配方（layered：一层深度 + 一层贴边） */
-  --sh-panel: 0 10px 30px rgb(var(--rgb-shadow) / 6%), 0 1px 2px rgb(var(--rgb-shadow) / 4%);
-  --sh-card: 0 18px 44px rgb(var(--rgb-shadow) / 8%), 0 1px 2px rgb(var(--rgb-shadow) / 4%);
-  --sh-btn-hover: 0 2px 10px rgb(var(--rgb-shadow) / 8%);
-  --sh-tip: 0 8px 22px rgb(var(--rgb-shadow) / 12%);
-  --sh-drawer: -18px 0 44px rgb(var(--rgb-shadow) / 14%);
-  --sh-pop: 0 10px 28px rgb(var(--rgb-shadow) / 20%);
-  --sh-test: 0 14px 40px rgb(var(--rgb-shadow) / 18%);
-  --sh-toast: 0 14px 40px rgb(var(--rgb-shadow) / 28%);
-  --sh-seal: 0 3px 12px rgb(var(--rgb-zhu) / 30%), inset 0 1px 0 rgb(var(--rgb-white) / 35%);
-  --sh-mark: 0 4px 14px rgb(var(--rgb-zhu) / 28%), inset 0 1px 0 rgb(var(--rgb-white) / 35%);
+  /* 阴影降噪：克制的贴边微影，消除悬浮卡片感 */
+  --sh-panel: none;
+  --sh-card: 0 1px 3px rgb(var(--rgb-shadow) / 4%), 0 6px 16px rgb(var(--rgb-shadow) / 3%);
+  --sh-btn-hover: 0 1px 3px rgb(var(--rgb-shadow) / 6%);
+  --sh-tip: 0 4px 12px rgb(var(--rgb-shadow) / 10%);
+  --sh-drawer: -8px 0 28px rgb(var(--rgb-shadow) / 10%);
+  --sh-pop: 0 8px 20px rgb(var(--rgb-shadow) / 14%);
+  --sh-test: 0 8px 24px rgb(var(--rgb-shadow) / 12%);
+  --sh-toast: 0 8px 24px rgb(var(--rgb-shadow) / 18%);
+  --sh-seal: none;
+  --sh-mark: none;
 
-  /* 页面氛围光 */
-  --aura-1: radial-gradient(1100px 520px at 78% -8%, rgb(var(--rgb-shadow) / 5.5%), transparent 62%);
-  --aura-2: radial-gradient(900px 600px at -8% 108%, rgb(var(--rgb-zhu) / 4.5%), transparent 55%);
+  /* 取消彩色氛围光晕，保持干净基底 */
+  --aura-1: none;
+  --aura-2: none;
 
   /* 焦点环 */
   --focus: var(--mo);
@@ -204,19 +196,19 @@
     --eval-b: #A04A38;
     /* 暗底上的色点改用亮描边：深色的数据色（深绿/紫/棕）才不会糊进卡片 */
     --swatch-ring: rgb(255 255 255 / 22%);
-    /* 暗色氛围光换「冷月微光」（投影三元组已换纯黑，aura 不能再用它） */
-    --aura-1: radial-gradient(1100px 520px at 78% -8%, rgb(233 237 242 / 5%), transparent 62%);
-    --aura-2: radial-gradient(900px 600px at -8% 108%, rgb(var(--rgb-zhu) / 7%), transparent 55%);
+    /* 暗色下保持干净基底 */
+    --aura-1: none;
+    --aura-2: none;
 
-    /* 暗色下投影换纯黑并加深，保持同样的层级差 */
-    --sh-panel: 0 10px 30px rgb(var(--rgb-shadow) / 24%), 0 1px 2px rgb(var(--rgb-shadow) / 16%);
-    --sh-card: 0 18px 44px rgb(var(--rgb-shadow) / 32%), 0 1px 2px rgb(var(--rgb-shadow) / 16%);
-    --sh-btn-hover: 0 2px 10px rgb(var(--rgb-shadow) / 32%);
-    --sh-tip: 0 8px 22px rgb(var(--rgb-shadow) / 40%);
-    --sh-drawer: -18px 0 44px rgb(var(--rgb-shadow) / 48%);
-    --sh-pop: 0 10px 28px rgb(var(--rgb-shadow) / 56%);
-    --sh-test: 0 14px 40px rgb(var(--rgb-shadow) / 48%);
-    --sh-toast: 0 14px 40px rgb(var(--rgb-shadow) / 64%);
+    /* 暗色微影 */
+    --sh-panel: none;
+    --sh-card: 0 1px 3px rgb(var(--rgb-shadow) / 22%), 0 8px 20px rgb(var(--rgb-shadow) / 20%);
+    --sh-btn-hover: 0 1px 3px rgb(var(--rgb-shadow) / 24%);
+    --sh-tip: 0 4px 14px rgb(var(--rgb-shadow) / 32%);
+    --sh-drawer: -8px 0 28px rgb(var(--rgb-shadow) / 40%);
+    --sh-pop: 0 8px 20px rgb(var(--rgb-shadow) / 44%);
+    --sh-test: 0 8px 24px rgb(var(--rgb-shadow) / 40%);
+    --sh-toast: 0 8px 24px rgb(var(--rgb-shadow) / 48%);
   }
 }
 

@@ -20,9 +20,9 @@ input, textarea { caret-color: var(--mo); }
 body {
   font-family: var(--font-body);
   font-size: var(--fs-body);
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--ink);
-  background: var(--aura-1), var(--aura-2), var(--bg0);
+  background: var(--bg0);
   min-height: 100vh;
   scrollbar-gutter: stable;
 }
@@ -46,74 +46,90 @@ body {
 header {
   display: flex;
   align-items: center;
-  gap: var(--sp-6);
+  gap: var(--sp-4);
   flex-wrap: wrap;
-  padding: var(--sp-8) var(--sp-9) var(--sp-1);
-  max-width: 1240px;
+  padding: var(--sp-6) var(--sp-9) var(--sp-1);
+  max-width: 1200px;
   margin: 0 auto;
 }
 
-.brand { display: flex; align-items: center; gap: var(--sp-5); }
+.brand { display: flex; align-items: center; gap: var(--sp-3); }
 
 .brand-mark {
-  width: 42px; height: 42px;
+  width: 30px; height: 30px;
   border-radius: var(--r-seal);
   display: grid; place-items: center;
   font-family: var(--font-display);
   font-size: var(--fs-mark);
   color: #FFF;
-  background: linear-gradient(155deg, var(--zhu-hi), var(--zhu-deep));
-  box-shadow: var(--sh-mark);
+  background: var(--zhu);
+  box-shadow: none;
 }
 
-/* 展示字与数据字的落差是这一版张力的主要来源：
- * 品牌标题放大并收紧字距（ZCOOL XiaoWei 配松字距会把标题「放散」），
- * 面板标题同步收紧，让标题自己说话，不靠字距撑场面。 */
+.brand > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
 .brand h1 {
   font-family: var(--font-display);
   font-weight: 400;
   font-size: var(--fs-brand);
   letter-spacing: 1px;
-  /* 展示字下行高大、副标题才有呼吸（窄屏下 h1 与 .sub 几乎贴住） */
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 .brand .sub {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   color: var(--ink-mute);
-  letter-spacing: .05em;
+  letter-spacing: .02em;
 }
 
 .head-spacer { flex: 1; }
 
 .chip {
-  display: inline-flex; align-items: center; gap: var(--sp-2);
+  display: inline-flex; align-items: center; gap: 5px;
   font-size: var(--fs-sm); font-family: var(--font-mono);
-  color: var(--ink-dim);
-  border: 1px solid var(--line-strong);
-  background: var(--chip-bg);
-  border-radius: var(--r-pill);
-  padding: var(--sp-1) var(--sp-5);
+  color: var(--ink-mute);
+  border: none;
+  background: transparent;
+  padding: 2px var(--sp-2);
   white-space: nowrap;
 }
-.chip b { color: var(--mo); font-weight: 600; }
-/* 后端 chip 三态：检测中（弱化）/ 已连接（常态）/ 静态模式（提示性） */
+.chip b { color: var(--ink-dim); font-weight: 600; }
+.chip + .chip::before {
+  content: "·";
+  color: var(--line-strong);
+  margin-right: var(--sp-2);
+}
 #backendChip { cursor: default; }
+#backendChip b::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  margin-right: 5px;
+  vertical-align: 1px;
+}
 #backendChip.pending b { color: var(--ink-mute); font-weight: 400; }
 #backendChip.static b { color: var(--ink-mute); }
 #backendChip.live b { color: var(--ok); }
+#backendChip.live b::before { background: var(--ok); }
 
 /* ---------- 主布局 ---------- */
 
 main {
   display: grid;
   grid-template-columns: minmax(430px, 1fr) clamp(380px, 31vw, 430px);
-  gap: 22px;
+  gap: 20px;
   justify-content: center;
   align-items: start;
-  max-width: 1240px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 22px var(--sp-9) var(--sp-10);
+  padding: 18px var(--sp-9) var(--sp-10);
 }
 
 @media (max-width: 1080px) {
@@ -140,45 +156,42 @@ main {
   .side-pane { overflow: visible; max-height: none; }
 }
 
-/* ---------- 侧栏页签 ----------
- * 展示字 + 朱砂下划线，小一号——它是栏内导航，不与顶部主导航争层级。
- * 固定区的一部分，不随内容滚动。 */
+/* ---------- 侧栏页签（分段槽） ---------- */
 .side-tabs {
-  display: flex; gap: 2px;
-  padding: 2px 2px 0;
-  border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  padding: 3px;
+  background: var(--bg3);
+  border-radius: var(--r-md);
 }
 .side-tabs button {
   appearance: none;
-  position: relative;
   border: none; background: none;
+  border-radius: calc(var(--r-md) - 2px);
   cursor: pointer;
-  font-family: var(--font-display);
-  font-size: var(--fs-lead);
-  letter-spacing: 2px;
+  font-family: var(--font-body);
+  font-size: var(--fs-ui);
+  font-weight: 500;
   color: var(--ink-mute);
-  padding: var(--sp-2) var(--sp-6) 9px;
-  transition: color var(--dur-med) var(--ease);
+  padding: 5px var(--sp-3);
+  transition: color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
 }
-.side-tabs button::after {
-  content: "";
-  position: absolute; left: var(--sp-5); right: var(--sp-5); bottom: -1px;
-  height: 2px; border-radius: 2px;
-  background: var(--zhu);
-  transform: scaleX(0);
-  transition: transform .28s var(--ease);
+.side-tabs button:hover { color: var(--ink); box-shadow: none; }
+.side-tabs button.active {
+  background: var(--bg1);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--sh-btn-hover);
 }
-.side-tabs button:hover { color: var(--ink-dim); }
-.side-tabs button.active { color: var(--ink); }
-.side-tabs button.active::after { transform: scaleX(1); }
 
-/* 当前页签内容区：侧栏内唯一滚动的区域。min-height:0 允许它在 flex 列里
- * 收缩到剩余空间；2px 内边距防止面板投影在滚动口边缘被硬切。 */
+/* 当前页签内容区：一体化工作台白底容器，内部分区用发丝线自然切分 */
 .side-pane {
-  display: flex; flex-direction: column; gap: var(--sp-4);
+  display: flex; flex-direction: column; gap: 0;
   flex: 1 1 auto; min-height: 0;
   overflow-y: auto;
-  padding: 2px 2px 3px;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: 0;
 }
 .side-pane[hidden] { display: none; }
 
