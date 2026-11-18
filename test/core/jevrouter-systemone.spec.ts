@@ -14,13 +14,14 @@
  *      「opencode 在浏览器里静默丢 key」那个 bug 的正解，必须有回归钉子；
  *   ③ 换 provider 分支：jevrouter 不进官方那条 primary/backup 兜底链。
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CHANNELS,
   JEV_ROUTER_MODEL,
   JEV_ROUTER_RELAY_PATH,
   JEV_ROUTER_UPSTREAM_URL,
   authHeaderFor,
+  probe,
 } from '../../src/core/jev/client.ts';
 
 describe('自建 jev-router 网关渠道（多源路由 · 出口轮换）', () => {
@@ -49,4 +50,28 @@ describe('自建 jev-router 网关渠道（多源路由 · 出口轮换）', () 
     /* 空端点按直连处理（拿不到就是没有中转）。 */
     expect(authHeaderFor('')).toBe('bearer');
   });
+
+  it('浏览器下 probe 遇到旧网关 URL 自动回落同源 api/jev，不撞 CORS', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('location', { origin: 'https://jevqipan.logicc.top' });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ model: 'jev-1.13', answers: { probe: { noul: 0.5 } } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    const res = await probe({
+      channel: 'jevrouter',
+      apiKey: 'jv-test',
+      endpoint: JEV_ROUTER_UPSTREAM_URL,
+    });
+    expect(res.ok).toBe(true);
+    expect(urls).toEqual(['api/jev', 'api/jev']);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

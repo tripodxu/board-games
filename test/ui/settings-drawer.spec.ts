@@ -332,4 +332,11 @@ describe('抽屉开合与就地更新', () => {
     expect(need(document.getElementById('settingsGear')).getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement?.id).toBe('settingsGear');
   });
+
+  it('jevrouter 渠道隐藏 Base URL 输入框，仅显示 jv- Key 输入框，防止误填触发 CORS', () => {
+    const body = mount(DRAWER_HTML);
+    renderSettings(document, propsOf({ channel: 'jevrouter' }), handlersOf(seen()));
+    expect(need(body.querySelector('#endpointLabel')).classList.contains('hidden')).toBe(true);
+    expect(need(body.querySelector('#orKeyLabel')).classList.contains('hidden')).toBe(false);
+  });
 });

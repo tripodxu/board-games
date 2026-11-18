@@ -232,6 +232,23 @@ const KEY_REQUIRED_CHANNELS: ReadonlySet<string> = new Set(['official', 'openrou
 const JEV_ROUTER_USER_AGENT = 'curl/8.5.0';
 
 /**
+ * 浏览器端走自建网关（jevrouter/builtin）时必须经同源 `/api/jev` 转发（网关不返 CORS 头）。
+ * 若用户曾手填过真实上游地址（如 localStorage 残留 `https://jev.logicc.top/v1/systemone`），
+ * 浏览器下自动回落为同源中转路径，防止直连撞 CORS。
+ */
+function resolveRouterEndpoint(customEndpoint?: string): string {
+  const inBrowser = typeof location !== 'undefined';
+  const trimmed = customEndpoint ? customEndpoint.trim() : '';
+  if (inBrowser) {
+    if (!trimmed || trimmed === JEV_ROUTER_UPSTREAM_URL || trimmed.startsWith('https://jev.logicc.top')) {
+      return JEV_ROUTER_RELAY_PATH;
+    }
+    return trimmed;
+  }
+  return trimmed || JEV_ROUTER_UPSTREAM_URL;
+}
+
+/**
  * 本次调用可用的提供方（按优先级）。**只有直连面（`official`）才在这里切换**：
  *  - `proxy`：切换是 Worker 的事，客户端只带「本局粘滞」提示头并读回执（见 `PROVIDER_HINT_HEADER`）；
  *  - `openrouter`：另一条渠道（模型 `typesafe/jev-1.13`），不在本计划的兜底链里，保持单提供方；
@@ -264,8 +281,7 @@ function attemptsFor(channel: string, opts: DecideOpts): ProviderAttempt[] {
   if (channel === 'jevrouter') {
     /* 自建网关同样不返 CORS 头 ⇒ 浏览器走同源中转（Worker 按 model 认这条腿），
      * Node（实验面 / box 远端批量）直连真实端点。key 必填：网关不受理匿名。 */
-    const inBrowser = typeof location !== 'undefined';
-    const url = customEndpoint || (inBrowser ? JEV_ROUTER_RELAY_PATH : JEV_ROUTER_UPSTREAM_URL);
+    const url = resolveRouterEndpoint(customEndpoint);
     return [{
       provider: syntheticProvider(channel, PROVIDER_PRIMARY, '自建 jev-router', url, cfg.model),
       apiKey, channel, custom: !!customEndpoint,
@@ -278,7 +294,7 @@ function attemptsFor(channel: string, opts: DecideOpts): ProviderAttempt[] {
     if (typeof location === 'undefined') {
       throw new Error('内置免费渠道仅浏览器面可用（key 由 Worker 持有）：Node/实验面请改用 official 或 jevrouter');
     }
-    const url = customEndpoint || cfg.endpoint;
+    const url = resolveRouterEndpoint(customEndpoint);
     return [{
       provider: syntheticProvider(channel, PROVIDER_PRIMARY, '内置免费', url, cfg.model),
       apiKey, channel, custom: !!customEndpoint,
@@ -329,7 +345,9 @@ async function callRaw(
   }
   /* 自有网关在 Cloudflare 后面且开了 Browser Integrity Check，库默认 UA 会被 403 1010 拦掉。
      浏览器会静默丢弃这个 forbidden header（无害），Node/实验面则会真的带上（刚需）。 */
-  if (channel === 'jevrouter') headers['User-Agent'] = JEV_ROUTER_USER_AGENT;
+  if (channel === 'jevrouter' && typeof location === 'undefined') {
+    headers['User-Agent'] = JEV_ROUTER_USER_AGENT;
+  }
   const payload = { state: body.state, model: attempt.provider.model, questions: body.questions };
 
   const timeoutCtrl = new AbortController();
@@ -590,7 +608,9 @@ export async function probe(opts: DecideOpts): Promise<ProbeResult> {
   if (channel === 'mock') return { ok: true, kind: 'mock', message: '离线演示：无需连接。' };
   const cfg = CHANNELS[channel];
   if (!cfg) return { ok: false, kind: 'config', message: '未知渠道：' + channel };
-  const endpoint = opts.endpoint || cfg.endpoint;
+  const endpoint = channel === 'jevrouter' || channel === 'builtin'
+    ? resolveRouterEndpoint(opts.endpoint)
+    : (opts.endpoint || cfg.endpoint);
   const t0 = Date.now();
   let reachable = false;
   try {
@@ -610,7 +630,9 @@ export async function probe(opts: DecideOpts): Promise<ProbeResult> {
     if (opts.apiKey) headers['Authorization'] = 'Bearer ' + opts.apiKey;
     if (channel === 'openrouter') headers['HTTP-Referer'] = locationOrigin() || 'http://localhost';
   }
-  if (channel === 'jevrouter') headers['User-Agent'] = JEV_ROUTER_USER_AGENT;
+  if (channel === 'jevrouter' && typeof location === 'undefined') {
+    headers['User-Agent'] = JEV_ROUTER_USER_AGENT;
+  }
   const body = JSON.stringify({
     state: { probe: true },
     model: cfg.model,

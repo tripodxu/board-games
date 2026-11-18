@@ -54,7 +54,7 @@ export const CHANNEL_HINTS: Record<string, string> = {
   openrouter: '唯一可浏览器直连的渠道（OpenRouter 允许跨域），但需要的是 OpenRouter key（openrouter.ai 申请），不是 TypeSafe key。',
   opencode: 'OpenCode Zen 免费托管档：经同源 /api/jev 转发，key 可选（留空走匿名免费档，也可填 opencode.ai/auth 的免费 key）。共享边缘出口 IP 时较易触及上游限流。',
   opencode_local: '本机中转免费档：先在本机运行 node scripts/local-relay.mjs（监听 127.0.0.1:8420），请求从你的个人网络 IP 直连 OpenCode 免费档，独占限流池。',
-  jevrouter: '自建 jev-router 网关：把请求按腿分流到多个免费/付费上游，并在失败时自动换腿重试，出口 IP 会轮换。浏览器仍走同源 /api/jev 转发（key 只在请求头里过一手）；**必须填你自己的 jv- 网关 key**，服务端不代持、不共享。',
+  jevrouter: '自建 jev-router 网关：由同源 /api/jev 自动转发（无需填写端点地址，只填你自己的 jv- Key 即可）。',
   mock: '离线演示：内置简单启发式 AI 与合成概率，无需 key。后端不可用时也自动落到这里。',
   rapfi: '本地引擎：浏览器内运行的 Rapfi（Gomocup 协议），首次使用下载模型（约 10–40MB），之后纯本地走子，无需 key。',
 };
@@ -96,7 +96,7 @@ export function channelVisibility(channel: string): ChannelVisibility {
     apiKeyLabelText: apiKeyLabelText(channel),
     orKeyLabel: usesOrKey(channel),
     orKeyLabelText: orKeyLabelText(channel),
-    endpointLabel: channel !== 'mock' && channel !== 'rapfi',
+    endpointLabel: channel !== 'mock' && channel !== 'rapfi' && channel !== 'jevrouter',
     tacticsVersionLabel: channel === 'proxy' || channel === 'openrouter' || channel === 'opencode' || channel === 'opencode_local' || channel === 'jevrouter' || channel === 'builtin' || channel === 'official' || channel === 'random',
     probeRow: channel !== 'mock',
   };
