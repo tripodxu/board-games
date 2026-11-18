@@ -78,14 +78,14 @@ describe('renderSideConfig —— 抽屉双方覆盖', () => {
       onSideChange: (side, patch) => seen.push([side, patch]),
     });
 
-    select(need(body.querySelector<SelectEl>('#blackChannel')), 'official');
+    select(need(body.querySelector<SelectEl>('#blackChannel')), 'jevrouter');
     const tactics = need(body.querySelector<SelectEl>('#blackTactics'));
     select(tactics, tactics.options[0]!.value);
     select(need(body.querySelector<SelectEl>('#blackThinkMs')), '');
     select(need(body.querySelector<SelectEl>('#whiteChannel')), 'mock');
 
     expect(seen).toEqual([
-      ['black', { channel: 'official' }],
+      ['black', { channel: 'jevrouter' }],
       ['black', { tactics: tactics.options[0]!.value }],
       ['black', { rapfiThinkMs: 0 }],
       ['white', { channel: 'mock' }],
@@ -109,8 +109,8 @@ describe('renderSideConfig —— 抽屉双方覆盖', () => {
 
     expect(slot.classList.contains('side-cfg')).toBe(true);
     expect(ids(slot, 'black')).toEqual(['blackChannel', 'blackTactics', 'blackThinkMs']);
-    select(need(slot.querySelector<SelectEl>('#blackChannel')), 'openrouter');
-    expect(patches).toEqual([{ channel: 'openrouter' }]);
+    select(need(slot.querySelector<SelectEl>('#blackChannel')), 'jevrouter');
+    expect(patches).toEqual([{ channel: 'jevrouter' }]);
   });
 });
 
@@ -147,10 +147,10 @@ describe('renderExperimentSides —— 实验 A/B 档位', () => {
       onSideChange: (side, patch) => seen.push([side, patch]),
     });
 
-    select(need(body.querySelector<SelectEl>('#expChanB')), 'official');
+    select(need(body.querySelector<SelectEl>('#expChanB')), 'jevrouter');
     select(need(body.querySelector<SelectEl>('#expThinkA')), '5000');
     expect(seen).toEqual([
-      ['B', { channel: 'official' }],
+      ['B', { channel: 'jevrouter' }],
       ['A', { rapfiThinkMs: 5000 }],
     ]);
   });

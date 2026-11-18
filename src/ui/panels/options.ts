@@ -42,60 +42,44 @@ export const THINK_OPTS: readonly Opt[] = [
   ['10000', '10s'],
 ];
 
-/** 抽屉「双方覆盖」的渠道选项（与 FOE_CHANS 对齐全部现役渠道，避免共享 sideConfig.white 时回落丢失）。 */
+/** 抽屉「双方覆盖」的渠道选项（与 FOE_CHANS 对齐精简后的现役渠道）。 */
 export const SIDE_CHANS: readonly Opt[] = [
   ['', '跟随全局'],
   ['builtin', 'Jev·内置免费'],
-  ['proxy', 'Jev 模型'],
-  ['openrouter', 'Jev·OpenRouter'],
-  ['opencode', 'Jev·OpenCode'],
-  ['opencode_local', 'Jev·本地中转'],
   ['jevrouter', 'Jev·自建网关'],
-  ['official', 'Jev·官方'],
+  ['proxy', 'Jev·官方代理'],
   ['rapfi', 'Rapfi 引擎'],
   ['random', '随机+战术'],
   ['mock', '演示'],
 ];
 
-/** 机器对手面板的渠道选项（旧 `FOE_CHANS`，js/app.js:934）。 */
+/** 机器对手面板的渠道选项（精简后的现役渠道）。 */
 export const FOE_CHANS: readonly Opt[] = [
   ['', '跟随全局'],
-  ['builtin', 'Jev · 内置免费（无需 key）'],
-  ['proxy', 'Jev 模型（代理）'],
-  ['openrouter', 'Jev · OpenRouter'],
-  ['opencode', 'Jev · OpenCode（免费）'],
-  ['opencode_local', 'Jev · OpenCode 本地中转（你的 IP · 最稳）'],
-  ['jevrouter', 'Jev · 自建网关（多源路由 · 出口轮换）'],
-  ['official', 'Jev · 官方 API'],
-  ['rapfi', 'Rapfi 引擎'],
+  ['builtin', 'Jev · 内置免费'],
+  ['jevrouter', 'Jev · 自建网关'],
+  ['proxy', 'Jev · 官方代理'],
+  ['rapfi', 'Rapfi 本地引擎'],
   ['random', '随机 + 战术'],
   ['mock', '离线演示'],
 ];
 
-/** 对比实验 A/B 方的渠道选项（index.html:389-395 静态文案，**无「跟随全局」项**）。 */
+/** 对比实验 A/B 方的渠道选项（无「跟随全局」与免费 builtin，避免无人值守刷爆免费网关）。 */
 export const EXP_CHANS: readonly Opt[] = [
   ['proxy', 'Jev(代理)+战术'],
-  ['openrouter', 'Jev(OpenRouter)+战术'],
-  ['opencode', 'Jev(OpenCode·免费)+战术'],
-  ['opencode_local', 'Jev(OpenCode本地中转)+战术'],
   ['jevrouter', 'Jev(自建网关)+战术'],
-  ['official', 'Jev(官方)+战术'],
   ['random', '纯随机+战术'],
   ['mock', '离线演示'],
   ['rapfi', 'Rapfi 本地引擎'],
 ];
 
-/** 抽屉「接入渠道」选项（index.html:440-446 静态文案）。 */
+/** 抽屉「接入渠道」选项：标准 5 渠道（内置免费 + 自建网关 + 官方代理 + Rapfi + 离线演示）。 */
 export const DRAWER_CHANNEL_OPTS: readonly Opt[] = [
-  ['builtin', '内置免费（默认 · 无需 key · Worker 转发自建网关）'],
-  ['proxy', '同源代理 /api/jev（转发你自己的 key）'],
-  ['openrouter', 'OpenRouter（浏览器直连）'],
-  ['opencode', 'OpenCode Zen（免费 · 浏览器直连）'],
-  ['opencode_local', 'OpenCode 本地中转（你的 IP · 需先跑 local-relay.mjs）'],
-  ['jevrouter', '自建 jev-router 网关（同源 /api/jev 转发你的 jv- key）'],
-  ['official', '官方 API 直连（可能被 CORS 拦截）'],
-  ['mock', '离线演示（无需 key）'],
-  ['rapfi', 'Rapfi 本地引擎（首次下载模型）'],
+  ['builtin', '内置免费（默认 · 免 key）'],
+  ['jevrouter', '自建网关（自有 jv- key）'],
+  ['proxy', '官方代理 /api/jev（自有 key）'],
+  ['rapfi', 'Rapfi 本地引擎'],
+  ['mock', '离线演示（免 key）'],
 ];
 
 /** 抽屉「Rapfi 思考时长」选项（index.html:463-470）。 */

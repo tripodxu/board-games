@@ -81,11 +81,11 @@ afterEach(cleanup);
 describe('renderSettings —— 控件回填', () => {
   it('按 settings 回填抽屉控件，并按渠道显示/隐藏对应行', () => {
     const body = mount(DRAWER_HTML);
-    renderSettings(document, propsOf({ channel: 'official', apiKey: 'apikey_live', topK: 5, gameSync: false, rapfiThinkMs: 2000 }), handlersOf(seen()));
+    renderSettings(document, propsOf({ channel: 'proxy', apiKey: 'apikey_live', topK: 5, gameSync: false, rapfiThinkMs: 2000 }), handlersOf(seen()));
 
     const channel = need(body.querySelector<SelectEl>('#channel'), '#channel');
     expect(channel.options.length).toBe(DRAWER_CHANNEL_OPTS.length);
-    expect(channel.value).toBe('official');
+    expect(channel.value).toBe('proxy');
 
     const tactics = need(body.querySelector<SelectEl>('#tacticsVersion'));
     expect(tactics.options.length).toBe(tacticsOptions(VERSIONS).length);
@@ -167,8 +167,8 @@ describe('renderSettings —— 控件回填', () => {
     expect(qsa(body, '#drawerBody > *').length).toBe(count);
     expect(body.querySelector('#channel')).not.toBe(first);
 
-    select(need(body.querySelector<SelectEl>('#channel')), 'openrouter');
-    expect(log.patches).toEqual([{ channel: 'openrouter' }]);
+    select(need(body.querySelector<SelectEl>('#channel')), 'jevrouter');
+    expect(log.patches).toEqual([{ channel: 'jevrouter' }]);
   });
 });
 
@@ -178,7 +178,7 @@ describe('renderSettings —— 事件与 patch', () => {
     const log = seen();
     renderSettings(document, propsOf({ channel: 'proxy', endpoints: { proxy: '' } }), handlersOf(log));
 
-    select(need(body.querySelector<SelectEl>('#channel')), 'official');
+    select(need(body.querySelector<SelectEl>('#channel')), 'jevrouter');
     select(need(body.querySelector<SelectEl>('#topK')), '1');
     select(need(body.querySelector<SelectEl>('#rapfiThinkMs')), '5000');
 
@@ -196,7 +196,7 @@ describe('renderSettings —— 事件与 patch', () => {
     click(need(body.querySelector('#probeBtn')));
 
     expect(log.patches).toEqual([
-      { channel: 'official' },
+      { channel: 'jevrouter' },
       { topK: 1 },
       { rapfiThinkMs: 5000 },
       { tacticsVersion: tacticsSel.options[0]!.value },
