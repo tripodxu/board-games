@@ -218,13 +218,21 @@ export function renderSettings(
   replaceChildren(body, [
     el('div', { class: 'drawer-sub', text: '引擎与连接' }),
     el('label', null, ['接入渠道', channelSel]),
-    el('label', { id: 'tacticsVersionLabel', class: classOf(vis.tacticsVersionLabel) }, [
-      '战术版本（实验室：棋谱归因/复现的唯一凭据）',
+    el('label', {
+      id: 'tacticsVersionLabel',
+      class: classOf(vis.tacticsVersionLabel),
+      title: '实验室：棋谱归因与复现的唯一凭据',
+    }, [
+      '战术版本',
       tacticsSel,
     ]),
-    el('label', { id: 'rapfiThinkLabel' }, ['Rapfi 思考时长（强度 · 越长越强）', rapfiSel]),
-    el('label', { id: 'endpointLabel', class: classOf(vis.endpointLabel) }, [
-      '接口地址 Base URL（留空用预设，可填自建/兼容端点）',
+    el('label', { id: 'rapfiThinkLabel', title: '思考越长，棋力越强' }, ['Rapfi 思考时长', rapfiSel]),
+    el('label', {
+      id: 'endpointLabel',
+      class: classOf(vis.endpointLabel),
+      title: '留空用预设，可填自建或兼容端点',
+    }, [
+      '接口地址 Base URL',
       endpointInput,
     ]),
     el('label', { id: 'apiKeyLabel', class: classOf(vis.apiKeyLabel) }, [vis.apiKeyLabelText, apiKeyInput]),
@@ -239,17 +247,12 @@ export function renderSettings(
       }),
     ]),
     el('label', null, ['走棋随机度', topKSel]),
-    el('label', { class: 'check-row' }, [syncBox, ' 终局自动同步棋谱（供复盘分析）']),
-    el('label', { class: 'check-row' }, [hintBox, ' 战术模式提示（五子棋 · 按层颜色标出待选点）']),
-    el('div', { class: 'hint', text: '设置保存在本机 localStorage；渠道/key 只进本机，不随棋谱上传。' }),
-    el('div', {
-      class: 'hint',
-      text: '选「OpenCode 本地中转」需先在本机跑中转脚本（三步见 docs/local-relay.md：装 Node → node local-relay.mjs → 切渠道）；脚本：github.com/tripodxu/board-games/raw/main/scripts/local-relay.mjs',
-    }),
-    el('div', { class: 'drawer-sub', text: '双方覆盖（留空 = 跟随上方全局设置）' }),
+    el('label', { class: 'check-row' }, [syncBox, ' 终局自动同步棋谱']),
+    el('label', { class: 'check-row', title: '五子棋模式下按层着色标出待选点' }, [hintBox, ' 战术模式提示']),
+    el('div', { class: 'hint', text: '配置与 Key 仅存本机 localStorage，不随棋谱上传。' }),
+    el('div', { class: 'drawer-sub', title: '留空跟随全局设置；实验结束自动还原', text: '双方覆盖' }),
     el('div', { id: 'sideCfgBlack', class: 'side-cfg' }),
     el('div', { id: 'sideCfgWhite', class: 'side-cfg' }),
-    el('div', { class: 'hint', text: '覆盖只影响「哪一方怎么走」，不改变全局默认；实验跑完自动还原回这里配的值。' }),
   ]);
 
   renderSideConfig(doc, { versions: props.versions, black: props.black, white: props.white }, {

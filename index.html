@@ -24,7 +24,7 @@
     <div class="brand-mark" aria-hidden="true">弈</div>
     <div>
       <h1>JEV 棋馆</h1>
-      <div class="sub">系统一模型 · 五子棋对弈室</div>
+      <div class="sub">五子棋对弈室</div>
     </div>
   </div>
   <div class="head-spacer"></div>
@@ -97,7 +97,7 @@
           <span class="seal" id="engineSeal" aria-hidden="true">弈</span>
           <div>
             <div class="engine-name">JEV <span class="model" id="engineModel">jev-1.13.0</span></div>
-            <div class="engine-sub">System One Model · 结构化决策</div>
+            <div class="engine-sub">System One Model</div>
           </div>
         </div>
         <span class="status-light" id="engineStatus"><i></i>待命</span>
@@ -139,7 +139,7 @@
         </label>
         <label>战术 <select id="foeTactics"></select></label>
         <label>思考 <select id="foeThink"></select></label>
-        <div class="hint" id="foeHint">留空 = 跟随全局设置；改动只影响机器方，不动你自己的引擎。Rapfi 思考期间界面会短暂卡住（ADR-0006）。</div>
+        <div class="hint" id="foeHint" title="改动只影响机器方，不影响本方设置；Rapfi 本地思考期间界面会短暂等待">留空跟随全局，仅作用于机器方。</div>
       </div>
     </section>
     <section class="panel collapsible" data-panel="trend" aria-label="Jev 判断趋势">
@@ -409,7 +409,7 @@
     <div class="exp-panel">
       <div class="exp-title">
         <svg class="exp-glyph" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 1.5h2"/><path d="M5.2 1.5v2.7L2.7 8.3Q2.2 9.2 2.9 9.9h6.2q.7-.7.2-1.6L6.8 4.2V1.5"/><path d="M3.7 7.6h4.6"/></svg>
-        对比实验（机机自动跑）
+        对比实验
       </div>
       <div class="mode-switch" role="group" aria-label="对局模式">
         <button type="button" data-mode="human-ai" aria-pressed="false">人 vs 机器</button>
