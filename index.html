@@ -135,16 +135,7 @@
       </div>
       <div class="panel-body" id="body-foe">
         <label>渠道
-          <select id="foeChannel">
-            <option value="">跟随全局</option>
-            <option value="builtin">Jev · 内置免费（无需 key）</option>
-            <option value="proxy">Jev 模型（代理）</option>
-            <option value="openrouter">Jev · OpenRouter</option>
-            <option value="official">Jev · 官方 API</option>
-            <option value="rapfi">Rapfi 引擎</option>
-            <option value="random">随机 + 战术</option>
-            <option value="mock">离线演示</option>
-          </select>
+          <select id="foeChannel"></select>
         </label>
         <label>战术 <select id="foeTactics"></select></label>
         <label>思考 <select id="foeThink"></select></label>
@@ -428,89 +419,15 @@
       <div class="exp-sides">
         <div class="exp-side" id="expSideA">
           <div class="exp-side-name"><i class="dot mo"></i>A 方</div>
-          <label class="exp-field">渠道
-            <select id="expChanA">
-    <option value="proxy" selected>Jev(代理)+战术</option>
-    <option value="openrouter">Jev(OpenRouter)+战术</option>
-    <option value="official">Jev(官方)+战术</option>
-    <option value="random">纯随机+战术</option>
-    <option value="mock">离线演示</option>
-    <option value="rapfi">Rapfi 本地引擎</option>
-            </select>
-          </label>
-          <label class="exp-field">战术
-            <select id="expTacA">
-    <option value="v0-off">v0 无战术（基线）</option>
-    <option value="v1-facts">v1 胜/挡</option>
-    <option value="v2-open4">v2 活四级</option>
-    <option value="v3-make2">v3 造杀/拆杀</option>
-    <option value="v4-parry3">v4 活三预挡</option>
-    <option value="v5-safesort">v5 拆杀安全排序</option>
-    <option value="v6-parry4">v6 冲四预挡</option>
-    <option value="v7-vcf">v7 VCF 攻防</option>
-    <option value="v8-vcf-try">v8 VCF 逐点试</option>
-    <option value="v9-vcf-sound">v9 防伪胜</option>
-    <option value="v10-live3">v10 深活三攻防</option>
-    <option value="v11-vct">v11 连续威胁搜索</option>
-    <option value="v12-vct-def">v12 连续威胁防守</option>
-    <option value="v13-pressure-gate">v13 压力闸门</option>
-    <option value="v14-live3-fresh" selected>v14 活三判据纠偏（当前）</option>
-            </select>
-          </label>
-          <label class="exp-field">思考
-            <select id="expThinkA">
-    <option value="" selected>跟随全局</option>
-    <option value="500">0.5s</option>
-    <option value="1000">1s</option>
-    <option value="2000">2s</option>
-    <option value="3000">3s</option>
-    <option value="5000">5s</option>
-    <option value="10000">10s</option>
-            </select>
-          </label>
+          <label class="exp-field">渠道<select id="expChanA"></select></label>
+          <label class="exp-field">战术<select id="expTacA"></select></label>
+          <label class="exp-field">思考<select id="expThinkA"></select></label>
         </div>
         <div class="exp-side" id="expSideB">
           <div class="exp-side-name"><i class="dot zhu"></i>B 方</div>
-          <label class="exp-field">渠道
-            <select id="expChanB">
-    <option value="proxy">Jev(代理)+战术</option>
-    <option value="openrouter">Jev(OpenRouter)+战术</option>
-    <option value="official">Jev(官方)+战术</option>
-    <option value="random" selected>纯随机+战术</option>
-    <option value="mock">离线演示</option>
-    <option value="rapfi">Rapfi 本地引擎</option>
-            </select>
-          </label>
-          <label class="exp-field">战术
-            <select id="expTacB">
-    <option value="v0-off">v0 无战术（基线）</option>
-    <option value="v1-facts">v1 胜/挡</option>
-    <option value="v2-open4">v2 活四级</option>
-    <option value="v3-make2">v3 造杀/拆杀</option>
-    <option value="v4-parry3">v4 活三预挡</option>
-    <option value="v5-safesort">v5 拆杀安全排序</option>
-    <option value="v6-parry4">v6 冲四预挡</option>
-    <option value="v7-vcf">v7 VCF 攻防</option>
-    <option value="v8-vcf-try">v8 VCF 逐点试</option>
-    <option value="v9-vcf-sound">v9 防伪胜</option>
-    <option value="v10-live3">v10 深活三攻防</option>
-    <option value="v11-vct">v11 连续威胁搜索</option>
-    <option value="v12-vct-def">v12 连续威胁防守</option>
-    <option value="v13-pressure-gate">v13 压力闸门</option>
-    <option value="v14-live3-fresh" selected>v14 活三判据纠偏（当前）</option>
-            </select>
-          </label>
-          <label class="exp-field">思考
-            <select id="expThinkB">
-    <option value="" selected>跟随全局</option>
-    <option value="500">0.5s</option>
-    <option value="1000">1s</option>
-    <option value="2000">2s</option>
-    <option value="3000">3s</option>
-    <option value="5000">5s</option>
-    <option value="10000">10s</option>
-            </select>
-          </label>
+          <label class="exp-field">渠道<select id="expChanB"></select></label>
+          <label class="exp-field">战术<select id="expTacB"></select></label>
+          <label class="exp-field">思考<select id="expThinkB"></select></label>
         </div>
       </div>
       <div class="exp-foot">
@@ -541,45 +458,13 @@
   <div class="drawer-body" id="drawerBody">
     <div class="drawer-sub">引擎与连接</div>
     <label>接入渠道
-      <select id="channel">
-        <option value="builtin">内置免费（默认 · 无需 key · Worker 转发自建网关）</option>
-        <option value="proxy">同源代理 /api/jev（转发你自己的 key）</option>
-        <option value="openrouter">OpenRouter（浏览器直连）</option>
-        <option value="opencode">OpenCode Zen（免费 · 浏览器直连）</option>
-        <option value="jevrouter">自建 jev-router 网关（同源 /api/jev 转发你的 jv- key）</option>
-        <option value="official">官方 API 直连（可能被 CORS 拦截）</option>
-        <option value="mock">离线演示（无需 key）</option>
-        <option value="rapfi">Rapfi 本地引擎（首次下载模型）</option>
-      </select>
+      <select id="channel"></select>
     </label>
     <label id="tacticsVersionLabel" class="hidden">战术版本（实验室：棋谱归因/复现的唯一凭据）
-      <select id="tacticsVersion">
-        <option value="v0-off">v0 无战术（基线）</option>
-        <option value="v1-facts">v1 胜/挡</option>
-        <option value="v2-open4">v2 活四级</option>
-        <option value="v3-make2">v3 造杀/拆杀</option>
-        <option value="v4-parry3">v4 活三预挡</option>
-        <option value="v5-safesort">v5 拆杀安全排序</option>
-        <option value="v6-parry4">v6 冲四预挡</option>
-        <option value="v7-vcf">v7 VCF 攻防</option>
-        <option value="v8-vcf-try">v8 VCF 逐点试</option>
-        <option value="v9-vcf-sound">v9 防伪胜</option>
-        <option value="v10-live3">v10 深活三攻防</option>
-        <option value="v11-vct">v11 连续威胁搜索</option>
-        <option value="v12-vct-def">v12 连续威胁防守</option>
-        <option value="v13-pressure-gate">v13 压力闸门</option>
-        <option value="v14-live3-fresh" selected>v14 活三判据纠偏（当前）</option>
-      </select>
+      <select id="tacticsVersion"></select>
     </label>
     <label id="rapfiThinkLabel">Rapfi 思考时长（强度 · 越长越强）
-      <select id="rapfiThinkMs">
-        <option value="500">0.5 秒（最弱 · 最快）</option>
-        <option value="1000">1 秒</option>
-        <option value="2000">2 秒</option>
-        <option value="3000" selected>3 秒（默认）</option>
-        <option value="5000">5 秒</option>
-        <option value="10000">10 秒（最强 · 最慢）</option>
-      </select>
+      <select id="rapfiThinkMs"></select>
     </label>
     <label id="endpointLabel" class="hidden">接口地址 Base URL（留空用预设，可填自建/兼容端点）
       <input type="text" id="endpoint" spellcheck="false" autocomplete="off">
@@ -595,11 +480,7 @@
       <div id="probeOut" aria-live="polite"></div>
     </div>
     <label>走棋随机度
-      <select id="topK">
-        <option value="1">最强手（不随机）</option>
-        <option value="3" selected>温和（top-3 加权）</option>
-        <option value="5">狂野（top-5 加权）</option>
-      </select>
+      <select id="topK"></select>
     </label>
     <label class="check-row"><input type="checkbox" id="gameSync" checked> 终局自动同步棋谱（供复盘分析）</label>
     <div class="hint">设置保存在本机 localStorage；渠道/key 只进本机，不随棋谱上传。</div>

@@ -1,0 +1,274 @@
+/* ========== 基础 ========== */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  html { color-scheme: dark; }
+}
+
+/* .mono 是数据字工具类（charts / panels 大量挂载）。
+ * 等宽数字（tabular-nums）让表格与概率条在刷新时不跳动。 */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* 浏览器表面也是设计的一部分：光标颜色随主色，不与默认黑块抢戏 */
+input, textarea { caret-color: var(--mo); }
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--aura-1), var(--aura-2), var(--bg0);
+  min-height: 100vh;
+  scrollbar-gutter: stable;
+}
+
+::selection { background: var(--selection); }
+
+/* 跳转链接：键盘用户第一跳直达主内容，视觉隐藏直到聚焦 */
+.skip-link {
+  position: fixed; top: var(--sp-4); left: var(--sp-4); z-index: 60;
+  transform: translateY(-180%);
+  background: var(--mo); color: var(--on-mo);
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--r-ctl);
+  font-size: var(--fs-ui); text-decoration: none;
+  transition: transform .18s var(--ease);
+}
+.skip-link:focus-visible { transform: none; }
+
+/* ---------- 页首 ---------- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  flex-wrap: wrap;
+  padding: var(--sp-8) var(--sp-9) var(--sp-1);
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.brand { display: flex; align-items: center; gap: var(--sp-5); }
+
+.brand-mark {
+  width: 42px; height: 42px;
+  border-radius: var(--r-seal);
+  display: grid; place-items: center;
+  font-family: var(--font-display);
+  font-size: var(--fs-mark);
+  color: #FFF;
+  background: linear-gradient(155deg, var(--zhu-hi), var(--zhu-deep));
+  box-shadow: var(--sh-mark);
+}
+
+/* 展示字与数据字的落差是这一版张力的主要来源：
+ * 品牌标题放大并收紧字距（ZCOOL XiaoWei 配松字距会把标题「放散」），
+ * 面板标题同步收紧，让标题自己说话，不靠字距撑场面。 */
+.brand h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--fs-brand);
+  letter-spacing: 1px;
+  /* 展示字下行高大、副标题才有呼吸（窄屏下 h1 与 .sub 几乎贴住） */
+  line-height: 1.3;
+}
+
+.brand .sub {
+  font-size: var(--fs-sm);
+  color: var(--ink-mute);
+  letter-spacing: .05em;
+}
+
+.head-spacer { flex: 1; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-sm); font-family: var(--font-mono);
+  color: var(--ink-dim);
+  border: 1px solid var(--line-strong);
+  background: var(--chip-bg);
+  border-radius: var(--r-pill);
+  padding: var(--sp-1) var(--sp-5);
+  white-space: nowrap;
+}
+.chip b { color: var(--mo); font-weight: 600; }
+/* 后端 chip 三态：检测中（弱化）/ 已连接（常态）/ 静态模式（提示性） */
+#backendChip { cursor: default; }
+#backendChip.pending b { color: var(--ink-mute); font-weight: 400; }
+#backendChip.static b { color: var(--ink-mute); }
+#backendChip.live b { color: var(--ok); }
+
+/* ---------- 主布局 ---------- */
+
+main {
+  display: grid;
+  grid-template-columns: minmax(430px, 1fr) clamp(380px, 31vw, 430px);
+  gap: 22px;
+  justify-content: center;
+  align-items: start;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 22px var(--sp-9) var(--sp-10);
+}
+
+@media (max-width: 1080px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- 右栏 ---------- */
+
+/* 侧栏吸附在视口内：面板再多也不把页面撑长，页面总高由棋盘列决定。
+ * 关键：滚动只发生在「当前页签内容区」——驾驶舱与页签栏是固定区，
+ * 多面板同时展开时成本/状态面板不会被挤出视口；flex 子项默认 shrink:1
+ * 会在空间不足时压缩固定区，故显式 flex:none 锁死。
+ * 窄屏（单列布局）回归文档流，吸附反而碍事。 */
+.side {
+  display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0;
+  position: sticky; top: 18px;
+  max-height: calc(100vh - 36px);
+}
+.side > .engine-panel,
+.side > .side-tabs { flex: 0 0 auto; }
+
+@media (max-width: 1080px) {
+  .side { position: static; max-height: none; }
+  .side-pane { overflow: visible; max-height: none; }
+}
+
+/* ---------- 侧栏页签 ----------
+ * 展示字 + 朱砂下划线，小一号——它是栏内导航，不与顶部主导航争层级。
+ * 固定区的一部分，不随内容滚动。 */
+.side-tabs {
+  display: flex; gap: 2px;
+  padding: 2px 2px 0;
+  border-bottom: 1px solid var(--line);
+}
+.side-tabs button {
+  appearance: none;
+  position: relative;
+  border: none; background: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--fs-lead);
+  letter-spacing: 2px;
+  color: var(--ink-mute);
+  padding: var(--sp-2) var(--sp-6) 9px;
+  transition: color var(--dur-med) var(--ease);
+}
+.side-tabs button::after {
+  content: "";
+  position: absolute; left: var(--sp-5); right: var(--sp-5); bottom: -1px;
+  height: 2px; border-radius: 2px;
+  background: var(--zhu);
+  transform: scaleX(0);
+  transition: transform .28s var(--ease);
+}
+.side-tabs button:hover { color: var(--ink-dim); }
+.side-tabs button.active { color: var(--ink); }
+.side-tabs button.active::after { transform: scaleX(1); }
+
+/* 当前页签内容区：侧栏内唯一滚动的区域。min-height:0 允许它在 flex 列里
+ * 收缩到剩余空间；2px 内边距防止面板投影在滚动口边缘被硬切。 */
+.side-pane {
+  display: flex; flex-direction: column; gap: var(--sp-4);
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  padding: 2px 2px 3px;
+}
+.side-pane[hidden] { display: none; }
+
+/* ---------- 浮层 ---------- */
+
+#toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  background: var(--mo); color: var(--on-mo);
+  /* 去掉与底色几乎同色的 1px 描边，只留投影——「发丝线 + 宽阴影」是模板化签名。 */
+  border: none;
+  padding: var(--sp-4) var(--sp-8); border-radius: var(--r-lg);
+  font-size: var(--fs-ui);
+  box-shadow: var(--sh-toast);
+  z-index: 50; max-width: 82vw;
+  animation: rise .35s var(--ease);
+}
+#toast.err { background: var(--zhu-deep); color: #FFF; }
+.hidden { display: none !important; }
+
+#promoBox {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: var(--bg1); border: 1px solid var(--mo);
+  border-radius: var(--r-panel);
+  padding: var(--sp-6) var(--sp-7);
+  /* 明确的边 + 收紧的投影：选定「以边为主」，投影退回为深度辅助。 */
+  box-shadow: var(--sh-pop);
+  z-index: 20;
+}
+#promoBox .t { font-size: var(--fs-read); color: var(--ink-dim); margin-bottom: 9px; }
+#promoBox button { margin-right: 7px; font-family: var(--font-display); font-size: var(--fs-mv); padding: var(--sp-2) var(--sp-6); }
+
+#testPanel {
+  position: fixed; right: 18px; top: 18px; width: 390px; max-height: 72vh; overflow: auto;
+  background: var(--bg1);
+  /* 反向选择：这块浮层去掉 1px 发丝线，只靠投影表达「浮起」。 */
+  border: none;
+  border-radius: var(--r-panel);
+  padding: var(--sp-6) var(--sp-7);
+  font-family: var(--font-mono); font-size: var(--fs-md);
+  z-index: 40;
+  box-shadow: var(--sh-test);
+}
+#testPanel .ok { color: var(--ok); }
+#testPanel .fail { color: var(--zhu); font-weight: 700; }
+
+/* ---------- 滚动条：浏览器原生件也是设计的一部分 ----------
+ * 全站唯一一份主题化：所有可滚动容器共享。
+ * 滑块用 transparent 内边 + background-clip:padding-box 视觉变细，
+ * 不再按容器底色抄三份边框色。 */
+:where(.feed, .records, .ledger, #promoBox, #testPanel, .settings-body, #toast,
+       .side-pane, .tactics-list-body, .rp-moves, .drawer-body, .archive) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+:where(.feed, .records, .ledger, #promoBox, #testPanel, .settings-body,
+       .side-pane, .tactics-list-body, .rp-moves, .drawer-body, .archive)::-webkit-scrollbar { width: 8px; height: 8px; }
+:where(.feed, .records, .ledger, #promoBox, #testPanel, .settings-body,
+       .side-pane, .tactics-list-body, .rp-moves, .drawer-body, .archive)::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;   /* 与轨道同底，视觉上让滑块变细 */
+  background-clip: padding-box;
+}
+:where(.feed, .records, .ledger, #promoBox, #testPanel, .settings-body,
+       .side-pane, .tactics-list-body, .rp-moves, .drawer-body, .archive)::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); background-clip: padding-box; }
+:where(.feed, .records, .ledger, #promoBox, #testPanel, .settings-body,
+       .side-pane, .tactics-list-body, .rp-moves, .drawer-body, .archive)::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- 动效与响应式 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  header, main { padding-left: var(--sp-6); padding-right: var(--sp-6); }
+  .board-card { padding: var(--sp-5); }
+  .brand h1 { font-size: var(--fs-game); }
+  /* 窄屏头部：品牌独占一行、状态芯片自成一行。chip 是 nowrap 的，
+   * 和品牌挤同一行必然有一个被裁切（实测 420px 下品牌副标题就有 255px 宽）。
+   * 收起弹性占位符，让换行点变得确定，不依赖字体加载后的宽度浮动。 */
+  header { align-items: flex-start; row-gap: var(--sp-4); }
+  .head-spacer { display: none; }
+  .chip { font-size: var(--fs-xs); padding: 3px var(--sp-4); }
+  /* 驾驶舱四指标在 345px 内每格不足 80px，「最快 / 最慢」会被迫折行；
+   * 改两列，读数优先于排布密度。 */
+  .engine-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+

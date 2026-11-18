@@ -1,0 +1,208 @@
+/* ---------- 棋盘区 ---------- */
+
+.board-card {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: var(--pad-card);
+  box-shadow: var(--sh-card);
+}
+
+.board-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: var(--sp-5); gap: var(--sp-4); flex-wrap: wrap;
+}
+.board-head-left { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; }
+.board-head-right { display: flex; align-items: center; gap: var(--sp-3); flex: 0 0 auto; }
+
+#gameName {
+  font-family: var(--font-display);
+  font-size: var(--fs-game); letter-spacing: 3px;
+}
+
+#turnBadge {
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill); padding: 3px var(--sp-5);
+  background: var(--bg2);
+  white-space: nowrap;
+}
+#turnBadge.thinking { color: var(--zhu); border-color: var(--zhu-border); animation: breathe 1.6s ease-in-out infinite; }
+
+@keyframes breathe { 50% { opacity: .55; } }
+
+.board-row { display: flex; gap: var(--sp-5); }
+
+/* 局势条：玄墨=先手，朱砂=后手 */
+.eval-bar {
+  width: 13px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  position: relative;
+  background: linear-gradient(180deg, var(--eval-a), var(--eval-b));
+  border: 1px solid var(--line-strong);
+  flex: 0 0 auto;
+}
+.eval-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 100%;
+  background: linear-gradient(180deg, var(--mo-hi), var(--mo-deep));
+  /* 用 scaleY 而非 height：缩放走合成层，0.7s 过渡期间不触发逐帧重排。
+   * 数值由 JS 写 transform（0~0.96）。 */
+  transform-origin: bottom;
+  transform: scaleY(.5);
+  transition: transform var(--dur-slow) var(--ease);
+}
+.eval-mid {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 0; border-top: 1px dashed rgb(var(--rgb-white) / 75%);
+}
+
+/* 棋盘 canvas 是引擎写死的定宽（560px），父容器更宽时必须居中——
+ * 否则棋盘贴左、右侧留一大块空白，卡片看起来「歪」。
+ * 局势条在棋盘左侧占 13px，居中后以「条 + 棋盘」整体为视觉单元，两侧留白对称。 */
+/* 刻意**不**给 canvas 挂 filter：那会让每次 draw() 之后多跑一遍整块位图的滤镜管线。
+   暗色下压亮改由绘制层换一组配色实现（src/ui/board-theme.ts → gfx 的 board/line）。 */
+#board {
+  display: block; margin-inline: auto;
+  border-radius: var(--r-md); max-width: 100%; height: auto;
+  border: 1px solid var(--line);
+}
+canvas { cursor: pointer; }
+#boardWrap { position: relative; flex: 1 1 auto; min-width: 0; }
+
+.status-strip {
+  margin-top: var(--sp-5);
+  display: flex; align-items: center; gap: var(--sp-4);
+  min-height: 22px;
+  font-size: var(--fs-compact);
+  color: var(--ink-dim);
+}
+.status-strip.over { color: var(--zhu); font-weight: 700; letter-spacing: .03em; }
+
+/* ---------- 控件 ---------- */
+
+.controls { margin-top: var(--sp-6); display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+
+button, .btn {
+  font-family: var(--font-body);
+  font-size: var(--fs-ui);
+  color: var(--ink);
+  background: var(--bg1);
+  border: 1px solid var(--line-ctl);
+  border-radius: var(--r-ctl);
+  padding: var(--sp-3) 15px;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), border-color var(--dur-med), background var(--dur-med), color var(--dur-med), box-shadow var(--dur-med);
+}
+button:hover { border-color: var(--mo); box-shadow: var(--sh-btn-hover); }
+button:active { transform: translateY(1px) scale(.985); }
+button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* 焦点环集中一处：:where() 保持零特异度，任何组件的 own 样式都不会压掉它。 */
+:where(button, select, input, summary, [tabindex], a):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+button.primary {
+  color: var(--on-mo);
+  font-weight: 700;
+  background: linear-gradient(160deg, var(--mo-hi), var(--mo-deep));
+  border-color: var(--mo-deep);
+}
+button.primary:hover { filter: brightness(1.18); }
+
+#retryBtn { color: var(--zhu); border-color: var(--zhu-border-retry); font-weight: 700; }
+#retryBtn:hover { border-color: var(--zhu); background: var(--zhu-bg-hover); }
+
+label { font-size: var(--fs-md); color: var(--ink-mute); display: block; }
+
+select, input {
+  font-family: var(--font-body); font-size: var(--fs-ui);
+  width: 100%; margin-top: var(--sp-1);
+  color: var(--ink);
+  background: var(--bg1);
+  border: 1px solid var(--line-ctl);
+  border-radius: var(--r-ctl);
+  padding: 7px var(--sp-4);
+  transition: border-color var(--dur-med), box-shadow var(--dur-med);
+}
+select:hover, input:hover { border-color: var(--mo); }
+select:focus, input:focus { border-color: var(--mo); outline: none; box-shadow: 0 0 0 3px var(--ink-focus-ring); }
+
+input[type="range"] { padding: 0; accent-color: var(--mo); }
+
+/* 战术模式提示（tactics-hints）：棋盘顶部的分层图例条（色点 + 层名 + 计数 + 接管徽标）。
+   浮在 #boardWrap（相对定位）之上、不挡落子（pointer-events:none）；无提示时整体 hidden。 */
+.tactic-legend {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  z-index: 15;
+  pointer-events: none;
+}
+.tl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--tl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 2px 9px;
+  font-size: var(--fs-xs);
+  color: var(--ink);
+}
+.tl-chip i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px var(--swatch-ring);
+}
+.tl-chip.is-fire {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+.tl-fire {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--bg1);
+  background: var(--ink);
+  border-radius: var(--r-pill);
+  padding: 0 var(--sp-2);
+  line-height: 15px;
+}
+
+/* 棋盘头部两个一键开关（规则 / 提示）共用同一枚小药丸；点亮色按语义区分：
+   提示=玄墨（查看类），禁手=朱砂（改规则，红印章的语义）。 */
+.hint-btn,
+.rule-btn {
+  font-size: var(--fs-md);
+  padding: 3px var(--sp-4);   /* 同 .mini-btn：够到 24px 触控下限 */
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-ctl);
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+.hint-btn:hover,
+.rule-btn:hover { color: var(--ink); border-color: var(--mo); box-shadow: none; }
+.hint-btn.is-on {
+  background: var(--ink);
+  color: var(--bg1);
+  border-color: var(--ink);
+}
+.rule-btn.is-on {
+  background: var(--zhu);
+  color: var(--on-zhu);
+  border-color: var(--zhu);
+}
+

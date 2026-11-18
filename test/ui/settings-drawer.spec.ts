@@ -319,4 +319,17 @@ describe('抽屉开合与就地更新', () => {
       expect(card.querySelector('.who')?.textContent).toContain(TACTIC_TAGS[layer]!);
     }
   });
+
+  it('开关抽屉同步 aria-hidden / aria-expanded 并在开合时迁移与归还焦点', () => {
+    mount('<button id="settingsGear" type="button" aria-expanded="false">设置</button>' + DRAWER_HTML);
+    openSettingsDrawer(document);
+    expect(need(document.getElementById('settingsDrawer')).getAttribute('aria-hidden')).toBe('false');
+    expect(need(document.getElementById('settingsGear')).getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement?.id).toBe('drawerClose');
+
+    closeSettingsDrawer(document);
+    expect(need(document.getElementById('settingsDrawer')).getAttribute('aria-hidden')).toBe('true');
+    expect(need(document.getElementById('settingsGear')).getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement?.id).toBe('settingsGear');
+  });
 });

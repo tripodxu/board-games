@@ -1,0 +1,944 @@
+/* ---------- 面板卡片语汇（.panel 与 P7 三面板共用一套底板） ---------- */
+:where(.panel, .rp-panel, .lb-panel, .op-panel) {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: var(--pad-panel);
+  box-shadow: var(--sh-panel);
+}
+
+.panel-title {
+  display: flex; align-items: baseline; gap: var(--sp-4); flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+.panel-title h2 {
+  font-family: var(--font-display);
+  font-weight: 400; font-size: var(--fs-title); letter-spacing: 1.2px;
+  line-height: 1.25;
+}
+.panel-title .note { font-size: var(--fs-xs); color: var(--ink-mute); }
+.panel-title .spacer { flex: 1; }
+
+/* ---------- 可折叠面板 ---------- */
+
+.panel.collapsible > .panel-title { cursor: pointer; }
+.panel.collapsible.folded > .panel-title { margin-bottom: 0; }
+.panel.folded > .panel-body { display: none; }
+/* 折叠时隐藏指向面板内部的实体控件，标题行的说明/计数保留作「瞥视」 */
+.panel.folded .series-chips,
+.panel.folded .mini-btn { display: none; }
+
+button.fold {
+  align-self: center;
+  flex: 0 0 auto;
+  /* 24×24 是 WCAG 2.5.8 的触控目标下限；图标本身仍是 16px，多出的是可点面积 */
+  width: 24px; height: 24px; padding: 0; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: var(--r-xs);
+  color: var(--ink-mute);
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+button.fold:hover { color: var(--ink); background: var(--bg2); }
+button.fold svg { transition: transform .18s var(--ease); }
+.panel.folded button.fold svg { transform: rotate(-90deg); }
+
+.panel:not(.folded) > .panel-body { animation: panel-open .18s var(--ease); }
+@keyframes panel-open {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel:not(.folded) > .panel-body { animation: none; }
+}
+
+/* ---------- 共享件：状态读数块（块中块的统一表面） ---------- */
+:where(.em, .rs, .ct, .duel-col, .latest-bigs .big) {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+/* 共享件：块内「键值读数」的字阶（k 小字 + b/v 数据字） */
+:where(.em .k, .rs span, .ct span) { font-size: var(--fs-xs); color: var(--ink-mute); }
+
+/* ---------- 共享件：空态（所有「暂无数据」同一口径） ---------- */
+:where(.feed-empty, .ledger-empty, .lb-empty, .op-empty, .cal-empty, .chart-empty) {
+  padding: var(--sp-9) var(--sp-3);
+  text-align: center;
+  color: var(--ink-mute);
+  font-size: var(--fs-read);
+  line-height: 1.75;
+  text-wrap: balance;   /* 两行提示不出现「一行只有一个字」的孤字尾行 */
+}
+
+/* ---------- 共享件：悬停底色（只在真悬停设备生效） ----------
+ * 触屏点按后 :hover 会「粘住」不复原，看起来像选中态。用 (hover: hover) 把它
+ * 限定给鼠标/触控笔设备；键盘与触屏仍有 :focus-visible 与 .is-cur 表达当前项。 */
+@media (hover: hover) {
+  :where(.rec-row:not(.rec-head), .exp-latest-row):hover { background: var(--bg2); }
+  .tv-row:hover { background: var(--bg1); color: var(--ink); box-shadow: none; }
+  .rp-move:hover { background: var(--bg1); border-color: transparent; color: var(--ink); box-shadow: none; }
+}
+
+/* ---------- 共享件：条形（概率条 / 胜率条，scaleX + transform-origin:left，不动布局） ----------
+ * 全站 7 处条形共用一条轨道 + 一个填充：候选榜 .rank-row / 决策流 .bar-row /
+ * 最新手置信 .conf / 排行榜 .lb-bar / 开具体验 .op-bar / 实验报告 .exp-bar 与 .exp-agg-bar。
+ * JS 只写 transform；尺寸与配色由上下文后置覆写（:where 零特异度，靠源顺序定先后）。 */
+:where(.rank-row .bar, .bar-row .bar, .latest-head .conf, .lb-bar, .op-bar, .exp-bar, .exp-agg-bar) {
+  display: block;
+  height: 6px; border-radius: 3px; background: var(--bg3); overflow: hidden;
+}
+:where(.rank-row .bar i, .bar-row .bar i, .latest-head .conf i, .lb-bar i, .op-bar i, .exp-bar i, .exp-agg-bar i) {
+  display: block; width: 100%; height: 100%;
+  border-radius: 3px;
+  background: var(--bar-neutral);
+  transform-origin: left; transform: scaleX(0);
+  transition: transform .6s var(--ease);
+}
+/* 候选榜行高只留 5px 给条 */
+:where(.rank-row .bar) { height: 5px; }
+/* 胜率条是「已发生的事实」不是候选概率，一律玄墨实心（无中性态） */
+:where(.lb-bar i, .op-bar i, .exp-bar i, .exp-agg-bar i) { background: var(--mo); }
+:where(.latest-head .conf i) { background: linear-gradient(90deg, var(--mo-hi), var(--mo)); transition-duration: var(--dur-slow); }
+:where(.bar-row.is-chosen .bar i) { background: linear-gradient(90deg, var(--mo-hi), var(--mo)); }
+:where(.rank-row.is-chosen .bar i) { background: var(--mo); }
+/* 尺寸由上下文给：分桶条定宽不收缩，单轮条吃满行内余宽 */
+:where(.exp-agg-bar) { width: 46px; flex: 0 0 auto; }
+:where(.exp-bar) { flex: 1 1 auto; }
+
+/* ---------- 趋势图 ---------- */
+
+.series-chips { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r-pill); overflow: hidden; background: var(--bg2); }
+.series-chips button {
+  border: none; border-radius: 0;
+  background: none; color: var(--ink-mute);
+  font-size: var(--fs-sm); padding: var(--sp-1) var(--sp-5);
+}
+.series-chips button + button { border-left: 1px solid var(--line); }
+.series-chips button.active { background: var(--mo); color: var(--on-mo); }
+
+.trend-root { position: relative; width: 100%; }
+.trend-svg { display: block; width: 100%; height: auto; }
+
+.grid { stroke: var(--line); stroke-width: 1; }
+.grid-mid { stroke: var(--line-strong); stroke-dasharray: 3 4; }
+.tick-label { fill: var(--ink-mute); font-family: var(--font-mono); font-size: var(--fs-xs); }
+.trend-line { stroke: var(--mo); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.dot-last { fill: var(--mo); }
+
+/* —— 本项目唯一被编排的动效时刻：「落子」 ——
+ * 曲线在数据到齐时一次性描线，末点同时做一次单发的外扩。
+ * 两件事共用同一段时序与同一条 --ease 曲线，读起来是一个动作而不是两处特效。 */
+/* 用 pathLength="1" 把描线进度归一化，曲线多长都走满一次，不必猜长度。
+ * （.trend-line / .rel-diag 由 charts.ts 写入 pathLength=1） */
+.trend-line, .rel-diag { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw-in .8s var(--ease) forwards; }
+.rel-diag { animation-delay: .12s; }
+@keyframes draw-in { to { stroke-dashoffset: 0; } }
+
+.land-ring {
+  fill: none; stroke: var(--mo); stroke-width: 1.2;
+  transform-origin: center; transform-box: fill-box;
+  animation: land 1.1s var(--ease) 1 both;   /* 单发，不是循环 */
+}
+@keyframes land { 0% { transform: scale(.5); opacity: .9; } 70%, 100% { transform: scale(1.8); opacity: 0; } }
+
+.cross-line { stroke: var(--ink-cross); stroke-dasharray: 2 3; }
+.cross-dot { fill: var(--zhu); }
+
+.trend-tip {
+  display: none;
+  position: absolute; z-index: 8;
+  pointer-events: none;
+  font-size: var(--fs-sm); line-height: 1.5;
+  color: var(--ink-dim);
+  background: var(--pop-bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-4);
+  box-shadow: var(--sh-tip);
+  white-space: nowrap;
+}
+.trend-tip b { color: var(--ink); font-family: var(--font-mono); font-weight: 600; }
+.trend-tip .mono { color: var(--zhu); }
+
+.legend { display: flex; gap: var(--sp-6); font-size: var(--fs-xs); color: var(--ink-mute); margin-top: var(--sp-1); }
+.legend .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+.legend .sw.first { background: var(--mo); }
+.legend .sw.second { background: var(--zhu); }
+
+/* 趋势图的空态盖在网格中央，而不是排在 svg 之后掉到图表下方
+ * （.trend-root 已是 position:relative；校准图的 .cal-empty 是独立块，不走这条）。 */
+.trend-root .chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: 0 36px;
+}
+/* 空态标记用自绘 SVG，而不是拿 Unicode 字形顶替图标系统。
+ * 这张图直接画出「本该出现的曲线」：坐标轴 + 一条虚线走势。 */
+.chart-empty .glyph { display: block; margin: 0 auto var(--sp-5); }
+.chart-empty .glyph path,
+.chart-empty .glyph line { stroke: var(--line-strong); }
+.chart-empty .glyph .g-dash { stroke-dasharray: 3 4; }
+
+/* 决策流：#feed 容器上带 .feed */
+.feed {
+  display: flex; flex-direction: column;
+  max-height: 340px; overflow-y: auto;
+  margin: 0 -4px; padding: 0 var(--sp-1); /* 让滚动条不贴着面板内边距 */
+}
+
+/* ---------- Jev 引擎面板 ---------- */
+
+.engine-panel { position: relative; overflow: hidden; }
+.engine-panel::after {
+  content: "";
+  position: absolute; right: -30px; top: -30px;
+  width: 130px; height: 130px;
+  background: radial-gradient(circle, var(--zhu-glow), transparent 68%);
+  pointer-events: none;
+}
+
+.engine-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+.engine-id { display: flex; align-items: center; gap: 11px; }
+
+.seal {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  font-family: var(--font-display);
+  font-size: var(--fs-seal); color: #FFF;
+  border-radius: var(--r-lg);
+  background: linear-gradient(155deg, var(--zhu-hi), var(--zhu-deep));
+  box-shadow: var(--sh-seal);
+}
+
+.engine-name { font-family: var(--font-mono); font-weight: 600; font-size: var(--fs-name); letter-spacing: .04em; }
+.engine-name .model { color: var(--ink-mute); font-weight: 400; font-size: var(--fs-xs); margin-left: 5px; }
+.engine-sub { font-size: var(--fs-xs); color: var(--ink-mute); letter-spacing: .05em; }
+
+.status-light {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: var(--ink-mute);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill); padding: 3px var(--sp-4);
+  background: var(--bg2);
+  white-space: nowrap;
+}
+.status-light i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--line-strong);
+}
+.status-light.thinking { color: var(--zhu); border-color: var(--zhu-border-soft); }
+.status-light.thinking i { background: var(--zhu); animation: breathe 1.1s ease-in-out infinite; }
+.status-light.running { color: var(--ink-dim); }
+.status-light.running i { background: var(--mo); }
+
+.engine-metrics {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px;
+  margin-top: var(--sp-5);
+}
+.em { padding: 7px var(--sp-4) var(--sp-2); }
+.em .v { display: block; font-family: var(--font-mono); font-size: var(--fs-compact); font-weight: 600; color: var(--mo); line-height: 1.3; }
+.em .k { letter-spacing: .04em; }
+
+.spark-wrap { margin-top: 11px; }
+.spark-label {
+  display: flex; justify-content: space-between;
+  font-size: var(--fs-xs); color: var(--ink-mute);
+  margin-bottom: var(--sp-1);
+}
+.spark-label .mono { color: var(--mo); font-weight: 600; }
+.spark {
+  display: flex; align-items: flex-end; gap: 3px;
+  height: 34px;
+  padding: 3px var(--sp-1);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.spark i {
+  flex: 1;
+  min-height: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--mo);
+  opacity: .78;
+  transform-origin: bottom;
+  transition: transform .4s var(--ease);
+}
+.spark i.slow { background: var(--zhu); }
+.spark-empty { width: 100%; text-align: center; font-size: var(--fs-xs); color: var(--ink-mute); align-self: center; }
+
+/* ---------- 对决 ---------- */
+
+.duel { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-4); align-items: stretch; }
+.duel-vs {
+  align-self: center;
+  font-family: var(--font-display); font-size: var(--fs-ui);
+  color: var(--ink-mute);
+  letter-spacing: 1px;
+}
+.duel-col { padding: var(--sp-4) var(--sp-5); }
+.duel-name {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  font-size: var(--fs-md); font-weight: 700; color: var(--ink);
+  margin-bottom: 7px;
+}
+/* 双方色点（对决卡与实验 A/B 卡共用）：玄墨=先手/黑方，朱砂=后手/白方 */
+:where(.duel-name .dot, .exp-side-name .dot) {
+  width: 9px; height: 9px; border-radius: 50%;
+  display: inline-block; flex: 0 0 auto;
+}
+:where(.duel-name .dot.mo, .exp-side-name .dot.mo) { background: var(--mo); }
+:where(.duel-name .dot.zhu, .exp-side-name .dot.zhu) { background: var(--zhu); }
+.duel-row {
+  display: flex; justify-content: space-between;
+  font-size: var(--fs-xs); color: var(--ink-mute);
+  line-height: 1.9;
+}
+.duel-row b { font-weight: 600; color: var(--ink-dim); }
+
+/* ---------- 最新决策候选榜 ---------- */
+
+.rank-count {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: var(--ink-mute);
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: 2px 9px;
+}
+
+.latest-head {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: var(--sp-4);
+  margin-bottom: 9px;
+}
+.latest-head .mv { font-size: var(--fs-game); font-weight: 600; color: var(--ink); }
+.latest-head .conf-num { font-size: var(--fs-sm); color: var(--ink-dim); font-weight: 600; }
+
+.latest-bigs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: var(--sp-4); }
+.latest-bigs .big {
+  padding: var(--sp-2) var(--sp-4);
+  display: flex; flex-direction: column;
+}
+.latest-bigs .big .k { font-size: var(--fs-xs); color: var(--ink-mute); }
+.latest-bigs .big b { font-family: var(--font-mono); font-size: var(--fs-lead); font-weight: 600; color: var(--mo); }
+
+.rank-list { display: flex; flex-direction: column; }
+.rank-row {
+  display: grid; grid-template-columns: 16px 52px 1fr 46px;
+  align-items: center; gap: var(--sp-3);
+  padding: var(--sp-1) 0;
+  border-top: 1px dashed var(--line);
+  font-size: var(--fs-xs);
+}
+.rank-row .no { color: var(--ink-mute); font-size: var(--fs-xs); }
+.rank-row .k { color: var(--ink-dim); }
+.rank-row .p { text-align: right; color: var(--ink-mute); }
+.rank-row.is-chosen .k, .rank-row.is-chosen .p { color: var(--ink); font-weight: 700; }
+.rank-row.is-chosen .no { color: var(--zhu); font-weight: 700; }
+.rank-rest {
+  padding: 5px 0 1px;
+  border-top: 1px dashed var(--line);
+  font-size: var(--fs-xs); color: var(--ink-mute);
+  text-align: center;
+}
+
+/* ---------- 固定槽位（面板高度恒定，不随每步候选数/指标数跳动） ---------- */
+.latest-bigs .big.is-empty { border-style: dashed; }
+.latest-bigs .big.is-empty b { color: var(--ink-mute); }
+.rank-row.is-empty .no,
+.rank-row.is-empty .k,
+.rank-row.is-empty .p { color: var(--line-strong); }
+.rank-row.is-empty .bar { opacity: .35; }
+.rank-rest.is-empty { visibility: hidden; }
+/* 标题行说明文字不折行：长模型名不得把标题撑成两行（保持 head 恒 1 行） */
+.panel-title .note { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-title h2, .panel-title .rank-count { flex: 0 0 auto; }
+
+/* ---------- 战绩簿 ---------- */
+
+.mini-btn {
+  font-size: var(--fs-xs);
+  padding: 3px var(--sp-4);   /* 3px 而非 2px：把行高顶到 24px 的触控下限 */
+  border-radius: var(--r-pill);
+  color: var(--ink-mute);
+}
+.record-stats {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.rs { padding: var(--sp-2) var(--sp-1) 5px; text-align: center; }
+.rs b { display: block; font-family: var(--font-mono); font-size: var(--fs-ui); font-weight: 600; color: var(--mo); line-height: 1.35; }
+
+.records { max-height: 230px; overflow-y: auto; }
+.rec-row {
+  display: grid; grid-template-columns: 86px 1fr 38px 74px 44px 52px 56px;
+  align-items: center; gap: 5px;
+  padding: 5px 2px;
+  border-top: 1px dashed var(--line);
+  font-size: var(--fs-xs); color: var(--ink-dim);
+}
+/* .rec-row.rec-head 的粘性表头属性已并入上方共享的「粘性表头语汇」 */
+.rec-row .rec-time { color: var(--ink-mute); }
+.rec-row .rec-game { font-weight: 600; }
+
+/* ---------- 战术沿革（棋盘下方，默认折叠的 details 登记表） ---------- */
+.tactics-list {
+  margin: var(--sp-5) 0 0;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--bg2); overflow: hidden;
+}
+.tactics-list summary {
+  display: flex; align-items: center; gap: var(--sp-3);
+  cursor: pointer; list-style: none; user-select: none;
+  font-size: var(--fs-sm); color: var(--ink-dim); letter-spacing: .12em;
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--bg1);
+  transition: color var(--dur-fast);
+}
+.tactics-list summary::-webkit-details-marker { display: none; }
+.tactics-list summary:hover { color: var(--ink); }
+/* 折叠指示统一全站口径：展开=▼、折叠=◀（与侧栏面板 button.fold 一致） */
+.tl-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transform: rotate(-90deg); transition: transform .18s var(--ease); }
+.tactics-list[open] .tl-chev { transform: none; }
+.tactics-list[open] summary { border-bottom: 1px solid var(--line); }
+/* 展开后的登记表自身滚动（默认折叠，展开也不把棋盘推出视口） */
+.tactics-list-body {
+  display: block;
+  max-height: 244px; overflow-y: auto;
+}
+.tv-row {
+  display: flex; align-items: baseline; gap: var(--sp-3); width: 100%; text-align: left;
+  font: inherit; font-size: var(--fs-sm); line-height: 1.5; padding: var(--sp-1) var(--sp-5);
+  border: none; border-bottom: 1px solid var(--line); background: transparent;
+  color: var(--ink-dim); cursor: pointer;
+}
+.tactics-list-body .tv-row:last-child { border-bottom: none; }
+.tv-row .tv-id { font-family: var(--font-mono); font-size: var(--fs-xs); flex: 0 0 34px; color: var(--ink-mute); }
+.tv-row .tv-name { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tv-row .tv-meta { flex: 0 0 auto; font-size: var(--fs-cap); color: var(--ink-mute); }
+.tv-row.used .tv-id { color: var(--zhu); }
+/* 「当前项」语汇：战术沿革当前档 与 回放器当前手 同一口径（朱砂柔底 + 加重）。
+ * 这里不能用 :where()：基类 `.tv-row` / `.rp-move` 各自带 background:transparent，
+ * 零特异度的共享规则会被它们盖掉（当前手底色就没了）。 */
+.tv-row.cur,
+.rp-move.is-cur,
+.rp-move[aria-current="true"] {
+  background: var(--zhu-bg-soft); color: var(--ink); font-weight: 700;
+}
+.tv-row.cur .tv-id { color: var(--zhu); }
+
+/* 战绩簿联名副行：谁执黑执白、各带哪一版战术（超出列宽省略，hover 看全） */
+.rec-row .rec-game i {
+  display: block; font-style: normal; font-weight: 400; font-size: var(--fs-micro);
+  color: var(--ink-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rec-row .rec-mode { color: var(--ink-mute); }
+.rec-row .rec-winner { color: var(--ink); font-weight: 600; }
+.rec-row .rec-winner i {
+  font-style: normal; font-weight: 400; font-size: var(--fs-xs);
+  color: var(--ink-mute); margin-left: 3px;
+}
+.rec-row .rec-meta { text-align: right; color: var(--ink-mute); }
+/* 战绩表 7 列固定 ≈394px，窄屏必然横向溢出。
+ * ≤640px 时舍弃「延迟/花费」两列并重排列数——密集数据表里，
+ * 隐藏次要列比给用户一条横向滚动条更符合「扫读优先」。 */
+@media (max-width: 640px) {
+  .rec-row { grid-template-columns: 66px 1fr 32px 1fr; gap: var(--sp-1); }
+  .rec-row > :nth-child(n + 6) { display: none; }
+}
+
+.rec-row.draw .rec-winner { color: var(--ink-mute); }
+
+/* ---------- 校准实验室 ---------- */
+
+/* 空态标记（自绘 SVG）：一条完美校准的对角参考线，和一个偏离它的落点。 */
+.cal-empty .glyph { display: block; margin: 0 auto var(--sp-5); color: var(--line-strong); }
+.cal-empty .glyph .g-ref { stroke-dasharray: 3 4; }
+
+/* 技巧分主数字。刻意不用 border-left 强调——craft-floor 拒绝「卡片上 1px 以上的
+ * 彩色左边条」这类装饰。改由底色深浅 + 数值本身的颜色承担层级，
+ * 层级差因此来自真实排版而不是一条色带。 */
+.cal-hero {
+  display: flex; align-items: baseline; gap: var(--sp-4); flex-wrap: wrap;
+  padding: 11px var(--sp-6) var(--sp-4);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.cal-hero.bad { background: var(--bad-bg); border-color: var(--zhu-border-cal); }
+.cal-hero-v { font-size: var(--fs-hero); font-weight: 600; line-height: 1; color: var(--mo); letter-spacing: -.01em; }
+.cal-hero.bad .cal-hero-v { color: var(--zhu); }
+.cal-hero-k { font-size: var(--fs-md); color: var(--ink-dim); letter-spacing: .08em; }
+.cal-hero-note { font-size: var(--fs-xs); color: var(--ink-mute); margin-left: auto; }
+
+.cal-tiles {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2); margin: 9px 0 var(--sp-1);
+}
+.ct { padding: var(--sp-2) var(--sp-1) 5px; text-align: center; }
+.ct b { display: block; font-size: var(--fs-compact); font-weight: 600; color: var(--mo); line-height: 1.35; }
+
+.cal-chart { margin: 2px 0 var(--sp-1); }
+.rel-svg { display: block; width: 100%; height: auto; }
+.rel-diag { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.rel-diag-label { fill: var(--line-strong); }
+.rel-gap { stroke: var(--zhu); stroke-width: 3; stroke-linecap: round; }
+.rel-dot { fill: var(--zhu); stroke: var(--bg1); stroke-width: 1; }
+.rel-axis { fill: var(--ink-mute); }
+
+.cal-verdict { font-size: var(--fs-md); color: var(--ink-dim); line-height: 1.7; margin-top: 2px; }
+.cal-verdict.warn { color: var(--zhu); }
+.cal-caveat { font-size: var(--fs-xs); color: var(--ink-mute); line-height: 1.65; margin-top: var(--sp-2); }
+
+/* ---------- 决策流 ---------- */
+
+.decision {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--sp-1) var(--sp-5);
+  align-items: center;
+  padding: var(--sp-4) 2px;
+  border-top: 1px solid var(--line);
+  animation: rise .4s var(--ease);
+}
+.decision:first-child { border-top: none; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+
+.decision .who { font-size: var(--fs-xs); color: var(--ink-mute); letter-spacing: .04em; }
+.decision .who b { color: var(--ink-dim); font-weight: 600; }
+.decision .mv { font-family: var(--font-mono); font-size: var(--fs-mv); font-weight: 600; color: var(--ink); }
+.decision .mv .sep { color: var(--ink-mute); font-weight: 400; }
+
+.decision .gauge { grid-row: 1 / 4; grid-column: 3; }
+.gauge-track { fill: none; stroke: var(--bg3); stroke-width: 3; }
+.gauge-arc { fill: none; stroke: var(--mo); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .8s var(--ease); }
+.gauge-num { fill: var(--ink-dim); font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; }
+
+.bar-row { display: grid; grid-template-columns: 62px 1fr 48px; align-items: center; gap: var(--sp-3); }
+.bar-row .k { font-size: var(--fs-xs); color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row.is-chosen .k { color: var(--ink); }
+.bar-row .p { font-size: var(--fs-xs); color: var(--ink-mute); text-align: right; }
+.bar-row.is-chosen .p { color: var(--ink); font-weight: 600; }
+
+/* 概率条组跨前两列（与 .decision .meta 同跨法），仪表占第三列 */
+.decision .prob-bars { grid-column: 1 / 3; }
+
+.decision .meta { grid-column: 1 / 3; font-size: var(--fs-xs); color: var(--ink-mute); }
+.decision .meta b { color: var(--ink-dim); font-weight: 600; }
+.decision .meta .warn { color: var(--zhu); }
+
+/* ---------- 棋谱 ---------- */
+
+.ledger {
+  columns: 2;
+  column-gap: 22px;
+  max-height: 148px; overflow-y: auto;
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  line-height: 2;
+}
+.ledger .no { color: var(--ink-mute); display: inline-block; min-width: 26px; }
+.ledger .tag {
+  font-size: var(--fs-xs); color: var(--ink-mute);
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: 0 var(--sp-2); margin-left: 5px;
+}
+.ledger .tag.jev { color: var(--ink); border-color: var(--mo); }
+
+/* 棋谱归档：按战术版本（或代码版本）分组的普通分组列表（无后端时只剩一句 hint） */
+.archive { display: block; }
+/* 筛选行：面板里的密集控件，尺寸收得比抽屉里的表单小一号（全局 select/input 是 13px / width:100%） */
+.arc-filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4);
+  margin: 0 0 var(--sp-3); font-size: var(--fs-xs); color: var(--ink-mute);
+}
+.arc-filters label { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-xs); }
+.arc-filters select, .arc-filters input {
+  width: auto; max-width: 168px; margin-top: 0; padding: 3px var(--sp-2);
+  font-size: var(--fs-xs); border-radius: var(--r-xs); background: var(--bg2);
+}
+.arc-filters input::placeholder { color: var(--ink-mute); }
+/* 「只看我的」勾选框：不吃上面那条输入框尺寸 */
+.arc-filters .arc-mine { cursor: pointer; }
+.arc-filters input[type="checkbox"] {
+  width: auto; max-width: none; padding: 0; margin: 0; background: none; accent-color: var(--mo);
+}
+.arc-group + .arc-group { margin-top: var(--sp-4); }
+.arc-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3);
+  font-size: var(--fs-sm); font-weight: 700; color: var(--ink);
+  padding: 5px var(--sp-3); border-radius: var(--r-xs); background: var(--bg2);
+}
+.arc-count { font-size: var(--fs-cap); font-weight: 400; color: var(--ink-mute); }
+.arc-row {
+  display: flex; align-items: baseline; gap: var(--sp-3);
+  font-size: var(--fs-xs); color: var(--ink-dim); padding: 2px var(--sp-3);
+}
+.arc-row .arc-when { font-family: var(--font-mono); font-size: var(--fs-cap); color: var(--ink-mute); flex: 0 0 96px; }
+.arc-row .arc-game { flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.arc-row .arc-open { flex: 0 0 auto; font-size: var(--fs-cap); color: var(--mo); text-decoration: none; }
+.arc-row .arc-open:hover { text-decoration: underline; }
+/* keyset 分页的「加载更多」：整行居中，读取中时按钮自身带 disabled 属性 */
+.arc-more { display: block; margin: var(--sp-4) auto 2px; }
+.arc-more[disabled] { opacity: .6; cursor: default; }
+
+/* ---------- 设置 ---------- */
+
+details.settings { border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--bg1); }
+details.settings summary {
+  cursor: pointer; list-style: none;
+  padding: 11px var(--sp-7);
+  font-family: var(--font-display); font-size: var(--fs-lead); letter-spacing: 2px;
+  color: var(--ink-dim);
+  display: flex; align-items: center; gap: var(--sp-3);
+}
+details.settings summary::-webkit-details-marker { display: none; }
+/* 展开指示用自绘 SVG chevron（与面板折叠钮同一笔法），不再拿 ＋/－ 字符顶替图标 */
+.disc-chev { margin-left: auto; flex: 0 0 auto; color: var(--ink-mute); transform: rotate(-90deg); transition: transform .18s var(--ease); }
+details.settings[open] .disc-chev { transform: none; }
+details.settings[open] summary { color: var(--ink); border-bottom: 1px solid var(--line); }
+details.settings .settings-body { padding: var(--sp-1) var(--sp-7) var(--sp-6); }
+.settings-body label { margin: 9px 0 0; }
+.settings-body label.check-row {
+  display: flex; align-items: center; gap: var(--sp-3); cursor: pointer;
+}
+.settings-body label.check-row input[type="checkbox"] {
+  width: auto; margin: 0; accent-color: var(--mo);
+}
+
+/* ---------- 全局设置抽屉 ---------- */
+/* 齿轮钮与 .chip 同一竖排metrics（同字号、同内边距），页头两种胶囊高度一致 */
+.gear-btn {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  border: 1px solid var(--line-strong); border-radius: var(--r-pill);
+  background: var(--chip-bg); color: var(--ink-dim);
+  font: inherit; font-size: var(--fs-sm); padding: var(--sp-1) var(--sp-5); cursor: pointer;
+}
+.gear-btn:hover { color: var(--zhu); border-color: var(--zhu-border); }
+.drawer-mask { position: fixed; inset: 0; background: var(--mask-bg); z-index: 40; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
+  width: min(430px, 92vw); background: var(--bg1);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--sh-drawer);
+  display: flex; flex-direction: column;
+}
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-6) var(--sp-7) var(--sp-4); border-bottom: 1px solid var(--line); }
+.drawer-head h2 { font-family: var(--font-display); font-size: var(--fs-head); letter-spacing: 2px; margin: 0; }
+.drawer-body { overflow-y: auto; padding: var(--sp-6) var(--sp-7) 28px; }
+/* 抽屉里的表单沿用侧栏设置块的手感（label 竖排 + 下拉通栏） */
+.drawer-body label { display: block; margin: var(--sp-4) 0 0; font-size: var(--fs-md); color: var(--ink-dim); line-height: 1.7; }
+.drawer-body label select, .drawer-body label input[type="text"], .drawer-body label input[type="password"] { width: 100%; margin-top: 3px; }
+.drawer-body label.check-row { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
+.drawer-body label.check-row input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--mo); }
+.drawer-sub { margin: 18px 0 var(--sp-3); font-size: var(--fs-read); color: var(--ink-dim); letter-spacing: .04em; }
+/* 双方覆盖：名字占一列，三个下拉各占一行 */
+.side-cfg { display: grid; grid-template-columns: 34px 1fr; gap: var(--sp-2) var(--sp-3); align-items: center; margin-bottom: var(--sp-4); }
+.side-cfg-name { font-size: var(--fs-read); color: var(--zhu); font-weight: 700; }
+.side-cfg label { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-md); color: var(--ink-dim); grid-column: span 2; }
+.side-cfg select { flex: 1 1 auto; min-width: 0; }
+
+/* 数据存储（后端）状态块：与实验面板同样的「块中块」节奏，但用实线边——
+ * 一个是可操作的实验台，一个是只读的状态读数 */
+.backend-block {
+  margin-top: var(--sp-4); padding: 9px var(--sp-5) var(--sp-4);
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--bg2);
+}
+.backend-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-4);
+  font-size: var(--fs-sm); color: var(--ink-mute);
+  line-height: 1.9;
+}
+.backend-row b { font-weight: 600; color: var(--ink-dim); text-align: right; }
+.backend-row b.ok { color: var(--ok); }
+.backend-row b.warn { color: var(--zhu); }
+.backend-block .hint { margin-top: var(--sp-1); }
+
+/* ---------- 对比实验面板 ---------- */
+.exp-panel {
+  margin-top: var(--sp-5); padding: var(--sp-4) var(--sp-5);
+  border: 1px dashed var(--line-ctl); border-radius: var(--r-ctl);
+  background: var(--ink-tint);
+}
+.exp-title { font-size: var(--fs-md); font-weight: 700; color: var(--ink); margin-bottom: var(--sp-2); display: flex; align-items: center; gap: var(--sp-2); }
+.exp-glyph { flex: 0 0 auto; color: var(--zhu); }
+/* 对局模式按钮组：人机/机机/人人。与折叠 details 里的 #mode select 双向同步，
+ * 实验运行中锁定为机机 */
+.mode-switch { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.mode-switch button {
+  flex: 1 1 auto; min-width: 0; padding: 5px var(--sp-1);
+  font-size: var(--fs-sm); line-height: 1.3;
+  border: 1px solid var(--line-strong); border-radius: var(--r-pill);
+  background: var(--bg2); color: var(--ink-mute);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mode-switch button:hover { color: var(--ink); }
+.mode-switch button.active { background: var(--mo); color: var(--on-mo); border-color: transparent; }
+.mode-switch button:disabled { opacity: .55; cursor: not-allowed; }
+/* A/B 并排双卡：每方一张卡（渠道/战术/思考三行），不再七个下拉抢一行 */
+.exp-sides { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+.exp-side {
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  padding: var(--sp-2) var(--sp-3); background: var(--ink-tint);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.exp-side-name { font-size: var(--fs-sm); font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 5px; }
+/* 色点已并入上方共享的「双方色点」规则 */
+.exp-field { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); color: var(--ink-dim); margin: 0; }
+.exp-field select { flex: 1 1 auto; min-width: 0; }
+/* 底部通栏：局数 + 开始/停止；状态单独一行，避免挤占按钮 */
+.exp-foot { margin-top: var(--sp-3); display: flex; align-items: flex-end; gap: var(--sp-3); }
+.exp-games { flex: 0 0 72px; margin: 0; display: flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--ink-dim); }
+.exp-games input { flex: 1 1 auto; min-width: 0; }
+/* .exp-row：渠道/思考行与结果行同一份行式排版（合并旧两处定义） */
+.exp-row { display: flex; align-items: center; gap: var(--sp-3); padding: 2px 0; font-size: var(--fs-sm); color: var(--ink-mute); }
+.exp-row select { flex: 1 1 auto; min-width: 0; }
+.exp-row b { color: var(--ink); }
+.exp-actions { flex: 1 1 auto; margin-top: var(--sp-3); display: flex; align-items: center; gap: var(--sp-4); }
+.exp-status-row { margin-top: var(--sp-2); min-height: 14px; }
+#expStatus { font-size: var(--fs-xs); color: var(--ink-mute); }
+#expResults { margin-top: var(--sp-3); font-size: var(--fs-md); }
+.exp-head { font-weight: 700; margin-bottom: var(--sp-1); }
+.dim { opacity: .62; }
+/* 实验报告卡片 */
+.exp-total { font-size: var(--fs-ui); font-weight: 700; margin-bottom: var(--sp-4); }
+.exp-card { border: 1px solid var(--line); border-radius: var(--r-ctl); padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-4); background: var(--ink-tint); }
+.exp-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; font-size: var(--fs-ui); margin-bottom: var(--sp-2); }
+.exp-card-head .dim { font-size: var(--fs-xs); }
+.exp-card-rows { font-size: var(--fs-md); }
+/* 实验报告：对比口径（按「渠道 · 战术版本」分桶的战绩表 + 单轮得分率条） */
+.exp-agg { margin-bottom: var(--sp-5); }
+.exp-agg-head, .exp-agg-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px 30px 52px 84px 92px;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.exp-agg-head {
+  font-size: var(--fs-cap);
+  color: var(--ink-mute);
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+}
+.exp-agg-head span:not(:first-child) { text-align: right; }
+.exp-agg-row {
+  font-size: var(--fs-md);
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid var(--ink-line-soft);
+}
+.exp-agg-side { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-agg-num { text-align: right; color: var(--ink-mute); }
+/* 战术层平均耗时（只有真过了战术层的手才有样本；Rapfi/mock 显示 —） */
+.exp-agg-tac { font-size: var(--fs-xs); white-space: nowrap; }
+/* 候选点三数（C0/m13627）：发（交给 Jev）/ 评（模型给了概率）/ 标（带战术标签） */
+.exp-agg-cands { font-size: var(--fs-xs); white-space: nowrap; }
+.exp-agg-rate { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+.exp-agg-rate b { font-size: var(--fs-xs); }
+.exp-bar-row { display: flex; align-items: center; gap: var(--sp-2); margin: 2px 0 var(--sp-2); }
+.exp-bar-side { flex: 0 0 auto; font-size: var(--fs-cap); color: var(--ink-mute); }
+/* 窄屏：A/B 双卡上下堆叠，局数与按钮换行，避免被挤扁 */
+@media (max-width: 560px) {
+  .exp-sides { grid-template-columns: 1fr; }
+  .exp-foot { flex-wrap: wrap; }
+  .exp-games { flex: 1 1 40%; }
+}
+.hint { font-size: var(--fs-xs); color: var(--ink-mute); line-height: 1.7; margin-top: var(--sp-2); }
+
+#probeRow { margin-top: var(--sp-5); }
+#probeOut { font-size: var(--fs-sm); line-height: 1.6; margin-top: var(--sp-2); min-height: 1.2em; overflow-wrap: anywhere; }
+#probeOut.pending { color: var(--ink-mute); }
+#probeOut.ok { color: var(--ok); }
+#probeOut.fail { color: var(--zhu); }
+
+.speed-row { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); font-size: var(--fs-md); color: var(--ink-mute); }
+.speed-row input { flex: 1; margin: 0; }
+.speed-row .mono { color: var(--zhu); }
+
+/* ============================================================
+   棋谱回放 / 排行榜 / 开具体验（P7 三面板）
+   对应 src/ui/panels/replayer.ts（.rp-*）、leaderboard.ts（.lb-*）、
+   openings.ts（.op-*）。底板沿用上方共享的 .panel 卡片语汇；
+   表格型面板与 .rec-row 同源：grid 定列宽 + 虚线分隔 + sticky 表头；
+   交互态齐：hover / :focus-visible / [disabled] / .is-dim / 可点行回车。
+   ============================================================ */
+
+/* ---------- 回放器 ---------- */
+
+/* 三个 root 都是「由调用方注入的挂载点」：min-width:0 让内部宽表头/长前缀
+ * 在窄父级里收缩，而不是把父级撑破（面板自己不出横向滚动条）。 */
+.rp, .lb, .op { display: block; min-width: 0; }
+/* root 自身带 tabindex="0"（←/→ 换手）。零特异度的全局
+ * :where([tabindex]):focus-visible 给的是 6px 圆角，与面板底板对不上，故在此对齐。 */
+.rp:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--r-panel); }
+
+/* 头部：左侧元信息可换行，右侧分享钮不参与压缩 */
+.rp-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-3); }
+.rp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-5); min-width: 0; }
+/* 标题与 .panel-title h2 同一档展示字：回放器本身就是一个面板，标题不该比面板标题更重 */
+.rp-title { font-family: var(--font-display); font-size: var(--fs-title); letter-spacing: 1.2px; line-height: 1.25; color: var(--ink); }
+.rp-meta-item { display: inline-flex; align-items: baseline; gap: var(--sp-1); font-size: var(--fs-xs); }
+.rp-k { font-style: normal; color: var(--ink-mute); }
+.rp-v { font-weight: 600; color: var(--ink-dim); }
+/* 分享是面板级次操作，沿用 .mini-btn 的 pill 尺寸，不与主按钮抢视线 */
+.rp-share { flex: 0 0 auto; font-size: var(--fs-xs); padding: 3px var(--sp-5); border-radius: var(--r-pill); color: var(--ink-dim); }
+
+/* 棋盘宿主：canvas 的尺寸由引擎内联写死（560px），窄栏里靠 max-width 收缩。
+ * 不写 width:100%——内联 width 优先级更高，那样只会「设了没用」，还会把小盘放大。 */
+.rp-board { margin: 2px 0 var(--sp-4); }
+.rp-board canvas, .rp-board svg, .rp-board img {
+  display: block; max-width: 100%; height: auto; margin: 0 auto;
+}
+
+/* 着法列表：一局最多 225 手，必须自己滚，不能把侧栏顶长 */
+.rp-moves {
+  max-height: 190px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--bg2);
+  padding: 3px;
+}
+
+/* 着法行是 <button>：把全局 button 的描边/内边距/投影退干净，只留行式排版。
+ * .rp-move:hover / :active 特异度高于 button:hover / button:active，无需 !important。 */
+.rp-move {
+  display: grid; grid-template-columns: 30px 30px minmax(0, 1fr);
+  align-items: baseline; gap: var(--sp-2);
+  width: 100%; text-align: left;
+  font: inherit; font-size: var(--fs-sm); line-height: 1.5;
+  padding: 3px var(--sp-3);
+  border: none; border-radius: var(--r-xs); background: transparent;
+  color: var(--ink-dim);
+  box-shadow: none;
+}
+.rp-move:active { transform: none; }
+/* 当前手：朱砂底 + 加粗，与 .tv-row.cur 同一套「当前项」语汇。
+ * 模块同时写 class 与 aria-current，两个都认——只按 class 上色的话，
+ * 谁把 aria-current 当唯一「当前项」信号（读屏/测试）就会看到状态与颜色不一致。 */
+.rp-ply { font-size: var(--fs-cap); color: var(--ink-mute); }
+.rp-side { color: var(--ink-mute); }
+.rp-notation { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rp-move.is-cur .rp-ply,
+.rp-move.is-cur .rp-side { color: var(--zhu); }
+
+/* 控制条 */
+.rp-controls { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+.rp-btn {
+  flex: 0 0 auto;
+  width: 30px; height: 26px; padding: 0; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md); line-height: 1;
+  color: var(--ink-dim);
+}
+.rp-glyph { font-size: var(--fs-md); line-height: 1; }
+/* 首手/上一手在开头、下一手/末手在结尾时不可点：模块会同时加 .is-dim 与 disabled，
+ * 两样都置灰，并保留 cursor:not-allowed 让「点不动」有反馈。 */
+.rp-btn.is-dim { color: var(--ink-mute); border-color: var(--line); }
+.rp-btn[disabled] { cursor: not-allowed; }
+/* 滑杆：全局 select,input 规则给它上了边框/内边距/100% 宽，这里全部退回原生外观 */
+.rp-range {
+  flex: 1 1 auto; width: auto; min-width: 0;
+  margin: 0; padding: 0;
+  border: none; border-radius: 0; background: transparent;
+  height: 18px;
+  accent-color: var(--mo);
+}
+/* 全局 input:focus 会吃掉轮廓（box-shadow 环太弱），键盘换手时要能看出焦点在哪 */
+.rp-range:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rp-pos { flex: 0 0 auto; margin-left: auto; font-size: var(--fs-xs); color: var(--ink-mute); white-space: nowrap; }
+
+/* ---------- 排行榜 ---------- */
+
+/* 表头与数据行共用同一套列宽（五列 = 渠道 | 档位 | 胜/总 | 胜率 | 胜率条）；
+ * minmax(0,1fr) + 省略号让长渠道名/长档位 id 在窄栏里收缩，而不是撑出横向滚动条。 */
+/* 读表语汇：排行榜与开具体验的行/表头同构，只有列宽不同（各自声明） */
+:where(.lb-row, .op-row) {
+  display: grid; align-items: center;
+  padding: 5px var(--sp-2);
+  border-top: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm); color: var(--ink-dim);
+  cursor: pointer;
+}
+/* 数据行 tabindex=0 且可回车：焦点环内缩，避免整行宽度的环被侧栏边缘切掉 */
+:where(.lb-row, .op-row):focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* 粘性表头语汇：排行榜 / 开具体验 / 战绩簿三张表共用 */
+:where(.lb-head, .op-head, .rec-row.rec-head) {
+  border-top: none; cursor: default;
+  position: sticky; top: 0; z-index: 1;
+  background: var(--bg1);
+  color: var(--ink-mute); font-size: var(--fs-xs); letter-spacing: .04em;
+}
+.lb-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 50px 42px 54px; gap: var(--sp-2); }
+.lb-channel { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; color: var(--ink); }
+.lb-tactics { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-mute); }
+.lb-record, .lb-rate { text-align: right; white-space: nowrap; }
+.lb-rate { font-weight: 600; color: var(--mo); }
+/* 表头那一格是空占位（DOM 里与数据行同构），不该显示一条空轨道 */
+.lb-head .lb-bar { background: none; }
+
+/* ---------- 开具体验 ---------- */
+
+.op-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-2); }
+.op-field { flex: 1 1 130px; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); color: var(--ink-dim); }
+.op-k { flex: 0 0 auto; color: var(--ink-mute); }
+/* 工具栏里的下拉要紧凑：全局 select 是 100% 宽 + 7px 内边距，照搬会把工具栏挤成两行 */
+.op-field select { flex: 1 1 auto; min-width: 0; }
+.op-limit, .op-game { width: auto; margin: 0; padding: var(--sp-1) var(--sp-3); font-size: var(--fs-md); }
+
+/* 四列 = 开局前缀 | 场次 | 黑方胜率 | 胜率条（表头与数据行同列宽） */
+.op-row { grid-template-columns: minmax(0, 1fr) 48px 56px 60px; gap: var(--sp-3); }
+/* 前缀是逗号连接的着法串（最长可到十几手），单行省略，title 里看全 */
+.op-prefix { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.op-games, .op-rate { text-align: right; white-space: nowrap; }
+.op-rate { font-weight: 600; color: var(--mo); }
+.op-head .op-bar { background: none; }
+
+/* 窄栏（侧栏最窄 ≈345px）：三张面板都不允许出现横向滚动条——
+ * 回放器控制条换行、滑杆独占一行；两张表格只缩列宽，焦点仍在省略号收缩的前缀列上。 */
+@media (max-width: 560px) {
+  .rp-controls { flex-wrap: wrap; }
+  .rp-range { flex: 1 1 100%; order: 9; }
+  .rp-pos { order: 10; margin-left: 0; }
+  .lb-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px 38px 40px; gap: var(--sp-1); }
+  .op-row { grid-template-columns: minmax(0, 1fr) 42px 50px 44px; gap: 5px; }
+}
+
+/* ---------- 实验报告：归档里最新的对局 ----------
+ * 两行一行：上行「时间 · 棋种 · 手数 · 实验 tag」，下行「黑 vs 白 → 结果」；
+ * 右列是「回放」按钮，跨两行垂直居中。行内文本全部单行省略，title 里看全。 */
+.exp-latest { margin: 0 0 var(--sp-4); }
+.exp-latest-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3);
+  margin: 0 0 2px; font-size: var(--fs-md); color: var(--ink);
+}
+.exp-latest-head .dim { font-size: var(--fs-xs); }
+.exp-latest-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 2px var(--sp-3);
+  padding: 5px var(--sp-2);
+  border-top: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm); color: var(--ink-dim);
+}
+.exp-latest-top, .exp-latest-main {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); min-width: 0;
+}
+.exp-latest-main { gap: var(--sp-1) var(--sp-2); }
+.exp-latest-when { color: var(--ink-mute); font-size: var(--fs-xs); white-space: nowrap; }
+.exp-latest-game { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.exp-latest-moves { color: var(--ink-mute); white-space: nowrap; }
+/* tag 是 `exp-20260930143522 #2` 这种长串，让它自己占满余宽时省略 */
+.exp-latest-tag { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 两方归因串可能很长（渠道 + 战术版本），各占一半、溢出省略 */
+.exp-latest-side { min-width: 0; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-latest-result { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exp-latest-open { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+
+@media (max-width: 560px) {
+  .exp-latest-side { max-width: 100%; }
+}
+

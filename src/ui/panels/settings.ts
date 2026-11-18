@@ -265,12 +265,24 @@ function bindDrawerChrome(doc: Document): void {
   onOnce(byId<HTMLElement>('drawerMask', doc), 'click', () => setDrawerOpen(false, doc));
 }
 
-/** 开合抽屉（旧 `openDrawer()` / `closeDrawer()` 只切 `hidden`）。 */
+/** 开合抽屉：同步 `hidden`、`aria-hidden`、`aria-expanded`，并在开合时迁移/归还焦点。 */
 export function setDrawerOpen(open: boolean, doc: Document = document): void {
   const drawer = byId<HTMLElement>('settingsDrawer', doc);
   const mask = byId<HTMLElement>('drawerMask', doc);
-  if (drawer) drawer.classList.toggle('hidden', !open);
+  const gear = byId<HTMLElement>('settingsGear', doc);
+  const wasOpen = drawer ? !drawer.classList.contains('hidden') : false;
+  if (drawer) {
+    drawer.classList.toggle('hidden', !open);
+    drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
   if (mask) mask.classList.toggle('hidden', !open);
+  if (gear) gear.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    const closeBtn = byId<HTMLElement>('drawerClose', doc);
+    if (closeBtn && typeof closeBtn.focus === 'function') closeBtn.focus();
+  } else if (wasOpen && gear && typeof gear.focus === 'function') {
+    gear.focus();
+  }
 }
 
 export function isDrawerOpen(doc: Document = document): boolean {
