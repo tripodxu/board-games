@@ -719,7 +719,11 @@ export async function decide(engine: Engine, st: unknown, side: string, opts: De
   } catch (_) { /* 降级为全量 */ }
   { /* 块级作用域：tt 只是这一段的秒表，别漏到函数作用域里 */
     const tt = Date.now();
-    try { tactics = computeTactics(engine, st, legal, cands, opts.tacticsVersion); } catch (_) { /* 任何引擎差异都降级为空战术 */ }
+    try {
+      tactics = typeof opts.tacticsRunner === 'function'
+        ? await opts.tacticsRunner(engine, st, legal, cands, opts.tacticsVersion)
+        : computeTactics(engine, st, legal, cands, opts.tacticsVersion);
+    } catch (_) { /* 任何引擎差异都降级为空战术 */ }
     tacticsMs += Date.now() - tt;
   }
   /* P1/D5：指令句按本档真有的机制过滤（同一解析路径；未知档号 = 空机制集 ⇒ 不注入任何机制句） */

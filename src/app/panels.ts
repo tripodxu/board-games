@@ -53,8 +53,8 @@ import { calibration } from '../core/view/calibration.ts';
 import type { Metrics } from '../core/view/calibration.ts';
 import { clear, byId, el, setHidden, setText } from '../ui/dom.ts';
 import { effFor, effBySideId } from './ctx.ts';
-import { computeTacticHints } from '../core/tactics-hints.ts';
 import type { TacticHint } from '../core/tactics-hints.ts';
+import { runTacticHintsAsync } from './tactics-client.ts';
 import type { AppCtx } from './ctx.ts';
 import type { SessionMove } from '../core/session.ts';
 
@@ -681,18 +681,29 @@ export function refreshTacticHints(ctx: AppCtx): void {
     return;
   }
   ctx.tacticHintKey = key;
-  setTimeout(() => {
-    /* 期间又有更新的刷新请求 ⇒ 这次结果作废（键比对） */
-    if (ctx.tacticHintKey !== key) return;
-    let hint: TacticHint | null = null;
-    if (eligible && versionId) {
-      try { hint = computeTacticHints(ctx.engine, ctx.session.st, versionId); } catch { hint = null; }
-    }
-    ctx.tacticHint = hint;
-    ctx.ui.tacticMarks = hint ? hint.marks : null;
+  if (!eligible || !versionId) {
+    ctx.tacticHint = null;
+    ctx.ui.tacticMarks = null;
     renderTacticLegend(ctx);
-    /* 重画棋盘（不引 loop.redraw —— panels 不 import loop 的既定方向）；
-       失败静默：与 loop.drawFailed 同级的容错，提示本身可下次重算。 */
     if (ctx.renderer) { try { ctx.renderer.draw({ engine: ctx.engine, state: ctx.session.st, ui: ctx.ui }); } catch { /* ignore */ } }
-  }, 0);
+    return;
+  }
+  const stSnapshot = ctx.session.st;
+  const engSnapshot = ctx.engine;
+  const verSnapshot = versionId;
+  void runTacticHintsAsync(engSnapshot, stSnapshot, verSnapshot).then(
+    (hint) => {
+      if (ctx.tacticHintKey !== key) return;
+      ctx.tacticHint = hint;
+      ctx.ui.tacticMarks = hint ? hint.marks : null;
+      renderTacticLegend(ctx);
+      if (ctx.renderer) { try { ctx.renderer.draw({ engine: ctx.engine, state: ctx.session.st, ui: ctx.ui }); } catch { /* ignore */ } }
+    },
+    () => {
+      if (ctx.tacticHintKey !== key) return;
+      ctx.tacticHint = null;
+      ctx.ui.tacticMarks = null;
+      renderTacticLegend(ctx);
+    },
+  );
 }

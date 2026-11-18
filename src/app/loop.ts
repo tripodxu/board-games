@@ -30,6 +30,7 @@ import { apiKeyForChannel, isValidMode, effectiveChannelOf } from '../core/persi
 import { byId, setText } from '../ui/dom.ts';
 import type { SelectEl } from '../ui/dom.ts';
 import { aiDelayMs, cancelAIStep, scheduleAIStep, startThinkClock, stopThinkClock } from './clock.ts';
+import { runTacticsAsync } from './tactics-client.ts';
 import { effFor, sideNameOf } from './ctx.ts';
 import type { AppCtx } from './ctx.ts';
 import { renderBackend } from './backend.ts';
@@ -297,6 +298,7 @@ export async function scheduleDecision(ctx: AppCtx): Promise<void> {
       topK: cfg.topK,
       rapfiThinkMs: eff.rapfiThinkMs,
       tacticsVersion: eff.tactics,
+      tacticsRunner: ctx.engine.deepTactics ? runTacticsAsync : undefined,
       signal: aborter.signal,
       rapfiOnProgress: (stage, detail) => {
         /* F1：Rapfi 资产下载进度（此前 11 MB 下载期间界面只有一个「推理中」+秒数）。 */

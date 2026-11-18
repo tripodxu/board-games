@@ -108,6 +108,17 @@ export interface DecideOpts {
   providerSticky?: string;
   /** C2：切换（含「备用探活未通过」）时的回调，供日志与事件流。 */
   onProviderSwitch?: (info: ProviderSwitchInfo) => void;
+  /**
+   * 可选异步战术计算器（例如浏览器侧的 Web Worker 包装，消除主线程冻结）。
+   * 缺省直接在当前线程调 `computeTactics()`（Node / 测试 / 无 Worker 环境）。
+   */
+  tacticsRunner?: (
+    engine: Engine,
+    st: unknown,
+    legal: Move[],
+    cands: string[] | null | undefined,
+    versionId?: string | null,
+  ) => Promise<TacticsReport>;
   [k: string]: unknown;
 }
 
